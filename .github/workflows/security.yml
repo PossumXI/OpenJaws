@@ -38,10 +38,16 @@ jobs:
       - uses: actions/dependency-review-action@v4
 
   gitguardian:
-    if: ${{ secrets.GITGUARDIAN_API_KEY != '' }}
     runs-on: ubuntu-latest
+    env:
+      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
     steps:
       - uses: actions/checkout@v4
-      - uses: GitGuardian/ggshield-action@v1
+      - name: Skip GitGuardian when not configured
+        if: env.GITGUARDIAN_API_KEY == ''
+        run: echo "GITGUARDIAN_API_KEY is not configured; skipping GitGuardian scan."
+      - name: Run GitGuardian
+        if: env.GITGUARDIAN_API_KEY != ''
+        uses: GitGuardian/ggshield-action@v1
         env:
-          GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+          GITGUARDIAN_API_KEY: ${{ env.GITGUARDIAN_API_KEY }}
