@@ -1,11 +1,17 @@
+import { getOpenJawsReleaseVersion } from './releaseVersion.ts'
+
 const packageJson = (await Bun.file(
   new URL('../package.json', import.meta.url),
 ).json()) as {
   version?: string
 }
 
-const version = packageJson.version ?? '0.0.0'
-const outfile = process.env.OPENJAWS_NATIVE_OUTFILE || 'dist/openjaws.exe'
+const version = getOpenJawsReleaseVersion({
+  packageVersion: packageJson.version ?? '0.0.0',
+})
+const outfile =
+  process.env.OPENJAWS_NATIVE_OUTFILE ||
+  (process.platform === 'win32' ? 'dist/openjaws.exe' : 'dist/openjaws')
 const macro = {
   VERSION: version,
   BUILD_TIME: new Date().toISOString(),

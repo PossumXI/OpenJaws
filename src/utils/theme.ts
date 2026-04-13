@@ -4,10 +4,10 @@ import { env } from './env.js'
 export type Theme = {
   autoAccept: string
   bashBorder: string
-  claude: string
-  claudeShimmer: string // Lighter version of claude color for shimmer effect
-  claudeBlue_FOR_SYSTEM_SPINNER: string
-  claudeBlueShimmer_FOR_SYSTEM_SPINNER: string
+  openjawsOcean: string
+  openjawsOceanShimmer: string // Lighter version of openjawsOcean color for shimmer effect
+  openjawsSpinner: string
+  openjawsSpinnerShimmer: string
   permission: string
   permissionShimmer: string // Lighter version of permission color for shimmer effect
   planMode: string
@@ -70,7 +70,7 @@ export type Theme = {
   fastModeShimmer: string
   // Brief/assistant mode label colors
   briefLabelYou: string
-  briefLabelClaude: string
+  briefLabelOpenJaws: string
   // Rainbow colors for ultrathink keyword highlighting
   rainbow_red: string
   rainbow_orange: string
@@ -116,10 +116,10 @@ export type ThemeSetting = (typeof THEME_SETTINGS)[number]
 const lightTheme: Theme = {
   autoAccept: 'rgb(135,0,255)', // Electric violet
   bashBorder: 'rgb(255,0,135)', // Vibrant pink
-  claude: 'rgb(27,116,170)', // OpenJaws ocean blue
-  claudeShimmer: 'rgb(92,188,230)', // Lighter ocean blue for shimmer effect
-  claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(87,105,247)', // Medium blue for system spinner
-  claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(117,135,255)', // Lighter blue for system spinner shimmer
+  openjawsOcean: 'rgb(27,116,170)', // OpenJaws ocean blue
+  openjawsOceanShimmer: 'rgb(92,188,230)', // Lighter ocean blue for shimmer effect
+  openjawsSpinner: 'rgb(87,105,247)', // Medium blue for system spinner
+  openjawsSpinnerShimmer: 'rgb(117,135,255)', // Lighter blue for system spinner shimmer
   permission: 'rgb(87,105,247)', // Medium blue
   permissionShimmer: 'rgb(137,155,255)', // Lighter blue for shimmer effect
   planMode: 'rgb(0,102,102)', // Muted teal
@@ -174,7 +174,7 @@ const lightTheme: Theme = {
   fastModeShimmer: 'rgb(92,188,230)', // Lighter ocean blue for shimmer
   // Brief/assistant mode
   briefLabelYou: 'rgb(37,99,235)', // Blue
-  briefLabelClaude: 'rgb(27,116,170)', // OpenJaws ocean blue
+  briefLabelOpenJaws: 'rgb(27,116,170)', // OpenJaws ocean blue
   rainbow_red: 'rgb(235,95,87)',
   rainbow_orange: 'rgb(245,139,87)',
   rainbow_yellow: 'rgb(250,195,95)',
@@ -199,10 +199,10 @@ const lightTheme: Theme = {
 const opencheeksLightTheme: Theme = {
   autoAccept: 'rgb(18,98,166)',
   bashBorder: 'rgb(12,57,99)',
-  claude: 'rgb(24,116,186)',
-  claudeShimmer: 'rgb(96,182,234)',
-  claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(18,98,166)',
-  claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(82,158,217)',
+  openjawsOcean: 'rgb(24,116,186)',
+  openjawsOceanShimmer: 'rgb(96,182,234)',
+  openjawsSpinner: 'rgb(18,98,166)',
+  openjawsSpinnerShimmer: 'rgb(82,158,217)',
   permission: 'rgb(24,116,186)',
   permissionShimmer: 'rgb(96,182,234)',
   planMode: 'rgb(42,105,145)',
@@ -251,7 +251,7 @@ const opencheeksLightTheme: Theme = {
   fastMode: 'rgb(24,116,186)',
   fastModeShimmer: 'rgb(96,182,234)',
   briefLabelYou: 'rgb(16,91,148)',
-  briefLabelClaude: 'rgb(24,116,186)',
+  briefLabelOpenJaws: 'rgb(24,116,186)',
   rainbow_red: 'rgb(235,95,87)',
   rainbow_orange: 'rgb(245,139,87)',
   rainbow_yellow: 'rgb(250,195,95)',
@@ -275,10 +275,10 @@ const opencheeksLightTheme: Theme = {
 const lightAnsiTheme: Theme = {
   autoAccept: 'ansi:magenta',
   bashBorder: 'ansi:magenta',
-  claude: 'ansi:blue',
-  claudeShimmer: 'ansi:cyan',
-  claudeBlue_FOR_SYSTEM_SPINNER: 'ansi:blue',
-  claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'ansi:blueBright',
+  openjawsOcean: 'ansi:blue',
+  openjawsOceanShimmer: 'ansi:cyan',
+  openjawsSpinner: 'ansi:blue',
+  openjawsSpinnerShimmer: 'ansi:blueBright',
   permission: 'ansi:blue',
   permissionShimmer: 'ansi:blueBright',
   planMode: 'ansi:cyan',
@@ -332,7 +332,7 @@ const lightAnsiTheme: Theme = {
   fastMode: 'ansi:blue',
   fastModeShimmer: 'ansi:cyan',
   briefLabelYou: 'ansi:blue',
-  briefLabelClaude: 'ansi:blue',
+  briefLabelOpenJaws: 'ansi:blue',
   rainbow_red: 'ansi:red',
   rainbow_orange: 'ansi:redBright',
   rainbow_yellow: 'ansi:yellow',
@@ -356,10 +356,10 @@ const lightAnsiTheme: Theme = {
 const darkAnsiTheme: Theme = {
   autoAccept: 'ansi:magentaBright',
   bashBorder: 'ansi:magentaBright',
-  claude: 'ansi:cyanBright',
-  claudeShimmer: 'ansi:blueBright',
-  claudeBlue_FOR_SYSTEM_SPINNER: 'ansi:blueBright',
-  claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'ansi:blueBright',
+  openjawsOcean: 'ansi:cyanBright',
+  openjawsOceanShimmer: 'ansi:blueBright',
+  openjawsSpinner: 'ansi:blueBright',
+  openjawsSpinnerShimmer: 'ansi:blueBright',
   permission: 'ansi:blueBright',
   permissionShimmer: 'ansi:blueBright',
   planMode: 'ansi:cyanBright',
@@ -413,7 +413,7 @@ const darkAnsiTheme: Theme = {
   fastMode: 'ansi:cyanBright',
   fastModeShimmer: 'ansi:blueBright',
   briefLabelYou: 'ansi:blueBright',
-  briefLabelClaude: 'ansi:cyanBright',
+  briefLabelOpenJaws: 'ansi:cyanBright',
   rainbow_red: 'ansi:red',
   rainbow_orange: 'ansi:redBright',
   rainbow_yellow: 'ansi:yellow',
@@ -437,10 +437,10 @@ const darkAnsiTheme: Theme = {
 const lightDaltonizedTheme: Theme = {
   autoAccept: 'rgb(135,0,255)', // Electric violet
   bashBorder: 'rgb(0,102,204)', // Blue instead of pink
-  claude: 'rgb(0,120,204)', // OpenJaws ocean blue adjusted for deuteranopia
-  claudeShimmer: 'rgb(92,188,255)', // Lighter ocean blue for shimmer effect
-  claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(51,102,255)', // Bright blue for system spinner
-  claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(101,152,255)', // Lighter bright blue for system spinner shimmer
+  openjawsOcean: 'rgb(0,120,204)', // OpenJaws ocean blue adjusted for deuteranopia
+  openjawsOceanShimmer: 'rgb(92,188,255)', // Lighter ocean blue for shimmer effect
+  openjawsSpinner: 'rgb(51,102,255)', // Bright blue for system spinner
+  openjawsSpinnerShimmer: 'rgb(101,152,255)', // Lighter bright blue for system spinner shimmer
   permission: 'rgb(51,102,255)', // Bright blue
   permissionShimmer: 'rgb(101,152,255)', // Lighter bright blue for shimmer
   planMode: 'rgb(51,102,102)', // Muted blue-gray (works for color-blind)
@@ -494,7 +494,7 @@ const lightDaltonizedTheme: Theme = {
   fastMode: 'rgb(0,120,204)', // OpenJaws ocean blue for daltonized light mode
   fastModeShimmer: 'rgb(92,188,255)', // Lighter ocean blue for shimmer
   briefLabelYou: 'rgb(37,99,235)', // Blue
-  briefLabelClaude: 'rgb(0,120,204)', // OpenJaws ocean blue (matches claude)
+  briefLabelOpenJaws: 'rgb(0,120,204)', // OpenJaws ocean blue (matches openjawsOcean)
   rainbow_red: 'rgb(235,95,87)',
   rainbow_orange: 'rgb(245,139,87)',
   rainbow_yellow: 'rgb(250,195,95)',
@@ -518,10 +518,10 @@ const lightDaltonizedTheme: Theme = {
 const darkTheme: Theme = {
   autoAccept: 'rgb(175,135,255)', // Electric violet
   bashBorder: 'rgb(253,93,177)', // Bright pink
-  claude: 'rgb(88,188,232)', // OpenJaws ocean blue
-  claudeShimmer: 'rgb(157,224,255)', // Lighter ocean blue for shimmer effect
-  claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(147,165,255)', // Blue for system spinner
-  claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(177,195,255)', // Lighter blue for system spinner shimmer
+  openjawsOcean: 'rgb(88,188,232)', // OpenJaws ocean blue
+  openjawsOceanShimmer: 'rgb(157,224,255)', // Lighter ocean blue for shimmer effect
+  openjawsSpinner: 'rgb(147,165,255)', // Blue for system spinner
+  openjawsSpinnerShimmer: 'rgb(177,195,255)', // Lighter blue for system spinner shimmer
   permission: 'rgb(177,185,249)', // Light blue-purple
   permissionShimmer: 'rgb(207,215,255)', // Lighter blue-purple for shimmer
   planMode: 'rgb(72,150,140)', // Muted sage green
@@ -575,7 +575,7 @@ const darkTheme: Theme = {
   fastMode: 'rgb(88,188,232)', // OpenJaws ocean blue for dark mode
   fastModeShimmer: 'rgb(157,224,255)', // Lighter ocean blue for shimmer
   briefLabelYou: 'rgb(122,180,232)', // Light blue
-  briefLabelClaude: 'rgb(88,188,232)', // OpenJaws ocean blue
+  briefLabelOpenJaws: 'rgb(88,188,232)', // OpenJaws ocean blue
   rainbow_red: 'rgb(235,95,87)',
   rainbow_orange: 'rgb(245,139,87)',
   rainbow_yellow: 'rgb(250,195,95)',
@@ -599,10 +599,10 @@ const darkTheme: Theme = {
 const darkDaltonizedTheme: Theme = {
   autoAccept: 'rgb(175,135,255)', // Electric violet
   bashBorder: 'rgb(51,153,255)', // Bright blue
-  claude: 'rgb(102,198,255)', // OpenJaws ocean blue adjusted for deuteranopia
-  claudeShimmer: 'rgb(170,225,255)', // Lighter ocean blue for shimmer effect
-  claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(153,204,255)', // Light blue for system spinner
-  claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(183,224,255)', // Lighter blue for system spinner shimmer
+  openjawsOcean: 'rgb(102,198,255)', // OpenJaws ocean blue adjusted for deuteranopia
+  openjawsOceanShimmer: 'rgb(170,225,255)', // Lighter ocean blue for shimmer effect
+  openjawsSpinner: 'rgb(153,204,255)', // Light blue for system spinner
+  openjawsSpinnerShimmer: 'rgb(183,224,255)', // Lighter blue for system spinner shimmer
   permission: 'rgb(153,204,255)', // Light blue
   permissionShimmer: 'rgb(183,224,255)', // Lighter blue for shimmer
   planMode: 'rgb(102,153,153)', // Muted gray-teal (works for color-blind)
@@ -656,7 +656,7 @@ const darkDaltonizedTheme: Theme = {
   fastMode: 'rgb(102,198,255)', // OpenJaws ocean blue for daltonized dark mode
   fastModeShimmer: 'rgb(170,225,255)', // Lighter ocean blue for shimmer
   briefLabelYou: 'rgb(122,180,232)', // Light blue
-  briefLabelClaude: 'rgb(102,198,255)', // OpenJaws ocean blue (matches claude)
+  briefLabelOpenJaws: 'rgb(102,198,255)', // OpenJaws ocean blue (matches openjawsOcean)
   rainbow_red: 'rgb(235,95,87)',
   rainbow_orange: 'rgb(245,139,87)',
   rainbow_yellow: 'rgb(250,195,95)',

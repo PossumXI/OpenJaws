@@ -55,6 +55,8 @@ async function main() {
   const faultedWorkerId = `route-worker:assignment-faulted-${runSuffix}`
   const bundleDir = resolve(repoRoot, 'data', 'sft', 'audited-v2')
   const harnessStatus = await getImmaculateHarnessStatus().catch(() => null)
+  const isRunWorker = (workerIdToCheck: string): boolean =>
+    workerIdToCheck.includes(runSuffix)
 
   if (!harnessStatus?.enabled || !harnessStatus.reachable) {
     console.error(
@@ -188,13 +190,35 @@ async function main() {
     const queueEntry = getGemmaTrainingRouteQueueEntry(launchJson.runId, routeRoot)
     const workerResult = await workerProcess
     const harnessWorkersAfter = await getImmaculateHarnessWorkers().catch(() => null)
+    const relevantWorkersBeforeLaunch =
+      harnessWorkersBeforeLaunch?.workers.filter(worker =>
+        isRunWorker(worker.workerId),
+      ) ?? []
+    const relevantWorkersAfter =
+      harnessWorkersAfter?.workers.filter(worker => isRunWorker(worker.workerId)) ??
+      []
     const staleWorker =
-      harnessWorkersBeforeLaunch?.workers.find(worker => worker.workerId === staleWorkerId) ?? null
+      relevantWorkersBeforeLaunch.find(worker => worker.workerId === staleWorkerId) ??
+      null
     const faultedWorker =
-      harnessWorkersBeforeLaunch?.workers.find(worker => worker.workerId === faultedWorkerId) ?? null
+      relevantWorkersBeforeLaunch.find(
+        worker => worker.workerId === faultedWorkerId,
+      ) ?? null
+    const healthyWorkerCount = relevantWorkersBeforeLaunch.filter(
+      worker => worker.healthStatus === 'healthy',
+    ).length
+    const staleWorkerCount = relevantWorkersBeforeLaunch.filter(
+      worker => worker.healthStatus === 'stale',
+    ).length
+    const faultedWorkerCount = relevantWorkersBeforeLaunch.filter(
+      worker => worker.healthStatus === 'faulted',
+    ).length
+    const eligibleWorkerCount = relevantWorkersBeforeLaunch.filter(
+      worker => worker.assignmentEligible === true,
+    ).length
 
     const ok =
-      harnessWorkersBeforeLaunch?.workers.some(
+      relevantWorkersBeforeLaunch.some(
         worker =>
           worker.workerId === workerId &&
           worker.executionProfile === 'remote' &&
@@ -205,10 +229,10 @@ async function main() {
       staleWorker.assignmentEligible === false &&
       faultedWorker?.healthStatus === 'faulted' &&
       faultedWorker.assignmentEligible === false &&
-      harnessWorkersBeforeLaunch?.healthyWorkerCount === 1 &&
-      harnessWorkersBeforeLaunch?.staleWorkerCount === 1 &&
-      harnessWorkersBeforeLaunch?.faultedWorkerCount === 1 &&
-      harnessWorkersBeforeLaunch?.eligibleWorkerCount === 1 &&
+      healthyWorkerCount === 1 &&
+      staleWorkerCount === 1 &&
+      faultedWorkerCount === 1 &&
+      eligibleWorkerCount === 1 &&
       localWorkersBeforeLaunch.some(
         worker =>
           worker.workerId === workerId &&
@@ -225,7 +249,7 @@ async function main() {
       queueEntry?.assignment?.workerId === workerId &&
       queueEntry.assignment?.source === 'immaculate' &&
       workerResult.exitCode === 0 &&
-      harnessWorkersAfter?.workers.some(worker => worker.workerId === workerId) === false
+      relevantWorkersAfter.some(worker => worker.workerId === workerId) === false
 
     console.log(
       JSON.stringify(
@@ -234,6 +258,7 @@ async function main() {
           routeRoot,
           harnessStatus,
           harnessWorkersBeforeLaunch,
+          relevantWorkersBeforeLaunch,
           localWorkersBeforeLaunch,
           launchJson,
           queueEntry,
@@ -243,6 +268,7 @@ async function main() {
             stderr: workerResult.stderr,
           },
           harnessWorkersAfter,
+          relevantWorkersAfter,
         },
         null,
         2,

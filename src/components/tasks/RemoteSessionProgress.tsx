@@ -6,7 +6,7 @@ import { DIAMOND_FILLED, DIAMOND_OPEN } from '../../constants/figures.js';
 import { useSettings } from '../../hooks/useSettings.js';
 import { Text, useAnimationFrame } from '../../ink.js';
 import { count } from '../../utils/array.js';
-import { getRainbowColor } from '../../utils/thinking.js';
+import { getOpenJawsWaveColor } from '../../utils/thinking.js';
 const TICK_MS = 80;
 type ReviewStage = NonNullable<NonNullable<RemoteAgentTaskState['reviewProgress']>['stage']>;
 
@@ -57,7 +57,7 @@ function RainbowText(t0) {
   }
   let t3;
   if ($[2] !== phase || $[3] !== t2) {
-    t3 = <>{t2.map((ch, i) => <Text key={i} color={getRainbowColor(i + phase)}>{ch}</Text>)}</>;
+    t3 = <>{t2.map((ch, i) => <Text key={i} color={getOpenJawsWaveColor(i + phase)}>{ch}</Text>)}</>;
     $[2] = phase;
     $[3] = t2;
     $[4] = t3;
@@ -105,7 +105,7 @@ function ReviewRainbowLine(t0) {
   if (session.status === "completed") {
     let t1;
     if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-      t1 = <><Text color="claude">{DIAMOND_FILLED} </Text><RainbowText text="ultrareview" phase={0} /><Text dimColor={true}> ready · shift+↓ to view</Text></>;
+      t1 = <><Text color="openjawsOcean">{DIAMOND_FILLED} </Text><RainbowText text="ultrareview" phase={0} /><Text dimColor={true}> ready · shift+↓ to view</Text></>;
       $[0] = t1;
     } else {
       t1 = $[0];
@@ -115,7 +115,7 @@ function ReviewRainbowLine(t0) {
   if (session.status === "failed") {
     let t1;
     if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-      t1 = <><Text color="claude">{DIAMOND_FILLED} </Text><RainbowText text="ultrareview" phase={0} /><Text color="error" dimColor={true}>{" \xB7 "}error</Text></>;
+      t1 = <><Text color="openjawsOcean">{DIAMOND_FILLED} </Text><RainbowText text="ultrareview" phase={0} /><Text color="error" dimColor={true}>{" \xB7 "}error</Text></>;
       $[1] = t1;
     } else {
       t1 = $[1];
@@ -136,7 +136,7 @@ function ReviewRainbowLine(t0) {
   const tail = t1;
   let t2;
   if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
-    t2 = <Text color="claude">{DIAMOND_OPEN} </Text>;
+    t2 = <Text color="openjawsOcean">{DIAMOND_OPEN} </Text>;
     $[7] = t2;
   } else {
     t2 = $[7];

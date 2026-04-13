@@ -162,13 +162,13 @@ type LocalJSXCommand = {
  * Commands with `availability` are only shown if the user matches at least one
  * of the listed auth types. See meetsAvailabilityRequirement() in commands.ts.
  *
- * Example: `availability: ['claude-ai', 'console']` shows the command to
+ * Example: `availability: ['openjaws-account', 'console']` shows the command to
  * openjaws.dev subscribers and direct Console API key users (api.anthropic.com),
  * but hides it from Bedrock/Vertex/Foundry users and custom base URL users.
  */
 export type CommandAvailability =
   // openjaws.dev OAuth subscriber (Pro/Max/Team/Enterprise via openjaws.dev)
-  | 'claude-ai'
+  | 'openjaws-account'
   // Console API key user (direct api.anthropic.com, not via openjaws.dev OAuth)
   | 'console'
 

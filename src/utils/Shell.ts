@@ -30,7 +30,7 @@ export type { ExecResult } from './ShellCommand.js'
 
 import { accessSync } from 'fs'
 import { onCwdChangedForHooks } from './hooks/fileChangedWatcher.js'
-import { getClaudeTempDirName } from './permissions/filesystem.js'
+import { getOpenJawsTempDirName } from './permissions/filesystem.js'
 import { getPlatform } from './platform.js'
 import { SandboxManager } from './sandbox/sandbox-adapter.js'
 import { invalidateSessionEnvCache } from './sessionEnvironment.js'
@@ -203,7 +203,7 @@ export async function exec(
   // Sandbox temp directory - use per-user directory name to prevent multi-user permission conflicts
   const sandboxTmpDir = posixJoin(
     process.env.OPENJAWS_TMPDIR || '/tmp',
-    getClaudeTempDirName(),
+    getOpenJawsTempDirName(),
   )
 
   const { commandString: builtCommand, cwdFilePath } =

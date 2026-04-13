@@ -3,7 +3,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { useInterval } from 'usehooks-ts';
 import { Text } from '../ink.js';
-import { type AutoUpdaterResult, getLatestVersionFromGcs, getMaxVersion, shouldSkipVersion } from '../utils/autoUpdater.js';
+import { type AutoUpdaterResult, getLatestVersionFromPublicReleaseSource, getMaxVersion, shouldInstallTargetVersion, shouldSkipVersion } from '../utils/autoUpdater.js';
 import { isAutoUpdaterDisabled } from '../utils/config.js';
 import { logForDebugging } from '../utils/debug.js';
 import { getPackageManager, type PackageManager } from '../utils/nativeInstaller/packageManagers.js';
@@ -31,9 +31,9 @@ export function PackageManagerAutoUpdater(t0) {
       if (isAutoUpdaterDisabled()) {
         return;
       }
-      const [channel, pm] = await Promise.all([Promise.resolve(getInitialSettings()?.autoUpdatesChannel ?? "latest"), getPackageManager()]);
+      const [channel, pm] = await Promise.all([Promise.resolve(getInitialSettings()?.autoUpdatesChannel ?? "stable"), getPackageManager()]);
       setPackageManager(pm);
-      let latest = await getLatestVersionFromGcs(channel);
+      let latest = await getLatestVersionFromPublicReleaseSource(channel);
       const maxVersion = await getMaxVersion();
       if (maxVersion && latest && gt(latest, maxVersion)) {
         logForDebugging(`PackageManagerAutoUpdater: maxVersion ${maxVersion} is set, capping update from ${latest} to ${maxVersion}`);
@@ -44,7 +44,7 @@ export function PackageManagerAutoUpdater(t0) {
         }
         latest = maxVersion;
       }
-      const hasUpdate = latest && !gte(MACRO.VERSION, latest) && !shouldSkipVersion(latest);
+      const hasUpdate = latest && shouldInstallTargetVersion(MACRO.VERSION, latest) && !shouldSkipVersion(latest);
       setUpdateAvailable(!!hasUpdate);
       if (hasUpdate) {
         logForDebugging(`PackageManagerAutoUpdater: Update available ${MACRO.VERSION} -> ${latest}`);
@@ -73,7 +73,7 @@ export function PackageManagerAutoUpdater(t0) {
   if (!updateAvailable) {
     return null;
   }
-  const updateCommand = packageManager === "homebrew" ? "brew upgrade openjaws" : packageManager === "winget" ? "winget upgrade --name OpenJaws" : packageManager === "apk" ? "apk upgrade openjaws" : "your package manager update command";
+  const updateCommand = packageManager === "homebrew" ? "brew upgrade openjaws" : packageManager === "winget" ? "winget upgrade --name OpenJaws" : packageManager === "apk" ? "apk upgrade openjaws" : packageManager === "pacman" ? "sudo pacman -Syu openjaws" : packageManager === "deb" ? "sudo apt install --only-upgrade openjaws" : packageManager === "rpm" ? "use dnf/yum/zypper to upgrade openjaws" : packageManager === "mise" ? "mise install openjaws@latest && mise use -g openjaws@latest" : packageManager === "asdf" ? "asdf install openjaws latest && asdf global openjaws latest" : "your package manager update command";
   let t4;
   if ($[3] !== verbose) {
     t4 = verbose && <Text dimColor={true} wrap="truncate">currentVersion: {MACRO.VERSION}</Text>;

@@ -6,7 +6,7 @@ import {
   getPendingHintSnapshot,
   markShownThisSession,
   subscribeToPendingHint,
-} from '../utils/claudeCodeHints.js'
+} from '../utils/openJawsCodeHints.js'
 import {
   cacheAndRegisterPlugin,
 } from '../utils/plugins/pluginInstallationHelpers.js'

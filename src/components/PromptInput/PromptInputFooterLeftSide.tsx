@@ -421,7 +421,7 @@ function BrandStatus({
     columns >= 144 ? 'openjaws // flight deck' : 'flight deck';
 
   return (
-    <Text color="claude" bold>
+    <Text color="openjawsOcean" bold>
       {label}
     </Text>
   );
@@ -568,7 +568,7 @@ function ModeIndicator({
       : []),
     ...(columns >= 108 ? [<BrandStatus key="brand" columns={columns} />] : []),
     ...(immaculate.enabled && columns >= 124
-      ? [<Text color="claude" bold={immaculate.mode === 'strict'} key="immaculate">
+      ? [<Text color="openjawsOcean" bold={immaculate.mode === 'strict'} key="immaculate">
           {columns >= 152 ? `immaculate ${immaculate.mode}` : 'immaculate'}
         </Text>]
       : []),

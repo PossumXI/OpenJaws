@@ -1,6 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { useCallback, useEffect, useState } from 'react';
-import { checkIsGitClean, checkNeedsClaudeAiLogin } from 'src/utils/background/remote/preconditions.js';
+import { checkIsGitClean, checkNeedsOpenJawsAccountLogin } from 'src/utils/background/remote/preconditions.js';
 import { gracefulShutdownSync } from 'src/utils/gracefulShutdown.js';
 import { Box, Text } from '../ink.js';
 import { ConsoleOAuthFlow } from './ConsoleOAuthFlow.js';
@@ -88,12 +88,12 @@ export function TeleportError(t0) {
   } else {
     t6 = $[8];
   }
-  const handleLoginWithClaudeAI = t6;
+  const handleLoginWithOpenJawsAccount = t6;
   let t7;
   if ($[9] === Symbol.for("react.memo_cache_sentinel")) {
     t7 = value => {
       if (value === "login") {
-        handleLoginWithClaudeAI();
+        handleLoginWithOpenJawsAccount();
       } else {
         onCancel();
       }
@@ -135,7 +135,7 @@ export function TeleportError(t0) {
         if (isLoggingIn) {
           let t9;
           if ($[14] !== handleLoginComplete) {
-            t9 = <ConsoleOAuthFlow onDone={handleLoginComplete} mode="login" forceLoginMethod="claudeai" />;
+            t9 = <ConsoleOAuthFlow onDone={handleLoginComplete} mode="login" forceLoginMethod="subscription" />;
             $[14] = handleLoginComplete;
             $[15] = t9;
           } else {
@@ -177,7 +177,7 @@ function _temp() {
 }
 export async function getTeleportErrors(): Promise<Set<TeleportLocalErrorType>> {
   const errors = new Set<TeleportLocalErrorType>();
-  const [needsLogin, isGitClean] = await Promise.all([checkNeedsClaudeAiLogin(), checkIsGitClean()]);
+  const [needsLogin, isGitClean] = await Promise.all([checkNeedsOpenJawsAccountLogin(), checkIsGitClean()]);
   if (needsLogin) {
     errors.add('needsLogin');
   }

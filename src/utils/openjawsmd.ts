@@ -50,13 +50,13 @@ import { getAutoMemEntrypoint, isAutoMemoryEnabled } from '../memdir/paths.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import {
   getCurrentProjectConfig,
-  getManagedClaudeRulesDir,
+  getManagedOpenJawsRulesDir,
   getMemoryPath,
-  getUserClaudeRulesDir,
+  getUserOpenJawsRulesDir,
 } from './config.js'
 import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
+import { getOpenJawsConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { getErrnoCode } from './errors.js'
 import { normalizePathForComparison } from './file.js'
 import { cacheKeys, type FileStateCache } from './fileStateCache.js'
@@ -408,9 +408,9 @@ function handleMemoryFileReadError(error: unknown, filePath: string): void {
   // Log permission errors (EACCES) as they're actionable
   if (code === 'EACCES') {
     // Don't log the full file path to avoid PII/security issues
-    logEvent('jaws_claude_md_permission_error', {
+    logEvent('jaws_openjaws_md_permission_error', {
       is_access_error: 1,
-      has_home_dir: filePath.includes(getClaudeConfigHomeDir()) ? 1 : 0,
+      has_home_dir: filePath.includes(getOpenJawsConfigHomeDir()) ? 1 : 0,
     })
   }
 }
@@ -780,7 +780,7 @@ export async function processMdRules({
     if (error instanceof Error && error.message.includes('EACCES')) {
       logEvent('jaws_claude_rules_md_permission_error', {
         is_access_error: 1,
-        has_home_dir: rulesDir.includes(getClaudeConfigHomeDir()) ? 1 : 0,
+        has_home_dir: rulesDir.includes(getOpenJawsConfigHomeDir()) ? 1 : 0,
       })
     }
     return []
@@ -811,10 +811,10 @@ export const getMemoryFiles = memoize(
       )),
     )
     // Process Managed .openjaws/rules/*.md files
-    const managedClaudeRulesDir = getManagedClaudeRulesDir()
+    const managedOpenJawsRulesDir = getManagedOpenJawsRulesDir()
     result.push(
       ...(await processMdRules({
-        rulesDir: managedClaudeRulesDir,
+        rulesDir: managedOpenJawsRulesDir,
         type: 'Managed',
         processedPaths,
         includeExternal,
@@ -834,10 +834,10 @@ export const getMemoryFiles = memoize(
         )),
       )
       // Process User ~/.openjaws/rules/*.md files
-      const userClaudeRulesDir = getUserClaudeRulesDir()
+      const userOpenJawsRulesDir = getUserOpenJawsRulesDir()
       result.push(
         ...(await processMdRules({
-          rulesDir: userClaudeRulesDir,
+          rulesDir: userOpenJawsRulesDir,
           type: 'User',
           processedPaths,
           includeExternal: true,
@@ -896,10 +896,10 @@ export const getMemoryFiles = memoize(
         )
 
         // Try reading .openjaws/OPENJAWS.md (Project)
-        const dotClaudePath = join(dir, '.openjaws', 'OPENJAWS.md')
+        const dotOpenJawsPath = join(dir, '.openjaws', 'OPENJAWS.md')
         result.push(
           ...(await processMemoryFile(
-            dotClaudePath,
+            dotOpenJawsPath,
             'Project',
             processedPaths,
             includeExternal,
@@ -952,10 +952,10 @@ export const getMemoryFiles = memoize(
         )
 
         // Try reading .openjaws/OPENJAWS.md from the additional directory
-        const dotClaudePath = join(dir, '.openjaws', 'OPENJAWS.md')
+        const dotOpenJawsPath = join(dir, '.openjaws', 'OPENJAWS.md')
         result.push(
           ...(await processMemoryFile(
-            dotClaudePath,
+            dotOpenJawsPath,
             'Project',
             processedPaths,
             includeExternal,
@@ -1024,7 +1024,7 @@ export const getMemoryFiles = memoize(
 
     if (!hasLoggedInitialLoad) {
       hasLoggedInitialLoad = true
-      logEvent('jaws_claudemd__initial_load', {
+      logEvent('jaws_openjawsmd__initial_load', {
         file_count: result.length,
         total_content_length: totalContentLength,
         user_count: typeCounts['User'] ?? 0,
@@ -1209,11 +1209,11 @@ export async function getManagedAndUserConditionalRules(
   const result: MemoryFileInfo[] = []
 
   // Process Managed conditional .openjaws/rules/*.md files
-  const managedClaudeRulesDir = getManagedClaudeRulesDir()
+  const managedOpenJawsRulesDir = getManagedOpenJawsRulesDir()
   result.push(
     ...(await processConditionedMdRules(
       targetPath,
-      managedClaudeRulesDir,
+      managedOpenJawsRulesDir,
       'Managed',
       processedPaths,
       false,
@@ -1222,11 +1222,11 @@ export async function getManagedAndUserConditionalRules(
 
   if (isSettingSourceEnabled('userSettings')) {
     // Process User conditional .openjaws/rules/*.md files
-    const userClaudeRulesDir = getUserClaudeRulesDir()
+    const userOpenJawsRulesDir = getUserOpenJawsRulesDir()
     result.push(
       ...(await processConditionedMdRules(
         targetPath,
-        userClaudeRulesDir,
+        userOpenJawsRulesDir,
         'User',
         processedPaths,
         true,
@@ -1264,10 +1264,10 @@ export async function getMemoryFilesForNestedDirectory(
         false,
       )),
     )
-    const dotClaudePath = join(dir, '.openjaws', 'OPENJAWS.md')
+    const dotOpenJawsPath = join(dir, '.openjaws', 'OPENJAWS.md')
     result.push(
       ...(await processMemoryFile(
-        dotClaudePath,
+        dotOpenJawsPath,
         'Project',
         processedPaths,
         false,

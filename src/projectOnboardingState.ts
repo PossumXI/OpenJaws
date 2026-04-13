@@ -31,7 +31,7 @@ export function getSteps(): Step[] {
       isEnabled: isWorkspaceDirEmpty,
     },
     {
-      key: 'claudemd',
+      key: 'openjawsmd',
       text: 'Run /init to create a OPENJAWS.md file with instructions for OpenJaws',
       isComplete: hasOpenJawsMd,
       isCompletable: true,

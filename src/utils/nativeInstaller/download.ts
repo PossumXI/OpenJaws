@@ -1,8 +1,9 @@
 /**
  * Download functionality for native installer
  *
- * Handles downloading Claude binaries from various sources:
+ * Handles downloading OpenJaws native binaries from various sources:
  * - Artifactory NPM packages
+ * - GitHub Releases
  * - GCS bucket
  */
 
@@ -18,6 +19,13 @@ import { toError } from '../errors.js'
 import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
 import { getFsImplementation } from '../fsOperations.js'
 import { logError } from '../log.js'
+import {
+  findGithubReleaseAsset,
+  getGithubReleaseBinaryAssetName,
+  getGithubReleaseByVersion,
+  getGithubReleaseManifestAssetName,
+  getLatestVersionFromGithubRelease,
+} from '../publicReleaseSource.js'
 import { sleep } from '../sleep.js'
 import { jsonStringify, writeFileSync_DEPRECATED } from '../slowOperations.js'
 import { getBinaryName, getPlatform } from './installer.js'
@@ -26,6 +34,56 @@ const GCS_BUCKET_URL =
   'https://storage.googleapis.com/openjaws-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/openjaws-releases'
 export const ARTIFACTORY_REGISTRY_URL =
   'https://artifactory.infra.ant.dev/artifactory/api/npm/npm-all/'
+
+function isLegacyPublicReleaseFallbackEnabled(): boolean {
+  return process.env.OPENJAWS_ALLOW_GCS_RELEASE_FALLBACK === '1'
+}
+
+class GithubReleaseDownloadError extends Error {
+  constructor(
+    message: string,
+    readonly allowFallback: boolean,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options)
+    this.name = 'GithubReleaseDownloadError'
+  }
+}
+
+function shouldFallbackFromGithubReleaseError(error: unknown): boolean {
+  if (error instanceof GithubReleaseDownloadError) {
+    return error.allowFallback
+  }
+
+  const message = error instanceof Error ? error.message : String(error)
+  if (message.includes('Checksum mismatch')) {
+    return false
+  }
+
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status
+    if (status !== undefined) {
+      return status >= 500 || status === 429
+    }
+    return (
+      error.code === 'ECONNABORTED' ||
+      error.code === 'ETIMEDOUT' ||
+      message.includes('timeout') ||
+      message.includes('network') ||
+      message.includes('ECONNRESET') ||
+      message.includes('ENOTFOUND') ||
+      message.includes('ECONNREFUSED')
+    )
+  }
+
+  return (
+    message.includes('timeout') ||
+    message.includes('network') ||
+    message.includes('ECONNRESET') ||
+    message.includes('ENOTFOUND') ||
+    message.includes('ECONNREFUSED')
+  )
+}
 
 export async function getLatestVersionFromArtifactory(
   tag: string = 'latest',
@@ -144,8 +202,107 @@ export async function getLatestVersion(
     return getLatestVersionFromArtifactory(npmTag)
   }
 
-  // Use GCS for external users
+  const githubVersion = await getLatestVersionFromGithubRelease(
+    channel,
+    getPlatform(),
+  )
+  if (githubVersion) {
+    return githubVersion
+  }
+
+  if (!isLegacyPublicReleaseFallbackEnabled()) {
+    throw new Error(
+      `No published GitHub Release is available for the ${channel} channel on ${getPlatform()}.`,
+    )
+  }
+
+  // Fall back to GCS for external users
   return getLatestVersionFromBinaryRepo(channel, GCS_BUCKET_URL)
+}
+
+async function downloadVersionFromGithubRelease(
+  version: string,
+  stagingPath: string,
+) {
+  const platform = getPlatform()
+  const release = await getGithubReleaseByVersion(version)
+  if (!release) {
+    throw new GithubReleaseDownloadError(
+      `GitHub release ${version} not found`,
+      false,
+    )
+  }
+
+  const manifestAsset = findGithubReleaseAsset(
+    release,
+    getGithubReleaseManifestAssetName(platform),
+  )
+  if (!manifestAsset) {
+    throw new GithubReleaseDownloadError(
+      `GitHub release ${version} does not include a ${platform} manifest asset`,
+      false,
+    )
+  }
+
+  let manifestResponse
+  try {
+    manifestResponse = await axios.get(manifestAsset.browser_download_url, {
+      timeout: 10000,
+      responseType: 'json',
+    })
+  } catch (error) {
+    throw new GithubReleaseDownloadError(
+      `Failed to fetch GitHub manifest asset for ${version}: ${toError(error).message}`,
+      shouldFallbackFromGithubReleaseError(error),
+      { cause: error },
+    )
+  }
+  const manifest = manifestResponse.data as {
+    platforms?: Record<
+      string,
+      {
+        assetName?: string
+        checksum?: string
+      }
+    >
+  }
+  const platformInfo = manifest.platforms?.[platform]
+  if (!platformInfo?.checksum) {
+    throw new GithubReleaseDownloadError(
+      `GitHub release ${version} manifest is missing checksum for ${platform}`,
+      false,
+    )
+  }
+
+  const binaryAsset = findGithubReleaseAsset(
+    release,
+    platformInfo.assetName ?? getGithubReleaseBinaryAssetName(platform),
+  )
+  if (!binaryAsset) {
+    throw new GithubReleaseDownloadError(
+      `GitHub release ${version} does not include a ${platform} binary asset`,
+      false,
+    )
+  }
+
+  const fs = getFsImplementation()
+  await fs.rm(stagingPath, { recursive: true, force: true })
+  await fs.mkdir(stagingPath)
+
+  const binaryPath = join(stagingPath, getBinaryName(platform))
+  try {
+    await downloadAndVerifyBinary(
+      binaryAsset.browser_download_url,
+      platformInfo.checksum,
+      binaryPath,
+    )
+  } catch (error) {
+    throw new GithubReleaseDownloadError(
+      `Failed to fetch GitHub release binary for ${version}: ${toError(error).message}`,
+      shouldFallbackFromGithubReleaseError(error),
+      { cause: error },
+    )
+  }
 }
 
 export async function downloadVersionFromArtifactory(
@@ -201,7 +358,7 @@ export async function downloadVersionFromArtifactory(
   await fs.mkdir(stagingPath)
 
   const packageJson = {
-    name: 'claude-native-installer',
+    name: 'openjaws-native-installer',
     version: '0.0.1',
     dependencies: {
       [MACRO.NATIVE_PACKAGE_URL!]: version,
@@ -210,13 +367,13 @@ export async function downloadVersionFromArtifactory(
 
   // Create package-lock.json with integrity verification for platform-specific package
   const packageLock = {
-    name: 'claude-native-installer',
+    name: 'openjaws-native-installer',
     version: '0.0.1',
     lockfileVersion: 3,
     requires: true,
     packages: {
       '': {
-        name: 'claude-native-installer',
+        name: 'openjaws-native-installer',
         version: '0.0.1',
         dependencies: {
           [MACRO.NATIVE_PACKAGE_URL!]: version,
@@ -512,7 +669,22 @@ export async function downloadVersion(
     return 'npm'
   }
 
-  // Use GCS for external users
+  try {
+    await downloadVersionFromGithubRelease(version, stagingPath)
+    return 'binary'
+  } catch (error) {
+    if (
+      !isLegacyPublicReleaseFallbackEnabled() ||
+      !shouldFallbackFromGithubReleaseError(error)
+    ) {
+      throw error
+    }
+    logForDebugging(
+      `GitHub release download failed for ${version}, falling back to GCS: ${error}`,
+    )
+  }
+
+  // Fall back to GCS for external users
   await downloadVersionFromBinaryRepo(version, stagingPath, GCS_BUCKET_URL)
   return 'binary'
 }

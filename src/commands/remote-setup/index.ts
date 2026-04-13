@@ -7,7 +7,7 @@ const web = {
   name: 'web-setup',
   description:
     'Setup OpenJaws on the web (requires connecting your GitHub account)',
-  availability: ['claude-ai'],
+  availability: ['openjaws-account'],
   isEnabled: () =>
     getFeatureValue_CACHED_MAY_BE_STALE('jaws_cobalt_lantern', false) &&
     isPolicyAllowed('allow_remote_sessions'),

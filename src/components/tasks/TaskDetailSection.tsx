@@ -58,7 +58,7 @@ export function TaskReceiptList({
     <Box flexDirection="column">
       {items.map(item => (
         <Box key={item.label}>
-          <Text color={item.color ?? 'claude'} bold>
+          <Text color={item.color ?? 'openjawsOcean'} bold>
             {item.label}
           </Text>
           <Text color="inactive"> · </Text>

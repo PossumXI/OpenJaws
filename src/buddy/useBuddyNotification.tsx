@@ -4,7 +4,7 @@ import React, { useEffect } from 'react';
 import { useNotifications } from '../context/notifications.js';
 import { Text } from '../ink.js';
 import { getGlobalConfig } from '../utils/config.js';
-import { getRainbowColor } from '../utils/thinking.js';
+import { getOpenJawsWaveColor } from '../utils/thinking.js';
 
 // Local date, not UTC — 24h rolling wave across timezones. Sustained Twitter
 // buzz instead of a single UTC-midnight spike, gentler on soul-gen load.
@@ -38,7 +38,7 @@ function RainbowText(t0) {
 // Rainbow /buddy teaser shown on startup when no companion hatched yet.
 // Idle presence and reactions are handled by CompanionSprite directly.
 function _temp(ch, i) {
-  return <Text key={i} color={getRainbowColor(i)}>{ch}</Text>;
+  return <Text key={i} color={getOpenJawsWaveColor(i)}>{ch}</Text>;
 }
 export function useBuddyNotification() {
   const $ = _c(4);

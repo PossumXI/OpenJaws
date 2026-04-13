@@ -4,7 +4,7 @@ const installSlackApp = {
   type: 'local',
   name: 'install-slack-app',
   description: 'Install the OpenJaws Slack app',
-  availability: ['claude-ai'],
+  availability: ['openjaws-account'],
   supportsNonInteractive: false,
   load: () => import('./install-slack-app.js'),
 } satisfies Command

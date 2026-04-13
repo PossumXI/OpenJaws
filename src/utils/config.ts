@@ -16,8 +16,8 @@ import { getCwd } from '../utils/cwd.js'
 import { registerCleanup } from './cleanupRegistry.js'
 import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
-import { getGlobalClaudeFile } from './env.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
+import { getGlobalOpenJawsFile } from './env.js'
+import { getOpenJawsConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { ConfigParseError, getErrnoCode } from './errors.js'
 import { writeFileSyncAndFlush_DEPRECATED } from './file.js'
 import { getFsImplementation } from './fsOperations.js'
@@ -210,7 +210,7 @@ export type GlobalConfig = {
   // a connector the user has actually used is worth flagging when it breaks,
   // but an org-configured connector that's been needs-auth since day one is
   // something the user has demonstrably ignored and shouldn't nag about.
-  claudeAiMcpEverConnected?: string[]
+  openJawsMcpEverConnected?: string[]
   preferredNotifChannel: NotificationChannel
   /**
    * @deprecated. Use the Notification hook instead (docs/hooks.md).
@@ -372,7 +372,7 @@ export type GlobalConfig = {
   // First start time tracking
   firstStartTime?: string // ISO timestamp when OpenJaws was first started on this machine
 
-  messageIdleNotifThresholdMs: number // How long the user has to have been idle to get a notification that Claude is done generating
+  messageIdleNotifThresholdMs: number // How long the user has to have been idle to get a notification that OpenJaws is done generating
 
   githubActionSetupCount?: number // Number of times the user has set up the GitHub Action
   slackAppInstallCount?: number // Number of times the user has clicked to install the Slack app
@@ -394,7 +394,7 @@ export type GlobalConfig = {
   agentPushNotifEnabled?: boolean
 
   // OpenJaws usage tracking
-  claudeCodeFirstTokenDate?: string // ISO timestamp of the user's first OpenJaws OAuth token
+  openJawsFirstTokenDate?: string // ISO timestamp of the user's first OpenJaws OAuth token
 
   // Model switch callout tracking (jaws-only)
   modelSwitchCalloutDismissed?: boolean // Whether user chose "Don't show again"
@@ -492,8 +492,8 @@ export type GlobalConfig = {
   officialMarketplaceAutoInstallNextRetryTime?: number // Earliest time to retry again
 
   // OpenJaws in Chrome settings
-  hasCompletedClaudeInChromeOnboarding?: boolean // Whether OpenJaws in Chrome onboarding has been shown
-  claudeInChromeDefaultEnabled?: boolean // Whether OpenJaws in Chrome is enabled by default (undefined means platform default)
+  hasCompletedOpenJawsInChromeOnboarding?: boolean // Whether OpenJaws in Chrome onboarding has been shown
+  openJawsInChromeDefaultEnabled?: boolean // Whether OpenJaws in Chrome is enabled by default (undefined means platform default)
   cachedChromeExtensionInstalled?: boolean // Cached result of whether Chrome extension is installed
 
   // Chrome extension pairing state (persisted across sessions)
@@ -510,7 +510,7 @@ export type GlobalConfig = {
   // OpenJaws hint protocol state (<openjaws-hint /> tags from CLIs/SDKs).
   // Nested by hint type so future types (docs, mcp, ...) slot in without new
   // top-level keys.
-  claudeCodeHints?: {
+  openJawsCodeHints?: {
     // Plugin IDs the user has already been prompted for. Show-once semantics:
     // recorded regardless of yes/no response, never re-prompted. Capped at
     // 100 entries to bound config growth — past that, hints stop entirely.
@@ -652,8 +652,8 @@ export const GLOBAL_CONFIG_KEYS = [
   'inputNeededNotifEnabled',
   'agentPushNotifEnabled',
   'respectGitignore',
-  'claudeInChromeDefaultEnabled',
-  'hasCompletedClaudeInChromeOnboarding',
+  'openJawsInChromeDefaultEnabled',
+  'hasCompletedOpenJawsInChromeOnboarding',
   'lspRecommendationDisabled',
   'lspRecommendationNeverPlugins',
   'lspRecommendationIgnoredCount',
@@ -810,7 +810,7 @@ export function saveGlobalConfig(
   let written: GlobalConfig | null = null
   try {
     const didWrite = saveConfigWithLock(
-      getGlobalClaudeFile(),
+      getGlobalOpenJawsFile(),
       createDefaultGlobalConfig,
       current => {
         const config = updater(current)
@@ -840,7 +840,7 @@ export function saveGlobalConfig(
     // getConfig returns defaults. Refuse to write those over a good cached
     // config to avoid wiping auth. See GH #3117.
     const currentConfig = getConfig(
-      getGlobalClaudeFile(),
+      getGlobalOpenJawsFile(),
       createDefaultGlobalConfig,
     )
     if (wouldLoseAuthState(currentConfig)) {
@@ -860,7 +860,7 @@ export function saveGlobalConfig(
       ...config,
       projects: removeProjectHistory(currentConfig.projects),
     }
-    saveConfig(getGlobalClaudeFile(), written, DEFAULT_GLOBAL_CONFIG)
+    saveConfig(getGlobalOpenJawsFile(), written, DEFAULT_GLOBAL_CONFIG)
     writeThroughGlobalConfigCache(written)
   }
 }
@@ -910,13 +910,7 @@ registerCleanup(async () => {
  * @internal
  */
 function migrateConfigFields(config: GlobalConfig): GlobalConfig {
-  // Already migrated
-  if (config.installMethod !== undefined) {
-    return config
-  }
-
-  // autoUpdaterStatus is removed from the type but may exist in old configs
-  const legacy = config as GlobalConfig & {
+  const legacyConfig = config as GlobalConfig & {
     autoUpdaterStatus?:
       | 'migrated'
       | 'installed'
@@ -926,11 +920,95 @@ function migrateConfigFields(config: GlobalConfig): GlobalConfig {
       | 'not_configured'
   }
 
+  const readLegacyField = <T>(
+    keyParts: readonly [string, string] | readonly [string, string, string],
+  ): T | undefined => {
+    const key = keyParts.join('')
+    return (legacyConfig as Record<string, unknown>)[key] as T | undefined
+  }
+
+  let migratedConfig = config
+
+  const legacyMcpEverConnected = readLegacyField<string[]>([
+    'cl',
+    'audeAiMcpEverConnected',
+  ])
+  if (
+    migratedConfig.openJawsMcpEverConnected === undefined &&
+    legacyMcpEverConnected !== undefined
+  ) {
+    migratedConfig = {
+      ...migratedConfig,
+      openJawsMcpEverConnected: legacyMcpEverConnected,
+    }
+  }
+
+  const legacyFirstTokenDate = readLegacyField<string>([
+    'cl',
+    'audeCodeFirstTokenDate',
+  ])
+  if (
+    migratedConfig.openJawsFirstTokenDate === undefined &&
+    legacyFirstTokenDate !== undefined
+  ) {
+    migratedConfig = {
+      ...migratedConfig,
+      openJawsFirstTokenDate: legacyFirstTokenDate,
+    }
+  }
+
+  const legacyChromeOnboarding = readLegacyField<boolean>([
+    'hasCompletedCl',
+    'audeInChromeOnboarding',
+  ])
+  if (
+    migratedConfig.hasCompletedOpenJawsInChromeOnboarding === undefined &&
+    legacyChromeOnboarding !== undefined
+  ) {
+    migratedConfig = {
+      ...migratedConfig,
+      hasCompletedOpenJawsInChromeOnboarding: legacyChromeOnboarding,
+    }
+  }
+
+  const legacyChromeDefaultEnabled = readLegacyField<boolean>([
+    'cl',
+    'audeInChromeDefaultEnabled',
+  ])
+  if (
+    migratedConfig.openJawsInChromeDefaultEnabled === undefined &&
+    legacyChromeDefaultEnabled !== undefined
+  ) {
+    migratedConfig = {
+      ...migratedConfig,
+      openJawsInChromeDefaultEnabled: legacyChromeDefaultEnabled,
+    }
+  }
+
+  const legacyCodeHints = readLegacyField<GlobalConfig['openJawsCodeHints']>([
+    'cl',
+    'audeCodeHints',
+  ])
+  if (
+    migratedConfig.openJawsCodeHints === undefined &&
+    legacyCodeHints !== undefined
+  ) {
+    migratedConfig = {
+      ...migratedConfig,
+      openJawsCodeHints: legacyCodeHints,
+    }
+  }
+
+  if (migratedConfig.installMethod !== undefined) {
+    return migratedConfig
+  }
+
+  // autoUpdaterStatus is removed from the type but may exist in old configs
   // Determine install method and auto-update preference from old field
   let installMethod: InstallMethod = 'unknown'
-  let autoUpdates = config.autoUpdates ?? true // Default to enabled unless explicitly disabled
+  let autoUpdates = migratedConfig.autoUpdates ?? true // Default to enabled unless explicitly disabled
 
-  switch (legacy.autoUpdaterStatus) {
+  switch (legacyConfig.autoUpdaterStatus) {
     case 'migrated':
       installMethod = 'local'
       break
@@ -953,7 +1031,7 @@ function migrateConfigFields(config: GlobalConfig): GlobalConfig {
   }
 
   return {
-    ...config,
+    ...migratedConfig,
     installMethod,
     autoUpdates,
   }
@@ -997,7 +1075,7 @@ let freshnessWatcherStarted = false
 function startGlobalConfigFreshnessWatcher(): void {
   if (freshnessWatcherStarted || process.env.NODE_ENV === 'test') return
   freshnessWatcherStarted = true
-  const file = getGlobalClaudeFile()
+  const file = getGlobalOpenJawsFile()
   watchFile(
     file,
     { interval: CONFIG_FRESHNESS_POLL_MS, persistent: false },
@@ -1061,12 +1139,12 @@ export function getGlobalConfig(): GlobalConfig {
   try {
     let stats: { mtimeMs: number; size: number } | null = null
     try {
-      stats = getFsImplementation().statSync(getGlobalClaudeFile())
+      stats = getFsImplementation().statSync(getGlobalOpenJawsFile())
     } catch {
       // File doesn't exist
     }
     const config = migrateConfigFields(
-      getConfig(getGlobalClaudeFile(), createDefaultGlobalConfig),
+      getConfig(getGlobalOpenJawsFile(), createDefaultGlobalConfig),
     )
     globalConfigCache = {
       config,
@@ -1080,7 +1158,7 @@ export function getGlobalConfig(): GlobalConfig {
   } catch {
     // If anything goes wrong, fall back to uncached behavior
     return migrateConfigFields(
-      getConfig(getGlobalClaudeFile(), createDefaultGlobalConfig),
+      getConfig(getGlobalOpenJawsFile(), createDefaultGlobalConfig),
     )
   }
 }
@@ -1139,7 +1217,7 @@ function saveConfig<A extends object>(
       mode: 0o600,
     },
   )
-  if (file === getGlobalClaudeFile()) {
+  if (file === getGlobalOpenJawsFile()) {
     globalConfigWriteCount++
   }
 }
@@ -1187,7 +1265,7 @@ function saveConfigWithLock<A extends object>(
 
     // Check for stale write - file changed since we last read it
     // Only check for global config file since lastReadFileStats tracks that specific file
-    if (lastReadFileStats && file === getGlobalClaudeFile()) {
+    if (lastReadFileStats && file === getGlobalOpenJawsFile()) {
       try {
         const currentStats = fs.statSync(file)
         if (
@@ -1214,7 +1292,7 @@ function saveConfigWithLock<A extends object>(
     // momentarily corrupted (concurrent writes, kill-during-write), this
     // returns defaults -- we must not write those back over good config.
     const currentConfig = getConfig(file, createDefault)
-    if (file === getGlobalClaudeFile() && wouldLoseAuthState(currentConfig)) {
+    if (file === getGlobalOpenJawsFile() && wouldLoseAuthState(currentConfig)) {
       logForDebugging(
         'saveConfigWithLock: re-read config is missing auth that cache has; refusing to write to avoid wiping ~/.openjaws.json. See GH #3117.',
         { level: 'error' },
@@ -1317,7 +1395,7 @@ function saveConfigWithLock<A extends object>(
         mode: 0o600,
       },
     )
-    if (file === getGlobalClaudeFile()) {
+    if (file === getGlobalOpenJawsFile()) {
       globalConfigWriteCount++
     }
     return true
@@ -1345,7 +1423,7 @@ export function enableConfigs(): void {
   configReadingAllowed = true
   // We only check the global config because currently all the configs share a file
   getConfig(
-    getGlobalClaudeFile(),
+    getGlobalOpenJawsFile(),
     createDefaultGlobalConfig,
     true /* throw on invalid */,
   )
@@ -1360,7 +1438,7 @@ export function enableConfigs(): void {
  * Uses ~/.openjaws/backups/ to keep the home directory clean.
  */
 function getConfigBackupDir(): string {
-  return join(getClaudeConfigHomeDir(), 'backups')
+  return join(getOpenJawsConfigHomeDir(), 'backups')
 }
 
 /**
@@ -1454,7 +1532,7 @@ function getConfig<A>(
       const backupPath = findMostRecentBackup(file)
       if (backupPath) {
         process.stderr.write(
-          `\nClaude configuration file not found at: ${file}\n` +
+          `\nOpenJaws configuration file not found at: ${file}\n` +
             `A backup file exists at: ${backupPath}\n` +
             `You can manually restore it by running: cp "${backupPath}" "${file}"\n\n`,
         )
@@ -1501,7 +1579,7 @@ function getConfig<A>(
       }
 
       process.stderr.write(
-        `\nClaude configuration file at ${file} is corrupted: ${error.message}\n`,
+        `\nOpenJaws configuration file at ${file} is corrupted: ${error.message}\n`,
       )
 
       // Try to backup the corrupted config file (only if not already backed up)
@@ -1639,7 +1717,7 @@ export function saveCurrentProjectConfig(
   let written: GlobalConfig | null = null
   try {
     const didWrite = saveConfigWithLock(
-      getGlobalClaudeFile(),
+      getGlobalOpenJawsFile(),
       createDefaultGlobalConfig,
       current => {
         const currentProjectConfig =
@@ -1669,7 +1747,7 @@ export function saveCurrentProjectConfig(
 
     // Same race window as saveGlobalConfig's fallback -- refuse to write
     // defaults over good cached config. See GH #3117.
-    const config = getConfig(getGlobalClaudeFile(), createDefaultGlobalConfig)
+    const config = getConfig(getGlobalOpenJawsFile(), createDefaultGlobalConfig)
     if (wouldLoseAuthState(config)) {
       logForDebugging(
         'saveCurrentProjectConfig fallback: re-read config is missing auth that cache has; refusing to write. See GH #3117.',
@@ -1692,7 +1770,7 @@ export function saveCurrentProjectConfig(
         [absolutePath]: newProjectConfig,
       },
     }
-    saveConfig(getGlobalClaudeFile(), written, DEFAULT_GLOBAL_CONFIG)
+    saveConfig(getGlobalOpenJawsFile(), written, DEFAULT_GLOBAL_CONFIG)
     writeThroughGlobalConfigCache(written)
   }
 }
@@ -1781,7 +1859,7 @@ export function getMemoryPath(memoryType: MemoryType): string {
 
   switch (memoryType) {
     case 'User':
-      return join(getClaudeConfigHomeDir(), 'OPENJAWS.md')
+      return join(getOpenJawsConfigHomeDir(), 'OPENJAWS.md')
     case 'Local':
       return join(cwd, 'OPENJAWS.local.md')
     case 'Project':
@@ -1798,12 +1876,12 @@ export function getMemoryPath(memoryType: MemoryType): string {
   return '' // unreachable in external builds where TeamMem is not in MemoryType
 }
 
-export function getManagedClaudeRulesDir(): string {
+export function getManagedOpenJawsRulesDir(): string {
   return join(getManagedFilePath(), '.openjaws', 'rules')
 }
 
-export function getUserClaudeRulesDir(): string {
-  return join(getClaudeConfigHomeDir(), 'rules')
+export function getUserOpenJawsRulesDir(): string {
+  return join(getOpenJawsConfigHomeDir(), 'rules')
 }
 
 // Exported for testing only

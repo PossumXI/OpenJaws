@@ -62,7 +62,7 @@ export function NativeAutoUpdater({
   }>({});
   const [maxVersionIssue, setMaxVersionIssue] = useState<string | null>(null);
   const updateSemver = useUpdateNotification(autoUpdaterResult?.version);
-  const channel = getInitialSettings()?.autoUpdatesChannel ?? 'latest';
+  const channel = getInitialSettings()?.autoUpdatesChannel ?? 'stable';
 
   // Track latest isUpdating value in a ref so the memoized checkForUpdates
   // callback always sees the current value without changing callback identity

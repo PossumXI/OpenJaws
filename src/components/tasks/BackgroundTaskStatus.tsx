@@ -364,7 +364,7 @@ function SummaryPill({
   const [hover, setHover] = useState(false)
   const highlighted = selected || hover
   const label = (
-    <Text color={tone ?? 'claude'} inverse={highlighted} bold={!highlighted}>
+    <Text color={tone ?? 'openjawsOcean'} inverse={highlighted} bold={!highlighted}>
       {children}
     </Text>
   )

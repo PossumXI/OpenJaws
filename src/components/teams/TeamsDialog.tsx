@@ -22,7 +22,7 @@ import { jsonStringify } from '../../utils/slowOperations.js';
 import { IT2_COMMAND, isInsideTmuxSync } from '../../utils/swarm/backends/detection.js';
 import { ensureBackendsRegistered, getBackendByType, getCachedBackend } from '../../utils/swarm/backends/registry.js';
 import type { PaneBackendType } from '../../utils/swarm/backends/types.js';
-import { getSwarmSocketName, TMUX_COMMAND } from '../../utils/swarm/constants.js';
+import { getOpenJawsSwarmSocketName, TMUX_COMMAND } from '../../utils/swarm/constants.js';
 import { addHiddenPaneId, removeHiddenPaneId, removeMemberFromTeam, setMemberMode, setMultipleMemberModes } from '../../utils/swarm/teamHelpers.js';
 import { listTasks, type Task, unassignTeammateTasks } from '../../utils/tasks.js';
 import { getTeammateStatuses, type TeammateStatus, type TeamSummary } from '../../utils/teamDiscovery.js';
@@ -610,7 +610,7 @@ async function viewTeammateOutput(paneId: string, backendType: PaneBackendType |
     // External-tmux teammates live on the swarm socket — without -L, this
     // targets the default server and silently no-ops. Mirrors runTmuxInSwarm
     // in TmuxBackend.ts:85-89.
-    const args = isInsideTmuxSync() ? ['select-pane', '-t', paneId] : ['-L', getSwarmSocketName(), 'select-pane', '-t', paneId];
+    const args = isInsideTmuxSync() ? ['select-pane', '-t', paneId] : ['-L', getOpenJawsSwarmSocketName(), 'select-pane', '-t', paneId];
     await execFileNoThrow(TMUX_COMMAND, args);
   }
 }

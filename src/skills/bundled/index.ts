@@ -1,7 +1,7 @@
 import { feature } from 'bun:bundle'
-import { shouldAutoEnableClaudeInChrome } from 'src/utils/claudeInChrome/setup.js'
+import { shouldAutoEnableOpenJawsInChrome } from 'src/utils/openjawsInChrome/setup.js'
 import { registerBatchSkill } from './batch.js'
-import { registerClaudeInChromeSkill } from './claudeInChrome.js'
+import { registerOpenJawsInChromeSkill } from './openjawsInChrome.js'
 import { registerDebugSkill } from './debug.js'
 import { registerFirecrawlDatasetSkill } from './firecrawlDataset.js'
 import { registerKeybindingsSkill } from './keybindings.js'
@@ -69,8 +69,8 @@ export function initBundledSkills(): void {
     /* eslint-enable @typescript-eslint/no-require-imports */
     registerClaudeApiSkill()
   }
-  if (shouldAutoEnableClaudeInChrome()) {
-    registerClaudeInChromeSkill()
+  if (shouldAutoEnableOpenJawsInChrome()) {
+    registerOpenJawsInChromeSkill()
   }
   if (feature('RUN_SKILL_GENERATOR')) {
     /* eslint-disable @typescript-eslint/no-require-imports */

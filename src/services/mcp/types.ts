@@ -4,6 +4,10 @@ import type {
   ServerCapabilities,
 } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod/v4'
+import {
+  LEGACY_OPENJAWS_ACCOUNT_PROXY_TYPE,
+  LEGACY_OPENJAWS_ACCOUNT_SCOPE,
+} from '../../constants/legacyCompat.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 
 // Configuration schemas and types
@@ -14,7 +18,7 @@ export const ConfigScopeSchema = lazySchema(() =>
     'project',
     'dynamic',
     'enterprise',
-    'claudeai',
+    LEGACY_OPENJAWS_ACCOUNT_SCOPE,
     'managed',
   ]),
 )
@@ -112,10 +116,10 @@ export const McpSdkServerConfigSchema = lazySchema(() =>
   }),
 )
 
-// Config type for Claude.ai proxy servers
-export const McpClaudeAIProxyServerConfigSchema = lazySchema(() =>
+// Config type for the legacy openjaws.dev proxy transport
+export const McpOpenJawsProxyServerConfigSchema = lazySchema(() =>
   z.object({
-    type: z.literal('claudeai-proxy'),
+    type: z.literal(LEGACY_OPENJAWS_ACCOUNT_PROXY_TYPE),
     url: z.string(),
     id: z.string(),
   }),
@@ -130,7 +134,7 @@ export const McpServerConfigSchema = lazySchema(() =>
     McpHTTPServerConfigSchema(),
     McpWebSocketServerConfigSchema(),
     McpSdkServerConfigSchema(),
-    McpClaudeAIProxyServerConfigSchema(),
+    McpOpenJawsProxyServerConfigSchema(),
   ]),
 )
 
@@ -155,8 +159,8 @@ export type McpWebSocketServerConfig = z.infer<
 export type McpSdkServerConfig = z.infer<
   ReturnType<typeof McpSdkServerConfigSchema>
 >
-export type McpClaudeAIProxyServerConfig = z.infer<
-  ReturnType<typeof McpClaudeAIProxyServerConfigSchema>
+export type McpOpenJawsProxyServerConfig = z.infer<
+  ReturnType<typeof McpOpenJawsProxyServerConfigSchema>
 >
 export type McpServerConfig = z.infer<ReturnType<typeof McpServerConfigSchema>>
 

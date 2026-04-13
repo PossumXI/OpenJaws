@@ -21,7 +21,7 @@ type Props = {
   onDone(): void;
   startingMessage?: string;
   mode?: 'login' | 'setup-token';
-  forceLoginMethod?: 'claudeai' | 'console';
+  forceLoginMethod?: 'subscription' | 'console';
 };
 type OAuthStatus = {
   state: 'idle';
@@ -60,7 +60,7 @@ export function ConsoleOAuthFlow({
   const settings = getSettings_DEPRECATED() || {};
   const forceLoginMethod = forceLoginMethodProp ?? settings.forceLoginMethod;
   const orgUUID = settings.forceLoginOrgUUID;
-  const forcedMethodMessage = forceLoginMethod === 'claudeai' ? 'Login method pre-selected: Subscription Plan (OpenJaws Pro/Max)' : forceLoginMethod === 'console' ? 'Login method pre-selected: API Usage Billing (OpenJaws Console)' : null;
+  const forcedMethodMessage = forceLoginMethod === 'subscription' ? 'Login method pre-selected: Subscription Plan (OpenJaws Pro/Max)' : forceLoginMethod === 'console' ? 'Login method pre-selected: API Usage Billing (OpenJaws Console)' : null;
   const terminal = useTerminalNotification();
   const [oauthStatus, setOAuthStatus] = useState<OAuthStatus>(() => {
     if (mode === 'setup-token') {
@@ -68,7 +68,7 @@ export function ConsoleOAuthFlow({
         state: 'ready_to_start'
       };
     }
-    if (forceLoginMethod === 'claudeai' || forceLoginMethod === 'console') {
+    if (forceLoginMethod === 'subscription' || forceLoginMethod === 'console') {
       return {
         state: 'ready_to_start'
       };
@@ -80,9 +80,9 @@ export function ConsoleOAuthFlow({
   const [pastedCode, setPastedCode] = useState('');
   const [cursorOffset, setCursorOffset] = useState(0);
   const [oauthService] = useState(() => new OAuthService());
-  const [loginWithClaudeAi, setLoginWithClaudeAi] = useState(() => {
-    // Use Claude AI auth for setup-token mode to support user:inference scope
-    return mode === 'setup-token' || forceLoginMethod === 'claudeai';
+  const [loginWithOpenJawsAccount, setLoginWithOpenJawsAccount] = useState(() => {
+    // Use openjaws.dev account auth for setup-token mode to support user:inference scope
+    return mode === 'setup-token' || forceLoginMethod === 'subscription';
   });
   // After a few seconds we suggest the user to copy/paste url if the
   // browser did not open automatically. In this flow we expect the user to
@@ -93,8 +93,8 @@ export function ConsoleOAuthFlow({
 
   // Log forced login method on mount
   useEffect(() => {
-    if (forceLoginMethod === 'claudeai') {
-      logEvent('jaws_oauth_claudeai_forced', {});
+    if (forceLoginMethod === 'subscription') {
+      logEvent('jaws_oauth_openjaws_account_forced', {});
     } else if (forceLoginMethod === 'console') {
       logEvent('jaws_oauth_console_forced', {});
     }
@@ -111,7 +111,7 @@ export function ConsoleOAuthFlow({
   // Handle Enter to continue on success state
   useKeybinding('confirm:yes', () => {
     logEvent('jaws_oauth_success', {
-      loginWithClaudeAi
+      loginWithOpenJawsAccount
     });
     onDone();
   }, {
@@ -189,7 +189,7 @@ export function ConsoleOAuthFlow({
   const startOAuth = useCallback(async () => {
     try {
       logEvent('jaws_oauth_flow_start', {
-        loginWithClaudeAi
+        loginWithOpenJawsAccount
       });
       const result = await oauthService.startOAuthFlow(async url_0 => {
         setOAuthStatus({
@@ -198,7 +198,7 @@ export function ConsoleOAuthFlow({
         });
         setTimeout(setShowPastePrompt, 3000, true);
       }, {
-        loginWithClaudeAi,
+        loginWithOpenJawsAccount,
         inferenceOnly: mode === 'setup-token',
         expiresIn: mode === 'setup-token' ? 365 * 24 * 60 * 60 : undefined,
         // 1 year for setup-token
@@ -260,7 +260,7 @@ export function ConsoleOAuthFlow({
         ssl_error: sslHint !== null
       });
     }
-  }, [oauthService, setShowPastePrompt, loginWithClaudeAi, mode, orgUUID]);
+  }, [oauthService, setShowPastePrompt, loginWithOpenJawsAccount, mode, orgUUID]);
   const pendingOAuthStartRef = useRef(false);
   useEffect(() => {
     if (oauthStatus.state === 'ready_to_start' && !pendingOAuthStartRef.current) {
@@ -276,16 +276,16 @@ export function ConsoleOAuthFlow({
   useEffect(() => {
     if (mode === 'setup-token' && oauthStatus.state === 'success') {
       // Delay to ensure static content is fully rendered before exiting
-      const timer_0 = setTimeout((loginWithClaudeAi_0, onDone_0) => {
+      const timer_0 = setTimeout((loginWithOpenJawsAccount_0, onDone_0) => {
         logEvent('jaws_oauth_success', {
-          loginWithClaudeAi: loginWithClaudeAi_0
+          loginWithOpenJawsAccount: loginWithOpenJawsAccount_0
         });
         // Don't clear terminal so the token remains visible
         onDone_0();
-      }, 500, loginWithClaudeAi, onDone);
+      }, 500, loginWithOpenJawsAccount, onDone);
       return () => clearTimeout(timer_0);
     }
-  }, [mode, oauthStatus, loginWithClaudeAi, onDone]);
+  }, [mode, oauthStatus, loginWithOpenJawsAccount, onDone]);
 
   // Cleanup OAuth service when component unmounts
   useEffect(() => {
@@ -325,7 +325,7 @@ export function ConsoleOAuthFlow({
             </Box>
           </Box>}
       <Box paddingLeft={1} flexDirection="column" gap={1}>
-        <OAuthStatusMessage oauthStatus={oauthStatus} mode={mode} startingMessage={startingMessage} forcedMethodMessage={forcedMethodMessage} showPastePrompt={showPastePrompt} pastedCode={pastedCode} setPastedCode={setPastedCode} cursorOffset={cursorOffset} setCursorOffset={setCursorOffset} textInputColumns={textInputColumns} handleSubmitCode={handleSubmitCode} setOAuthStatus={setOAuthStatus} setLoginWithClaudeAi={setLoginWithClaudeAi} />
+        <OAuthStatusMessage oauthStatus={oauthStatus} mode={mode} startingMessage={startingMessage} forcedMethodMessage={forcedMethodMessage} showPastePrompt={showPastePrompt} pastedCode={pastedCode} setPastedCode={setPastedCode} cursorOffset={cursorOffset} setCursorOffset={setCursorOffset} textInputColumns={textInputColumns} handleSubmitCode={handleSubmitCode} setOAuthStatus={setOAuthStatus} setLoginWithOpenJawsAccount={setLoginWithOpenJawsAccount} />
       </Box>
     </Box>;
 }
@@ -342,7 +342,7 @@ type OAuthStatusMessageProps = {
   textInputColumns: number;
   handleSubmitCode: (value: string, url: string) => void;
   setOAuthStatus: (status: OAuthStatus) => void;
-  setLoginWithClaudeAi: (value: boolean) => void;
+  setLoginWithOpenJawsAccount: (value: boolean) => void;
 };
 function OAuthStatusMessage(t0) {
   const $ = _c(51);
@@ -359,7 +359,7 @@ function OAuthStatusMessage(t0) {
     textInputColumns,
     handleSubmitCode,
     setOAuthStatus,
-    setLoginWithClaudeAi
+    setLoginWithOpenJawsAccount
   } = t0;
   switch (oauthStatus.state) {
     case "idle":
@@ -384,7 +384,7 @@ function OAuthStatusMessage(t0) {
         if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
           t4 = {
             label: <Text>OpenJaws account with subscription ·{" "}<Text dimColor={true}>Pro, Max, Team, or Enterprise</Text>{false && <Text>{"\n"}<Text color="warning">[JAWS-ONLY]</Text>{" "}<Text dimColor={true}>Please use this option unless you need to login to a special org for accessing sensitive data (e.g. customer data, HIPI data) with the Console option</Text></Text>}{"\n"}</Text>,
-            value: "claudeai"
+            value: "subscription"
           };
           $[3] = t4;
         } else {
@@ -411,7 +411,7 @@ function OAuthStatusMessage(t0) {
           t6 = $[5];
         }
         let t7;
-        if ($[6] !== setLoginWithClaudeAi || $[7] !== setOAuthStatus) {
+        if ($[6] !== setLoginWithOpenJawsAccount || $[7] !== setOAuthStatus) {
           t7 = <Box><Select options={t6} onChange={value_0 => {
               if (value_0 === "platform") {
                 logEvent("jaws_oauth_platform_selected", {});
@@ -422,16 +422,16 @@ function OAuthStatusMessage(t0) {
                 setOAuthStatus({
                   state: "ready_to_start"
                 });
-                if (value_0 === "claudeai") {
-                  logEvent("jaws_oauth_claudeai_selected", {});
-                  setLoginWithClaudeAi(true);
+                if (value_0 === "subscription") {
+                  logEvent("jaws_oauth_openjaws_account_selected", {});
+                  setLoginWithOpenJawsAccount(true);
                 } else {
                   logEvent("jaws_oauth_console_selected", {});
-                  setLoginWithClaudeAi(false);
+                  setLoginWithOpenJawsAccount(false);
                 }
               }
             }} /></Box>;
-          $[6] = setLoginWithClaudeAi;
+          $[6] = setLoginWithOpenJawsAccount;
           $[7] = setOAuthStatus;
           $[8] = t7;
         } else {

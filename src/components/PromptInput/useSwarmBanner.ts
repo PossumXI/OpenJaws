@@ -16,7 +16,7 @@ import {
   getCachedDetectionResult,
   isInProcessEnabled,
 } from '../../utils/swarm/backends/registry.js'
-import { getSwarmSocketName } from '../../utils/swarm/constants.js'
+import { getOpenJawsSwarmSocketName } from '../../utils/swarm/constants.js'
 import {
   getAgentName,
   getTeammateColor,
@@ -85,7 +85,7 @@ export function useSwarmBanner(): SwarmBannerInfo {
 
     if (insideTmux === false && !inProcessMode && !nativePanes) {
       return {
-        text: `View teammates: \`tmux -L ${getSwarmSocketName()} a\``,
+        text: `View teammates: \`tmux -L ${getOpenJawsSwarmSocketName()} a\``,
         bgColor: viewedColor,
       }
     }

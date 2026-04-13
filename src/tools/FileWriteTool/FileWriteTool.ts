@@ -338,7 +338,7 @@ export const FileWriteTool = buildTool({
 
     // Log when writing to OPENJAWS.md
     if (fullFilePath.endsWith(`${sep}OPENJAWS.md`)) {
-      logEvent('jaws_write_claudemd', {})
+      logEvent('jaws_write_openjawsmd', {})
     }
 
     let gitDiff: ToolUseDiff | undefined

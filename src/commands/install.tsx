@@ -100,7 +100,7 @@ function Install({
         logForDebugging(`Install: Starting installation process (force=${force}, target=${target})`);
 
         // Install native build first
-        const channelOrVersion = target || getInitialSettings()?.autoUpdatesChannel || 'latest';
+        const channelOrVersion = target || getInitialSettings()?.autoUpdatesChannel || 'stable';
         setState({
           type: 'installing',
           version: channelOrVersion

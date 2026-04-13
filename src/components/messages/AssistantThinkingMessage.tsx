@@ -36,7 +36,7 @@ export function AssistantThinkingMessage({
   if (!shouldShowFullThinking) {
     return (
       <Box marginTop={addMargin ? 1 : 0}>
-        <Text color="claude" italic>
+        <Text color="openjawsOcean" italic>
           {THINKING_LABEL} <CtrlOToExpand />
         </Text>
       </Box>
@@ -50,7 +50,7 @@ export function AssistantThinkingMessage({
       marginTop={addMargin ? 1 : 0}
       width="100%"
     >
-      <Text color="claude" italic>
+      <Text color="openjawsOcean" italic>
         {THINKING_LABEL}…
       </Text>
       <Box paddingLeft={2}>

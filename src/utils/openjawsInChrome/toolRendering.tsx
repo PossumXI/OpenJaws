@@ -5,7 +5,7 @@ import { Link, Text } from '../../ink.js';
 import { renderToolResultMessage as renderDefaultMCPToolResultMessage } from '../../tools/MCPTool/UI.js';
 import type { MCPToolResult } from '../../utils/mcpValidation.js';
 import { truncateToWidth } from '../format.js';
-import { trackClaudeInChromeTabId } from './common.js';
+import { trackOpenJawsInChromeTabId } from './common.js';
 import type { ChromeToolName } from './toolNames.js';
 export type { Tool } from '@modelcontextprotocol/sdk/types.js';
 
@@ -13,7 +13,7 @@ const CHROME_EXTENSION_FOCUS_TAB_URL_BASE = 'https://openjaws.dev/chrome/tab/';
 function renderChromeToolUseMessage(input: Record<string, unknown>, toolName: ChromeToolName, verbose: boolean): React.ReactNode {
   const tabId = input.tabId;
   if (typeof tabId === 'number') {
-    trackClaudeInChromeTabId(tabId);
+    trackOpenJawsInChromeTabId(tabId);
   }
 
   // Build secondary info based on tool type and input
@@ -214,7 +214,7 @@ export function renderChromeToolResultMessage(output: MCPToolResult, toolName: C
  * Returns tool method overrides for OpenJaws in Chrome MCP tools. Use this to customize
  * rendering for chrome tools in a single spread operation.
  */
-export function getClaudeInChromeMCPToolOverrides(toolName: string): {
+export function getOpenJawsInChromeMcpToolOverrides(toolName: string): {
   userFacingName: (input?: Record<string, unknown>) => string;
   renderToolUseMessage: (input: Record<string, unknown>, options: {
     verbose: boolean;

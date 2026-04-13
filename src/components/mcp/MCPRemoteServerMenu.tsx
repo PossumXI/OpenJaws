@@ -26,10 +26,10 @@ import { KeyboardShortcutHint } from '../design-system/KeyboardShortcutHint.js';
 import { Spinner } from '../Spinner.js';
 import TextInput from '../TextInput.js';
 import { CapabilitiesSection } from './CapabilitiesSection.js';
-import type { ClaudeAIServerInfo, HTTPServerInfo, SSEServerInfo } from './types.js';
+import type { OpenJawsAccountServerInfo, HTTPServerInfo, SSEServerInfo } from './types.js';
 import { handleReconnectError, handleReconnectResult } from './utils/reconnectHelpers.js';
 type Props = {
-  server: SSEServerInfo | HTTPServerInfo | ClaudeAIServerInfo;
+  server: SSEServerInfo | HTTPServerInfo | OpenJawsAccountServerInfo;
   serverToolsCount: number;
   onViewTools: () => void;
   onCancel: () => void;
@@ -58,11 +58,11 @@ export function MCPRemoteServerMenu({
   const [authorizationUrl, setAuthorizationUrl] = React.useState<string | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const authAbortControllerRef = useRef<AbortController | null>(null);
-  const [isClaudeAIAuthenticating, setIsClaudeAIAuthenticating] = useState(false);
-  const [claudeAIAuthUrl, setClaudeAIAuthUrl] = useState<string | null>(null);
-  const [isClaudeAIClearingAuth, setIsClaudeAIClearingAuth] = useState(false);
-  const [claudeAIClearAuthUrl, setClaudeAIClearAuthUrl] = useState<string | null>(null);
-  const [claudeAIClearAuthBrowserOpened, setClaudeAIClearAuthBrowserOpened] = useState(false);
+  const [isOpenJawsAccountAuthenticating, setIsOpenJawsAccountAuthenticating] = useState(false);
+  const [openJawsAccountAuthUrl, setOpenJawsAccountAuthUrl] = useState<string | null>(null);
+  const [isOpenJawsAccountClearingAuth, setIsOpenJawsAccountClearingAuth] = useState(false);
+  const [openJawsAccountClearAuthUrl, setOpenJawsAccountClearAuthUrl] = useState<string | null>(null);
+  const [openJawsAccountClearAuthBrowserOpened, setOpenJawsAccountClearAuthBrowserOpened] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const unmountedRef = useRef(false);
@@ -89,14 +89,14 @@ export function MCPRemoteServerMenu({
   // 2. It's connected and has tools (meaning it's working via some auth mechanism)
   const isEffectivelyAuthenticated = server.isAuthenticated || server.client.type === 'connected' && serverToolsCount > 0;
   const reconnectMcpServer = useMcpReconnect();
-  const handleClaudeAIAuthComplete = React.useCallback(async () => {
-    setIsClaudeAIAuthenticating(false);
-    setClaudeAIAuthUrl(null);
+  const handleOpenJawsAccountAuthComplete = React.useCallback(async () => {
+    setIsOpenJawsAccountAuthenticating(false);
+    setOpenJawsAccountAuthUrl(null);
     setIsReconnecting(true);
     try {
       const result = await reconnectMcpServer(server.name);
       const success = result.client.type === 'connected';
-      logEvent('jaws_claudeai_mcp_auth_completed', {
+      logEvent('jaws_openjaws_account_mcp_auth_completed', {
         success
       });
       if (success) {
@@ -107,7 +107,7 @@ export function MCPRemoteServerMenu({
         onComplete?.('Authentication successful, but server reconnection failed. You may need to manually restart OpenJaws for the changes to take effect.');
       }
     } catch (err) {
-      logEvent('jaws_claudeai_mcp_auth_completed', {
+      logEvent('jaws_openjaws_account_mcp_auth_completed', {
         success: false
       });
       onComplete?.(handleReconnectError(err, server.name));
@@ -115,7 +115,7 @@ export function MCPRemoteServerMenu({
       setIsReconnecting(false);
     }
   }, [reconnectMcpServer, server.name, onComplete]);
-  const handleClaudeAIClearAuthComplete = React.useCallback(async () => {
+  const handleOpenJawsAccountClearAuthComplete = React.useCallback(async () => {
     await clearServerCache(server.name, {
       ...server.config,
       scope: server.scope
@@ -139,11 +139,11 @@ export function MCPRemoteServerMenu({
         }
       };
     });
-    logEvent('jaws_claudeai_mcp_clear_auth_completed', {});
+    logEvent('jaws_openjaws_account_mcp_clear_auth_completed', {});
     onComplete?.(`Disconnected from ${server.name}.`);
-    setIsClaudeAIClearingAuth(false);
-    setClaudeAIClearAuthUrl(null);
-    setClaudeAIClearAuthBrowserOpened(false);
+    setIsOpenJawsAccountClearingAuth(false);
+    setOpenJawsAccountClearAuthUrl(null);
+    setOpenJawsAccountClearAuthBrowserOpened(false);
   }, [server.name, server.config, server.scope, setAppState, onComplete]);
 
   // Escape to cancel authentication flow
@@ -157,43 +157,43 @@ export function MCPRemoteServerMenu({
     isActive: isAuthenticating
   });
 
-  // Escape to cancel Claude AI authentication
+  // Escape to cancel openjaws.dev authentication
   useKeybinding('confirm:no', () => {
-    setIsClaudeAIAuthenticating(false);
-    setClaudeAIAuthUrl(null);
+    setIsOpenJawsAccountAuthenticating(false);
+    setOpenJawsAccountAuthUrl(null);
   }, {
     context: 'Confirmation',
-    isActive: isClaudeAIAuthenticating
+    isActive: isOpenJawsAccountAuthenticating
   });
 
-  // Escape to cancel Claude AI clear auth
+  // Escape to cancel openjaws.dev clear auth
   useKeybinding('confirm:no', () => {
-    setIsClaudeAIClearingAuth(false);
-    setClaudeAIClearAuthUrl(null);
-    setClaudeAIClearAuthBrowserOpened(false);
+    setIsOpenJawsAccountClearingAuth(false);
+    setOpenJawsAccountClearAuthUrl(null);
+    setOpenJawsAccountClearAuthBrowserOpened(false);
   }, {
     context: 'Confirmation',
-    isActive: isClaudeAIClearingAuth
+    isActive: isOpenJawsAccountClearingAuth
   });
 
   // Return key handling for authentication flows and 'c' to copy URL
   useInput((input, key) => {
-    if (key.return && isClaudeAIAuthenticating) {
-      void handleClaudeAIAuthComplete();
+    if (key.return && isOpenJawsAccountAuthenticating) {
+      void handleOpenJawsAccountAuthComplete();
     }
-    if (key.return && isClaudeAIClearingAuth) {
-      if (claudeAIClearAuthBrowserOpened) {
-        void handleClaudeAIClearAuthComplete();
+    if (key.return && isOpenJawsAccountClearingAuth) {
+      if (openJawsAccountClearAuthBrowserOpened) {
+        void handleOpenJawsAccountClearAuthComplete();
       } else {
         // First Enter: open the browser
         const connectorsUrl = `${getOauthConfig().CLAUDE_AI_ORIGIN}/settings/connectors`;
-        setClaudeAIClearAuthUrl(connectorsUrl);
-        setClaudeAIClearAuthBrowserOpened(true);
+        setOpenJawsAccountClearAuthUrl(connectorsUrl);
+        setOpenJawsAccountClearAuthBrowserOpened(true);
         void openBrowser(connectorsUrl);
       }
     }
     if (input === 'c' && !urlCopied) {
-      const urlToCopy = authorizationUrl || claudeAIAuthUrl || claudeAIClearAuthUrl;
+      const urlToCopy = authorizationUrl || openJawsAccountAuthUrl || openJawsAccountClearAuthUrl;
       if (urlToCopy) {
         void setClipboard(urlToCopy).then(raw => {
           if (unmountedRef.current) return;
@@ -212,8 +212,8 @@ export function MCPRemoteServerMenu({
   // Count MCP prompts for this server (skills are shown in /skills, not here)
   const serverCommandsCount = filterMcpPromptsByServer(mcp.commands, server.name).length;
   const toggleMcpServer = useMcpToggleEnabled();
-  const handleClaudeAIAuth = React.useCallback(async () => {
-    const claudeAiBaseUrl = getOauthConfig().CLAUDE_AI_ORIGIN;
+  const handleOpenJawsAccountAuth = React.useCallback(async () => {
+    const openJawsAccountBaseUrl = getOauthConfig().CLAUDE_AI_ORIGIN;
     const accountInfo = getOauthAccountInfo();
     const orgUuid = accountInfo?.organizationUuid;
     let authUrl: string;
@@ -222,26 +222,26 @@ export function MCPRemoteServerMenu({
       // Replace 'mcprs' prefix with 'mcpsrv' if present
       const serverId = server.config.id.startsWith('mcprs') ? 'mcpsrv' + server.config.id.slice(5) : server.config.id;
       const productSurface = encodeURIComponent(process.env.OPENJAWS_ENTRYPOINT || 'cli');
-      authUrl = `${claudeAiBaseUrl}/api/organizations/${orgUuid}/mcp/start-auth/${serverId}?product_surface=${productSurface}`;
+      authUrl = `${openJawsAccountBaseUrl}/api/organizations/${orgUuid}/mcp/start-auth/${serverId}?product_surface=${productSurface}`;
     } else {
       // Fall back to settings/connectors if we don't have the required IDs
-      authUrl = `${claudeAiBaseUrl}/settings/connectors`;
+      authUrl = `${openJawsAccountBaseUrl}/settings/connectors`;
     }
-    setClaudeAIAuthUrl(authUrl);
-    setIsClaudeAIAuthenticating(true);
-    logEvent('jaws_claudeai_mcp_auth_started', {});
+    setOpenJawsAccountAuthUrl(authUrl);
+    setIsOpenJawsAccountAuthenticating(true);
+    logEvent('jaws_openjaws_account_mcp_auth_started', {});
     await openBrowser(authUrl);
   }, [server.config]);
-  const handleClaudeAIClearAuth = React.useCallback(() => {
-    setIsClaudeAIClearingAuth(true);
-    logEvent('jaws_claudeai_mcp_clear_auth_started', {});
+  const handleOpenJawsAccountClearAuth = React.useCallback(() => {
+    setIsOpenJawsAccountClearingAuth(true);
+    logEvent('jaws_openjaws_account_mcp_clear_auth_started', {});
   }, []);
   const handleToggleEnabled = React.useCallback(async () => {
     const wasEnabled = server.client.type !== 'disabled';
     try {
       await toggleMcpServer(server.name);
       if (server.config.type === 'claudeai-proxy') {
-        logEvent('jaws_claudeai_mcp_toggle', {
+        logEvent('jaws_openjaws_account_mcp_toggle', {
           new_state: (wasEnabled ? 'disabled' : 'enabled') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
         });
       }
@@ -344,7 +344,7 @@ export function MCPRemoteServerMenu({
     // the URL fallback block below still renders.
     const authCopy = server.config.type !== 'claudeai-proxy' && server.config.oauth?.xaa ? ' Authenticating via your identity provider' : ' A browser window will open for authentication';
     return <Box flexDirection="column" gap={1} padding={1}>
-        <Text color="claude">Authenticating with {server.name}…</Text>
+        <Text color="openjawsOcean">Authenticating with {server.name}…</Text>
         <Box>
           <Spinner />
           <Text>{authCopy}</Text>
@@ -382,14 +382,14 @@ export function MCPRemoteServerMenu({
         </Box>
       </Box>;
   }
-  if (isClaudeAIAuthenticating) {
+  if (isOpenJawsAccountAuthenticating) {
     return <Box flexDirection="column" gap={1} padding={1}>
-        <Text color="claude">Authenticating with {server.name}…</Text>
+        <Text color="openjawsOcean">Authenticating with {server.name}…</Text>
         <Box>
           <Spinner />
           <Text> A browser window will open for authentication</Text>
         </Box>
-        {claudeAIAuthUrl && <Box flexDirection="column">
+        {openJawsAccountAuthUrl && <Box flexDirection="column">
             <Box>
               <Text dimColor>
                 If your browser doesn&apos;t open automatically, copy this URL
@@ -399,7 +399,7 @@ export function MCPRemoteServerMenu({
                   <KeyboardShortcutHint shortcut="c" action="copy" parens />
                 </Text>}
             </Box>
-            <Link url={claudeAIAuthUrl} />
+            <Link url={openJawsAccountAuthUrl} />
           </Box>}
         <Box marginLeft={3} flexDirection="column">
           <Text color="permission">
@@ -411,15 +411,15 @@ export function MCPRemoteServerMenu({
         </Box>
       </Box>;
   }
-  if (isClaudeAIClearingAuth) {
+  if (isOpenJawsAccountClearingAuth) {
     return <Box flexDirection="column" gap={1} padding={1}>
-        <Text color="claude">Clear authentication for {server.name}</Text>
-        {claudeAIClearAuthBrowserOpened ? <>
+        <Text color="openjawsOcean">Clear authentication for {server.name}</Text>
+        {openJawsAccountClearAuthBrowserOpened ? <>
             <Text>
               Find the MCP server in the browser and click
               &quot;Disconnect&quot;.
             </Text>
-            {claudeAIClearAuthUrl && <Box flexDirection="column">
+            {openJawsAccountClearAuthUrl && <Box flexDirection="column">
                 <Box>
                   <Text dimColor>
                     If your browser didn&apos;t open automatically, copy this
@@ -429,7 +429,7 @@ export function MCPRemoteServerMenu({
                       <KeyboardShortcutHint shortcut="c" action="copy" parens />
                     </Text>}
                 </Box>
-                <Link url={claudeAIClearAuthUrl} />
+                <Link url={openJawsAccountClearAuthUrl} />
               </Box>}
             <Box marginLeft={3} flexDirection="column">
               <Text color="permission">
@@ -486,12 +486,12 @@ export function MCPRemoteServerMenu({
     if (server.client.type === 'connected') {
       menuOptions.push({
         label: 'Clear authentication',
-        value: 'claudeai-clear-auth'
+        value: 'openjaws-account-clear-auth'
       });
     } else if (server.client.type !== 'disabled') {
       menuOptions.push({
         label: 'Authenticate',
-        value: 'claudeai-auth'
+        value: 'openjaws-account-auth'
       });
     }
   } else {
@@ -594,18 +594,18 @@ export function MCPRemoteServerMenu({
             case 'clear-auth':
               await handleClearAuth();
               break;
-            case 'claudeai-auth':
-              await handleClaudeAIAuth();
+            case 'openjaws-account-auth':
+              await handleOpenJawsAccountAuth();
               break;
-            case 'claudeai-clear-auth':
-              handleClaudeAIClearAuth();
+            case 'openjaws-account-clear-auth':
+              handleOpenJawsAccountClearAuth();
               break;
             case 'reconnectMcpServer':
               setIsReconnecting(true);
               try {
                 const result_1 = await reconnectMcpServer(server.name);
                 if (server.config.type === 'claudeai-proxy') {
-                  logEvent('jaws_claudeai_mcp_reconnect', {
+                  logEvent('jaws_openjaws_account_mcp_reconnect', {
                     success: result_1.client.type === 'connected'
                   });
                 }
@@ -615,7 +615,7 @@ export function MCPRemoteServerMenu({
                 onComplete?.(message_0);
               } catch (err_2) {
                 if (server.config.type === 'claudeai-proxy') {
-                  logEvent('jaws_claudeai_mcp_reconnect', {
+                  logEvent('jaws_openjaws_account_mcp_reconnect', {
                     success: false
                   });
                 }

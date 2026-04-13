@@ -50,7 +50,7 @@ import { getTeammateModeFromSnapshot } from '../../utils/swarm/backends/teammate
 import type { BackendType } from '../../utils/swarm/backends/types.js'
 import { isPaneBackend } from '../../utils/swarm/backends/types.js'
 import {
-  SWARM_SESSION_NAME,
+  OPENJAWS_SWARM_SESSION_NAME,
   TEAM_LEAD_NAME,
   TEAMMATE_COMMAND_ENV_VAR,
   TMUX_COMMAND,
@@ -614,7 +614,7 @@ async function handleSpawnSplitPane(
   await sendCommandToPane(paneId, spawnCommand, !insideTmux)
 
   // Determine session/window names for output
-  const sessionName = insideTmux ? 'current' : SWARM_SESSION_NAME
+  const sessionName = insideTmux ? 'current' : OPENJAWS_SWARM_SESSION_NAME
   const windowName = insideTmux ? 'current' : 'swarm-view'
 
   // Track the teammate in AppState's teamContext with color
@@ -781,7 +781,7 @@ async function handleSpawnSeparateWindow(
   const workingDir = cwd || getCwd()
 
   // Ensure the swarm session exists
-  await ensureSession(SWARM_SESSION_NAME)
+  await ensureSession(OPENJAWS_SWARM_SESSION_NAME)
 
   // Assign a unique color to this teammate
   const teammateColor = assignTeammateColor(teammateId)
@@ -790,7 +790,7 @@ async function handleSpawnSeparateWindow(
   const createWindowResult = await execFileNoThrow(TMUX_COMMAND, [
     'new-window',
     '-t',
-    SWARM_SESSION_NAME,
+    OPENJAWS_SWARM_SESSION_NAME,
     '-n',
     windowName,
     '-P',
@@ -853,7 +853,7 @@ async function handleSpawnSeparateWindow(
   const sendKeysResult = await execFileNoThrow(TMUX_COMMAND, [
     'send-keys',
     '-t',
-    `${SWARM_SESSION_NAME}:${windowName}`,
+    `${OPENJAWS_SWARM_SESSION_NAME}:${windowName}`,
     spawnCommand,
     'Enter',
   ])
@@ -878,7 +878,7 @@ async function handleSpawnSeparateWindow(
           name: sanitizedName,
           agentType: agent_type,
           color: teammateColor,
-          tmuxSessionName: SWARM_SESSION_NAME,
+          tmuxSessionName: OPENJAWS_SWARM_SESSION_NAME,
           tmuxPaneId: paneId,
           cwd: workingDir,
           spawnedAt: Date.now(),
@@ -954,7 +954,7 @@ async function handleSpawnSeparateWindow(
       model,
       name: sanitizedName,
       color: teammateColor,
-      tmux_session_name: SWARM_SESSION_NAME,
+      tmux_session_name: OPENJAWS_SWARM_SESSION_NAME,
       tmux_window_name: windowName,
       tmux_pane_id: paneId,
       team_name: teamName,

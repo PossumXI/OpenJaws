@@ -1,6 +1,6 @@
 import { APIUserAbortError } from '@anthropic-ai/sdk'
 
-export class ClaudeError extends Error {
+export class OpenJawsError extends Error {
   constructor(message: string) {
     super(message)
     this.name = this.constructor.name

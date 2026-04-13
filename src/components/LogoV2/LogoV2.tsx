@@ -250,8 +250,8 @@ export function LogoV2() {
   }
   const layoutMode = getLayoutMode(columns);
   const userTheme = resolveThemeSetting(getGlobalConfig().theme);
-  const borderTitle = ` ${color("claude", userTheme)("OpenJaws")} ${color("promptBorder", userTheme)("// OpenCheeks")} ${color("clawd_body", userTheme)("// Flight Deck")} ${color("inactive", userTheme)(`v${version}`)} `;
-  const compactBorderTitle = ` ${color("claude", userTheme)("OpenJaws")} ${color("promptBorder", userTheme)("// Flight Deck")} `;
+  const borderTitle = ` ${color("openjawsOcean", userTheme)("OpenJaws")} ${color("promptBorder", userTheme)("// OpenCheeks")} ${color("clawd_body", userTheme)("// Flight Deck")} ${color("inactive", userTheme)(`v${version}`)} `;
+  const compactBorderTitle = ` ${color("openjawsOcean", userTheme)("OpenJaws")} ${color("promptBorder", userTheme)("// Flight Deck")} `;
   if (layoutMode === "compact") {
     let welcomeMessage = formatWelcomeMessage(username);
     if (stringWidth(welcomeMessage) > columns - 4) {
@@ -328,7 +328,7 @@ export function LogoV2() {
       t18 = $[42];
       t19 = $[43];
     }
-    return <><OffscreenFreeze><Box flexDirection="column" borderStyle="round" borderColor="claude" borderText={t11} paddingX={1} paddingY={1} alignItems="center" width={columns} backgroundColor="userMessageBackground"><Text bold={true} color="claude">{truncate(`OPENJAWS // OPENCHEEKS · ${welcomeMessage}`, Math.max(columns - 4, 12))}</Text>{t12}<Text color="clawd_body" bold={true}>{truncate(OPEN_WATER_LINE, Math.max(columns - 4, 12))}</Text>{t13}<Text color="inactive">{billingType}</Text><Text color="inactive">{agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}</Text><Text color="inactive">{truncate(JAWS_WAKE_LINE, Math.max(columns - 4, 12))}</Text></Box></OffscreenFreeze>{t14}{t15}{t16}{t17}{t18}{t19}</>;
+    return <><OffscreenFreeze><Box flexDirection="column" borderStyle="round" borderColor="openjawsOcean" borderText={t11} paddingX={1} paddingY={1} alignItems="center" width={columns} backgroundColor="userMessageBackground"><Text bold={true} color="openjawsOcean">{truncate(`OPENJAWS // OPENCHEEKS · ${welcomeMessage}`, Math.max(columns - 4, 12))}</Text>{t12}<Text color="clawd_body" bold={true}>{truncate(OPEN_WATER_LINE, Math.max(columns - 4, 12))}</Text>{t13}<Text color="inactive">{billingType}</Text><Text color="inactive">{agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}</Text><Text color="inactive">{truncate(JAWS_WAKE_LINE, Math.max(columns - 4, 12))}</Text></Box></OffscreenFreeze>{t14}{t15}{t16}{t17}{t18}{t19}</>;
   }
   const welcomeMessage_0 = formatWelcomeMessage(username);
   const modelLine = !process.env.IS_DEMO && config.oauthAccount?.organizationName ? `${modelDisplayName} · ${billingType} · ${config.oauthAccount.organizationName}` : `${modelDisplayName} · ${billingType}`;
@@ -344,7 +344,7 @@ export function LogoV2() {
   const T1 = Box;
   const t11 = "column";
   const t12 = "round";
-  const t13 = "claude";
+  const t13 = "openjawsOcean";
   let t14;
   if ($[44] !== borderTitle) {
     t14 = {
@@ -364,7 +364,7 @@ export function LogoV2() {
   const t17 = 1;
   let t18;
   if ($[46] !== welcomeMessage_0) {
-    t18 = <Box marginTop={1}><Text bold={true} color="claude">{welcomeMessage_0}</Text></Box>;
+    t18 = <Box marginTop={1}><Text bold={true} color="openjawsOcean">{welcomeMessage_0}</Text></Box>;
     $[46] = welcomeMessage_0;
     $[47] = t18;
   } else {
@@ -414,7 +414,7 @@ export function LogoV2() {
   }
   let t24;
   if ($[60] !== layoutMode) {
-    t24 = layoutMode === "horizontal" && <Box height="100%" borderStyle="single" borderColor="claude" borderDimColor={true} borderTop={false} borderBottom={false} borderLeft={false} />;
+    t24 = layoutMode === "horizontal" && <Box height="100%" borderStyle="single" borderColor="openjawsOcean" borderDimColor={true} borderTop={false} borderBottom={false} borderLeft={false} />;
     $[60] = layoutMode;
     $[61] = t24;
   } else {

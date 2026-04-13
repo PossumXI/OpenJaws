@@ -96,12 +96,12 @@ export function shouldAutoRunIssue(reason: AutoRunIssueReason): boolean {
 
 /**
  * Returns the appropriate command to auto-run based on the reason
- * JAWS-ONLY: good-claude command only exists in jaws builds
+ * JAWS-ONLY: good-openjaws command only exists in jaws builds
  */
 export function getAutoRunCommand(reason: AutoRunIssueReason): string {
-  // Only jaws builds have the /good-claude command
+  // Only jaws builds have the /good-openjaws command
   if ("external" === 'jaws' && reason === 'feedback_survey_good') {
-    return '/good-claude';
+    return '/good-openjaws';
   }
   return '/issue';
 }

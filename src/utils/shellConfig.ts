@@ -1,15 +1,18 @@
 /**
  * Utilities for managing shell configuration files (like .bashrc, .zshrc)
- * Used for managing claude aliases and PATH entries
+ * Used for managing OpenJaws aliases and PATH entries
  */
 
 import { open, readFile, stat } from 'fs/promises'
 import { homedir as osHomedir } from 'os'
 import { join } from 'path'
+import { LEGACY_CLI_NAME } from '../constants/legacyCompat.js'
 import { isFsInaccessible } from './errors.js'
-import { getLocalClaudePath } from './localInstaller.js'
+import { getOpenJawsLocalPath } from './localInstaller.js'
 
-export const CLAUDE_ALIAS_REGEX = /^\s*alias\s+claude\s*=/
+export const OPENJAWS_ALIAS_REGEX = new RegExp(
+  String.raw`^\s*alias\s+${LEGACY_CLI_NAME}\s*=`,
+)
 
 type EnvLike = Record<string, string | undefined>
 
@@ -37,32 +40,38 @@ export function getShellConfigPaths(
 }
 
 /**
- * Filter out installer-created claude aliases from an array of lines
- * Only removes aliases pointing to $HOME/.openjaws/local/claude
+ * Filter out installer-created OpenJaws aliases from an array of lines
+ * Only removes aliases pointing to $HOME/.openjaws/local/openjaws
  * Preserves custom user aliases that point to other locations
  * Returns the filtered lines and whether our default installer alias was found
  */
-export function filterClaudeAliases(lines: string[]): {
+export function filterOpenJawsAliases(lines: string[]): {
   filtered: string[]
   hadAlias: boolean
 } {
   let hadAlias = false
   const filtered = lines.filter(line => {
-    // Check if this is a claude alias
-    if (CLAUDE_ALIAS_REGEX.test(line)) {
+    // Check if this is the legacy OpenJaws alias
+    if (OPENJAWS_ALIAS_REGEX.test(line)) {
       // Extract the alias target - handle spaces, quotes, and various formats
       // First try with quotes
-      let match = line.match(/alias\s+claude\s*=\s*["']([^"']+)["']/)
+      let match = line.match(
+        new RegExp(
+          String.raw`alias\s+${LEGACY_CLI_NAME}\s*=\s*["']([^"']+)["']`,
+        ),
+      )
       if (!match) {
         // Try without quotes (capturing until end of line or comment)
-        match = line.match(/alias\s+claude\s*=\s*([^#\n]+)/)
+        match = line.match(
+          new RegExp(String.raw`alias\s+${LEGACY_CLI_NAME}\s*=\s*([^#\n]+)`),
+        )
       }
 
       if (match && match[1]) {
         const target = match[1].trim()
         // Only remove if it points to the installer location
         // The installer always creates aliases with the full expanded path
-        if (target === getLocalClaudePath()) {
+        if (target === getOpenJawsLocalPath()) {
           hadAlias = true
           return false // Remove this line
         }
@@ -107,11 +116,11 @@ export async function writeFileLines(
 }
 
 /**
- * Check if a claude alias exists in any shell config file
+ * Check if an OpenJaws alias exists in any shell config file
  * Returns the alias target if found, null otherwise
  * @param options Optional overrides for testing (env, homedir)
  */
-export async function findClaudeAlias(
+export async function findOpenJawsAlias(
   options?: ShellConfigOptions,
 ): Promise<string | null> {
   const configs = getShellConfigPaths(options)
@@ -121,9 +130,11 @@ export async function findClaudeAlias(
     if (!lines) continue
 
     for (const line of lines) {
-      if (CLAUDE_ALIAS_REGEX.test(line)) {
+      if (OPENJAWS_ALIAS_REGEX.test(line)) {
         // Extract the alias target
-        const match = line.match(/alias\s+claude=["']?([^"'\s]+)/)
+        const match = line.match(
+          new RegExp(String.raw`alias\s+${LEGACY_CLI_NAME}=["']?([^"'\s]+)`),
+        )
         if (match && match[1]) {
           return match[1]
         }
@@ -135,14 +146,14 @@ export async function findClaudeAlias(
 }
 
 /**
- * Check if a claude alias exists and points to a valid executable
+ * Check if an OpenJaws alias exists and points to a valid executable
  * Returns the alias target if valid, null otherwise
  * @param options Optional overrides for testing (env, homedir)
  */
-export async function findValidClaudeAlias(
+export async function findValidOpenJawsAlias(
   options?: ShellConfigOptions,
 ): Promise<string | null> {
-  const aliasTarget = await findClaudeAlias(options)
+  const aliasTarget = await findOpenJawsAlias(options)
   if (!aliasTarget) return null
 
   const home = options?.homedir ?? osHomedir()

@@ -2,119 +2,27 @@ import type {
   LocalJSXCommandContext,
   LocalJSXCommandOnDone,
 } from '../../commands.js'
-import { settingsChangeDetector } from '../../utils/settings/changeDetector.js'
 import {
   EXTERNAL_MODEL_PROVIDERS,
   type ExternalModelProvider,
   getExternalProviderDefaults,
-  isExternalModelProvider,
   resolveExternalModelConfig,
-  resolveExternalModelRef,
 } from '../../utils/model/externalProviders.js'
 import { modelDisplayString } from '../../utils/model/model.js'
 import { stripSignatureBlocks } from '../../utils/messages.js'
+import { getInitialSettings } from '../../utils/settings/settings.js'
 import {
-  getInitialSettings,
-  updateSettingsForSource,
-} from '../../utils/settings/settings.js'
+  buildExternalProviderModelRef,
+  bumpExternalProviderAuthVersion,
+  getSavedOrConfiguredModelForProvider,
+  normalizeExternalProvider,
+  rememberExternalModel,
+  rememberExternalProviderConfig,
+  setCurrentExternalModel,
+} from '../../utils/externalProviderSetup.js'
 
 const HELP_ARGS = new Set(['help', '-h', '--help'])
 const STATUS_ARGS = new Set(['', 'status', 'list', 'current'])
-
-const BUILTIN_PROVIDER_DEFAULT_MODELS: Partial<
-  Record<ExternalModelProvider, string>
-> = {
-  openai: 'gpt-5.4',
-  gemini: 'gemini-3-flash-preview',
-  codex: 'gpt-5.4',
-  minimax: 'MiniMax-M2.7',
-  ollama: 'gemma4:e4b',
-}
-
-function normalizeProvider(input: string): ExternalModelProvider | null {
-  const provider = input.trim().toLowerCase()
-  return isExternalModelProvider(provider) ? provider : null
-}
-
-function buildModelRef(
-  provider: ExternalModelProvider,
-  model: string,
-): string {
-  return `${provider}:${model.trim()}`
-}
-
-function notifyUserSettingsChanged(): void {
-  settingsChangeDetector.notifyChange('userSettings')
-}
-
-function rememberModel(modelRef: string): Error | null {
-  const result = updateSettingsForSource('userSettings', {
-    llmModelOverrides: {
-      [modelRef]: {},
-    },
-  })
-  if (result.error) {
-    return result.error
-  }
-  notifyUserSettingsChanged()
-  return null
-}
-
-function rememberProviderConfig(
-  provider: ExternalModelProvider,
-  patch: Record<string, string | undefined>,
-): Error | null {
-  const result = updateSettingsForSource('userSettings', {
-    llmProviders: {
-      [provider]: patch,
-    },
-  })
-  if (result.error) {
-    return result.error
-  }
-  notifyUserSettingsChanged()
-  return null
-}
-
-function getSavedOrConfiguredModelForProvider(
-  provider: ExternalModelProvider,
-  context: LocalJSXCommandContext,
-): string | null {
-  const appStateModel = context.getAppState().mainLoopModel
-  const appRef =
-    typeof appStateModel === 'string'
-      ? resolveExternalModelRef(appStateModel)
-      : null
-  if (appRef?.provider === provider) {
-    return appRef.model
-  }
-
-  const settings = getInitialSettings()
-  const settingsModel =
-    typeof settings.model === 'string'
-      ? resolveExternalModelRef(settings.model)
-      : null
-  if (settingsModel?.provider === provider) {
-    return settingsModel.model
-  }
-
-  const defaults = getExternalProviderDefaults(provider)
-  for (const envVar of defaults.modelEnvVars) {
-    const model = process.env[envVar]?.trim()
-    if (model) {
-      return model
-    }
-  }
-
-  for (const rawModel of Object.keys(settings.llmModelOverrides ?? {})) {
-    const ref = resolveExternalModelRef(rawModel)
-    if (ref?.provider === provider) {
-      return ref.model
-    }
-  }
-
-  return BUILTIN_PROVIDER_DEFAULT_MODELS[provider] ?? null
-}
 
 function formatProviderStatus(
   provider: ExternalModelProvider,
@@ -122,14 +30,17 @@ function formatProviderStatus(
 ): string {
   const defaults = getExternalProviderDefaults(provider)
   const resolved = resolveExternalModelConfig(`${provider}:__probe__`)
-  const preferredModel = getSavedOrConfiguredModelForProvider(provider, context)
+  const preferredModel = getSavedOrConfiguredModelForProvider(
+    provider,
+    context.getAppState().mainLoopModel,
+  )
   const keySource =
     resolved?.apiKeySource ??
     (provider === 'ollama'
       ? 'not required'
       : `missing (env: ${defaults.apiKeyEnvVars.join(', ')})`)
   const modelHint = preferredModel
-    ? buildModelRef(provider, preferredModel)
+    ? buildExternalProviderModelRef(provider, preferredModel)
     : `unset (env: ${defaults.modelEnvVars.join(', ') || 'none'})`
   return `- ${provider}: model ${modelHint} · key ${keySource} · base URL ${resolved?.baseURL ?? defaults.baseURL}`
 }
@@ -178,18 +89,6 @@ function buildHelpMessage(): string {
   ].join('\n')
 }
 
-function setCurrentModel(
-  context: LocalJSXCommandContext,
-  modelRef: string,
-): void {
-  context.setMessages(stripSignatureBlocks)
-  context.setAppState(prev => ({
-    ...prev,
-    mainLoopModel: modelRef,
-    mainLoopModelForSession: null,
-  }))
-}
-
 export async function call(
   onDone: LocalJSXCommandOnDone,
   context: LocalJSXCommandContext,
@@ -208,7 +107,7 @@ export async function call(
 
   const parts = args.split(/\s+/).filter(Boolean)
   const action = parts[0]?.toLowerCase()
-  const provider = normalizeProvider(parts[1] ?? '')
+  const provider = normalizeExternalProvider(parts[1] ?? '')
 
   if (!action || !provider) {
     onDone(
@@ -229,7 +128,7 @@ export async function call(
       return null
     }
 
-    const error = rememberProviderConfig(provider, {
+    const error = rememberExternalProviderConfig(provider, {
       apiKey,
     })
     if (error) {
@@ -241,10 +140,7 @@ export async function call(
 
     context.onChangeAPIKey()
     context.setMessages(stripSignatureBlocks)
-    context.setAppState(prev => ({
-      ...prev,
-      authVersion: prev.authVersion + 1,
-    }))
+    bumpExternalProviderAuthVersion(context.setAppState)
     onDone(`Stored ${provider} API key in user settings.`, {
       display: 'system',
     })
@@ -252,7 +148,7 @@ export async function call(
   }
 
   if (action === 'clear-key') {
-    const error = rememberProviderConfig(provider, {
+    const error = rememberExternalProviderConfig(provider, {
       apiKey: undefined,
     })
     if (error) {
@@ -264,10 +160,7 @@ export async function call(
 
     context.onChangeAPIKey()
     context.setMessages(stripSignatureBlocks)
-    context.setAppState(prev => ({
-      ...prev,
-      authVersion: prev.authVersion + 1,
-    }))
+    bumpExternalProviderAuthVersion(context.setAppState)
     const defaults = getExternalProviderDefaults(provider)
     onDone(
       `Cleared stored ${provider} API key. Env fallback still applies if one of these is set: ${defaults.apiKeyEnvVars.join(', ')}`,
@@ -285,7 +178,7 @@ export async function call(
       return null
     }
 
-    const error = rememberProviderConfig(provider, {
+    const error = rememberExternalProviderConfig(provider, {
       baseURL,
     })
     if (error) {
@@ -308,8 +201,8 @@ export async function call(
       return null
     }
 
-    const modelRef = buildModelRef(provider, model)
-    const error = rememberModel(modelRef)
+    const modelRef = buildExternalProviderModelRef(provider, model)
+    const error = rememberExternalModel(modelRef)
     if (error) {
       onDone(`Failed to save ${modelRef}: ${error.message}`, {
         display: 'system',
@@ -326,7 +219,11 @@ export async function call(
   if (action === 'use') {
     const explicitModel = parts.slice(2).join(' ').trim()
     const model =
-      explicitModel || getSavedOrConfiguredModelForProvider(provider, context)
+      explicitModel ||
+      getSavedOrConfiguredModelForProvider(
+        provider,
+        context.getAppState().mainLoopModel,
+      )
     if (!model) {
       onDone(
         `No default model is known for ${provider}. Use /provider use ${provider} <model> or /provider model ${provider} <model>.`,
@@ -335,8 +232,8 @@ export async function call(
       return null
     }
 
-    const modelRef = buildModelRef(provider, model)
-    const rememberError = rememberModel(modelRef)
+    const modelRef = buildExternalProviderModelRef(provider, model)
+    const rememberError = rememberExternalModel(modelRef)
     if (rememberError) {
       onDone(`Failed to save ${modelRef}: ${rememberError.message}`, {
         display: 'system',
@@ -344,7 +241,8 @@ export async function call(
       return null
     }
 
-    setCurrentModel(context, modelRef)
+    context.setMessages(stripSignatureBlocks)
+    setCurrentExternalModel(context.setAppState, modelRef)
     const resolved = resolveExternalModelConfig(modelRef)
     const keyNote =
       provider === 'ollama'

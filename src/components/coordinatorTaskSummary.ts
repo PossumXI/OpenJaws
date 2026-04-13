@@ -12,7 +12,7 @@ import {
 
 export type CoordinatorTaskSummary = {
   text: string
-  tone: 'claude' | 'warning' | 'error'
+  tone: 'openjawsOcean' | 'warning' | 'error'
   detail?: string
 }
 
@@ -122,7 +122,7 @@ export function summarizeCoordinatorTasks(
               burstSummary?.tone === 'warning' ||
               (immaculate?.deferredLaunchCount ?? 0) > 0
           ? 'warning'
-          : 'claude',
+          : 'openjawsOcean',
     detail: immaculateDetail,
   }
 }

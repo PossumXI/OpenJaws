@@ -5,9 +5,9 @@ import { logError } from '../../../utils/log.js'
 import { count } from '../../array.js'
 import { sleep } from '../../sleep.js'
 import {
-  getSwarmSocketName,
-  HIDDEN_SESSION_NAME,
-  SWARM_SESSION_NAME,
+  getOpenJawsSwarmSocketName,
+  OPENJAWS_HIDDEN_SESSION_NAME,
+  OPENJAWS_SWARM_SESSION_NAME,
   SWARM_VIEW_WINDOW_NAME,
   TMUX_COMMAND,
 } from '../constants.js'
@@ -87,7 +87,7 @@ function runTmuxInUserSession(
 function runTmuxInSwarm(
   args: string[],
 ): Promise<{ stdout: string; stderr: string; code: number }> {
-  return execFileNoThrow(TMUX_COMMAND, ['-L', getSwarmSocketName(), ...args])
+  return execFileNoThrow(TMUX_COMMAND, ['-L', getOpenJawsSwarmSocketName(), ...args])
 }
 
 /**
@@ -282,7 +282,7 @@ export class TmuxBackend implements PaneBackend {
     const runTmux = useExternalSession ? runTmuxInSwarm : runTmuxInUserSession
 
     // Create hidden session if it doesn't exist (detached, not visible)
-    await runTmux(['new-session', '-d', '-s', HIDDEN_SESSION_NAME])
+    await runTmux(['new-session', '-d', '-s', OPENJAWS_HIDDEN_SESSION_NAME])
 
     // Move the pane to the hidden session
     const result = await runTmux([
@@ -291,7 +291,7 @@ export class TmuxBackend implements PaneBackend {
       '-s',
       paneId,
       '-t',
-      `${HIDDEN_SESSION_NAME}:`,
+      `${OPENJAWS_HIDDEN_SESSION_NAME}:`,
     ])
 
     if (result.code === 0) {
@@ -468,14 +468,14 @@ export class TmuxBackend implements PaneBackend {
     windowTarget: string
     paneId: string
   }> {
-    const sessionExists = await this.hasSessionInSwarm(SWARM_SESSION_NAME)
+    const sessionExists = await this.hasSessionInSwarm(OPENJAWS_SWARM_SESSION_NAME)
 
     if (!sessionExists) {
       const result = await runTmuxInSwarm([
         'new-session',
         '-d',
         '-s',
-        SWARM_SESSION_NAME,
+        OPENJAWS_SWARM_SESSION_NAME,
         '-n',
         SWARM_VIEW_WINDOW_NAME,
         '-P',
@@ -490,7 +490,7 @@ export class TmuxBackend implements PaneBackend {
       }
 
       const paneId = result.stdout.trim()
-      const windowTarget = `${SWARM_SESSION_NAME}:${SWARM_VIEW_WINDOW_NAME}`
+      const windowTarget = `${OPENJAWS_SWARM_SESSION_NAME}:${SWARM_VIEW_WINDOW_NAME}`
 
       logForDebugging(
         `[TmuxBackend] Created external swarm session with window ${windowTarget}, pane ${paneId}`,
@@ -503,13 +503,13 @@ export class TmuxBackend implements PaneBackend {
     const listResult = await runTmuxInSwarm([
       'list-windows',
       '-t',
-      SWARM_SESSION_NAME,
+      OPENJAWS_SWARM_SESSION_NAME,
       '-F',
       '#{window_name}',
     ])
 
     const windows = listResult.stdout.trim().split('\n').filter(Boolean)
-    const windowTarget = `${SWARM_SESSION_NAME}:${SWARM_VIEW_WINDOW_NAME}`
+    const windowTarget = `${OPENJAWS_SWARM_SESSION_NAME}:${SWARM_VIEW_WINDOW_NAME}`
 
     if (windows.includes(SWARM_VIEW_WINDOW_NAME)) {
       const paneResult = await runTmuxInSwarm([
@@ -528,7 +528,7 @@ export class TmuxBackend implements PaneBackend {
     const createResult = await runTmuxInSwarm([
       'new-window',
       '-t',
-      SWARM_SESSION_NAME,
+      OPENJAWS_SWARM_SESSION_NAME,
       '-n',
       SWARM_VIEW_WINDOW_NAME,
       '-P',

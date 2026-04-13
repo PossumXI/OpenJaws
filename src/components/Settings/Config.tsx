@@ -642,7 +642,7 @@ export function Config({
   } : {
     id: 'autoUpdatesChannel',
     label: 'Auto-update channel',
-    value: settingsData?.autoUpdatesChannel ?? 'latest',
+    value: settingsData?.autoUpdatesChannel ?? 'stable',
     type: 'managedEnum' as const,
     onChange() {
       // Handled via toggleSetting -> 'ChannelDowngrade'
@@ -872,20 +872,20 @@ export function Config({
       });
     }
   }] : []), {
-    id: 'claudeInChromeDefaultEnabled',
+    id: 'openJawsInChromeDefaultEnabled',
     label: 'OpenJaws in Chrome enabled by default',
-    value: globalConfig.claudeInChromeDefaultEnabled ?? true,
+    value: globalConfig.openJawsInChromeDefaultEnabled ?? true,
     type: 'boolean' as const,
     onChange(enabled_5: boolean) {
       saveGlobalConfig(current_18 => ({
         ...current_18,
-        claudeInChromeDefaultEnabled: enabled_5
+        openJawsInChromeDefaultEnabled: enabled_5
       }));
       setGlobalConfig({
         ...getGlobalConfig(),
-        claudeInChromeDefaultEnabled: enabled_5
+        openJawsInChromeDefaultEnabled: enabled_5
       });
-      logEvent('jaws_claude_in_chrome_setting_changed', {
+      logEvent('jaws_openjaws_in_chrome_setting_changed', {
         enabled: enabled_5
       });
     }
@@ -1162,7 +1162,7 @@ export function Config({
       formattedChanges.push(remoteLabel);
     }
     if (settingsData?.autoUpdatesChannel !== initialSettingsData.current?.autoUpdatesChannel) {
-      formattedChanges.push(`Set auto-update channel to ${chalk.bold(settingsData?.autoUpdatesChannel ?? 'latest')}`);
+      formattedChanges.push(`Set auto-update channel to ${chalk.bold(settingsData?.autoUpdatesChannel ?? 'stable')}`);
     }
     if (formattedChanges.length > 0) {
       onClose(formattedChanges.join('\n'));
@@ -1334,7 +1334,7 @@ export function Config({
         setTabsHidden(true);
         return;
       }
-      const currentChannel = settingsData?.autoUpdatesChannel ?? 'latest';
+      const currentChannel = settingsData?.autoUpdatesChannel ?? 'stable';
       if (currentChannel === 'latest') {
         // Switching to stable - show downgrade dialog
         setShowSubmenu('ChannelDowngrade');

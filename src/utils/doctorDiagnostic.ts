@@ -17,7 +17,7 @@ import { getFsImplementation } from './fsOperations.js'
 import {
   getShellType,
   isRunningFromLocalInstallation,
-  localInstallationExists,
+  openJawsLocalInstallationExists,
 } from './localInstaller.js'
 import {
   detectApk,
@@ -36,8 +36,8 @@ import { SandboxManager } from './sandbox/sandbox-adapter.js'
 import { getManagedFilePath } from './settings/managedPath.js'
 import { CUSTOMIZATION_SURFACES } from './settings/types.js'
 import {
-  findClaudeAlias,
-  findValidClaudeAlias,
+  findOpenJawsAlias,
+  findValidOpenJawsAlias,
   getShellConfigPaths,
 } from './shellConfig.js'
 import { jsonParse } from './slowOperations.js'
@@ -68,6 +68,22 @@ export type DiagnosticInfo = {
     mode: 'system' | 'builtin' | 'embedded'
     systemPath: string | null
   }
+}
+
+async function findFirstExistingPath(
+  candidates: string[],
+): Promise<string | null> {
+  const fs = getFsImplementation()
+  for (const candidate of candidates) {
+    try {
+      await fs.stat(candidate)
+      return candidate
+    } catch {
+      // Keep checking compatibility fallbacks.
+    }
+  }
+
+  return null
 }
 
 function getNormalizedPaths(): [invokedPath: string, execPath: string] {
@@ -162,7 +178,7 @@ async function getInstallationPath(): Promise<string> {
     }
 
     try {
-      const path = await which('claude')
+      const path = await which('openjaws')
       if (path) {
         return path
       }
@@ -172,8 +188,8 @@ async function getInstallationPath(): Promise<string> {
 
     // If we can't find it, check common locations
     try {
-      await getFsImplementation().stat(join(homedir(), '.local/bin/claude'))
-      return join(homedir(), '.local/bin/claude')
+      await getFsImplementation().stat(join(homedir(), '.local/bin/openjaws'))
+      return join(homedir(), '.local/bin/openjaws')
     } catch {
       // Not found
     }
@@ -210,7 +226,7 @@ async function detectMultipleInstallations(): Promise<
 
   // Check for local installation
   const localPath = join(homedir(), '.openjaws', 'local')
-  if (await localInstallationExists()) {
+  if (await openJawsLocalInstallationExists()) {
     installations.push({ type: 'npm-local', path: localPath })
   }
 
@@ -229,24 +245,18 @@ async function detectMultipleInstallations(): Promise<
     const npmPrefix = npmResult.stdout.trim()
     const isWindows = getPlatform() === 'windows'
 
-    // First check for active installations via bin/claude
-    // Linux / macOS have prefix/bin/claude and prefix/lib/node_modules
-    // Windows has prefix/claude and prefix/node_modules
-    const globalBinPath = isWindows
-      ? join(npmPrefix, 'claude')
-      : join(npmPrefix, 'bin', 'claude')
+    // First check for active installations via the executable link.
+    // Prefer openjaws, but keep claude as a compatibility fallback for
+    // older local installs that have not been migrated yet.
+    const globalBinPath = await findFirstExistingPath(
+      isWindows
+        ? [join(npmPrefix, 'openjaws')]
+        : [join(npmPrefix, 'bin', 'openjaws')],
+    )
 
-    let globalBinExists = false
-    try {
-      await fs.stat(globalBinPath)
-      globalBinExists = true
-    } catch {
-      // Not found
-    }
-
-    if (globalBinExists) {
+    if (globalBinPath) {
       // Check if this is actually a Homebrew cask installation, not npm-global
-      // When npm is installed via Homebrew, both can exist at /opt/homebrew/bin/claude
+      // When npm is installed via Homebrew, both can exist under the same prefix
       // We need to resolve the symlink to see where it actually points
       let isCurrentHomebrewInstallation = false
 
@@ -267,7 +277,7 @@ async function detectMultipleInstallations(): Promise<
         installations.push({ type: 'npm-global', path: globalBinPath })
       }
     } else {
-      // If no bin/claude exists, check for orphaned packages (no bin/claude symlink)
+      // If no executable link exists, check for orphaned packages.
       for (const packageName of packagesToCheck) {
         const globalPackagePath = isWindows
           ? join(npmPrefix, 'node_modules', packageName)
@@ -289,25 +299,21 @@ async function detectMultipleInstallations(): Promise<
   // Check for native installation
 
   // Check common native installation paths
-  const nativeBinPath = join(homedir(), '.local', 'bin', 'claude')
-  try {
-    await fs.stat(nativeBinPath)
+  const nativeBinPath = await findFirstExistingPath([
+    join(homedir(), '.local', 'bin', 'openjaws'),
+  ])
+  if (nativeBinPath) {
     installations.push({ type: 'native', path: nativeBinPath })
-  } catch {
-    // Not found
   }
 
   // Also check if config indicates native installation
   const config = getGlobalConfig()
   if (config.installMethod === 'native') {
-    const nativeDataPath = join(homedir(), '.local', 'share', 'claude')
-    try {
-      await fs.stat(nativeDataPath)
-      if (!installations.some(i => i.type === 'native')) {
-        installations.push({ type: 'native', path: nativeDataPath })
-      }
-    } catch {
-      // Not found
+    const nativeDataPath = await findFirstExistingPath([
+      join(homedir(), '.local', 'share', 'openjaws'),
+    ])
+    if (nativeDataPath && !installations.some(i => i.type === 'native')) {
+      installations.push({ type: 'native', path: nativeDataPath })
     }
   }
 
@@ -435,47 +441,47 @@ async function detectConfigurationIssues(
     if (type === 'npm-local' && config.installMethod !== 'local') {
       warnings.push({
         issue: `Running from local installation but config install method is '${config.installMethod}'`,
-        fix: 'Consider using native installation: claude install',
+        fix: 'Consider using native installation: openjaws install',
       })
     }
 
     if (type === 'native' && config.installMethod !== 'native') {
       warnings.push({
         issue: `Running native installation but config install method is '${config.installMethod}'`,
-        fix: 'Run claude install to update configuration',
+        fix: 'Run openjaws install to update configuration',
       })
     }
   }
 
-  if (type === 'npm-global' && (await localInstallationExists())) {
+  if (type === 'npm-global' && (await openJawsLocalInstallationExists())) {
     warnings.push({
       issue: 'Local installation exists but not being used',
-      fix: 'Consider using native installation: claude install',
+      fix: 'Consider using native installation: openjaws install',
     })
   }
 
-  const existingAlias = await findClaudeAlias()
-  const validAlias = await findValidClaudeAlias()
+  const existingAlias = await findOpenJawsAlias()
+  const validAlias = await findValidOpenJawsAlias()
 
   // Check if running local installation but it's not in PATH
   if (type === 'npm-local') {
-    // Check if claude is already accessible via PATH
-    const whichResult = await which('claude')
-    const claudeInPath = !!whichResult
+    // Check if OpenJaws is already accessible via PATH
+    const whichResult = await which('openjaws')
+    const openjawsInPath = !!whichResult
 
-    // Only show warning if claude is NOT in PATH AND no valid alias exists
-    if (!claudeInPath && !validAlias) {
+    // Only show warning if OpenJaws is NOT in PATH AND no valid alias exists
+    if (!openjawsInPath && !validAlias) {
       if (existingAlias) {
         // Alias exists but points to invalid target
         warnings.push({
           issue: 'Local installation not accessible',
-          fix: `Alias exists but points to invalid target: ${existingAlias}. Update alias: alias claude="~/.openjaws/local/claude"`,
+          fix: `Alias exists but points to invalid target: ${existingAlias}. Update alias: alias openjaws="~/.openjaws/local/openjaws"`,
         })
       } else {
         // No alias exists and not in PATH
         warnings.push({
           issue: 'Local installation not accessible',
-          fix: 'Create alias: alias claude="~/.openjaws/local/claude"',
+          fix: 'Create alias: alias openjaws="~/.openjaws/local/openjaws"',
         })
       }
     }
@@ -580,7 +586,7 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
     if (!hasUpdatePermissions && !getAutoUpdaterDisabledReason()) {
       warnings.push({
         issue: 'Insufficient permissions for auto-updates',
-        fix: 'Do one of: (1) Re-install node without sudo, or (2) Use `claude install` for native installation',
+        fix: 'Do one of: (1) Re-install node without sudo, or (2) Use `openjaws install` for native installation',
       })
     }
   }
@@ -590,7 +596,7 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
 
   // Provide simple ripgrep status info
   const ripgrepStatus = {
-    working: ripgrepStatusRaw.working ?? true, // Assume working if not yet tested
+    working: ripgrepStatusRaw.working ?? false,
     mode: ripgrepStatusRaw.mode,
     systemPath:
       ripgrepStatusRaw.mode === 'system' ? ripgrepStatusRaw.path : null,

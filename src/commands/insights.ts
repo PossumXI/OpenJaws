@@ -14,13 +14,13 @@ import {
 import { tmpdir } from 'os'
 import { extname, join } from 'path'
 import type { Command } from '../commands.js'
-import { queryWithModel } from '../services/api/claude.js'
+import { queryWithModel } from '../services/api/openjawsRuntime.js'
 import {
   AGENT_TOOL_NAME,
   LEGACY_AGENT_TOOL_NAME,
 } from '../tools/AgentTool/constants.js'
 import type { LogOption } from '../types/logs.js'
-import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
+import { getOpenJawsConfigHomeDir } from '../utils/envUtils.js'
 import { toError } from '../utils/errors.js'
 import { execFileNoThrow } from '../utils/execFileNoThrow.js'
 import { logError } from '../utils/log.js'
@@ -254,7 +254,7 @@ type SessionMeta = {
   lines_removed: number
   files_modified: number
   message_hours: number[]
-  user_message_timestamps: string[] // ISO timestamps for multi-clauding detection
+  user_message_timestamps: string[] // ISO timestamps for parallel-session detection
 }
 
 type SessionFacets = {
@@ -263,13 +263,13 @@ type SessionFacets = {
   goal_categories: Record<string, number>
   outcome: string
   user_satisfaction_counts: Record<string, number>
-  claude_helpfulness: string
+  assistant_helpfulness: string
   session_type: string
   friction_counts: Record<string, number>
   friction_detail: string
   primary_success: string
   brief_summary: string
-  user_instructions_to_claude?: string[]
+  user_instructions_to_openjaws?: string[]
 }
 
 type AggregatedData = {
@@ -317,8 +317,8 @@ type AggregatedData = {
   days_active: number
   messages_per_day: number
   message_hours: number[] // Hour of day for each user message (for time of day chart)
-  // Multi-clauding stats (matching Python reference)
-  multi_clauding: {
+  // Parallel-session stats (matching Python reference)
+  parallel_sessions: {
     overlap_events: number
     sessions_involved: number
     user_messages_during: number
@@ -414,11 +414,11 @@ const LABEL_MAP: Record<string, string> = {
   essential: 'Essential',
 }
 
-// Lazy getters: getClaudeConfigHomeDir() is memoized and reads process.env.
+// Lazy getters: getOpenJawsConfigHomeDir() is memoized and reads process.env.
 // Calling it at module scope would populate the memoize cache before
 // entrypoints can set CLAUDE_CONFIG_DIR, breaking all 150+ other callers.
 function getDataDir(): string {
-  return join(getClaudeConfigHomeDir(), 'usage-data')
+  return join(getOpenJawsConfigHomeDir(), 'usage-data')
 }
 function getFacetsDir(): string {
   return join(getDataDir(), 'facets')
@@ -485,7 +485,7 @@ function extractToolStats(log: LogOption): {
   linesRemoved: number
   filesModified: Set<string>
   messageHours: number[]
-  userMessageTimestamps: string[] // ISO timestamps for multi-clauding detection
+  userMessageTimestamps: string[] // ISO timestamps for parallel-session detection
 } {
   const toolCounts: Record<string, number> = {}
   const languages: Record<string, number> = {}
@@ -506,7 +506,7 @@ function extractToolStats(log: LogOption): {
   let linesRemoved = 0
   const filesModified = new Set<string>()
   const messageHours: number[] = []
-  const userMessageTimestamps: string[] = [] // For multi-clauding detection
+  const userMessageTimestamps: string[] = [] // For parallel-session detection
   let usesMcp = false
   let usesWebSearch = false
   let usesWebFetch = false
@@ -610,13 +610,13 @@ function extractToolStats(log: LogOption): {
 
       // Only track message hours and response times for actual human messages
       if (isHumanMessage) {
-        // Track message hour for time-of-day analysis and timestamp for multi-clauding
+        // Track message hour for time-of-day analysis and timestamp for parallel-session analysis
         if (msgTimestamp) {
           try {
             const msgDate = new Date(msgTimestamp)
             const hour = msgDate.getHours() // Local hour 0-23
             messageHours.push(hour)
-            // Collect timestamp for multi-clauding detection (matching Python)
+            // Collect timestamp for parallel-session detection (matching Python)
             userMessageTimestamps.push(msgTimestamp)
           } catch {
             // Skip invalid timestamps
@@ -1015,7 +1015,7 @@ RESPOND WITH ONLY A VALID JSON OBJECT matching this schema:
   "goal_categories": {"category_name": count, ...},
   "outcome": "fully_achieved|mostly_achieved|partially_achieved|not_achieved|unclear_from_transcript",
   "user_satisfaction_counts": {"level": count, ...},
-  "claude_helpfulness": "unhelpful|slightly_helpful|moderately_helpful|very_helpful|essential",
+  "assistant_helpfulness": "unhelpful|slightly_helpful|moderately_helpful|very_helpful|essential",
   "session_type": "single_task|multi_task|iterative_refinement|exploration|quick_question",
   "friction_counts": {"friction_type": count, ...},
   "friction_detail": "One sentence describing friction or empty",
@@ -1055,11 +1055,11 @@ RESPOND WITH ONLY A VALID JSON OBJECT matching this schema:
 }
 
 /**
- * Detects multi-clauding (using multiple Claude sessions concurrently).
+ * Detects parallel sessions (using multiple OpenJaws sessions concurrently).
  * Uses a sliding window to find the pattern: session1 -> session2 -> session1
  * within a 30-minute window.
  */
-export function detectMultiClauding(
+export function detectParallelSessions(
   sessions: Array<{
     session_id: string
     user_message_timestamps: string[]
@@ -1085,8 +1085,8 @@ export function detectMultiClauding(
 
   allSessionMessages.sort((a, b) => a.ts - b.ts)
 
-  const multiClaudeSessionPairs = new Set<string>()
-  const messagesDuringMulticlaude = new Set<string>()
+  const parallelSessionPairs = new Set<string>()
+  const messagesDuringParallelSessions = new Set<string>()
 
   // Sliding window: sessionLastIndex tracks the most recent index for each session
   let windowStart = 0
@@ -1114,12 +1114,12 @@ export function detectMultiClauding(
         const between = allSessionMessages[j]!
         if (between.sessionId !== msg.sessionId) {
           const pair = [msg.sessionId, between.sessionId].sort().join(':')
-          multiClaudeSessionPairs.add(pair)
-          messagesDuringMulticlaude.add(
+          parallelSessionPairs.add(pair)
+          messagesDuringParallelSessions.add(
             `${allSessionMessages[prevIndex]!.ts}:${msg.sessionId}`,
           )
-          messagesDuringMulticlaude.add(`${between.ts}:${between.sessionId}`)
-          messagesDuringMulticlaude.add(`${msg.ts}:${msg.sessionId}`)
+          messagesDuringParallelSessions.add(`${between.ts}:${between.sessionId}`)
+          messagesDuringParallelSessions.add(`${msg.ts}:${msg.sessionId}`)
           break
         }
       }
@@ -1129,16 +1129,16 @@ export function detectMultiClauding(
   }
 
   const sessionsWithOverlaps = new Set<string>()
-  for (const pair of multiClaudeSessionPairs) {
+  for (const pair of parallelSessionPairs) {
     const [s1, s2] = pair.split(':')
     if (s1) sessionsWithOverlaps.add(s1)
     if (s2) sessionsWithOverlaps.add(s2)
   }
 
   return {
-    overlap_events: multiClaudeSessionPairs.size,
+    overlap_events: parallelSessionPairs.size,
     sessions_involved: sessionsWithOverlaps.size,
-    user_messages_during: messagesDuringMulticlaude.size,
+    user_messages_during: messagesDuringParallelSessions.size,
   }
 }
 
@@ -1185,8 +1185,8 @@ function aggregateData(
     days_active: 0,
     messages_per_day: 0,
     message_hours: [],
-    // Multi-clauding stats (matching Python reference)
-    multi_clauding: {
+    // Parallel-session stats (matching Python reference)
+    parallel_sessions: {
       overlap_events: 0,
       sessions_involved: 0,
       user_messages_during: 0,
@@ -1262,8 +1262,8 @@ function aggregateData(
       }
 
       // Helpfulness
-      result.helpfulness[sessionFacets.claude_helpfulness] =
-        (result.helpfulness[sessionFacets.claude_helpfulness] || 0) + 1
+      result.helpfulness[sessionFacets.assistant_helpfulness] =
+        (result.helpfulness[sessionFacets.assistant_helpfulness] || 0) + 1
 
       // Session types
       result.session_types[sessionFacets.session_type] =
@@ -1317,7 +1317,7 @@ function aggregateData(
   // Store message hours for time-of-day chart
   result.message_hours = allMessageHours
 
-  result.multi_clauding = detectMultiClauding(sessions)
+  result.parallel_sessions = detectParallelSessions(sessions)
 
   return result
 }
@@ -1393,7 +1393,7 @@ Include 3 friction categories with 2 examples each.`,
     name: 'suggestions',
     prompt: `Analyze this OpenJaws usage data and suggest improvements.
 
-## CC FEATURES REFERENCE (pick from these for features_to_try):
+## OPENJAWS FEATURES REFERENCE (pick from these for features_to_try):
 1. **MCP Servers**: Connect OpenJaws to external tools, databases, and APIs via Model Context Protocol.
    - How to use: Run \`openjaws mcp add <server-name> -- <command>\`
    - Good for: database queries, Slack integration, GitHub issue lookup, connecting to internal APIs
@@ -1416,20 +1416,20 @@ Include 3 friction categories with 2 examples each.`,
 
 RESPOND WITH ONLY A VALID JSON OBJECT:
 {
-  "claude_md_additions": [
+  "openjaws_md_additions": [
     {"addition": "A specific line or block to add to OPENJAWS.md based on workflow patterns. E.g., 'Always run tests after modifying auth-related files'", "why": "1 sentence explaining why this would help based on actual sessions", "prompt_scaffold": "Instructions for where to add this in OPENJAWS.md. E.g., 'Add under ## Testing section'"}
   ],
   "features_to_try": [
-    {"feature": "Feature name from CC FEATURES REFERENCE above", "one_liner": "What it does", "why_for_you": "Why this would help YOU based on your sessions", "example_code": "Actual command or config to copy"}
+    {"feature": "Feature name from OPENJAWS FEATURES REFERENCE above", "one_liner": "What it does", "why_for_you": "Why this would help YOU based on your sessions", "example_code": "Actual command or config to copy"}
   ],
   "usage_patterns": [
     {"title": "Short title", "suggestion": "1-2 sentence summary", "detail": "3-4 sentences explaining how this applies to YOUR work", "copyable_prompt": "A specific prompt to copy and try"}
   ]
 }
 
-IMPORTANT for claude_md_additions: PRIORITIZE instructions that appear MULTIPLE TIMES in the user data. If user told OpenJaws the same thing in 2+ sessions (e.g., 'always run tests', 'use TypeScript'), that's a PRIME candidate - they shouldn't have to repeat themselves.
+IMPORTANT for openjaws_md_additions: PRIORITIZE instructions that appear MULTIPLE TIMES in the user data. If user told OpenJaws the same thing in 2+ sessions (e.g., 'always run tests', 'use TypeScript'), that's a PRIME candidate - they shouldn't have to repeat themselves.
 
-IMPORTANT for features_to_try: Pick 2-3 from the CC FEATURES REFERENCE above. Include 2-3 items for each category.`,
+IMPORTANT for features_to_try: Pick 2-3 from the OPENJAWS FEATURES REFERENCE above. Include 2-3 items for each category.`,
     maxTokens: 8192,
   },
   {
@@ -1521,7 +1521,7 @@ type InsightResults = {
     }>
   }
   suggestions?: {
-    claude_md_additions?: Array<{
+    openjaws_md_additions?: Array<{
       addition: string
       why: string
       where?: string
@@ -1616,7 +1616,7 @@ async function generateParallelInsights(
   // Build data context string
   const facetSummaries = Array.from(facets.values())
     .slice(0, 50)
-    .map(f => `- ${f.brief_summary} (${f.outcome}, ${f.claude_helpfulness})`)
+    .map(f => `- ${f.brief_summary} (${f.outcome}, ${f.assistant_helpfulness})`)
     .join('\n')
 
   const frictionDetails = Array.from(facets.values())
@@ -1626,7 +1626,7 @@ async function generateParallelInsights(
     .join('\n')
 
   const userInstructions = Array.from(facets.values())
-    .flatMap(f => f.user_instructions_to_claude || [])
+    .flatMap(f => f.user_instructions_to_openjaws || [])
     .slice(0, 15)
     .map(i => `- ${i}`)
     .join('\n')
@@ -2064,8 +2064,8 @@ function generateHtmlReport(
   const suggestionsHtml = suggestions
     ? `
     ${
-      suggestions.claude_md_additions &&
-      suggestions.claude_md_additions.length > 0
+      suggestions.openjaws_md_additions &&
+      suggestions.openjaws_md_additions.length > 0
         ? `
     <h2 id="section-features">Existing CC Features to Try</h2>
     <div class="claude-md-section">
@@ -2074,7 +2074,7 @@ function generateHtmlReport(
       <div class="claude-md-actions">
         <button class="copy-all-btn" onclick="copyAllCheckedOpenJawsMd()">Copy All Checked</button>
       </div>
-      ${suggestions.claude_md_additions
+      ${suggestions.openjaws_md_additions
         .map(
           (add, i) => `
         <div class="claude-md-item">
@@ -2552,9 +2552,9 @@ function generateHtmlReport(
 
     <!-- Multi-clauding Section (matching Python reference) -->
     <div class="chart-card" style="margin: 24px 0;">
-      <div class="chart-title">Multi-Clauding (Parallel Sessions)</div>
+      <div class="chart-title">Parallel Sessions</div>
       ${
-        data.multi_clauding.overlap_events === 0
+        data.parallel_sessions.overlap_events === 0
           ? `
         <p style="font-size: 14px; color: #64748b; padding: 8px 0;">
           No parallel session usage detected. You typically work with one OpenJaws session at a time.
@@ -2563,15 +2563,15 @@ function generateHtmlReport(
           : `
         <div style="display: flex; gap: 24px; margin: 12px 0;">
           <div style="text-align: center;">
-            <div style="font-size: 24px; font-weight: 700; color: #7c3aed;">${data.multi_clauding.overlap_events}</div>
+            <div style="font-size: 24px; font-weight: 700; color: #7c3aed;">${data.parallel_sessions.overlap_events}</div>
             <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Overlap Events</div>
           </div>
           <div style="text-align: center;">
-            <div style="font-size: 24px; font-weight: 700; color: #7c3aed;">${data.multi_clauding.sessions_involved}</div>
+            <div style="font-size: 24px; font-weight: 700; color: #7c3aed;">${data.parallel_sessions.sessions_involved}</div>
             <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Sessions Involved</div>
           </div>
           <div style="text-align: center;">
-            <div style="font-size: 24px; font-weight: 700; color: #7c3aed;">${data.total_messages > 0 ? Math.round((100 * data.multi_clauding.user_messages_during) / data.total_messages) : 0}%</div>
+            <div style="font-size: 24px; font-weight: 700; color: #7c3aed;">${data.total_messages > 0 ? Math.round((100 * data.parallel_sessions.user_messages_during) / data.total_messages) : 0}%</div>
             <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Of Messages</div>
           </div>
         </div>
@@ -2806,7 +2806,7 @@ export async function generateUsageReport(options?: {
 
   // Optionally collect data from remote hosts first (jaws-only)
   if (process.env.USER_TYPE === 'jaws' && options?.collectRemote) {
-    const destDir = join(getClaudeConfigHomeDir(), 'projects')
+    const destDir = join(getOpenJawsConfigHomeDir(), 'projects')
     const { hosts, totalCopied } = await collectAllRemoteHostData(destDir)
     remoteStats = { hosts, totalCopied }
   }

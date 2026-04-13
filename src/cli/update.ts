@@ -4,6 +4,7 @@ import {
   getLatestVersion,
   type InstallStatus,
   installGlobalPackage,
+  shouldInstallTargetVersion,
 } from 'src/utils/autoUpdater.js'
 import { regenerateCompletionCache } from 'src/utils/completionCache.js'
 import {
@@ -15,8 +16,8 @@ import { logForDebugging } from 'src/utils/debug.js'
 import { getDoctorDiagnostic } from 'src/utils/doctorDiagnostic.js'
 import { gracefulShutdown } from 'src/utils/gracefulShutdown.js'
 import {
-  installOrUpdateClaudePackage,
-  localInstallationExists,
+  installOrUpdateOpenJawsPackage,
+  openJawsLocalInstallationExists,
 } from 'src/utils/localInstaller.js'
 import {
   installLatest as installLatestNative,
@@ -31,7 +32,7 @@ export async function update() {
   logEvent('jaws_update_check', {})
   writeToStdout(`Current version: ${MACRO.VERSION}\n`)
 
-  const channel = getInitialSettings()?.autoUpdatesChannel ?? 'latest'
+  const channel = getInitialSettings()?.autoUpdatesChannel ?? 'stable'
   writeToStdout(`Checking for updates to ${channel} version...\n`)
 
   logForDebugging('update: Starting update check')
@@ -122,7 +123,7 @@ export async function update() {
     if (packageManager === 'homebrew') {
       writeToStdout('OpenJaws is managed by Homebrew.\n')
       const latest = await getLatestVersion(channel)
-      if (latest && !gte(MACRO.VERSION, latest)) {
+      if (latest && shouldInstallTargetVersion(MACRO.VERSION, latest)) {
         writeToStdout(`Update available: ${MACRO.VERSION} → ${latest}\n`)
         writeToStdout('\n')
         writeToStdout('To update, run:\n')
@@ -133,7 +134,7 @@ export async function update() {
     } else if (packageManager === 'winget') {
       writeToStdout('OpenJaws is managed by winget.\n')
       const latest = await getLatestVersion(channel)
-      if (latest && !gte(MACRO.VERSION, latest)) {
+      if (latest && shouldInstallTargetVersion(MACRO.VERSION, latest)) {
         writeToStdout(`Update available: ${MACRO.VERSION} → ${latest}\n`)
         writeToStdout('\n')
         writeToStdout('To update, run:\n')
@@ -146,7 +147,7 @@ export async function update() {
     } else if (packageManager === 'apk') {
       writeToStdout('OpenJaws is managed by apk.\n')
       const latest = await getLatestVersion(channel)
-      if (latest && !gte(MACRO.VERSION, latest)) {
+      if (latest && shouldInstallTargetVersion(MACRO.VERSION, latest)) {
         writeToStdout(`Update available: ${MACRO.VERSION} → ${latest}\n`)
         writeToStdout('\n')
         writeToStdout('To update, run:\n')
@@ -306,7 +307,7 @@ export async function update() {
   }
 
   // Check if versions match exactly, including any build metadata (like SHA)
-  if (latestVersion === MACRO.VERSION) {
+  if (!shouldInstallTargetVersion(MACRO.VERSION, latestVersion)) {
     writeToStdout(
       chalk.green(`OpenJaws is up to date (${MACRO.VERSION})`) + '\n',
     )
@@ -333,7 +334,7 @@ export async function update() {
       break
     case 'unknown': {
       // Fallback to detection if we can't determine installation type
-      const isLocal = await localInstallationExists()
+      const isLocal = await openJawsLocalInstallationExists()
       useLocalUpdate = isLocal
       updateMethodName = isLocal ? 'local' : 'global'
       writeToStdout(
@@ -360,9 +361,9 @@ export async function update() {
 
   if (useLocalUpdate) {
     logForDebugging(
-      'update: Calling installOrUpdateClaudePackage() for local update',
+      'update: Calling installOrUpdateOpenJawsPackage() for local update',
     )
-    status = await installOrUpdateClaudePackage(channel)
+    status = await installOrUpdateOpenJawsPackage(channel)
   } else {
     logForDebugging('update: Calling installGlobalPackage() for global update')
     status = await installGlobalPackage()

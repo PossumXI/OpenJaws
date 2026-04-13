@@ -7,6 +7,7 @@
 - `/immaculate` for live topology, execution load, control pulses, and worker visibility
 - `/provider`, `/theme`, `/voice`, `/remote-env`, `/caveman`, and `/power` configuration paths
 - `/chrome` for browser bridge setup and `/mcp` for server inventory and auth state
+- explicit runtime receipts so installed users can verify what is really active instead of relying on hidden fallbacks
 
 ## OpenCheek Agents
 
@@ -26,6 +27,14 @@
 - permission prompts and allow-session shaping
 - local and remote execution paths
 
+## Provider and Runtime Control
+
+- provider/model switching through `/provider`
+- remote environment selection through `/remote-env`
+- live runtime verification through `/status`
+- fail-closed route and worker reporting when remote execution is required
+- compatibility with local, hosted, and routed execution paths without hiding the current execution mode
+
 ## Gemma and Training
 
 - transcript export to SFT JSONL
@@ -33,6 +42,14 @@
 - local LoRA trainer scaffold
 - signed route manifests for remote_required launches
 - queue assignment, worker capabilities, remote HTTP dispatch, and signed terminal result reconciliation
+
+## Installed User Operations
+
+- source build flow for dynamic releases
+- native launcher rebuild path for Windows and local installs
+- public-safe verification lane with `bun run verify:public`
+- release verification lane with `bun run verify:release`
+- update flow built around explicit rebuild and post-update verification instead of blind in-place patching
 
 ## Voice
 
@@ -55,3 +72,4 @@
 - use `/provider` and `/remote-env` when switching execution strategy
 - use `/chrome` and `/voice` when enabling browser or speech surfaces
 - open the background task dialog to inspect crews, deferred launches, and route pressure
+- use the safe install/update guidance in `Install and Updates` before replacing binaries or moving to a newer dynamic release

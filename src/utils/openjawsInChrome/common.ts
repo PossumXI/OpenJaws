@@ -1,15 +1,17 @@
 import { readdirSync } from 'fs'
 import { stat } from 'fs/promises'
-import { homedir, platform, tmpdir, userInfo } from 'os'
+import { homedir, platform, userInfo } from 'os'
 import { join } from 'path'
 import { normalizeNameForMCP } from '../../services/mcp/normalization.js'
+import { LEGACY_OPENJAWS_IN_CHROME_ALIAS } from '../../constants/legacyCompat.js'
 import { logForDebugging } from '../debug.js'
 import { isFsInaccessible } from '../errors.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { getPlatform } from '../platform.js'
 import { which } from '../which.js'
 
-export const CLAUDE_IN_CHROME_MCP_SERVER_NAME = 'claude-in-chrome'
+export const OPENJAWS_IN_CHROME_MCP_SERVER_NAME =
+  LEGACY_OPENJAWS_IN_CHROME_ALIAS
 
 // Re-export ChromiumBrowser type for setup.ts
 export type { ChromiumBrowser } from './setupPortable.js'
@@ -408,21 +410,21 @@ export async function detectAvailableBrowser(): Promise<ChromiumBrowser | null> 
   return null
 }
 
-export function isClaudeInChromeMCPServer(name: string): boolean {
-  return normalizeNameForMCP(name) === CLAUDE_IN_CHROME_MCP_SERVER_NAME
+export function isOpenJawsInChromeMcpServer(name: string): boolean {
+  return normalizeNameForMCP(name) === OPENJAWS_IN_CHROME_MCP_SERVER_NAME
 }
 
 const MAX_TRACKED_TABS = 200
 const trackedTabIds = new Set<number>()
 
-export function trackClaudeInChromeTabId(tabId: number): void {
+export function trackOpenJawsInChromeTabId(tabId: number): void {
   if (trackedTabIds.size >= MAX_TRACKED_TABS && !trackedTabIds.has(tabId)) {
     trackedTabIds.clear()
   }
   trackedTabIds.add(tabId)
 }
 
-export function isTrackedClaudeInChromeTabId(tabId: number): boolean {
+export function isTrackedOpenJawsInChromeTabId(tabId: number): boolean {
   return trackedTabIds.has(tabId)
 }
 
@@ -472,7 +474,7 @@ export async function openInChrome(url: string): Promise<boolean> {
  * Get the socket directory path (Unix only)
  */
 export function getSocketDir(): string {
-  return `/tmp/claude-mcp-browser-bridge-${getUsername()}`
+  return `/tmp/openjaws-mcp-browser-bridge-${getUsername()}`
 }
 
 /**
@@ -500,7 +502,7 @@ export function getAllSocketPaths(): string[] {
 
   // Scan for *.sock files in the socket directory
   try {
-    // eslint-disable-next-line custom-rules/no-sync-fs -- ClaudeForChromeContext.getSocketPaths (external @ant/claude-for-chrome-mcp) requires a sync () => string[] callback
+    // eslint-disable-next-line custom-rules/no-sync-fs -- OpenJawsInChromeContext.getSocketPaths (external @ant/claude-for-chrome-mcp) requires a sync () => string[] callback
     const files = readdirSync(socketDir)
     for (const file of files) {
       if (file.endsWith('.sock')) {
@@ -511,24 +513,12 @@ export function getAllSocketPaths(): string[] {
     // Directory may not exist yet
   }
 
-  // Legacy fallback paths
-  const legacyName = `claude-mcp-browser-bridge-${getUsername()}`
-  const legacyTmpdir = join(tmpdir(), legacyName)
-  const legacyTmp = `/tmp/${legacyName}`
-
-  if (!paths.includes(legacyTmpdir)) {
-    paths.push(legacyTmpdir)
-  }
-  if (legacyTmpdir !== legacyTmp && !paths.includes(legacyTmp)) {
-    paths.push(legacyTmp)
-  }
-
   return paths
 }
 
 function getSocketName(): string {
   // NOTE: This must match the one used in the OpenJaws in Chrome MCP
-  return `claude-mcp-browser-bridge-${getUsername()}`
+  return `openjaws-mcp-browser-bridge-${getUsername()}`
 }
 
 function getUsername(): string {

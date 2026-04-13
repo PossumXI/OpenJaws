@@ -7,7 +7,7 @@ import {
 } from '../bootstrap/state.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import {
-  getClaudeConfigHomeDir,
+  getOpenJawsConfigHomeDir,
   isEnvDefinedFalsy,
   isEnvTruthy,
 } from '../utils/envUtils.js'
@@ -86,7 +86,7 @@ export function getMemoryBaseDir(): string {
   if (process.env.OPENJAWS_REMOTE_MEMORY_DIR) {
     return process.env.OPENJAWS_REMOTE_MEMORY_DIR
   }
-  return getClaudeConfigHomeDir()
+  return getOpenJawsConfigHomeDir()
 }
 
 const AUTO_MEM_DIRNAME = 'memory'

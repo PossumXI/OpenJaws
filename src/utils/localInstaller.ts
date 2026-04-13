@@ -5,22 +5,26 @@
 import { access, chmod, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { type ReleaseChannel, saveGlobalConfig } from './config.js'
-import { getClaudeConfigHomeDir } from './envUtils.js'
+import { getOpenJawsConfigHomeDir } from './envUtils.js'
 import { getErrnoCode } from './errors.js'
 import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
 import { getFsImplementation } from './fsOperations.js'
 import { logError } from './log.js'
 import { jsonStringify } from './slowOperations.js'
 
-// Lazy getters: getClaudeConfigHomeDir() is memoized and reads process.env.
+// Lazy getters: getOpenJawsConfigHomeDir() is memoized and reads process.env.
 // Evaluating at module scope would capture the value before entrypoints like
-// hfi.tsx get a chance to set CLAUDE_CONFIG_DIR in main(), and would also
+// hfi.tsx get a chance to set OPENJAWS_CONFIG_DIR in main(), and would also
 // populate the memoize cache with that stale value for all 150+ other callers.
 function getLocalInstallDir(): string {
-  return join(getClaudeConfigHomeDir(), 'local')
+  return join(getOpenJawsConfigHomeDir(), 'local')
 }
-export function getLocalClaudePath(): string {
-  return join(getLocalInstallDir(), 'claude')
+export function getOpenJawsLocalPath(): string {
+  return join(getLocalInstallDir(), 'openjaws')
+}
+
+function getLocalBinCandidates(): string[] {
+  return [join(getLocalInstallDir(), 'node_modules', '.bin', 'openjaws')]
 }
 
 /**
@@ -64,17 +68,17 @@ export async function ensureLocalPackageEnvironment(): Promise<boolean> {
     await writeIfMissing(
       join(localInstallDir, 'package.json'),
       jsonStringify(
-        { name: 'claude-local', version: '0.0.1', private: true },
+        { name: 'openjaws-local', version: '0.0.1', private: true },
         null,
         2,
       ),
     )
 
     // Create the wrapper script if it doesn't exist
-    const wrapperPath = join(localInstallDir, 'claude')
+    const wrapperPath = join(localInstallDir, 'openjaws')
     const created = await writeIfMissing(
       wrapperPath,
-      `#!/bin/sh\nexec "${localInstallDir}/node_modules/.bin/claude" "$@"`,
+      `#!/bin/sh\nif [ -x "${localInstallDir}/node_modules/.bin/openjaws" ]; then\n  exec "${localInstallDir}/node_modules/.bin/openjaws" "$@"\nfi\necho "OpenJaws local installation is missing the openjaws binary. Run 'openjaws install' again." >&2\nexit 1`,
       0o755,
     )
     if (created) {
@@ -90,11 +94,11 @@ export async function ensureLocalPackageEnvironment(): Promise<boolean> {
 }
 
 /**
- * Install or update Claude CLI package in the local directory
+ * Install or update the OpenJaws CLI package in the local directory
  * @param channel - Release channel to use (latest or stable)
  * @param specificVersion - Optional specific version to install (overrides channel)
  */
-export async function installOrUpdateClaudePackage(
+export async function installOrUpdateOpenJawsPackage(
   channel: ReleaseChannel,
   specificVersion?: string | null,
 ): Promise<'in_progress' | 'success' | 'install_failed'> {
@@ -118,7 +122,7 @@ export async function installOrUpdateClaudePackage(
 
     if (result.code !== 0) {
       const error = new Error(
-        `Failed to install Claude CLI package: ${result.stderr}`,
+        `Failed to install OpenJaws CLI package: ${result.stderr}`,
       )
       logError(error)
       return result.code === 190 ? 'in_progress' : 'install_failed'
@@ -141,13 +145,17 @@ export async function installOrUpdateClaudePackage(
  * Check if local installation exists.
  * Pure existence probe — callers use this to choose update path / UI hints.
  */
-export async function localInstallationExists(): Promise<boolean> {
-  try {
-    await access(join(getLocalInstallDir(), 'node_modules', '.bin', 'claude'))
-    return true
-  } catch {
-    return false
+export async function openJawsLocalInstallationExists(): Promise<boolean> {
+  for (const candidate of getLocalBinCandidates()) {
+    try {
+      await access(candidate)
+      return true
+    } catch {
+      // Continue to compatibility fallback.
+    }
   }
+
+  return false
 }
 
 /**

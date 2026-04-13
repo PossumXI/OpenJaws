@@ -13,7 +13,7 @@ import { isInBundledMode } from '../bundledMode.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import {
-  getClaudeConfigHomeDir,
+  getOpenJawsConfigHomeDir,
   isEnvDefinedFalsy,
   isEnvTruthy,
 } from '../envUtils.js'
@@ -22,7 +22,7 @@ import { getPlatform } from '../platform.js'
 import { jsonStringify } from '../slowOperations.js'
 import { ensureChromeMcpPackageAvailableSync } from './optionalChromeMcp.js'
 import {
-  CLAUDE_IN_CHROME_MCP_SERVER_NAME,
+  OPENJAWS_IN_CHROME_MCP_SERVER_NAME,
   getAllBrowserDataPaths,
   getAllNativeMessagingHostsDirs,
   getAllWindowsRegistryKeys,
@@ -37,7 +37,7 @@ const CHROME_EXTENSION_RECONNECT_URL = 'https://openjaws.dev/chrome/reconnect'
 const NATIVE_HOST_IDENTIFIER = 'com.openjaws_browser_extension'
 const NATIVE_HOST_MANIFEST_NAME = `${NATIVE_HOST_IDENTIFIER}.json`
 
-export function shouldEnableClaudeInChrome(chromeFlag?: boolean): boolean {
+export function shouldEnableOpenJawsInChrome(chromeFlag?: boolean): boolean {
   // Disable by default in non-interactive sessions (e.g., SDK, CI)
   if (getIsNonInteractiveSession() && chromeFlag !== true) {
     return false
@@ -61,8 +61,8 @@ export function shouldEnableClaudeInChrome(chromeFlag?: boolean): boolean {
 
   // Check default config settings
   const config = getGlobalConfig()
-  if (config.claudeInChromeDefaultEnabled !== undefined) {
-    return config.claudeInChromeDefaultEnabled
+  if (config.openJawsInChromeDefaultEnabled !== undefined) {
+    return config.openJawsInChromeDefaultEnabled
   }
 
   return false
@@ -70,7 +70,7 @@ export function shouldEnableClaudeInChrome(chromeFlag?: boolean): boolean {
 
 let shouldAutoEnable: boolean | undefined = undefined
 
-export function shouldAutoEnableClaudeInChrome(): boolean {
+export function shouldAutoEnableOpenJawsInChrome(): boolean {
   if (shouldAutoEnable !== undefined) {
     return shouldAutoEnable
   }
@@ -90,7 +90,7 @@ export function shouldAutoEnableClaudeInChrome(): boolean {
  *
  * @returns MCP config and allowed tools, or throws an error if platform is unsupported
  */
-export function setupClaudeInChrome(): {
+export function setupOpenJawsInChrome(): {
   mcpConfig: Record<string, ScopedMcpServerConfig>
   allowedTools: string[]
   systemPrompt: string
@@ -126,7 +126,7 @@ export function setupClaudeInChrome(): {
 
     return {
       mcpConfig: {
-        [CLAUDE_IN_CHROME_MCP_SERVER_NAME]: {
+        [OPENJAWS_IN_CHROME_MCP_SERVER_NAME]: {
           type: 'stdio' as const,
           command: process.execPath,
           args: ['--claude-in-chrome-mcp'],
@@ -156,7 +156,7 @@ export function setupClaudeInChrome(): {
       )
 
     const mcpConfig = {
-      [CLAUDE_IN_CHROME_MCP_SERVER_NAME]: {
+      [OPENJAWS_IN_CHROME_MCP_SERVER_NAME]: {
         type: 'stdio' as const,
         command: process.execPath,
         args: [`${cliPath}`, '--claude-in-chrome-mcp'],
@@ -310,7 +310,7 @@ function registerWindowsNativeHosts(manifestPath: string): void {
  */
 async function createWrapperScript(command: string): Promise<string> {
   const platform = getPlatform()
-  const chromeDir = join(getClaudeConfigHomeDir(), 'chrome')
+  const chromeDir = join(getOpenJawsConfigHomeDir(), 'chrome')
   const wrapperPath =
     platform === 'windows'
       ? join(chromeDir, 'chrome-native-host.bat')

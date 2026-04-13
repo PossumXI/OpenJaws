@@ -6,6 +6,7 @@ Built and maintained by [PossumX.dev](https://possumx.dev).
 
 ## Start Here
 
+- [Install and Updates](Install-and-Updates.md)
 - [Features and Capabilities](Features-and-Capabilities.md)
 - [Immaculate Integration](Immaculate-Integration.md)
 - [Benchmark Status](Benchmark-Status.md)
@@ -25,11 +26,34 @@ Built and maintained by [PossumX.dev](https://possumx.dev).
 - fail-closed Gemma route assignment and remote dispatch
 - worker capability registry and heartbeat-backed health
 - public-release security and verification scaffolding
+- explicit provider and orchestration visibility for installed users
+
+## Public Release Notes
+
+- OpenJaws is public and MIT licensed, but the project is still moving quickly.
+- Prefer official repository builds and published tags over third-party mirrors.
+- Treat `/status` as the source of truth for what is actually active: provider, runtime, sandbox, routed work, and worker health.
+- Use `/provider` and `/remote-env` deliberately. OpenJaws is designed to reduce silent fallbacks, not hide them.
 
 ## New User Path
 
 1. Install dependencies with `bun install`.
 2. Build the native launcher with `bun run build:native`.
-3. Start OpenJaws with `openjaws` or `.\openjaws.bat`.
-4. Run `/login`, `/provider`, and `/status`.
-5. Use `/immaculate` to inspect the live orchestration layer behind routing, agents, and remote execution.
+3. Start OpenJaws from the clone with `.\openjaws.bat` on Windows or `./openjaws.sh` on macOS/Linux.
+4. After a tagged install or PATH setup, use `openjaws`.
+5. Run `/login` if your selected provider needs account auth.
+6. Run `/provider` and choose your provider/model.
+7. Run `/status` to confirm the active wiring.
+8. Use `/immaculate` to inspect the orchestration layer behind routing, agents, and remote execution.
+
+## Installed User Path
+
+If you are following active development from source:
+
+1. `git pull --ff-only`
+2. `bun install`
+3. `bun run build:native`
+4. `.\openjaws.bat --version` on Windows or `./openjaws.sh --version` on macOS/Linux
+5. Relaunch and verify with `/status`
+
+See [Install and Updates](Install-and-Updates.md) for the safe update flow, first-run checklist, and provider switching guidance.

@@ -202,7 +202,7 @@ export const getUserContext = memoize(
       getNoteDeckContext(),
     ])
     // Cache for the auto-mode classifier (yoloClassifier.ts reads this
-    // instead of importing claudemd.ts directly, which would create a
+    // instead of importing openjawsmd.ts directly, which would create a
     // cycle through permissions/filesystem → permissions → yoloClassifier).
     setCachedOpenJawsMdContent(openJawsMd || null)
 

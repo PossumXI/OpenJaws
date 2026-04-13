@@ -118,9 +118,9 @@ function getDismissHandler(
 
 function getStatusColor(
   status: string,
-): 'claude' | 'success' | 'warning' | 'error' {
+): 'openjawsOcean' | 'success' | 'warning' | 'error' {
   if (status === 'running' || status === 'starting' || status === 'ready') {
-    return 'claude'
+    return 'openjawsOcean'
   }
 
   if (status === 'completed') {
@@ -160,7 +160,7 @@ function SessionLinkRow({
 }): React.ReactNode {
   return (
     <Box marginTop={1}>
-      <Text color="claude" bold>
+      <Text color="openjawsOcean" bold>
         session
       </Text>
       <Text color="inactive"> · </Text>
@@ -186,7 +186,7 @@ function StagePipeline({
   return (
     <Text>
       {inSetup ? (
-        <Text color="claude">Setup</Text>
+        <Text color="openjawsOcean">Setup</Text>
       ) : (
         <Text dimColor>Setup</Text>
       )}
@@ -197,7 +197,7 @@ function StagePipeline({
           <React.Fragment key={step}>
             {index > 0 ? <Text dimColor> → </Text> : null}
             {isCurrent ? (
-              <Text color="claude">{STAGE_LABELS[step]}</Text>
+              <Text color="openjawsOcean">{STAGE_LABELS[step]}</Text>
             ) : (
               <Text dimColor>{STAGE_LABELS[step]}</Text>
             )}
@@ -298,7 +298,7 @@ function UltraplanSessionDetail({
       <Dialog
         title="Stop ultraplan?"
         onCancel={() => setConfirmingStop(false)}
-        color="claude"
+        color="openjawsOcean"
       >
         <Box flexDirection="column" gap={1}>
           <Text dimColor>
@@ -332,7 +332,7 @@ function UltraplanSessionDetail({
 
   const title = (
     <Text>
-      <Text color="claude">
+      <Text color="openjawsOcean">
         {phase === 'plan_ready' ? DIAMOND_FILLED : DIAMOND_OPEN}{' '}
       </Text>
       <Text bold>ultraplan</Text>
@@ -349,7 +349,7 @@ function UltraplanSessionDetail({
     {
       label: 'phase',
       value: statusText,
-      color: phase === 'plan_ready' ? 'success' : 'claude',
+      color: phase === 'plan_ready' ? 'success' : 'openjawsOcean',
     },
     {
       label: 'crew',
@@ -390,7 +390,7 @@ function UltraplanSessionDetail({
     <Dialog
       title={title}
       onCancel={goBackOrClose}
-      color="claude"
+      color="openjawsOcean"
       inputGuide={exitState => renderSelectGuide(exitState, !!onBack)}
     >
       <TaskDetailSection title="Flight deck" marginTop={0}>
@@ -454,7 +454,7 @@ function ReviewSessionDetail({
       <Dialog
         title="Stop ultrareview?"
         onCancel={() => setConfirmingStop(false)}
-        color="claude"
+        color="openjawsOcean"
       >
         <Box flexDirection="column" gap={1}>
           <Text dimColor>
@@ -489,7 +489,7 @@ function ReviewSessionDetail({
 
   const title = (
     <Text>
-      <Text color="claude">
+      <Text color="openjawsOcean">
         {completed ? DIAMOND_FILLED : DIAMOND_OPEN}{' '}
       </Text>
       <Text bold>ultrareview</Text>
@@ -555,7 +555,7 @@ function ReviewSessionDetail({
     <Dialog
       title={title}
       onCancel={goBackOrClose}
-      color="claude"
+      color="openjawsOcean"
       inputGuide={exitState => renderSelectGuide(exitState, !!onBack)}
     >
       <TaskDetailSection title="Flight deck" marginTop={0}>
@@ -716,7 +716,7 @@ export function RemoteSessionDetailDialog({
       <Dialog
         title="Remote session details"
         onCancel={handleClose}
-        color="claude"
+        color="openjawsOcean"
         inputGuide={exitState =>
           exitState.pending ? (
             <Text>Press {exitState.keyName} again to exit</Text>
@@ -780,7 +780,7 @@ export function RemoteSessionDetailDialog({
               </Text>
             ) : null}
             {isTeleporting ? (
-              <Text color="claude">Teleporting to session…</Text>
+              <Text color="openjawsOcean">Teleporting to session…</Text>
             ) : null}
           </TaskDetailSection>
         ) : null}

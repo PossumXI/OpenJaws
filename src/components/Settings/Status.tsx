@@ -9,10 +9,11 @@ import { type AppState, useAppState } from '../../state/AppState.js';
 import { getCwd } from '../../utils/cwd.js';
 import { getCurrentSessionTitle } from '../../utils/sessionStorage.js';
 import { getEnvironmentSelectionInfo } from '../../utils/teleport/environmentSelection.js';
-import { buildAccountProperties, buildAPIProviderProperties, buildExecutionProperties, buildGemmaTrainingProperties, buildIDEProperties, buildImmaculateDiagnostics, buildImmaculateProperties, buildInstallationDiagnostics, buildInstallationHealthDiagnostics, buildMcpProperties, buildMemoryDiagnostics, buildSandboxProperties, buildSessionUsageProperties, buildSettingSourcesProperties, buildStartupHarnessDiagnostics, buildToolchainProperties, buildVoiceProperties, type Diagnostic, getModelDisplayLabel, type Property } from '../../utils/status.js';
+import { buildAccountProperties, buildAPIProviderProperties, buildExecutionProperties, buildGemmaTrainingProperties, buildIDEProperties, buildImmaculateDiagnostics, buildImmaculateGuidanceProperties, buildImmaculateProperties, buildInstallationDiagnostics, buildInstallationHealthDiagnostics, buildMcpProperties, buildMemoryDiagnostics, buildProviderGuidanceProperties, buildSandboxProperties, buildSessionUsageProperties, buildSettingSourcesProperties, buildStartupHarnessDiagnostics, buildToolchainProperties, buildVoiceProperties, type Diagnostic, getModelDisplayLabel, type Property } from '../../utils/status.js';
 import { getImmaculateHarnessDeckReceipt, getImmaculateHarnessStatus, getImmaculateHarnessWorkers } from '../../utils/immaculateHarness.js';
 import type { ThemeName } from '../../utils/theme.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
+import { resolveExternalModelConfig } from '../../utils/model/externalProviders.js';
 type Props = {
   context: LocalJSXCommandContext;
   diagnosticsPromise: Promise<Diagnostic[]>;
@@ -57,6 +58,8 @@ function buildSecondarySection({
   immaculateWorkers: Awaited<ReturnType<typeof getImmaculateHarnessWorkers>> | null;
 }): Property[] {
   const modelLabel = getModelDisplayLabel(mainLoopModel);
+  const externalModel =
+    mainLoopModel === null ? null : resolveExternalModelConfig(mainLoopModel);
   return [{
     label: 'Model',
     value: modelLabel
@@ -65,7 +68,7 @@ function buildSecondarySection({
     configuredDefaultEnvironmentId: environmentSelection?.configuredDefaultEnvironmentId ?? null,
     missingConfiguredDefaultEnvironment: environmentSelection?.missingConfiguredDefaultEnvironment ?? false,
     suggestedEnvironmentLabel: environmentSelection?.suggestedEnvironment ? `${environmentSelection.suggestedEnvironment.name} (${environmentSelection.suggestedEnvironment.environment_id})` : null
-  }), ...buildImmaculateProperties(immaculateHarnessStatus, immaculateDeckReceipt, immaculateWorkers), ...buildIDEProperties(mcp.clients, context.options.ideInstallationStatus, theme), ...buildMcpProperties(mcp.clients, theme), ...buildSandboxProperties(), ...buildToolchainProperties(), ...buildVoiceProperties(), ...buildGemmaTrainingProperties(immaculateWorkers), ...buildSessionUsageProperties(), ...buildSettingSourcesProperties()];
+  }), ...buildProviderGuidanceProperties(externalModel), ...buildImmaculateProperties(immaculateHarnessStatus, immaculateDeckReceipt, immaculateWorkers), ...buildImmaculateGuidanceProperties(immaculateHarnessStatus), ...buildIDEProperties(mcp.clients, context.options.ideInstallationStatus, theme), ...buildMcpProperties(mcp.clients, theme), ...buildSandboxProperties(), ...buildToolchainProperties(), ...buildVoiceProperties(), ...buildGemmaTrainingProperties(immaculateWorkers), ...buildSessionUsageProperties(), ...buildSettingSourcesProperties()];
 }
 export async function buildDiagnostics(): Promise<Diagnostic[]> {
   return [...(await buildInstallationDiagnostics()), ...(await buildInstallationHealthDiagnostics()), ...(await buildStartupHarnessDiagnostics()), ...(await buildImmaculateDiagnostics()), ...(await buildMemoryDiagnostics())];

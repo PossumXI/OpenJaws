@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Text } from '../ink.js';
-import { isClaudeAISubscriber } from '../utils/auth.js';
-import { isChromeExtensionInstalled, shouldEnableClaudeInChrome } from '../utils/claudeInChrome/setup.js';
+import { isOpenJawsSubscriber } from '../utils/auth.js';
+import { isChromeExtensionInstalled, shouldEnableOpenJawsInChrome } from '../utils/openjawsInChrome/setup.js';
 import { isRunningOnHomespace } from '../utils/envUtils.js';
 import { useStartupNotification } from './notifs/useStartupNotification.js';
 function getChromeFlag(): boolean | undefined {
@@ -18,10 +18,10 @@ export function useChromeExtensionNotification() {
 }
 async function _temp() {
   const chromeFlag = getChromeFlag();
-  if (!shouldEnableClaudeInChrome(chromeFlag)) {
+  if (!shouldEnableOpenJawsInChrome(chromeFlag)) {
     return null;
   }
-  if (true && !isClaudeAISubscriber()) {
+  if (true && !isOpenJawsSubscriber()) {
     return {
       key: "chrome-requires-subscription",
       jsx: <Text color="error">OpenJaws in Chrome requires an openjaws.dev subscription</Text>,

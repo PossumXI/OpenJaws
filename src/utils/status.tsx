@@ -15,7 +15,7 @@ import {
 import { color, Text } from '../ink.js';
 import { getRemoteControlStartupPreflightIssue } from '../bridge/bridgeStartupPreflight.js';
 import type { MCPServerConnection } from '../services/mcp/types.js';
-import { getAccountInformation, isClaudeAISubscriber } from './auth.js';
+import { getAccountInformation, isOpenJawsSubscriber } from './auth.js';
 import { getLargeMemoryFiles, getMemoryFiles, MAX_MEMORY_CHARACTER_COUNT } from './openjawsmd.js';
 import { getRemoteControlAtStartup } from './config.js';
 import { getDoctorDiagnostic } from './doctorDiagnostic.js';
@@ -31,8 +31,12 @@ import {
   type ImmaculateHarnessStatus,
   type ImmaculateHarnessWorkerCatalog,
 } from './immaculateHarness.js';
-import { resolveExternalModelConfig } from './model/externalProviders.js';
-import { getClaudeAiUserDefaultModelDescription, modelDisplayString } from './model/model.js';
+import {
+  getExternalProviderDefaults,
+  resolveExternalModelConfig,
+  type ResolvedExternalModelConfig,
+} from './model/externalProviders.js';
+import { getOpenJawsDefaultModelDescription, modelDisplayString } from './model/model.js';
 import { getAPIProvider } from './model/providers.js';
 import { getMTLSConfig } from './mtls.js';
 import { checkInstall } from './nativeInstaller/index.js';
@@ -255,6 +259,95 @@ export function buildImmaculateProperties(
         ]
       })
     }
+  }
+  return properties
+}
+type ProviderGuidanceModel = Pick<
+  ResolvedExternalModelConfig,
+  'provider' | 'label' | 'apiKeySource'
+>
+type ImmaculateGuidanceStatus = Pick<
+  ImmaculateHarnessStatus,
+  'enabled' | 'reachable' | 'harnessUrl' | 'loopback' | 'apiKeySource'
+>
+export function buildProviderGuidanceProperties(
+  externalModel: ProviderGuidanceModel | null = null,
+): Property[] {
+  const properties: Property[] = [
+    {
+      label: 'Provider switch',
+      value: [
+        '/provider status',
+        '/provider use <provider> <model>',
+        'Settings > Config > Model',
+      ],
+    },
+  ]
+  if (!externalModel) {
+    return properties
+  }
+  const defaults = getExternalProviderDefaults(externalModel.provider)
+  if (externalModel.provider === 'ollama') {
+    properties.push({
+      label: `${externalModel.label} setup`,
+      value: [
+        '/provider use ollama <model>',
+        '/provider base-url ollama <url>',
+        `env ${defaults.baseURLEnvVar}`,
+      ],
+    })
+    return properties
+  }
+  if (!externalModel.apiKeySource) {
+    properties.push({
+      label: `${externalModel.label} setup`,
+      value: [
+        `/provider key ${externalModel.provider} <api-key>`,
+        `env ${defaults.apiKeyEnvVars.join(' / ')}`,
+        `settings.llmProviders.${externalModel.provider}.apiKey`,
+      ],
+    })
+    return properties
+  }
+  properties.push({
+    label: `${externalModel.label} controls`,
+    value: [
+      `/provider key ${externalModel.provider} <api-key>`,
+      `/provider clear-key ${externalModel.provider}`,
+      `/provider model ${externalModel.provider} <model>`,
+    ],
+  })
+  return properties
+}
+export function buildImmaculateGuidanceProperties(
+  harnessStatus: ImmaculateGuidanceStatus | null = null,
+  enabled = getImmaculateStatus().enabled,
+): Property[] {
+  if (!enabled && !harnessStatus?.enabled) {
+    return []
+  }
+  const properties: Property[] = [
+    {
+      label: 'Immaculate control',
+      value: [
+        '/immaculate status',
+        '/immaculate topology',
+        'IMMACULATE_HARNESS_URL / immaculate.harnessUrl',
+      ],
+    },
+  ]
+  if (harnessStatus?.enabled && harnessStatus.reachable === false) {
+    properties.push({
+      label: 'Immaculate recovery',
+      value: [
+        'start harness or update URL',
+        harnessStatus.harnessUrl,
+        harnessStatus.loopback
+          ? 'loopback auth'
+          : harnessStatus.apiKeySource ??
+            'configure immaculate.apiKeyEnv or immaculate.apiKey',
+      ],
+    })
   }
   return properties
 }
@@ -789,7 +882,7 @@ export async function buildImmaculateDiagnostics(): Promise<Diagnostic[]> {
       return []
     }
     return [
-      `Immaculate harness is configured but unreachable at ${status.harnessUrl}. ${status.error ?? 'Start the harness or update immaculate.harnessUrl.'}`,
+      `Immaculate harness is configured but unreachable at ${status.harnessUrl}. ${status.error ?? 'Start the harness or update IMMACULATE_HARNESS_URL / settings.immaculate.harnessUrl.'}`,
     ]
   } catch {
     return []
@@ -1025,8 +1118,8 @@ export function buildAPIProviderProperties(): Property[] {
 }
 export function getModelDisplayLabel(mainLoopModel: string | null): string {
   let modelLabel = modelDisplayString(mainLoopModel);
-  if (mainLoopModel === null && isClaudeAISubscriber()) {
-    const description = getClaudeAiUserDefaultModelDescription();
+  if (mainLoopModel === null && isOpenJawsSubscriber()) {
+    const description = getOpenJawsDefaultModelDescription();
     modelLabel = `${chalk.bold('Default')} ${description}`;
   }
   return modelLabel;

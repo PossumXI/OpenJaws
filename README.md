@@ -14,6 +14,7 @@ OPENJAWS // OPENCHEEKS // FLIGHT DECK
 ## Start Here
 
 - [Wiki Home](docs/wiki/Home.md)
+- [Install and Updates](docs/wiki/Install-and-Updates.md)
 - [Features and Capabilities](docs/wiki/Features-and-Capabilities.md)
 - [Immaculate Integration](docs/wiki/Immaculate-Integration.md)
 - [Benchmark Status](docs/wiki/Benchmark-Status.md)
@@ -35,16 +36,17 @@ OPENJAWS // OPENCHEEKS // FLIGHT DECK
 
 ```powershell
 bun install
-bun test
-bun run build
 bun run build:native
-openjaws
 ```
 
-Windows launcher:
+Start from the cloned repo:
 
 ```powershell
 .\openjaws.bat --help
+```
+
+```bash
+./openjaws.sh
 ```
 
 Release verification:
@@ -59,6 +61,18 @@ Hosted GitHub verification:
 bun run verify:public
 ```
 
+## Release Model
+
+OpenJaws is currently a fast-moving public project with source builds and native local builds. Treat `main` as active development. If you want the newest work, pull from the official repository and rebuild locally. If you want a slower-moving install surface, prefer tagged releases when available.
+
+Use only official sources:
+
+- this repository
+- tagged releases published from this repository
+- documentation in `docs/wiki`
+
+Do not install from reposted binaries, copy-pasted shell installers, or mirrors you cannot verify.
+
 ## Install and First Run
 
 OpenJaws is currently distributed as source plus native local builds.
@@ -67,15 +81,78 @@ OpenJaws is currently distributed as source plus native local builds.
 2. Clone this repo.
 3. Run `bun install`.
 4. Run `bun run build:native`.
-5. Start the cockpit with `openjaws` or `.\openjaws.bat`.
+5. Start the cockpit from the clone with `.\openjaws.bat` on Windows or `./openjaws.sh` on macOS/Linux.
+6. Once you install a tagged release or set up your own PATH entry, use `openjaws`.
 
 Useful first-run operator commands:
 
-- `/login` to authenticate your selected provider or web account flow
-- `/provider` to choose model/provider wiring
+- `/login` to authenticate your selected provider or OpenJaws account flow
+- `/provider` to choose provider/model wiring
 - `/status` to inspect harness, route queue, worker health, and runtime wiring
 - `/immaculate` to inspect live orchestration topology and control state
 - `/chrome` and `/voice` to configure browser and speech surfaces when available
+
+Fresh installs also get a first-run setup lane inside the TUI for provider/model selection, API-key wiring, and live Immaculate reachability checks before heavier work starts.
+
+Recommended first-run checklist:
+
+1. Start OpenJaws.
+2. Run `/login` if your chosen provider requires account auth.
+3. Run `/provider` and pick the provider/model you actually want to use.
+4. Run `/status` and confirm runtime, sandbox, route queue, voice state, and provider wiring.
+5. Run `/immaculate status` if you want to inspect orchestration state before heavy work.
+
+## Provider Switching
+
+OpenJaws is designed to make provider/model changes explicit instead of silently drifting between backends.
+
+Safe operator flow:
+
+1. Run `/provider`.
+2. Select the provider and model you intend to use.
+3. Run `/status`.
+4. Confirm the active provider, model, runtime path, and any remote or routed execution state before starting work.
+
+When switching execution strategy, use the matching controls:
+
+- `/provider` for provider/model changes
+- `/remote-env` for remote environment selection
+- `/status` for final verification
+
+## Safe Updates For Installed Users
+
+If you are running from a cloned repository and tracking active development, update conservatively:
+
+```powershell
+git pull --ff-only
+bun install
+bun run build:native
+openjaws --version
+```
+
+Then relaunch OpenJaws and verify the running session with `/status`.
+
+If you are on a tagged native release, prefer the shipped updater path:
+
+```powershell
+openjaws update
+```
+
+or explicitly pin to the public stable lane:
+
+```powershell
+openjaws install stable
+```
+
+Additional guidance:
+
+- close any running OpenJaws sessions before replacing binaries
+- keep local secrets in your local config or secure storage, not in the repo
+- review release notes or commit history before adopting fast-moving `main`
+- public native updates are tag-gated and GitHub Release-backed so installed users do not get arbitrary `main` pushes
+- current tagged native release assets are published for `win32-x64`, `linux-x64`, and `darwin-x64`; other platforms should build from source
+- use `bun run verify:public` when you want the public-safe verification lane
+- use `bun run verify:release` when preparing a release candidate or local ship pass
 
 ## Core Capabilities
 
@@ -95,10 +172,12 @@ OpenJaws treats Immaculate as the orchestration core rather than an optional add
 - Agent spawn, resume, burst pacing, and deferred release decisions are shaped by live Immaculate state.
 - Gemma route assignment, worker capability registry, remote dispatch, and result reconciliation are all surfaced through the same harness.
 - `/immaculate` exposes live topology, control pulses, execution pressure, and worker health.
+- `/status` and the flight-deck surfaces expose the same route and worker state to installed users, not just internal operators.
 
 Details:
 
 - [Wiki Home](docs/wiki/Home.md)
+- [Install and Updates](docs/wiki/Install-and-Updates.md)
 - [Immaculate Integration](docs/wiki/Immaculate-Integration.md)
 - [Features and Capabilities](docs/wiki/Features-and-Capabilities.md)
 - [Benchmark Status](docs/wiki/Benchmark-Status.md)

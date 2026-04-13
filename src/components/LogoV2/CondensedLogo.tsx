@@ -84,13 +84,13 @@ export function CondensedLogo(): ReactNode {
         alignItems="center"
         backgroundColor="userMessageBackground"
         borderStyle="round"
-        borderColor="claude"
+        borderColor="openjawsOcean"
         paddingX={1}
       >
         <AnimatedClawd />
         <Box flexDirection="column">
           <Text>
-            <Text color="claude" bold>
+            <Text color="openjawsOcean" bold>
               OPENJAWS
             </Text>{' '}
             <Text color="promptBorder" bold>

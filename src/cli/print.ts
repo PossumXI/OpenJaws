@@ -82,6 +82,13 @@ import {
   findChannelEntry,
 } from 'src/services/mcp/channelNotification.js'
 import {
+  LEGACY_CHANNEL_NOTIFICATION_METHOD,
+  LEGACY_OAUTH_AUTHENTICATE_SUBTYPE,
+  LEGACY_OAUTH_CALLBACK_SUBTYPE,
+  LEGACY_OAUTH_WAIT_FOR_COMPLETION_SUBTYPE,
+  LEGACY_OPENJAWS_ACCOUNT_PROXY_TYPE,
+} from 'src/constants/legacyCompat.js'
+import {
   isChannelAllowlisted,
   isChannelsEnabled,
 } from 'src/services/mcp/channelAllowlist.js'
@@ -262,8 +269,8 @@ import { collectContextData } from 'src/commands/context/context-noninteractive.
 import { LOCAL_COMMAND_STDOUT_TAG } from 'src/constants/xml.js'
 import {
   statusListeners,
-  type ClaudeAILimits,
-} from 'src/services/claudeAiLimits.js'
+  type OpenJawsUsageLimits,
+} from 'src/services/openjawsUsageLimits.js'
 import {
   getDefaultMainLoopModel,
   getMainLoopModel,
@@ -1126,7 +1133,7 @@ function runHeadlessStreaming(
   // Set up rate limit status listener to emit SDKRateLimitEvent for all status changes.
   // Emitting for all statuses (including 'allowed') ensures consumers can clear warnings
   // when rate limits reset. The upstream emitStatusChange already deduplicates via isEqual.
-  const rateLimitListener = (limits: ClaudeAILimits) => {
+  const rateLimitListener = (limits: OpenJawsUsageLimits) => {
     const rateLimitInfo = toSDKRateLimitInfo(limits)
     if (rateLimitInfo) {
       output.enqueue({
@@ -1636,9 +1643,9 @@ function runHeadlessStreaming(
           headers: connection.config.headers,
           oauth: connection.config.oauth,
         }
-      } else if (connection.config.type === 'claudeai-proxy') {
+      } else if (connection.config.type === LEGACY_OPENJAWS_ACCOUNT_PROXY_TYPE) {
         config = {
-          type: 'claudeai-proxy' as const,
+          type: LEGACY_OPENJAWS_ACCOUNT_PROXY_TYPE,
           url: connection.config.url,
           id: connection.config.id,
         }
@@ -2799,7 +2806,7 @@ function runHeadlessStreaming(
   // PKCE verifier + localhost listener; the promise settles after
   // installOAuthTokens — after it resolves, the in-process memoized token
   // cache is already cleared and the next API call picks up the new creds.
-  let claudeOAuth: {
+  let openJawsOAuth: {
     service: OAuthService
     flow: Promise<void>
   } | null = null
@@ -3511,23 +3518,25 @@ function runHeadlessStreaming(
               `No active OAuth flow for server: ${serverName}`,
             )
           }
-        } else if (message.request.subtype === 'claude_authenticate') {
+        } else if (
+          message.request.subtype === LEGACY_OAUTH_AUTHENTICATE_SUBTYPE
+        ) {
           // Anthropic OAuth over the control channel. The SDK client owns
           // the user's browser (we're headless in -p mode); we hand back
           // both URLs and wait. Automatic URL → localhost listener catches
           // the redirect if the browser is on this host; manual URL → the
           // success page shows "code#state" for claude_oauth_callback.
-          const { loginWithClaudeAi } = message.request
+          const { loginWithOpenJawsAccount } = message.request
 
           // Clean up any prior flow. cleanup() closes the localhost listener
           // and nulls the manual resolver. The prior `flow` promise is left
           // pending (AuthCodeListener.close() does not reject) but its object
           // graph becomes unreachable once the server handle is released and
           // is GC'd — no fd or port is held.
-          claudeOAuth?.service.cleanup()
+          openJawsOAuth?.service.cleanup()
 
           logEvent('jaws_oauth_flow_start', {
-            loginWithClaudeAi: loginWithClaudeAi ?? true,
+            loginWithOpenJawsAccount: loginWithOpenJawsAccount ?? true,
           })
 
           const service = new OAuthService()
@@ -3550,7 +3559,7 @@ function runHeadlessStreaming(
                 urlResolver({ manualUrl, automaticUrl: automaticUrl! })
               },
               {
-                loginWithClaudeAi: loginWithClaudeAi ?? true,
+                loginWithOpenJawsAccount: loginWithOpenJawsAccount ?? true,
                 skipBrowserOpen: true,
               },
             )
@@ -3558,30 +3567,33 @@ function runHeadlessStreaming(
               // installOAuthTokens: performLogout (clear stale state) →
               // store profile → saveOAuthTokensIfNeeded → clearOAuthTokenCache
               // → clearAuthRelatedCaches. After this resolves, the memoized
-              // getClaudeAIOAuthTokens in this process is invalidated; the
+              // getOpenJawsOAuthTokens in this process is invalidated; the
               // next API call re-reads keychain/file and works. No respawn.
               await installOAuthTokens(tokens)
               logEvent('jaws_oauth_success', {
-                loginWithClaudeAi: loginWithClaudeAi ?? true,
+                loginWithOpenJawsAccount: loginWithOpenJawsAccount ?? true,
               })
             })
             .finally(() => {
               service.cleanup()
-              if (claudeOAuth?.service === service) {
-                claudeOAuth = null
+              if (openJawsOAuth?.service === service) {
+                openJawsOAuth = null
               }
             })
 
-          claudeOAuth = { service, flow }
+          openJawsOAuth = { service, flow }
 
           // Attach the rejection handler before awaiting so a synchronous
           // startOAuthFlow failure doesn't surface as an unhandled rejection.
           // The claude_oauth_callback handler re-awaits flow for the manual
           // path and surfaces the real error to the client.
           void flow.catch(err =>
-            logForDebugging(`claude_authenticate flow ended: ${err}`, {
+            logForDebugging(
+              `${LEGACY_OAUTH_AUTHENTICATE_SUBTYPE} flow ended: ${err}`,
+              {
               level: 'info',
-            }),
+              },
+            ),
           )
 
           try {
@@ -3606,20 +3618,20 @@ function runHeadlessStreaming(
             sendControlResponseError(message, errorMessage(error))
           }
         } else if (
-          message.request.subtype === 'claude_oauth_callback' ||
-          message.request.subtype === 'claude_oauth_wait_for_completion'
+          message.request.subtype === LEGACY_OAUTH_CALLBACK_SUBTYPE ||
+          message.request.subtype === LEGACY_OAUTH_WAIT_FOR_COMPLETION_SUBTYPE
         ) {
-          if (!claudeOAuth) {
+          if (!openJawsOAuth) {
             sendControlResponseError(
               message,
-              'No active claude_authenticate flow',
+              `No active ${LEGACY_OAUTH_AUTHENTICATE_SUBTYPE} flow`,
             )
           } else {
             // Inject the manual code synchronously — must happen in stdin
             // message order so a subsequent claude_authenticate doesn't
             // replace the service before this code lands.
-            if (message.request.subtype === 'claude_oauth_callback') {
-              claudeOAuth.service.handleManualAuthCodeInput({
+            if (message.request.subtype === LEGACY_OAUTH_CALLBACK_SUBTYPE) {
+              openJawsOAuth.service.handleManualAuthCodeInput({
                 authorizationCode: message.request.authorizationCode,
                 state: message.request.state,
               })
@@ -3628,8 +3640,8 @@ function runHeadlessStreaming(
             // here deadlocks claude_oauth_wait_for_completion: flow may
             // only resolve via a future claude_oauth_callback on stdin,
             // which can't be read while we're parked. Capture the binding;
-            // claudeOAuth is nulled in flow's own .finally.
-            const { flow } = claudeOAuth
+            // openJawsOAuth is nulled in flow's own .finally.
+            const { flow } = openJawsOAuth
             void flow.then(
               () => {
                 const accountInfo = getAccountInformation()
@@ -4736,7 +4748,7 @@ function handleChannelEnable(
       const { content, meta } = notification.params
       logMCPDebug(
         serverName,
-        `notifications/claude/channel: ${content.slice(0, 80)}`,
+        `${LEGACY_CHANNEL_NOTIFICATION_METHOD}: ${content.slice(0, 80)}`,
       )
       logEvent('jaws_mcp_channel_message', {
         content_length: content.length,
@@ -4812,7 +4824,7 @@ function reregisterChannelHandlerAfterReconnect(
       const { content, meta } = notification.params
       logMCPDebug(
         connection.name,
-        `notifications/claude/channel: ${content.slice(0, 80)}`,
+        `${LEGACY_CHANNEL_NOTIFICATION_METHOD}: ${content.slice(0, 80)}`,
       )
       logEvent('jaws_mcp_channel_message', {
         content_length: content.length,

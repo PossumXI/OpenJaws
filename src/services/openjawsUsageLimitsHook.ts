@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react'
 import {
-  type ClaudeAILimits,
+  type OpenJawsUsageLimits,
   currentLimits,
   statusListeners,
-} from './claudeAiLimits.js'
+} from './openjawsUsageLimits.js'
 
-export function useClaudeAiLimits(): ClaudeAILimits {
-  const [limits, setLimits] = useState<ClaudeAILimits>({ ...currentLimits })
+export function useOpenJawsUsageLimits(): OpenJawsUsageLimits {
+  const [limits, setLimits] = useState<OpenJawsUsageLimits>({ ...currentLimits })
 
   useEffect(() => {
-    const listener = (newLimits: ClaudeAILimits) => {
+    const listener = (newLimits: OpenJawsUsageLimits) => {
       setLimits({ ...newLimits })
     }
     statusListeners.add(listener)

@@ -157,7 +157,7 @@ export function AsyncAgentDetailDialog({
         title={title}
         subtitle={subtitle}
         onCancel={onDone}
-        color="claude"
+        color="openjawsOcean"
         inputGuide={exitState =>
           exitState.pending ? (
             <Text>Press {exitState.keyName} again to exit</Text>

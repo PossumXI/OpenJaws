@@ -160,7 +160,7 @@ export function ShellDetailDialog({
         title={title}
         subtitle={subtitle}
         onCancel={handleClose}
-        color="claude"
+        color="openjawsOcean"
         inputGuide={exitState =>
           exitState.pending ? (
             <Text>Press {exitState.keyName} again to exit</Text>
@@ -266,7 +266,7 @@ function getShellStatusReceipt(
   shell: DeepImmutable<LocalShellTaskState>,
 ): {
   label: string
-  color: 'claude' | 'success' | 'error'
+  color: 'openjawsOcean' | 'success' | 'error'
 } {
   const suffix =
     shell.result?.code !== undefined ? ` (exit ${shell.result.code})` : ''
@@ -274,7 +274,7 @@ function getShellStatusReceipt(
   if (shell.status === 'running') {
     return {
       label: `running${suffix}`,
-      color: 'claude',
+      color: 'openjawsOcean',
     }
   }
 

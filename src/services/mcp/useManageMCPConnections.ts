@@ -42,7 +42,7 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import {
-  dedupClaudeAiMcpServers,
+  dedupOpenJawsMcpServers,
   doesEnterpriseMcpConfigExist,
   filterMcpServersByPolicy,
   getOpenJawsMcpConfigs,
@@ -64,6 +64,7 @@ import { errorMessage } from '../../utils/errors.js'
 import { logMCPDebug, logMCPError } from '../../utils/log.js'
 import { enqueue } from '../../utils/messageQueueManager.js'
 import {
+  LEGACY_CHANNEL_NOTIFICATION_METHOD,
   CHANNEL_PERMISSION_METHOD,
   ChannelMessageNotificationSchema,
   ChannelPermissionNotificationSchema,
@@ -77,9 +78,9 @@ import {
   isChannelPermissionRelayEnabled,
 } from './channelPermissions.js'
 import {
-  clearClaudeAIMcpConfigsCache,
-  fetchClaudeAIMcpConfigsIfEligible,
-} from './claudeai.js'
+  clearOpenJawsMcpConfigsCache,
+  fetchOpenJawsMcpConfigsIfEligible,
+} from './openjawsAccount.js'
 import { registerElicitationHandler } from './elicitationHandler.js'
 import { getMcpPrefix } from './mcpStringUtils.js'
 import { commandBelongsToServer, excludeStalePluginClients } from './utils.js'
@@ -510,7 +511,7 @@ export function useManageMCPConnections(
                     const { content, meta } = notification.params
                     logMCPDebug(
                       client.name,
-                      `notifications/claude/channel: ${content.slice(0, 80)}`,
+                      `${LEGACY_CHANNEL_NOTIFICATION_METHOD}: ${content.slice(0, 80)}`,
                     )
                     logEvent('jaws_mcp_channel_message', {
                       content_length: content.length,
@@ -553,7 +554,7 @@ export function useManageMCPConnections(
                         ) ?? false
                       logMCPDebug(
                         client.name,
-                        `notifications/claude/channel/permission: ${request_id} → ${behavior} (${resolved ? 'matched pending' : 'no pending entry — stale or unknown ID'})`,
+                        `${CHANNEL_PERMISSION_METHOD}: ${request_id} → ${behavior} (${resolved ? 'matched pending' : 'no pending entry — stale or unknown ID'})`,
                       )
                     },
                   )
@@ -566,7 +567,7 @@ export function useManageMCPConnections(
                 // the gate says skip but the earlier handler keeps enqueuing.
                 // Map.delete — safe when never registered.
                 client.client.removeNotificationHandler(
-                  'notifications/claude/channel',
+                  LEGACY_CHANNEL_NOTIFICATION_METHOD,
                 )
                 client.client.removeNotificationHandler(
                   CHANNEL_PERMISSION_METHOD,
@@ -864,12 +865,12 @@ export function useManageMCPConnections(
       // logout). Kick off the fetch now so it overlaps with loadAllPlugins()
       // inside getOpenJawsMcpConfigs; it's awaited only at the dedup step.
       // Phase 2 below awaits the same promise — no second network call.
-      let claudeaiPromise: Promise<Record<string, ScopedMcpServerConfig>>
+      let openJawsAccountPromise: Promise<Record<string, ScopedMcpServerConfig>>
       if (isStrictMcpConfig || doesEnterpriseMcpConfigExist()) {
-        claudeaiPromise = Promise.resolve({})
+        openJawsAccountPromise = Promise.resolve({})
       } else {
-        clearClaudeAIMcpConfigsCache()
-        claudeaiPromise = fetchClaudeAIMcpConfigsIfEligible()
+        clearOpenJawsMcpConfigsCache()
+        openJawsAccountPromise = fetchOpenJawsMcpConfigsIfEligible()
       }
 
       // Phase 1: Load OpenJaws configs. Plugin MCP servers that duplicate a
@@ -878,7 +879,7 @@ export function useManageMCPConnections(
       const { servers: claudeCodeConfigs, errors: mcpErrors } =
         isStrictMcpConfig
           ? { servers: {}, errors: [] }
-          : await getOpenJawsMcpConfigs(dynamicMcpConfig, claudeaiPromise)
+          : await getOpenJawsMcpConfigs(dynamicMcpConfig, openJawsAccountPromise)
       if (cancelled) return
 
       // Add MCP errors to plugin errors for UI visibility (deduplicated)
@@ -902,31 +903,31 @@ export function useManageMCPConnections(
       })
 
       // Phase 2: Await openjaws.dev configs (started above; memoized — no second fetch)
-      let claudeaiConfigs: Record<string, ScopedMcpServerConfig> = {}
+      let openJawsAccountConfigs: Record<string, ScopedMcpServerConfig> = {}
       if (!isStrictMcpConfig) {
-        claudeaiConfigs = filterMcpServersByPolicy(
-          await claudeaiPromise,
+        openJawsAccountConfigs = filterMcpServersByPolicy(
+          await openJawsAccountPromise,
         ).allowed
         if (cancelled) return
 
         // Suppress openjaws.dev connectors that duplicate an enabled manual server.
         // Keys never collide (`slack` vs `openjaws.dev Slack`) so the merge below
         // won't catch this — need content-based dedup by URL signature.
-        if (Object.keys(claudeaiConfigs).length > 0) {
-          const { servers: dedupedClaudeAi } = dedupClaudeAiMcpServers(
-            claudeaiConfigs,
+        if (Object.keys(openJawsAccountConfigs).length > 0) {
+          const { servers: dedupedOpenJawsAccounts } = dedupOpenJawsMcpServers(
+            openJawsAccountConfigs,
             configs,
           )
-          claudeaiConfigs = dedupedClaudeAi
+          openJawsAccountConfigs = dedupedOpenJawsAccounts
         }
 
-        if (Object.keys(claudeaiConfigs).length > 0) {
+        if (Object.keys(openJawsAccountConfigs).length > 0) {
           // Add openjaws.dev servers as pending immediately so they show up in UI
           setAppState(prevState => {
             const existingServerNames = new Set(
               prevState.mcp.clients.map(c => c.name),
             )
-            const newClients = Object.entries(claudeaiConfigs)
+            const newClients = Object.entries(openJawsAccountConfigs)
               .filter(([name]) => !existingServerNames.has(name))
               .map(([name, config]) => ({
                 name,
@@ -946,14 +947,14 @@ export function useManageMCPConnections(
           })
 
           // Now start connecting (only enabled servers)
-          const enabledClaudeaiConfigs = Object.fromEntries(
-            Object.entries(claudeaiConfigs).filter(
+          const enabledOpenJawsAccountConfigs = Object.fromEntries(
+            Object.entries(openJawsAccountConfigs).filter(
               ([name]) => !isMcpServerDisabled(name),
             ),
           )
           getMcpToolsCommandsAndResources(
             onConnectionAttempt,
-            enabledClaudeaiConfigs,
+            enabledOpenJawsAccountConfigs,
           ).catch(error => {
             logMCPError(
               'useManageMcpConnections',
@@ -964,7 +965,7 @@ export function useManageMCPConnections(
       }
 
       // Log server counts after both phases complete
-      const allConfigs = { ...configs, ...claudeaiConfigs }
+      const allConfigs = { ...configs, ...openJawsAccountConfigs }
       const counts = {
         enterprise: 0,
         global: 0,

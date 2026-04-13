@@ -7,6 +7,10 @@
  */
 
 import type { MarketplaceSource } from './schemas.js'
+import {
+  LEGACY_OFFICIAL_MARKETPLACE_NAME,
+  LEGACY_OFFICIAL_MARKETPLACE_REPO,
+} from '../../constants/legacyCompat.js'
 
 /**
  * Source configuration for the official Anthropic plugins marketplace.
@@ -14,7 +18,7 @@ import type { MarketplaceSource } from './schemas.js'
  */
 export const OFFICIAL_MARKETPLACE_SOURCE = {
   source: 'github',
-  repo: 'anthropics/claude-plugins-official',
+  repo: LEGACY_OFFICIAL_MARKETPLACE_REPO,
 } as const satisfies MarketplaceSource
 
 /**
@@ -22,4 +26,4 @@ export const OFFICIAL_MARKETPLACE_SOURCE = {
  * This is the name under which the marketplace will be registered
  * in the known_marketplaces.json file.
  */
-export const OFFICIAL_MARKETPLACE_NAME = 'claude-plugins-official'
+export const OFFICIAL_MARKETPLACE_NAME = LEGACY_OFFICIAL_MARKETPLACE_NAME

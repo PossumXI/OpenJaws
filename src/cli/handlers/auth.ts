@@ -14,7 +14,7 @@ import {
   createAndStoreApiKey,
   fetchAndStoreUserRoles,
   refreshOAuthToken,
-  shouldUseClaudeAIAuth,
+  shouldUseOpenJawsOAuth,
   storeOAuthAccountInfo,
 } from '../../services/oauth/client.js'
 import { getOauthProfileFromOauthToken } from '../../services/oauth/getOauthProfile.js'
@@ -93,7 +93,7 @@ export async function installOAuthTokens(tokens: OAuthTokens): Promise<void> {
     logForDebugging(String(err), { level: 'error' }),
   )
 
-  if (shouldUseClaudeAIAuth(tokens.scopes)) {
+  if (shouldUseOpenJawsOAuth(tokens.scopes)) {
     await fetchAndStoreOpenJawsFirstTokenDate().catch(err =>
       logForDebugging(String(err), { level: 'error' }),
     )
@@ -115,15 +115,15 @@ export async function authLogin({
   sso,
   console: useConsole,
   subscription,
-  claudeai,
+  legacySubscriptionFlag,
 }: {
   email?: string
   sso?: boolean
   console?: boolean
   subscription?: boolean
-  claudeai?: boolean
+  legacySubscriptionFlag?: boolean
 }): Promise<void> {
-  const useSubscription = subscription || claudeai
+  const useSubscription = subscription || legacySubscriptionFlag
   if (useConsole && useSubscription) {
     process.stderr.write(
       'Error: --console and --subscription cannot be used together.\n',
@@ -134,8 +134,8 @@ export async function authLogin({
   const settings = getInitialSettings()
   // forceLoginMethod is a hard constraint (enterprise setting) — matches ConsoleOAuthFlow behavior.
   // Without it, --console selects Console; --subscription (or no flag) selects openjaws.dev.
-  const loginWithClaudeAi = settings.forceLoginMethod
-    ? settings.forceLoginMethod === 'claudeai'
+  const loginWithOpenJawsAccount = settings.forceLoginMethod
+    ? settings.forceLoginMethod === 'subscription'
     : !useConsole
   const orgUUID = settings.forceLoginOrgUUID
 
@@ -175,7 +175,7 @@ export async function authLogin({
       })
 
       logEvent('jaws_oauth_success', {
-        loginWithClaudeAi: shouldUseClaudeAIAuth(tokens.scopes),
+        loginWithOpenJawsAccount: shouldUseOpenJawsOAuth(tokens.scopes),
       })
       process.stdout.write('Login successful.\n')
       process.exit(0)
@@ -194,7 +194,7 @@ export async function authLogin({
   const oauthService = new OAuthService()
 
   try {
-    logEvent('jaws_oauth_flow_start', { loginWithClaudeAi })
+    logEvent('jaws_oauth_flow_start', { loginWithOpenJawsAccount })
 
     const result = await oauthService.startOAuthFlow(
       async url => {
@@ -202,7 +202,7 @@ export async function authLogin({
         process.stdout.write(`If the browser didn't open, visit: ${url}\n`)
       },
       {
-        loginWithClaudeAi,
+        loginWithOpenJawsAccount,
         loginHint: email,
         loginMethod: resolvedLoginMethod,
         orgUUID,
@@ -217,7 +217,7 @@ export async function authLogin({
       process.exit(1)
     }
 
-    logEvent('jaws_oauth_success', { loginWithClaudeAi })
+    logEvent('jaws_oauth_success', { loginWithOpenJawsAccount })
 
     process.stdout.write('Login successful.\n')
     process.exit(0)

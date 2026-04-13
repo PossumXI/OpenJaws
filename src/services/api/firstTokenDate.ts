@@ -13,7 +13,7 @@ export async function fetchAndStoreOpenJawsFirstTokenDate(): Promise<void> {
   try {
     const config = getGlobalConfig()
 
-    if (config.claudeCodeFirstTokenDate !== undefined) {
+    if (config.openJawsFirstTokenDate !== undefined) {
       return
     }
 
@@ -52,7 +52,7 @@ export async function fetchAndStoreOpenJawsFirstTokenDate(): Promise<void> {
 
     saveGlobalConfig(current => ({
       ...current,
-      claudeCodeFirstTokenDate: firstTokenDate,
+      openJawsFirstTokenDate: firstTokenDate,
     }))
   } catch (error) {
     logError(error)

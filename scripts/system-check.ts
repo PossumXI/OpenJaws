@@ -345,6 +345,15 @@ async function main() {
     }),
   )
   results.push(
+    await runJsonCommandCheck('onboarding-walkthrough-live', 'bun', [
+      'run',
+      'onboarding:walkthrough',
+    ], {
+      successSummary: 'Onboarding runtime setup walkthrough passed',
+      timeoutMs: 90_000,
+    }),
+  )
+  results.push(
     await runJsonCommandCheck('deferred-launch-walkthrough-live', 'bun', [
       'run',
       'deferred-launch:walkthrough',

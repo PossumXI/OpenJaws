@@ -144,7 +144,7 @@ const STAGING_OAUTH_CONFIG =
 
 // Three local dev servers: :8000 api-proxy (`api dev start -g ccr`),
 // :4000 claude-ai frontend, :3000 Console frontend. Env vars let
-// scripts/claude-localhost override if your layout differs.
+// scripts/openjaws-localhost override if your layout differs.
 function getLocalOauthConfig(): OauthConfig {
   const api =
     process.env.CLAUDE_LOCAL_OAUTH_API_BASE?.replace(/\/$/, '') ??

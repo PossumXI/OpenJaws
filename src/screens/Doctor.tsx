@@ -5,7 +5,7 @@ import React, { Suspense, use, useCallback, useEffect, useMemo, useState } from 
 import { KeybindingWarnings } from 'src/components/KeybindingWarnings.js';
 import { McpParsingWarnings } from 'src/components/mcp/McpParsingWarnings.js';
 import { getModelMaxOutputTokens } from 'src/utils/context.js';
-import { getClaudeConfigHomeDir } from 'src/utils/envUtils.js';
+import { getOpenJawsConfigHomeDir } from 'src/utils/envUtils.js';
 import type { SettingSource } from 'src/utils/settings/constants.js';
 import { getOriginalCwd } from '../bootstrap/state.js';
 import type { CommandResultDisplay } from '../commands.js';
@@ -19,7 +19,7 @@ import { Box, Text } from '../ink.js';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { useAppState } from '../state/AppState.js';
 import { getPluginErrorMessage } from '../types/plugin.js';
-import { getGcsDistTags, getNpmDistTags, type NpmDistTags } from '../utils/autoUpdater.js';
+import { getNpmDistTags, getPublicReleaseDistTags, type NpmDistTags } from '../utils/autoUpdater.js';
 import { type ContextWarnings, checkContextWarnings } from '../utils/doctorContextWarnings.js';
 import { type DiagnosticInfo, getDoctorDiagnostic } from '../utils/doctorDiagnostic.js';
 import { validateBoundedIntEnvVar } from '../utils/envValidation.js';
@@ -60,7 +60,7 @@ function DistTagsDisplay(t0) {
     promise
   } = t0;
   const distTags = use(promise);
-  if (!distTags.latest) {
+  if (!distTags.latest && !distTags.stable) {
     let t1;
     if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
       t1 = <Text dimColor={true}>└ Failed to fetch versions</Text>;
@@ -129,7 +129,7 @@ export function Doctor(t0) {
     t2 = $[2];
   }
   const distTagsPromise = t2;
-  const autoUpdatesChannel = getInitialSettings()?.autoUpdatesChannel ?? "latest";
+  const autoUpdatesChannel = getInitialSettings()?.autoUpdatesChannel ?? "stable";
   let t3;
   if ($[3] !== validationErrors) {
     t3 = validationErrors.filter(_temp7);
@@ -165,7 +165,7 @@ export function Doctor(t0) {
     t5 = () => {
       getDoctorDiagnostic().then(setDiagnostic);
       (async () => {
-        const userAgentsDir = join(getClaudeConfigHomeDir(), "agents");
+        const userAgentsDir = join(getOpenJawsConfigHomeDir(), "agents");
         const projectAgentsDir = join(getOriginalCwd(), ".openjaws", "agents");
         const {
           activeAgents,
@@ -551,7 +551,7 @@ function _temp7(error) {
   return error.mcpErrorMetadata === undefined;
 }
 function _temp6(diag) {
-  const fetchDistTags = diag.installationType === "native" ? getGcsDistTags : getNpmDistTags;
+  const fetchDistTags = diag.installationType === "native" ? getPublicReleaseDistTags : getNpmDistTags;
   return fetchDistTags().catch(_temp5);
 }
 function _temp5() {

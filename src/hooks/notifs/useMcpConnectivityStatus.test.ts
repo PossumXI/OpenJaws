@@ -122,7 +122,7 @@ describe('getMcpConnectivityNoticeCounts', () => {
       name => name === 'cloud-failed' || name === 'cloud-auth',
     )
 
-    expect(counts.failedClaudeAiClients).toBe(1)
-    expect(counts.needsAuthClaudeAiServers).toBe(1)
+    expect(counts.failedOpenJawsAccountClients).toBe(1)
+    expect(counts.needsAuthOpenJawsAccountServers).toBe(1)
   })
 })

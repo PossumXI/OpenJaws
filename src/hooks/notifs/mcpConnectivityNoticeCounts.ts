@@ -2,14 +2,14 @@ import type { MCPServerConnection } from '../../services/mcp/types.js'
 
 export type McpConnectivityNoticeCounts = {
   failedLocalClients: number
-  failedClaudeAiClients: number
+  failedOpenJawsAccountClients: number
   needsAuthLocalServers: number
-  needsAuthClaudeAiServers: number
+  needsAuthOpenJawsAccountServers: number
 }
 
 export function getMcpConnectivityNoticeCounts(
   mcpClients: readonly MCPServerConnection[],
-  hasClaudeAiEverConnected: (name: string) => boolean = () => false,
+  hasOpenJawsAccountEverConnected: (name: string) => boolean = () => false,
 ): McpConnectivityNoticeCounts {
   return {
     failedLocalClients: mcpClients.filter(
@@ -19,21 +19,21 @@ export function getMcpConnectivityNoticeCounts(
         client.config.type !== 'ws-ide' &&
         client.config.type !== 'claudeai-proxy',
     ).length,
-    failedClaudeAiClients: mcpClients.filter(
+    failedOpenJawsAccountClients: mcpClients.filter(
       client =>
         client.type === 'failed' &&
         client.config.type === 'claudeai-proxy' &&
-        hasClaudeAiEverConnected(client.name),
+        hasOpenJawsAccountEverConnected(client.name),
     ).length,
     needsAuthLocalServers: mcpClients.filter(
       client =>
         client.type === 'needs-auth' && client.config.type !== 'claudeai-proxy',
     ).length,
-    needsAuthClaudeAiServers: mcpClients.filter(
+    needsAuthOpenJawsAccountServers: mcpClients.filter(
       client =>
         client.type === 'needs-auth' &&
         client.config.type === 'claudeai-proxy' &&
-        hasClaudeAiEverConnected(client.name),
+        hasOpenJawsAccountEverConnected(client.name),
     ).length,
   }
 }

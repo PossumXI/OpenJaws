@@ -3,7 +3,7 @@
  * Implementation is lazy-loaded from cost.ts to reduce startup time.
  */
 import type { Command } from '../../commands.js'
-import { isClaudeAISubscriber } from '../../utils/auth.js'
+import { isOpenJawsSubscriber } from '../../utils/auth.js'
 
 const cost = {
   type: 'local',
@@ -14,7 +14,7 @@ const cost = {
     if (process.env.USER_TYPE === 'jaws') {
       return false
     }
-    return isClaudeAISubscriber()
+    return isOpenJawsSubscriber()
   },
   supportsNonInteractive: true,
   load: () => import('./cost.js'),

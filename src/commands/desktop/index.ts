@@ -15,7 +15,7 @@ const desktop = {
   name: 'desktop',
   aliases: ['app'],
   description: 'Continue the current session in the desktop companion',
-  availability: ['claude-ai'],
+  availability: ['openjaws-account'],
   isEnabled: isSupportedPlatform,
   get isHidden() {
     return !isSupportedPlatform()

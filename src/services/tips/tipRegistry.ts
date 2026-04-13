@@ -156,7 +156,7 @@ const externalTips: Tip[] = [
     },
   },
   {
-    id: 'color-when-multi-clauding',
+    id: 'color-when-multi-session',
     content: async () =>
       'Running multiple OpenJaws sessions? Use /color and /rename to tell them apart at a glance.',
     cooldownSessions: 10,
@@ -590,11 +590,11 @@ const externalTips: Tip[] = [
   {
     id: 'guest-passes',
     content: async ctx => {
-      const claude = color('claude', ctx.theme)
+      const openjawsOcean = color('openjawsOcean', ctx.theme)
       const reward = getCachedReferrerReward()
       return reward
-        ? `Share OpenJaws and earn ${claude(formatCreditAmount(reward))} of extra usage · ${claude('/passes')}`
-        : `You have free guest passes to share · ${claude('/passes')}`
+        ? `Share OpenJaws and earn ${openjawsOcean(formatCreditAmount(reward))} of extra usage · ${openjawsOcean('/passes')}`
+        : `You have free guest passes to share · ${openjawsOcean('/passes')}`
     },
     cooldownSessions: 3,
     isRelevant: async () => {
@@ -609,12 +609,12 @@ const externalTips: Tip[] = [
   {
     id: 'overage-credit',
     content: async ctx => {
-      const claude = color('claude', ctx.theme)
+      const openjawsOcean = color('openjawsOcean', ctx.theme)
       const info = getCachedOverageCreditGrant()
       const amount = info ? formatGrantAmount(info) : null
       if (!amount) return ''
       // Copy from "OC & Bulk Overages copy" doc (#5 — CLI Rotating tip)
-      return `${claude(`${amount} in extra usage, on us`)} · third-party apps · ${claude('/extra-usage')}`
+      return `${openjawsOcean(`${amount} in extra usage, on us`)} · third-party apps · ${openjawsOcean('/extra-usage')}`
     },
     cooldownSessions: 3,
     isRelevant: async () => shouldShowOverageCreditUpsell(),
@@ -636,7 +636,7 @@ const internalOnlyTips: Tip[] =
   process.env.USER_TYPE === 'jaws'
     ? [
         {
-          id: 'important-claudemd',
+          id: 'important-openjawsmd',
           content: async () =>
             '[JAWS-ONLY] Use "IMPORTANT:" prefix for must-follow OPENJAWS.md rules',
           cooldownSessions: 30,

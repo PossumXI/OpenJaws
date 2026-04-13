@@ -2,8 +2,8 @@
  * Built-in terminal panel toggled with Meta+J.
  *
  * Uses tmux for shell persistence: a separate tmux server with a per-instance
- * socket (e.g., "claude-panel-a1b2c3d4") holds the shell session. Each Claude
- * Code instance gets its own isolated terminal panel that persists within the
+ * socket (e.g., "openjaws-panel-a1b2c3d4") holds the shell session. Each
+ * OpenJaws instance gets its own isolated terminal panel that persists within the
  * session but is destroyed when the instance exits.
  *
  * Meta+J is bound to detach-client inside tmux, so pressing it returns to
@@ -29,10 +29,10 @@ const TMUX_SESSION = 'panel'
  * Uses a unique socket per OpenJaws instance (based on session ID)
  * so that each instance has its own isolated terminal panel.
  */
-export function getTerminalPanelSocket(): string {
+export function getOpenJawsTerminalPanelSocket(): string {
   // Use first 8 chars of session UUID for uniqueness while keeping name short
   const sessionId = getSessionId()
-  return `claude-panel-${sessionId.slice(0, 8)}`
+  return `openjaws-panel-${sessionId.slice(0, 8)}`
 }
 
 let instance: TerminalPanel | undefined
@@ -74,7 +74,7 @@ class TerminalPanel {
   private hasSession(): boolean {
     const result = spawnSync(
       'tmux',
-      ['-L', getTerminalPanelSocket(), 'has-session', '-t', TMUX_SESSION],
+      ['-L', getOpenJawsTerminalPanelSocket(), 'has-session', '-t', TMUX_SESSION],
       { encoding: 'utf-8' },
     )
     return result.status === 0
@@ -83,7 +83,7 @@ class TerminalPanel {
   private createSession(): boolean {
     const shell = process.env.SHELL || '/bin/bash'
     const cwd = pwd()
-    const socket = getTerminalPanelSocket()
+    const socket = getOpenJawsTerminalPanelSocket()
 
     const result = spawnSync(
       'tmux',
@@ -118,7 +118,7 @@ class TerminalPanel {
       'bind-key', '-n', 'M-j', 'detach-client', ';',
       'set-option', '-g', 'status-style', 'bg=default', ';',
       'set-option', '-g', 'status-left', '', ';',
-      'set-option', '-g', 'status-right', ' Alt+J to return to Claude ', ';',
+      'set-option', '-g', 'status-right', ' Alt+J to return to OpenJaws ', ';',
       'set-option', '-g', 'status-right-style', 'fg=brightblack',
     ])
 
@@ -144,7 +144,7 @@ class TerminalPanel {
   private attachSession(): void {
     spawnSync(
       'tmux',
-      ['-L', getTerminalPanelSocket(), 'attach-session', '-t', TMUX_SESSION],
+      ['-L', getOpenJawsTerminalPanelSocket(), 'attach-session', '-t', TMUX_SESSION],
       { stdio: 'inherit' },
     )
   }

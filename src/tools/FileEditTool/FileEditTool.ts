@@ -342,7 +342,7 @@ export const FileEditTool = buildTool({
       }
     }
 
-    // Additional validation for Claude settings files
+    // Additional validation for OpenJaws settings files
     const settingsValidationResult = validateInputForSettingsFileEdit(
       fullFilePath,
       file,
@@ -526,7 +526,7 @@ export const FileEditTool = buildTool({
 
     // 7. Log events
     if (absoluteFilePath.endsWith(`${sep}OPENJAWS.md`)) {
-      logEvent('jaws_write_claudemd', {})
+      logEvent('jaws_write_openjawsmd', {})
     }
     countLinesChanged(patch)
 

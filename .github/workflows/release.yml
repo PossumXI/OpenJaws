@@ -1,0 +1,138 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-assets:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runs_on }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs_on: ubuntu-latest
+            platform: linux-x64
+            binary_path: dist/openjaws
+          - runs_on: macos-13
+            platform: darwin-x64
+            binary_path: dist/openjaws
+          - runs_on: windows-latest
+            platform: win32-x64
+            binary_path: dist/openjaws.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify public release build
+        env:
+          CI: true
+        run: bun run verify:public
+
+      - name: Package release assets
+        shell: bash
+        run: >
+          bun run release:asset --
+          --binary "${{ matrix.binary_path }}"
+          --out-dir release-assets
+          --platform "${{ matrix.platform }}"
+          --version "${{ github.ref_name }}"
+
+      - name: Upload packaged assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ matrix.platform }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: build-assets
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download packaged assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-assets-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Compute release metadata
+        id: meta
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          title="OpenJaws ${tag}"
+          if [[ "${tag}" == *-* ]]; then
+            prerelease=true
+          else
+            prerelease=false
+          fi
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "title=${title}" >> "${GITHUB_OUTPUT}"
+          echo "prerelease=${prerelease}" >> "${GITHUB_OUTPUT}"
+
+      - name: Ensure GitHub release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="${{ steps.meta.outputs.tag }}"
+          title="${{ steps.meta.outputs.title }}"
+          prerelease="${{ steps.meta.outputs.prerelease }}"
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "Release ${tag} already exists."
+            exit 0
+          fi
+
+          args=(release create "${tag}" --title "${title}" --generate-notes)
+          if [[ "${prerelease}" == "true" ]]; then
+            args+=(--prerelease)
+          fi
+          gh "${args[@]}"
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="${{ steps.meta.outputs.tag }}"
+          mapfile -t files < <(find release-assets -maxdepth 1 -type f | sort)
+          if [[ "${#files[@]}" -eq 0 ]]; then
+            echo "No release assets found."
+            exit 1
+          fi
+          mapfile -t existing < <(gh release view "${tag}" --json assets --jq '.assets[].name' 2>/dev/null || true)
+          for file in "${files[@]}"; do
+            name="$(basename "${file}")"
+            if printf '%s\n' "${existing[@]}" | grep -Fxq "${name}"; then
+              echo "Refusing to overwrite published asset ${name} on ${tag}."
+              exit 1
+            fi
+          done
+          gh release upload "${tag}" "${files[@]}"

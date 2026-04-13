@@ -23,10 +23,10 @@ export function WelcomeV2(): React.ReactNode {
   return (
     <Box width={WELCOME_V2_WIDTH} flexDirection="column">
       <Text>
-        <Text color="claude">Welcome to OpenJaws </Text>
+        <Text color="openjawsOcean">Welcome to OpenJaws </Text>
         <Text color="inactive">v{MACRO.VERSION}</Text>
       </Text>
-      <Text color="claude">{skyLine}</Text>
+      <Text color="openjawsOcean">{skyLine}</Text>
       <Box alignItems="center" marginY={1}>
         <AnimatedClawd />
       </Box>

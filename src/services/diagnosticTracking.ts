@@ -2,12 +2,12 @@ import figures from 'figures'
 import { logError } from 'src/utils/log.js'
 import { callIdeRpc } from '../services/mcp/client.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
-import { ClaudeError } from '../utils/errors.js'
+import { OpenJawsError } from '../utils/errors.js'
 import { normalizePathForComparison, pathsEqual } from '../utils/file.js'
 import { getConnectedIdeClient } from '../utils/ide.js'
 import { jsonParse } from '../utils/slowOperations.js'
 
-class DiagnosticsTrackingError extends ClaudeError {}
+class DiagnosticsTrackingError extends OpenJawsError {}
 
 const MAX_DIAGNOSTICS_SUMMARY_CHARS = 4000
 
@@ -38,7 +38,7 @@ export class DiagnosticTrackingService {
   private lastProcessedTimestamps: Map<string, number> = new Map()
 
   // Track which files have received right file diagnostics and if they've changed
-  // Map<normalizedPath, lastClaudeFsRightDiagnostics>
+  // Map<normalizedPath, lastOpenJawsFsRightDiagnostics>
   private rightFileDiagnosticsState: Map<string, Diagnostic[]> = new Map()
 
   static getInstance(): DiagnosticTrackingService {
@@ -211,7 +211,7 @@ export class DiagnosticTrackingService {
       .filter(file => this.baseline.has(this.normalizeFileUri(file.uri)))
       .filter(file => file.uri.startsWith('file://'))
 
-    const diagnosticsForClaudeFsRightUrisWithBaselinesMap = new Map<
+    const diagnosticsForOpenJawsFsRightUrisWithBaselinesMap = new Map<
       string,
       DiagnosticFile
     >()
@@ -219,7 +219,7 @@ export class DiagnosticTrackingService {
       .filter(file => this.baseline.has(this.normalizeFileUri(file.uri)))
       .filter(file => file.uri.startsWith('_claude_fs_right:'))
       .forEach(file => {
-        diagnosticsForClaudeFsRightUrisWithBaselinesMap.set(
+        diagnosticsForOpenJawsFsRightUrisWithBaselinesMap.set(
           this.normalizeFileUri(file.uri),
           file,
         )
@@ -232,34 +232,34 @@ export class DiagnosticTrackingService {
       const normalizedPath = this.normalizeFileUri(file.uri)
       const baselineDiagnostics = this.baseline.get(normalizedPath) || []
 
-      // Get the _claude_fs_right file if it exists
-      const claudeFsRightFile =
-        diagnosticsForClaudeFsRightUrisWithBaselinesMap.get(normalizedPath)
+      // Get the right-side OpenJaws diagnostic file if it exists
+      const openJawsFsRightFile =
+        diagnosticsForOpenJawsFsRightUrisWithBaselinesMap.get(normalizedPath)
 
       // Determine which file to use based on the state of right file diagnostics
       let fileToUse = file
 
-      if (claudeFsRightFile) {
+      if (openJawsFsRightFile) {
         const previousRightDiagnostics =
           this.rightFileDiagnosticsState.get(normalizedPath)
 
-        // Use _claude_fs_right if:
+        // Use the right-side OpenJaws diagnostics if:
         // 1. We've never gotten right file diagnostics for this file (previousRightDiagnostics === undefined)
         // 2. OR the right file diagnostics have just changed
         if (
           !previousRightDiagnostics ||
           !this.areDiagnosticArraysEqual(
             previousRightDiagnostics,
-            claudeFsRightFile.diagnostics,
+            openJawsFsRightFile.diagnostics,
           )
         ) {
-          fileToUse = claudeFsRightFile
+          fileToUse = openJawsFsRightFile
         }
 
         // Update our tracking of right file diagnostics
         this.rightFileDiagnosticsState.set(
           normalizedPath,
-          claudeFsRightFile.diagnostics,
+          openJawsFsRightFile.diagnostics,
         )
       }
 

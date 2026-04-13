@@ -10,7 +10,7 @@ import {
   parseDebugFilter,
   shouldShowDebugMessage,
 } from './debugFilter.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
+import { getOpenJawsConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { getFsImplementation } from './fsOperations.js'
 import { writeToStderr } from './process.js'
 import { jsonStringify } from './slowOperations.js'
@@ -231,7 +231,7 @@ export function getDebugLogPath(): string {
   return (
     getDebugFilePath() ??
     process.env.OPENJAWS_DEBUG_LOGS_DIR ??
-    join(getClaudeConfigHomeDir(), 'debug', `${getSessionId()}.txt`)
+    join(getOpenJawsConfigHomeDir(), 'debug', `${getSessionId()}.txt`)
   )
 }
 

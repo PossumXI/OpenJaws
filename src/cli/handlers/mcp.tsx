@@ -326,9 +326,9 @@ export async function mcpAddFromDesktopHandler(options: {
       source: 'desktop' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
     });
     const {
-      readClaudeDesktopMcpServers
-    } = await import('../../utils/claudeDesktop.js');
-    const servers = await readClaudeDesktopMcpServers();
+      readDesktopMcpServers
+    } = await import('../../utils/openJawsDesktop.js');
+    const servers = await readDesktopMcpServers();
     if (Object.keys(servers).length === 0) {
       cliOk('No MCP servers found in the desktop companion configuration, or the configuration file does not exist.');
     }

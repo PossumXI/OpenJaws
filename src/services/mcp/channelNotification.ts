@@ -19,9 +19,14 @@
 import type { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod/v4'
 import { type ChannelEntry, getAllowedChannels } from '../../bootstrap/state.js'
+import {
+  LEGACY_CHANNEL_NOTIFICATION_METHOD,
+  LEGACY_CHANNEL_PERMISSION_METHOD,
+  LEGACY_CHANNEL_PERMISSION_REQUEST_METHOD,
+} from '../../constants/legacyCompat.js'
 import { CHANNEL_TAG } from '../../constants/xml.js'
 import {
-  getClaudeAIOAuthTokens,
+  getOpenJawsOAuthTokens,
   getSubscriptionType,
 } from '../../utils/auth.js'
 import { lazySchema } from '../../utils/lazySchema.js'
@@ -36,7 +41,7 @@ import {
 
 export const ChannelMessageNotificationSchema = lazySchema(() =>
   z.object({
-    method: z.literal('notifications/claude/channel'),
+    method: z.literal(LEGACY_CHANNEL_NOTIFICATION_METHOD),
     params: z.object({
       content: z.string(),
       // Opaque passthrough — thread_id, user, whatever the channel wants the
@@ -59,8 +64,7 @@ export const ChannelMessageNotificationSchema = lazySchema(() =>
  * channel can never accidentally match — approval requires the server
  * to deliberately emit this specific event.
  */
-export const CHANNEL_PERMISSION_METHOD =
-  'notifications/claude/channel/permission'
+export const CHANNEL_PERMISSION_METHOD = LEGACY_CHANNEL_PERMISSION_METHOD
 export const ChannelPermissionNotificationSchema = lazySchema(() =>
   z.object({
     method: z.literal(CHANNEL_PERMISSION_METHOD),
@@ -83,7 +87,7 @@ export const ChannelPermissionNotificationSchema = lazySchema(() =>
  * keeps both halves of the protocol documented side by side.
  */
 export const CHANNEL_PERMISSION_REQUEST_METHOD =
-  'notifications/claude/channel/permission_request'
+  LEGACY_CHANNEL_PERMISSION_REQUEST_METHOD
 export type ChannelPermissionRequestParams = {
   request_id: string
   tool_name: string
@@ -219,7 +223,7 @@ export function gateChannelServer(
   // OAuth-only. API key users (console) are blocked — there's no
   // channelsEnabled admin surface in console yet, so the policy opt-in
   // flow doesn't exist for them. Drop this when console parity lands.
-  if (!getClaudeAIOAuthTokens()?.accessToken) {
+  if (!getOpenJawsOAuthTokens()?.accessToken) {
     return {
       action: 'skip',
       kind: 'auth',

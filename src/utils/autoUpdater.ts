@@ -11,8 +11,8 @@ import {
 import { type ReleaseChannel, saveGlobalConfig } from './config.js'
 import { logForDebugging } from './debug.js'
 import { env } from './env.js'
-import { getClaudeConfigHomeDir } from './envUtils.js'
-import { ClaudeError, getErrnoCode, isENOENT } from './errors.js'
+import { getOpenJawsConfigHomeDir } from './envUtils.js'
+import { OpenJawsError, getErrnoCode, isENOENT } from './errors.js'
 import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
 import { getFsImplementation } from './fsOperations.js'
 import { gracefulShutdownSync } from './gracefulShutdown.js'
@@ -20,17 +20,18 @@ import { logError } from './log.js'
 import { gte, lt } from './semver.js'
 import { getInitialSettings } from './settings/settings.js'
 import {
-  filterClaudeAliases,
+  filterOpenJawsAliases,
   getShellConfigPaths,
   readFileLines,
   writeFileLines,
 } from './shellConfig.js'
+import { getLatestVersionFromGithubRelease } from './publicReleaseSource.js'
 import { jsonParse } from './slowOperations.js'
 
 const GCS_BUCKET_URL =
   'https://storage.googleapis.com/openjaws-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/openjaws-releases'
 
-class AutoUpdaterError extends ClaudeError {}
+class AutoUpdaterError extends OpenJawsError {}
 
 export type InstallStatus =
   | 'success'
@@ -61,9 +62,9 @@ export type MaxVersionConfig = {
  *
  * Versioning approach:
  * 1. For version requirements/compatibility (assertMinVersion), we use semver comparison that ignores build metadata
- * 2. For updates ('claude update'), we use exact string comparison to detect any change, including SHA
- *    - This ensures users always get the latest build, even when only the SHA changes
- *    - The UI clearly shows both versions including build metadata
+ * 2. For public updates ('openjaws update'), we only install a semver-newer target
+ *    - Tagged public releases are immutable and versioned at the semver level
+ *    - Build metadata remains visible for traceability, but does not trigger churn
  *
  * This approach keeps version comparison logic simple while maintaining traceability via the SHA.
  */
@@ -72,29 +73,40 @@ export async function assertMinVersion(): Promise<void> {
     return
   }
 
+  let versionConfig: { minVersion: string }
   try {
-    const versionConfig = await getDynamicConfig_BLOCKS_ON_INIT<{
+    versionConfig = await getDynamicConfig_BLOCKS_ON_INIT<{
       minVersion: string
     }>('jaws_version_config', { minVersion: '0.0.0' })
+  } catch (error) {
+    logError(error as Error)
+    // biome-ignore lint/suspicious/noConsole:: intentional console output
+    console.error(`
+OpenJaws could not verify the minimum supported version for this build.
+Startup is blocked until version policy can be checked successfully.
 
-    if (
-      versionConfig.minVersion &&
-      lt(MACRO.VERSION, versionConfig.minVersion)
-    ) {
-      // biome-ignore lint/suspicious/noConsole:: intentional console output
-      console.error(`
+Check your network connection and try again. For local development only, you can bypass this with:
+    OPENJAWS_SKIP_MIN_VERSION_CHECK=1
+`)
+    gracefulShutdownSync(1)
+    return
+  }
+
+  if (
+    versionConfig.minVersion &&
+    lt(MACRO.VERSION, versionConfig.minVersion)
+  ) {
+    // biome-ignore lint/suspicious/noConsole:: intentional console output
+    console.error(`
 It looks like your version of OpenJaws (${MACRO.VERSION}) needs an update.
 A newer version (${versionConfig.minVersion} or higher) is required to continue.
 
 To update, please run:
-    claude update
+    openjaws update
 
 This will ensure you have access to the latest features and improvements.
 `)
-      gracefulShutdownSync(1)
-    }
-  } catch (error) {
-    logError(error as Error)
+    gracefulShutdownSync(1)
   }
 }
 
@@ -166,7 +178,7 @@ const LOCK_TIMEOUT_MS = 5 * 60 * 1000 // 5 minute timeout for locks
  * This is a function to ensure it's evaluated at runtime after test setup
  */
 export function getLockFilePath(): string {
-  return join(getClaudeConfigHomeDir(), '.update.lock')
+  return join(getOpenJawsConfigHomeDir(), '.update.lock')
 }
 
 /**
@@ -229,7 +241,7 @@ async function acquireLock(): Promise<boolean> {
         // fs.mkdir from getFsImplementation() is always recursive:true and
         // swallows EEXIST internally, so a dir-creation race cannot reach the
         // catch below — only writeFile's EEXIST (true lock contention) can.
-        await fs.mkdir(getClaudeConfigHomeDir())
+        await fs.mkdir(getOpenJawsConfigHomeDir())
         await writeFile(lockPath, `${process.pid}`, {
           encoding: 'utf8',
           flag: 'wx',
@@ -338,6 +350,9 @@ export async function getLatestVersion(
     if (result.stdout) {
       logForDebugging(`npm stdout: ${result.stdout.trim()}`)
     }
+    if (process.env.USER_TYPE !== 'jaws') {
+      return getLatestVersionFromPublicReleaseSource(channel)
+    }
     return null
   }
   return result.stdout.trim()
@@ -346,6 +361,24 @@ export async function getLatestVersion(
 export type NpmDistTags = {
   latest: string | null
   stable: string | null
+}
+
+export function stripSemverBuildMetadata(version: string): string {
+  return version.split('+', 1)[0]!
+}
+
+export function shouldInstallTargetVersion(
+  currentVersion: string,
+  targetVersion: string,
+): boolean {
+  if (!currentVersion || !targetVersion || currentVersion === targetVersion) {
+    return false
+  }
+
+  return lt(
+    stripSemverBuildMetadata(currentVersion),
+    stripSemverBuildMetadata(targetVersion),
+  )
 }
 
 /**
@@ -394,6 +427,30 @@ export async function getLatestVersionFromGcs(
     logForDebugging(`Failed to fetch ${channel} from GCS: ${error}`)
     return null
   }
+}
+
+export async function getLatestVersionFromPublicReleaseSource(
+  channel: ReleaseChannel,
+): Promise<string | null> {
+  const githubVersion = await getLatestVersionFromGithubRelease(channel)
+  if (githubVersion) {
+    return githubVersion
+  }
+
+  if (process.env.OPENJAWS_ALLOW_GCS_RELEASE_FALLBACK !== '1') {
+    return null
+  }
+
+  return getLatestVersionFromGcs(channel)
+}
+
+export async function getPublicReleaseDistTags(): Promise<NpmDistTags> {
+  const [latest, stable] = await Promise.all([
+    getLatestVersionFromPublicReleaseSource('latest'),
+    getLatestVersionFromPublicReleaseSource('stable'),
+  ])
+
+  return { latest, stable }
 }
 
 /**
@@ -470,7 +527,7 @@ export async function installGlobalPackage(
   }
 
   try {
-    await removeClaudeAliasesFromShellConfigs()
+    await removeOpenJawsAliasesFromShellConfigs()
     // Check if we're using npm from Windows path in WSL
     if (!env.isRunningWithBun() && env.isNpmFromWindowsPath()) {
       logError(new Error('Windows NPM detected in WSL environment'))
@@ -488,7 +545,7 @@ This configuration is not supported for updates.
 To fix this issue:
   1. Install Node.js within your Linux distribution: e.g. sudo apt install nodejs npm
   2. Make sure Linux NPM is in your PATH before the Windows version
-  3. Try updating again with 'claude update'
+  3. Try updating again with 'openjaws update'
 `)
       return 'install_failed'
     }
@@ -513,7 +570,7 @@ To fix this issue:
     )
     if (installResult.code !== 0) {
       const error = new AutoUpdaterError(
-        `Failed to install new version of claude: ${installResult.stdout} ${installResult.stderr}`,
+        `Failed to install new version of OpenJaws: ${installResult.stdout} ${installResult.stderr}`,
       )
       logError(error)
       return 'install_failed'
@@ -533,10 +590,10 @@ To fix this issue:
 }
 
 /**
- * Remove claude aliases from shell configuration files
+ * Remove legacy aliases from shell configuration files
  * This helps clean up old installation methods when switching to native or npm global
  */
-async function removeClaudeAliasesFromShellConfigs(): Promise<void> {
+async function removeOpenJawsAliasesFromShellConfigs(): Promise<void> {
   const configMap = getShellConfigPaths()
 
   // Process each shell config file
@@ -545,11 +602,11 @@ async function removeClaudeAliasesFromShellConfigs(): Promise<void> {
       const lines = await readFileLines(configFile)
       if (!lines) continue
 
-      const { filtered, hadAlias } = filterClaudeAliases(lines)
+      const { filtered, hadAlias } = filterOpenJawsAliases(lines)
 
       if (hadAlias) {
         await writeFileLines(configFile, filtered)
-        logForDebugging(`Removed claude alias from ${configFile}`)
+        logForDebugging(`Removed legacy alias from ${configFile}`)
       }
     } catch (error) {
       // Don't fail the whole operation if one file can't be processed

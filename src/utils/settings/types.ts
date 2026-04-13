@@ -1,5 +1,6 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
+import { LEGACY_SUBSCRIPTION_LOGIN_METHOD } from '../../constants/legacyCompat.js'
 import { SandboxSettingsSchema } from '../../entrypoints/sandboxTypes.js'
 import { isEnvTruthy } from '../envUtils.js'
 import { lazySchema } from '../lazySchema.js'
@@ -672,12 +673,19 @@ export const SettingsSchema = lazySchema(() =>
             'these exact sources are blocked from being added as marketplaces. The check happens BEFORE ' +
             'downloading, so blocked sources never touch the filesystem.',
         ),
-      // Force a specific login method: 'claudeai' for the subscription path, 'console' for Console billing
+      // Force a specific login method: 'subscription' for the hosted plan path, 'console' for Console billing
       forceLoginMethod: z
-        .enum(['claudeai', 'console'])
+        .union([
+          z.literal('subscription'),
+          z.literal('console'),
+          z.literal(LEGACY_SUBSCRIPTION_LOGIN_METHOD),
+        ])
+        .transform(method =>
+          method === LEGACY_SUBSCRIPTION_LOGIN_METHOD ? 'subscription' : method,
+        )
         .optional()
         .describe(
-          'Force a specific login method: "claudeai" for OpenJaws subscription, "console" for Console billing',
+          'Force a specific login method: "subscription" for OpenJaws subscription, "console" for Console billing',
         ),
       // Organization UUID to use for OAuth login (will be added as URL param to authorization URL)
       forceLoginOrgUUID: z
@@ -899,7 +907,9 @@ export const SettingsSchema = lazySchema(() =>
       autoUpdatesChannel: z
         .enum(['latest', 'stable'])
         .optional()
-        .describe('Release channel for auto-updates (latest or stable)'),
+        .describe(
+          'Release channel for auto-updates (latest or stable). Defaults to stable for public installs.',
+        ),
       ...(feature('LODESTONE')
         ? {
             disableDeepLinkRegistration: z

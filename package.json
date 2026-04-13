@@ -1,6 +1,7 @@
 {
   "name": "openjaws",
   "version": "2.1.86",
+  "packageManager": "bun@1.3.11",
   "type": "module",
   "description": "OpenJaws flight-deck terminal coding cockpit with OpenCheek agents and Immaculate orchestration",
   "license": "MIT",
@@ -17,6 +18,8 @@
   "scripts": {
     "build": "bun build --target=bun --outdir=dist src/main.tsx",
     "build:native": "bun scripts/build-native.ts",
+    "release:version": "bun scripts/print-release-version.ts",
+    "release:asset": "bun scripts/build-release-asset.ts",
     "test": "bun test",
     "verify:ci": "bun test && bun run build",
     "verify:public": "bun test && bun run build && bun run build:native",
@@ -35,6 +38,7 @@
     "gemma-route:remote-completion": "bun scripts/gemma-route-remote-completion-live.ts",
     "deferred-launch:walkthrough": "bun scripts/deferred-launch-walkthrough.tsx",
     "deferred-launch:controls": "bun scripts/deferred-launch-controls-live.ts",
+    "onboarding:walkthrough": "bun scripts/onboarding-setup-walkthrough.tsx",
     "settings:walkthrough": "bun scripts/settings-walkthrough.tsx",
     "system:check": "bun scripts/system-check.ts"
   },

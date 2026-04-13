@@ -4,11 +4,11 @@ import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEve
 import { useInterval } from 'usehooks-ts';
 import { useUpdateNotification } from '../hooks/useUpdateNotification.js';
 import { Box, Text } from '../ink.js';
-import { type AutoUpdaterResult, getLatestVersion, getMaxVersion, type InstallStatus, installGlobalPackage, shouldSkipVersion } from '../utils/autoUpdater.js';
+import { type AutoUpdaterResult, getLatestVersion, getMaxVersion, type InstallStatus, installGlobalPackage, shouldInstallTargetVersion, shouldSkipVersion } from '../utils/autoUpdater.js';
 import { getGlobalConfig, isAutoUpdaterDisabled } from '../utils/config.js';
 import { logForDebugging } from '../utils/debug.js';
 import { getCurrentInstallationType } from '../utils/doctorDiagnostic.js';
-import { installOrUpdateClaudePackage, localInstallationExists } from '../utils/localInstaller.js';
+import { installOrUpdateOpenJawsPackage, openJawsLocalInstallationExists } from '../utils/localInstaller.js';
 import { removeInstalledSymlink } from '../utils/nativeInstaller/index.js';
 import { gt, gte } from '../utils/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
@@ -35,7 +35,7 @@ export function AutoUpdater({
   const [hasLocalInstall, setHasLocalInstall] = useState(false);
   const updateSemver = useUpdateNotification(autoUpdaterResult?.version);
   useEffect(() => {
-    void localInstallationExists().then(setHasLocalInstall);
+    void openJawsLocalInstallationExists().then(setHasLocalInstall);
   }, []);
 
   // Track latest isUpdating value in a ref so the memoized checkForUpdates
@@ -54,7 +54,7 @@ export function AutoUpdater({
       return;
     }
     const currentVersion = MACRO.VERSION;
-    const channel = getInitialSettings()?.autoUpdatesChannel ?? 'latest';
+    const channel = getInitialSettings()?.autoUpdatesChannel ?? 'stable';
     let latestVersion = await getLatestVersion(channel);
     const isDisabled = isAutoUpdaterDisabled();
 
@@ -78,7 +78,7 @@ export function AutoUpdater({
     });
 
     // Check if update needed and perform update
-    if (!isDisabled && currentVersion && latestVersion && !gte(currentVersion, latestVersion) && !shouldSkipVersion(latestVersion)) {
+    if (!isDisabled && currentVersion && latestVersion && shouldInstallTargetVersion(currentVersion, latestVersion) && !shouldSkipVersion(latestVersion)) {
       const startTime = Date.now();
       onChangeIsUpdating(true);
 
@@ -107,7 +107,7 @@ export function AutoUpdater({
         // Use local update for local installations
         logForDebugging('AutoUpdater: Using local update method');
         updateMethod = 'local';
-        installStatus = await installOrUpdateClaudePackage(channel);
+        installStatus = await installOrUpdateOpenJawsPackage(channel);
       } else if (installationType === 'npm-global') {
         // Use global update for global installations
         logForDebugging('AutoUpdater: Using global update method');
@@ -124,7 +124,7 @@ export function AutoUpdater({
         const isMigrated = config.installMethod === 'local';
         updateMethod = isMigrated ? 'local' : 'global';
         if (isMigrated) {
-          installStatus = await installOrUpdateClaudePackage(channel);
+          installStatus = await installOrUpdateOpenJawsPackage(channel);
         } else {
           installStatus = await installGlobalPackage();
         }

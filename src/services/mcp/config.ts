@@ -6,7 +6,7 @@ import { dirname, join, parse } from 'path'
 import { getPlatform } from 'src/utils/platform.js'
 import type { PluginError } from '../../types/plugin.js'
 import { getPluginErrorMessage } from '../../types/plugin.js'
-import { isClaudeInChromeMCPServer } from '../../utils/claudeInChrome/common.js'
+import { isOpenJawsInChromeMcpServer } from '../../utils/openjawsInChrome/common.js'
 import {
   getCurrentProjectConfig,
   getGlobalConfig,
@@ -40,7 +40,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
-import { fetchClaudeAIMcpConfigsIfEligible } from './claudeai.js'
+import { fetchOpenJawsMcpConfigsIfEligible } from './openjawsAccount.js'
 import { expandEnvVarsInString } from './envExpansion.js'
 import {
   type ConfigScope,
@@ -278,8 +278,8 @@ export function dedupPluginMcpServers(
  * Only enabled manual servers count as dedup targets — a disabled manual server
  * mustn't suppress its connector twin, or neither runs.
  */
-export function dedupClaudeAiMcpServers(
-  claudeAiServers: Record<string, ScopedMcpServerConfig>,
+export function dedupOpenJawsMcpServers(
+  openJawsAccountServers: Record<string, ScopedMcpServerConfig>,
   manualServers: Record<string, ScopedMcpServerConfig>,
 ): {
   servers: Record<string, ScopedMcpServerConfig>
@@ -294,7 +294,7 @@ export function dedupClaudeAiMcpServers(
 
   const servers: Record<string, ScopedMcpServerConfig> = {}
   const suppressed: Array<{ name: string; duplicateOf: string }> = []
-  for (const [name, config] of Object.entries(claudeAiServers)) {
+  for (const [name, config] of Object.entries(openJawsAccountServers)) {
     const sig = getMcpServerSignature(config)
     const manualDup = sig !== null ? manualSigs.get(sig) : undefined
     if (manualDup !== undefined) {
@@ -634,7 +634,7 @@ export async function addMcpConfig(
   }
 
   // Block reserved server name "claude-in-chrome"
-  if (isClaudeInChromeMCPServer(name)) {
+  if (isOpenJawsInChromeMcpServer(name)) {
     throw new Error(`Cannot add MCP server "${name}": this name is reserved.`)
   }
 
@@ -1266,25 +1266,25 @@ export async function getAllMcpConfigs(): Promise<{
 
   // Kick off the openjaws.dev fetch before getOpenJawsMcpConfigs so it overlaps
   // with loadAllPluginsCacheOnly() inside. Memoized — the awaited call below is a cache hit.
-  const claudeaiPromise = fetchClaudeAIMcpConfigsIfEligible()
+  const openJawsAccountPromise = fetchOpenJawsMcpConfigsIfEligible()
   const { servers: claudeCodeServers, errors } = await getOpenJawsMcpConfigs(
     {},
-    claudeaiPromise,
+    openJawsAccountPromise,
   )
   const { allowed: claudeaiMcpServers } = filterMcpServersByPolicy(
-    await claudeaiPromise,
+    await openJawsAccountPromise,
   )
 
   // Suppress openjaws.dev connectors that duplicate an enabled manual server.
   // Keys never collide (`slack` vs `openjaws.dev Slack`) so the merge below
   // won't catch this — need content-based dedup by URL signature.
-  const { servers: dedupedClaudeAi } = dedupClaudeAiMcpServers(
+  const { servers: dedupedOpenJawsAccounts } = dedupOpenJawsMcpServers(
     claudeaiMcpServers,
     claudeCodeServers,
   )
 
   // Merge with openjaws.dev having lowest precedence
-  const servers = Object.assign({}, dedupedClaudeAi, claudeCodeServers)
+  const servers = Object.assign({}, dedupedOpenJawsAccounts, claudeCodeServers)
 
   return { servers, errors }
 }

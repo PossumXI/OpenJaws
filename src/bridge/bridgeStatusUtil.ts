@@ -1,6 +1,6 @@
 import {
-  getClaudeAiBaseUrl,
   getRemoteSessionUrl,
+  getOpenJawsBaseUrl,
 } from '../constants/product.js'
 import { stringWidth } from '../ink/stringWidth.js'
 import { formatDuration, truncateToWidth } from '../utils/format.js'
@@ -40,7 +40,7 @@ export function buildBridgeConnectUrl(
   environmentId: string,
   ingressUrl?: string,
 ): string {
-  const baseUrl = getClaudeAiBaseUrl(undefined, ingressUrl)
+  const baseUrl = getOpenJawsBaseUrl(undefined, ingressUrl)
   return `${baseUrl}/code?bridge=${environmentId}`
 }
 

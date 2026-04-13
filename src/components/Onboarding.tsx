@@ -19,7 +19,9 @@ import { WelcomeV2 } from './LogoV2/WelcomeV2.js';
 import { PressEnterToContinue } from './PressEnterToContinue.js';
 import { ThemePicker } from './ThemePicker.js';
 import { OrderedList } from './ui/OrderedList.js';
-type StepId = 'preflight' | 'theme' | 'oauth' | 'api-key' | 'security' | 'terminal-setup';
+import { OnboardingRuntimeSetup } from './OnboardingRuntimeSetup.js';
+import { OnboardingImmaculateCheck } from './OnboardingImmaculateCheck.js';
+type StepId = 'preflight' | 'theme' | 'runtime-setup' | 'oauth' | 'immaculate' | 'api-key' | 'security' | 'terminal-setup';
 interface OnboardingStep {
   id: StepId;
   component: React.ReactNode;
@@ -113,6 +115,12 @@ export function Onboarding({
     }
     goToNextStep();
   }
+  function handleRuntimeSetupDone(skipOAuthForSetup: boolean) {
+    if (skipOAuthForSetup) {
+      setSkipOAuth(true);
+    }
+    goToNextStep();
+  }
   const steps: OnboardingStep[] = [];
   if (oauthEnabled) {
     steps.push({
@@ -124,10 +132,16 @@ export function Onboarding({
     id: 'theme',
     component: themeStep
   });
+  steps.push({
+    id: 'runtime-setup',
+    component: <OnboardingRuntimeSetup oauthEnabled={oauthEnabled} onDone={handleRuntimeSetupDone} />
+  });
   if (apiKeyNeedingApproval) {
     steps.push({
       id: 'api-key',
-      component: <ApproveApiKey customApiKeyTruncated={apiKeyNeedingApproval} onDone={handleApiKeyDone} />
+      component: <SkippableStep skip={skipOAuth} onSkip={goToNextStep}>
+          <ApproveApiKey customApiKeyTruncated={apiKeyNeedingApproval} onDone={handleApiKeyDone} />
+        </SkippableStep>
     });
   }
   if (oauthEnabled) {
@@ -138,6 +152,10 @@ export function Onboarding({
         </SkippableStep>
     });
   }
+  steps.push({
+    id: 'immaculate',
+    component: <OnboardingImmaculateCheck onDone={goToNextStep} />
+  });
   steps.push({
     id: 'security',
     component: securityStep

@@ -57,31 +57,30 @@ export function findThinkingTriggerPositions(text: string): Array<{
   return positions
 }
 
-// Kept under the legacy "rainbow" helper name to avoid a wide call-site churn,
-// but the visible treatment is now an OpenJaws ocean-wave palette.
-const RAINBOW_COLORS: Array<keyof Theme> = [
-  'claude',
+// OpenJaws ocean-wave helper for ultrathink keyword highlighting.
+const OPENJAWS_WAVE_COLORS: Array<keyof Theme> = [
+  'openjawsOcean',
   'clawd_body',
   'cyan_FOR_SUBAGENTS_ONLY',
   'blue_FOR_SUBAGENTS_ONLY',
-  'claudeBlue_FOR_SYSTEM_SPINNER',
-  'briefLabelClaude',
+  'openjawsSpinner',
+  'briefLabelOpenJaws',
 ]
 
-const RAINBOW_SHIMMER_COLORS: Array<keyof Theme> = [
-  'claudeShimmer',
-  'claudeShimmer',
+const OPENJAWS_WAVE_SHIMMER_COLORS: Array<keyof Theme> = [
+  'openjawsOceanShimmer',
+  'openjawsOceanShimmer',
   'cyan_FOR_SUBAGENTS_ONLY',
-  'claudeBlueShimmer_FOR_SYSTEM_SPINNER',
+  'openjawsSpinnerShimmer',
   'blue_FOR_SUBAGENTS_ONLY',
-  'briefLabelClaude',
+  'briefLabelOpenJaws',
 ]
 
-export function getRainbowColor(
+export function getOpenJawsWaveColor(
   charIndex: number,
   shimmer: boolean = false,
 ): keyof Theme {
-  const colors = shimmer ? RAINBOW_SHIMMER_COLORS : RAINBOW_COLORS
+  const colors = shimmer ? OPENJAWS_WAVE_SHIMMER_COLORS : OPENJAWS_WAVE_COLORS
   return colors[charIndex % colors.length]!
 }
 

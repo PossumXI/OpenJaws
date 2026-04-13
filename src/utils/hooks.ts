@@ -4325,7 +4325,7 @@ export function hasInstructionsLoadedHook(): boolean {
  * for observability/audit only and does not support blocking.
  *
  * Dispatch sites:
- * - Eager load at session start (getMemoryFiles in claudemd.ts)
+ * - Eager load at session start (getMemoryFiles in openjawsmd.ts)
  * - Eager reload after compaction (getMemoryFiles cache cleared by
  *   runPostCompactCleanup; next call reports load_reason: 'compact')
  * - Lazy load when Claude touches a file that triggers nested OPENJAWS.md or

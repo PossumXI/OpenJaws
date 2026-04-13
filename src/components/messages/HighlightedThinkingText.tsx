@@ -5,7 +5,7 @@ import { useContext } from 'react';
 import { useQueuedMessage } from '../../context/QueuedMessageContext.js';
 import { Box, Text } from '../../ink.js';
 import { formatBriefTimestamp } from '../../utils/formatBriefTimestamp.js';
-import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
+import { findThinkingTriggerPositions, getOpenJawsWaveColor, isUltrathinkEnabled } from '../../utils/thinking.js';
 import { MessageActionsSelectedContext } from '../messageActions.js';
 type Props = {
   text: string;
@@ -121,7 +121,7 @@ export function HighlightedThinkingText(t0) {
           parts.push(<Text key={`plain-${cursor}`} color="text">{text.slice(cursor, t.start)}</Text>);
         }
         for (let i = t.start; i < t.end; i++) {
-          parts.push(<Text key={`rb-${i}`} color={getRainbowColor(i - t.start)}>{text[i]}</Text>);
+          parts.push(<Text key={`rb-${i}`} color={getOpenJawsWaveColor(i - t.start)}>{text[i]}</Text>);
         }
         cursor = t.end;
       }

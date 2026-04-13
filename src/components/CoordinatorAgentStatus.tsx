@@ -232,8 +232,8 @@ function PanelHeader({
       </Text>
       {summary.detail ? (
         <Text
-          color={summary.tone === 'error' ? 'warning' : 'claude'}
-          dimColor={summary.tone === 'claude'}
+          color={summary.tone === 'error' ? 'warning' : 'openjawsOcean'}
+          dimColor={summary.tone === 'openjawsOcean'}
           wrap="truncate"
         >
           {summary.detail}
@@ -267,7 +267,7 @@ function MainLine({
       <Text dimColor={dim} bold={isViewed}>
         {prefix}
         {bullet}{' '}
-        <Text color={highlighted || isViewed ? 'claude' : undefined} bold>
+        <Text color={highlighted || isViewed ? 'openjawsOcean' : undefined} bold>
           main bridge
         </Text>
       </Text>
@@ -375,7 +375,7 @@ function AgentLine({
       <Text dimColor={dim} bold={isViewed}>
         {firstLine.prefix}
         {firstLine.bullet}{' '}
-        <Text color={highlighted || isViewed ? 'claude' : undefined} bold>
+        <Text color={highlighted || isViewed ? 'openjawsOcean' : undefined} bold>
           {firstLine.displayName}
         </Text>
         <Text dimColor={dim}>: </Text>
@@ -503,7 +503,7 @@ function getDetailLine({
   | {
       label: string
       text: string
-      color: 'claude' | 'warning' | 'error'
+      color: 'openjawsOcean' | 'warning' | 'error'
     }
   | undefined {
   if (task.status === 'failed' && task.error) {
@@ -535,7 +535,7 @@ function getDetailLine({
   return {
     label: getActivityLabel(task.progress?.recentActivities, task.progress?.lastActivity),
     text: activity,
-    color: 'claude',
+    color: 'openjawsOcean',
   }
 }
 

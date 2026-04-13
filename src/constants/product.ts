@@ -1,9 +1,9 @@
 export const PRODUCT_URL = 'https://openjaws.dev'
 
 // OpenJaws Remote session URLs
-export const CLAUDE_AI_BASE_URL = 'https://openjaws.dev'
-export const CLAUDE_AI_STAGING_BASE_URL = 'https://openjaws.staging.dev'
-export const CLAUDE_AI_LOCAL_BASE_URL = 'http://localhost:4000'
+export const OPENJAWS_BASE_URL = 'https://openjaws.dev'
+export const OPENJAWS_STAGING_BASE_URL = 'https://openjaws.staging.dev'
+export const OPENJAWS_LOCAL_BASE_URL = 'http://localhost:4000'
 
 /**
  * Determine if we're in a staging environment for remote sessions.
@@ -41,22 +41,12 @@ export function getOpenJawsBaseUrl(
   ingressUrl?: string,
 ): string {
   if (isRemoteSessionLocal(sessionId, ingressUrl)) {
-    return CLAUDE_AI_LOCAL_BASE_URL
+    return OPENJAWS_LOCAL_BASE_URL
   }
   if (isRemoteSessionStaging(sessionId, ingressUrl)) {
-    return CLAUDE_AI_STAGING_BASE_URL
+    return OPENJAWS_STAGING_BASE_URL
   }
-  return CLAUDE_AI_BASE_URL
-}
-
-/**
- * @deprecated Use getOpenJawsBaseUrl instead
- */
-export function getClaudeAiBaseUrl(
-  sessionId?: string,
-  ingressUrl?: string,
-): string {
-  return getOpenJawsBaseUrl(sessionId, ingressUrl)
+  return OPENJAWS_BASE_URL
 }
 
 /**
@@ -81,6 +71,6 @@ export function getRemoteSessionUrl(
     require('../bridge/sessionIdCompat.js') as typeof import('../bridge/sessionIdCompat.js')
   /* eslint-enable @typescript-eslint/no-require-imports */
   const compatId = toCompatSessionId(sessionId)
-  const baseUrl = getClaudeAiBaseUrl(compatId, ingressUrl)
+  const baseUrl = getOpenJawsBaseUrl(compatId, ingressUrl)
   return `${baseUrl}/code/${compatId}`
 }

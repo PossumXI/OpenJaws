@@ -7,7 +7,7 @@ import { getCwd } from './cwd.js';
 import { relative } from 'path';
 import { formatNumber } from './format.js';
 import type { getGlobalConfig } from './config.js';
-import { getAnthropicApiKeyWithSource, getApiKeyFromConfigOrMacOSKeychain, getAuthTokenSource, isClaudeAISubscriber } from './auth.js';
+import { getAnthropicApiKeyWithSource, getApiKeyFromConfigOrMacOSKeychain, getAuthTokenSource, isOpenJawsSubscriber } from './auth.js';
 import type { AgentDefinitionsResult } from '../tools/AgentTool/loadAgentsDir.js';
 import { getAgentDescriptionsTotalTokens, AGENT_DESCRIPTIONS_THRESHOLD } from './statusNoticeHelpers.js';
 import { isSupportedJetBrainsTerminal, toIDEDisplayName, getTerminalIdeType } from './ide.js';
@@ -19,7 +19,10 @@ import {
   type ImmaculateHarnessStatus,
 } from './immaculateHarness.js';
 import { getMainLoopModel, modelDisplayString } from './model/model.js';
-import { resolveExternalModelConfig } from './model/externalProviders.js';
+import {
+  getExternalProviderDefaults,
+  resolveExternalModelConfig,
+} from './model/externalProviders.js';
 import { getRipgrepStatus } from './ripgrep.js';
 import { SandboxManager } from './sandbox/sandbox-adapter.js';
 import { getSettings_DEPRECATED } from './settings/settings.js';
@@ -89,6 +92,33 @@ function getStartupHarnessEvaluation(context: StatusNoticeContext) {
     suggestedEnvironmentLabel: context.environmentSelection?.suggestedEnvironment ? `${context.environmentSelection.suggestedEnvironment.name} (${context.environmentSelection.suggestedEnvironment.environment_id})` : null
   });
 }
+function getProviderSetupWarning() {
+  const currentModel = getMainLoopModel();
+  const externalModel = resolveExternalModelConfig(currentModel);
+  if (
+    !externalModel ||
+    externalModel.provider === 'ollama' ||
+    externalModel.apiKeySource
+  ) {
+    return null;
+  }
+  const defaults = getExternalProviderDefaults(externalModel.provider);
+  return {
+    label: externalModel.label,
+    provider: externalModel.provider,
+    apiKeyEnvVars: defaults.apiKeyEnvVars,
+  };
+}
+function getImmaculateRecoveryHint(status: ImmaculateHarnessStatus | null): string[] {
+  if (!status) {
+    return [];
+  }
+  const hints = ['IMMACULATE_HARNESS_URL / settings.immaculate.harnessUrl'];
+  if (!status.loopback && !status.apiKeySource) {
+    hints.push('immaculate.apiKeyEnv / immaculate.apiKey');
+  }
+  return hints;
+}
 
 // Individual notice definitions
 const remoteControlStartupBlockedNotice: StatusNoticeDefinition = {
@@ -122,17 +152,39 @@ const startupHarnessWarningNotice: StatusNoticeDefinition = {
       </Box>;
   }
 };
+const providerSetupWarningNotice: StatusNoticeDefinition = {
+  id: 'provider-setup-warning',
+  type: 'warning',
+  isActive: () => getProviderSetupWarning() !== null,
+  render: () => {
+    const warning = getProviderSetupWarning();
+    if (!warning) {
+      return null;
+    }
+    return <Box flexDirection="row" gap={1} marginLeft={1}>
+        <Text color="warning">{figures.warning}</Text>
+        <Text color="warning">
+          Provider setup needed: {warning.label} is active but no API key is configured.
+          Use <Text bold>/provider key {warning.provider} &lt;api-key&gt;</Text> or set{' '}
+          {warning.apiKeyEnvVars.join(' / ')}
+          <Text dimColor> · /provider status or Settings &gt; Config &gt; Model</Text>
+        </Text>
+      </Box>;
+  }
+};
 const immaculateHarnessWarningNotice: StatusNoticeDefinition = {
   id: 'immaculate-harness-warning',
   type: 'warning',
   isActive: context => context.immaculateHarnessStatus?.enabled === true && context.immaculateHarnessStatus.reachable === false,
   render: context => {
     const status = context.immaculateHarnessStatus;
+    const recoveryHints = getImmaculateRecoveryHint(status);
     return <Box flexDirection="row" gap={1} marginLeft={1}>
         <Text color="warning">{figures.warning}</Text>
         <Text color="warning">
           Immaculate harness offline: {status?.harnessUrl ?? 'unknown harness'}
           {status?.error ? ` · ${formatInlineNotice(status.error)}` : ''}
+          {recoveryHints.length > 0 ? ` · ${recoveryHints.join(' · ')}` : ''}
           <Text dimColor> · /immaculate status or /status for details</Text>
         </Text>
       </Box>;
@@ -203,7 +255,7 @@ const executionReceiptNotice: StatusNoticeDefinition = {
         <Text color="ide">{figures.arrowUp}</Text>
         <Text>
           Flight deck: <Text bold>{parts.join(' · ')}</Text>
-          <Text dimColor> · /status for full wiring</Text>
+          <Text dimColor> · /status for full wiring · /provider to switch keys/models</Text>
         </Text>
       </Box>;
   }
@@ -230,12 +282,12 @@ const largeMemoryFilesNotice: StatusNoticeDefinition = {
       </>;
   }
 };
-const claudeAiSubscriberExternalTokenNotice: StatusNoticeDefinition = {
-  id: 'claude-ai-external-token',
+const openjawsSubscriberExternalTokenNotice: StatusNoticeDefinition = {
+  id: 'openjaws-account-external-token',
   type: 'warning',
   isActive: () => {
     const authTokenInfo = getAuthTokenSource();
-    return isClaudeAISubscriber() && (authTokenInfo.source === 'ANTHROPIC_AUTH_TOKEN' || authTokenInfo.source === 'apiKeyHelper');
+    return isOpenJawsSubscriber() && (authTokenInfo.source === 'ANTHROPIC_AUTH_TOKEN' || authTokenInfo.source === 'apiKeyHelper');
   },
   render: () => {
     const authTokenInfo = getAuthTokenSource();
@@ -369,7 +421,7 @@ const jetbrainsPluginNotice: StatusNoticeDefinition = {
 };
 
 // All notice definitions
-export const statusNoticeDefinitions: StatusNoticeDefinition[] = [remoteControlStartupBlockedNotice, startupHarnessWarningNotice, immaculateHarnessWarningNotice, gemmaTrainingRouteNotice, executionReceiptNotice, largeMemoryFilesNotice, largeAgentDescriptionsNotice, claudeAiSubscriberExternalTokenNotice, apiKeyConflictNotice, bothAuthMethodsNotice, jetbrainsPluginNotice];
+export const statusNoticeDefinitions: StatusNoticeDefinition[] = [remoteControlStartupBlockedNotice, startupHarnessWarningNotice, providerSetupWarningNotice, immaculateHarnessWarningNotice, gemmaTrainingRouteNotice, executionReceiptNotice, largeMemoryFilesNotice, largeAgentDescriptionsNotice, openjawsSubscriberExternalTokenNotice, apiKeyConflictNotice, bothAuthMethodsNotice, jetbrainsPluginNotice];
 
 // Helper functions for external use
 export function getActiveNotices(context: StatusNoticeContext): StatusNoticeDefinition[] {

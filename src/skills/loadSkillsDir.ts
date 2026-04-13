@@ -30,7 +30,7 @@ import {
   parseEffortValue,
 } from '../utils/effort.js'
 import {
-  getClaudeConfigHomeDir,
+  getOpenJawsConfigHomeDir,
   isBareMode,
   isEnvTruthy,
 } from '../utils/envUtils.js'
@@ -83,7 +83,7 @@ export function getSkillsPath(
     case 'policySettings':
       return join(getManagedFilePath(), '.openjaws', dir)
     case 'userSettings':
-      return join(getClaudeConfigHomeDir(), dir)
+      return join(getOpenJawsConfigHomeDir(), dir)
     case 'projectSettings':
       return `.openjaws/${dir}`
     case 'plugin':
@@ -637,7 +637,7 @@ async function loadSkillsFromCommandsDir(
  */
 export const getSkillDirCommands = memoize(
   async (cwd: string): Promise<Command[]> => {
-    const userSkillsDir = join(getClaudeConfigHomeDir(), 'skills')
+    const userSkillsDir = join(getOpenJawsConfigHomeDir(), 'skills')
     const managedSkillsDir = join(getManagedFilePath(), '.openjaws', 'skills')
     const projectSkillsDirs = getProjectDirsUpToHome('skills', cwd)
 

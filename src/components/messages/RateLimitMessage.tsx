@@ -2,10 +2,10 @@ import { c as _c } from "react/compiler-runtime";
 import React, { useEffect, useMemo, useState } from 'react';
 import { extraUsage } from 'src/commands/extra-usage/index.js';
 import { Box, Text } from 'src/ink.js';
-import { useClaudeAiLimits } from 'src/services/claudeAiLimitsHook.js';
+import { useOpenJawsUsageLimits } from 'src/services/openjawsUsageLimitsHook.js';
 import { shouldProcessMockLimits } from 'src/services/rateLimitMocking.js'; // Used for /mock-limits command
-import { getRateLimitTier, getSubscriptionType, isClaudeAISubscriber } from 'src/utils/auth.js';
-import { hasClaudeAiBillingAccess } from 'src/utils/billing.js';
+import { getRateLimitTier, getSubscriptionType, isOpenJawsSubscriber } from 'src/utils/auth.js';
+import { hasOpenJawsBillingAccess } from 'src/utils/billing.js';
 import { MessageResponse } from '../MessageResponse.js';
 type UpsellParams = {
   shouldShowUpsell: boolean;
@@ -75,7 +75,7 @@ export function RateLimitMessage(t0) {
   const isMax20x = rateLimitTier === "default_claude_max_20x";
   let t3;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = shouldProcessMockLimits() || isClaudeAISubscriber();
+    t3 = shouldProcessMockLimits() || isOpenJawsSubscriber();
     $[2] = t3;
   } else {
     t3 = $[2];
@@ -83,8 +83,8 @@ export function RateLimitMessage(t0) {
   const shouldShowUpsell = t3;
   const canSeeRateLimitOptionsUpsell = shouldShowUpsell && !isMax20x;
   const [hasOpenedInteractiveMenu, setHasOpenedInteractiveMenu] = useState(false);
-  const claudeAiLimits = useClaudeAiLimits();
-  const isCurrentlyRateLimited = claudeAiLimits.status === "rejected" && claudeAiLimits.resetsAt !== undefined && !claudeAiLimits.isUsingOverage;
+  const openjawsUsageLimits = useOpenJawsUsageLimits();
+  const isCurrentlyRateLimited = openjawsUsageLimits.status === "rejected" && openjawsUsageLimits.resetsAt !== undefined && !openjawsUsageLimits.isUsingOverage;
   const shouldAutoOpenRateLimitOptionsMenu = canSeeRateLimitOptionsUpsell && !hasOpenedInteractiveMenu && isCurrentlyRateLimited && onOpenRateLimitOptions;
   let t4;
   let t5;
@@ -115,7 +115,7 @@ export function RateLimitMessage(t0) {
         isExtraUsageCommandEnabled: extraUsage.isEnabled(),
         shouldAutoOpenRateLimitOptionsMenu: !!shouldAutoOpenRateLimitOptionsMenu,
         isTeamOrEnterprise,
-        hasBillingAccess: hasClaudeAiBillingAccess()
+        hasBillingAccess: hasOpenJawsBillingAccess()
       });
       $[7] = shouldAutoOpenRateLimitOptionsMenu;
       $[8] = t7;

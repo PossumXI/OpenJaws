@@ -91,7 +91,7 @@ import { isInProcessTeammate } from '../../utils/teammateContext.js';
 import { writeToMailbox } from '../../utils/teammateMailbox.js';
 import type { TextHighlight } from '../../utils/textHighlighting.js';
 import type { Theme } from '../../utils/theme.js';
-import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
+import { findThinkingTriggerPositions, getOpenJawsWaveColor, isUltrathinkEnabled } from '../../utils/thinking.js';
 import { findTokenBudgetPositions } from '../../utils/tokenBudget.js';
 import { findUltraplanTriggerPositions, findUltrareviewTriggerPositions } from '../../utils/ultraplan/keyword.js';
 import { AutoModeOptInDialog } from '../AutoModeOptInDialog.js';
@@ -710,8 +710,8 @@ function PromptInput({
           highlights.push({
             start: i,
             end: i + 1,
-            color: getRainbowColor(i - trigger.start),
-            shimmerColor: getRainbowColor(i - trigger.start, true),
+            color: getOpenJawsWaveColor(i - trigger.start),
+            shimmerColor: getOpenJawsWaveColor(i - trigger.start, true),
             priority: 10
           });
         }
@@ -725,8 +725,8 @@ function PromptInput({
           highlights.push({
             start: i,
             end: i + 1,
-            color: getRainbowColor(i - trigger.start),
-            shimmerColor: getRainbowColor(i - trigger.start, true),
+            color: getOpenJawsWaveColor(i - trigger.start),
+            shimmerColor: getOpenJawsWaveColor(i - trigger.start, true),
             priority: 10
           });
         }
@@ -739,8 +739,8 @@ function PromptInput({
         highlights.push({
           start: i,
           end: i + 1,
-          color: getRainbowColor(i - trigger.start),
-          shimmerColor: getRainbowColor(i - trigger.start, true),
+          color: getOpenJawsWaveColor(i - trigger.start),
+          shimmerColor: getOpenJawsWaveColor(i - trigger.start, true),
           priority: 10
         });
       }
@@ -752,8 +752,8 @@ function PromptInput({
         highlights.push({
           start: i,
           end: i + 1,
-          color: getRainbowColor(i - trigger.start),
-          shimmerColor: getRainbowColor(i - trigger.start, true),
+          color: getOpenJawsWaveColor(i - trigger.start),
+          shimmerColor: getOpenJawsWaveColor(i - trigger.start, true),
           priority: 10
         });
       }
