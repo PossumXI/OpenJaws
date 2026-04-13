@@ -1,0 +1,5 @@
+[allowlist]
+description = "Allow known false positives for Claude/OpenJaws rate limit tier identifiers."
+regexes = [
+  '''default_claude_max_20x''',
+]
