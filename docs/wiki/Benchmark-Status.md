@@ -6,6 +6,7 @@ This page tracks the live Immaculate benchmark record currently used to explain 
 
 - Immaculate commit: `b7a571f`
 - Branch: `main`
+- Benchmark publication date: `April 12, 2026`
 - Publication status reported green for benchmark publication, CI, security, and GitGuardian
 
 ## 60-Minute Soak Run
@@ -53,3 +54,18 @@ OpenJaws uses Immaculate as an execution-control layer. The benchmark numbers ma
 - crew burst budgeting
 - remote route dispatch
 - checkpointed recovery under sustained load
+
+## Executive Summary
+
+These runs are relevant to OpenJaws because they validate the orchestration substrate that now sits behind:
+
+- OpenCheek crew fan-out and deferred release
+- route-worker heartbeat and assignment decisions
+- fail-closed retry pacing under pressure
+- remote Gemma dispatch, acknowledgement, and completion reconciliation
+
+The soak result is the stronger signal. It shows that the harness can hold bounded reflex and cognitive latency for an hour-class run while preserving checkpointed recovery and integrity, which is exactly the property OpenJaws needs when it is pacing agents, routing tools, and managing remote execution instead of just answering one request.
+
+## Reproducibility Notes
+
+The benchmark source of truth lives in Immaculate, not in OpenJaws. OpenJaws consumes the published benchmark record and uses it to explain why Immaculate-backed orchestration improves routing, pressure control, and recovery semantics inside the cockpit.

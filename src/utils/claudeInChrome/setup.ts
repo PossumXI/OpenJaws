@@ -1,4 +1,3 @@
-import { BROWSER_TOOLS } from '@ant/claude-for-chrome-mcp'
 import { chmod, mkdir, readFile, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -21,6 +20,7 @@ import {
 import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
 import { getPlatform } from '../platform.js'
 import { jsonStringify } from '../slowOperations.js'
+import { ensureChromeMcpPackageAvailableSync } from './optionalChromeMcp.js'
 import {
   CLAUDE_IN_CHROME_MCP_SERVER_NAME,
   getAllBrowserDataPaths,
@@ -28,10 +28,11 @@ import {
   getAllWindowsRegistryKeys,
   openInChrome,
 } from './common.js'
+import { CHROME_TOOL_NAMES } from './toolNames.js'
 import { getChromeSystemPrompt } from './prompt.js'
 import { isChromeExtensionInstalledPortable } from './setupPortable.js'
 
-const CHROME_EXTENSION_RECONNECT_URL = 'https://clau.de/chrome/reconnect'
+const CHROME_EXTENSION_RECONNECT_URL = 'https://openjaws.dev/chrome/reconnect'
 
 const NATIVE_HOST_IDENTIFIER = 'com.openjaws_browser_extension'
 const NATIVE_HOST_MANIFEST_NAME = `${NATIVE_HOST_IDENTIFIER}.json`
@@ -76,6 +77,7 @@ export function shouldAutoEnableClaudeInChrome(): boolean {
 
   shouldAutoEnable =
     getIsInteractive() &&
+    isChromeMcpPackageAvailableSync() &&
     isChromeExtensionInstalled_CACHED_MAY_BE_STALE() &&
     (process.env.USER_TYPE === 'jaws' ||
       getFeatureValue_CACHED_MAY_BE_STALE('jaws_chrome_auto_enable', false))
@@ -84,7 +86,7 @@ export function shouldAutoEnableClaudeInChrome(): boolean {
 }
 
 /**
- * Setup Claude in Chrome MCP server and tools
+ * Setup OpenJaws in Chrome MCP server and tools
  *
  * @returns MCP config and allowed tools, or throws an error if platform is unsupported
  */
@@ -93,9 +95,10 @@ export function setupClaudeInChrome(): {
   allowedTools: string[]
   systemPrompt: string
 } {
+  ensureChromeMcpPackageAvailableSync()
   const isNativeBuild = isInBundledMode()
-  const allowedTools = BROWSER_TOOLS.map(
-    tool => `mcp__claude-in-chrome__${tool.name}`,
+  const allowedTools = CHROME_TOOL_NAMES.map(
+    toolName => `mcp__claude-in-chrome__${toolName}`,
   )
 
   const env: Record<string, string> = {}
@@ -116,7 +119,7 @@ export function setupClaudeInChrome(): {
       )
       .catch(e =>
         logForDebugging(
-          `[Claude in Chrome] Failed to install native host: ${e}`,
+          `[OpenJaws in Chrome] Failed to install native host: ${e}`,
           { level: 'error' },
         ),
       )
@@ -147,7 +150,7 @@ export function setupClaudeInChrome(): {
       )
       .catch(e =>
         logForDebugging(
-          `[Claude in Chrome] Failed to install native host: ${e}`,
+          `[OpenJaws in Chrome] Failed to install native host: ${e}`,
           { level: 'error' },
         ),
       )
@@ -193,7 +196,7 @@ export async function installChromeNativeHostManifest(
 ): Promise<void> {
   const manifestDirs = getNativeMessagingHostsDirs()
   if (manifestDirs.length === 0) {
-    throw Error('Claude in Chrome Native Host not supported on this platform')
+    throw Error('OpenJaws in Chrome Native Host not supported on this platform')
   }
 
   const manifest = {
@@ -231,13 +234,13 @@ export async function installChromeNativeHostManifest(
       await mkdir(manifestDir, { recursive: true })
       await writeFile(manifestPath, manifestContent)
       logForDebugging(
-        `[Claude in Chrome] Installed native host manifest at: ${manifestPath}`,
+        `[OpenJaws in Chrome] Installed native host manifest at: ${manifestPath}`,
       )
       anyManifestUpdated = true
     } catch (error) {
       // Log but don't fail - the browser might not be installed
       logForDebugging(
-        `[Claude in Chrome] Failed to install manifest at ${manifestPath}: ${error}`,
+        `[OpenJaws in Chrome] Failed to install manifest at ${manifestPath}: ${error}`,
       )
     }
   }
@@ -253,12 +256,12 @@ export async function installChromeNativeHostManifest(
     void isChromeExtensionInstalled().then(isInstalled => {
       if (isInstalled) {
         logForDebugging(
-          `[Claude in Chrome] First-time install detected, opening reconnect page in browser`,
+          `[OpenJaws in Chrome] First-time install detected, opening reconnect page in browser`,
         )
         void openInChrome(CHROME_EXTENSION_RECONNECT_URL)
       } else {
         logForDebugging(
-          `[Claude in Chrome] First-time install detected, but extension not installed, skipping reconnect`,
+          `[OpenJaws in Chrome] First-time install detected, but extension not installed, skipping reconnect`,
         )
       }
     })
@@ -287,11 +290,11 @@ function registerWindowsNativeHosts(manifestPath: string): void {
     ]).then(result => {
       if (result.code === 0) {
         logForDebugging(
-          `[Claude in Chrome] Registered native host for ${browser} in Windows registry: ${fullKey}`,
+          `[OpenJaws in Chrome] Registered native host for ${browser} in Windows registry: ${fullKey}`,
         )
       } else {
         logForDebugging(
-          `[Claude in Chrome] Failed to register native host for ${browser} in Windows registry: ${result.stderr}`,
+          `[OpenJaws in Chrome] Failed to register native host for ${browser} in Windows registry: ${result.stderr}`,
         )
       }
     })
@@ -340,7 +343,7 @@ exec ${command}
   }
 
   logForDebugging(
-    `[Claude in Chrome] Created Chrome native host wrapper script: ${wrapperPath}`,
+    `[OpenJaws in Chrome] Created Chrome native host wrapper script: ${wrapperPath}`,
   )
   return wrapperPath
 }
@@ -383,7 +386,7 @@ function isChromeExtensionInstalled_CACHED_MAY_BE_STALE(): boolean {
 }
 
 /**
- * Detects if the Claude in Chrome extension is installed by checking the Extensions
+ * Detects if the OpenJaws in Chrome extension is installed by checking the Extensions
  * directory across all supported Chromium-based browsers and their profiles.
  *
  * @returns Object with isInstalled boolean and the browser where the extension was found
@@ -392,7 +395,7 @@ export async function isChromeExtensionInstalled(): Promise<boolean> {
   const browserPaths = getAllBrowserDataPaths()
   if (browserPaths.length === 0) {
     logForDebugging(
-      `[Claude in Chrome] Unsupported platform for extension detection: ${getPlatform()}`,
+      `[OpenJaws in Chrome] Unsupported platform for extension detection: ${getPlatform()}`,
     )
     return false
   }

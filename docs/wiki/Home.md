@@ -2,6 +2,8 @@
 
 OpenJaws is a terminal-first coding cockpit with OpenCheek agents and Immaculate orchestration at the center of execution, routing, and operator visibility.
 
+Built and maintained by [PossumX.dev](https://possumx.dev).
+
 ## Start Here
 
 - [Features and Capabilities](Features-and-Capabilities.md)
@@ -23,3 +25,11 @@ OpenJaws is a terminal-first coding cockpit with OpenCheek agents and Immaculate
 - fail-closed Gemma route assignment and remote dispatch
 - worker capability registry and heartbeat-backed health
 - public-release security and verification scaffolding
+
+## New User Path
+
+1. Install dependencies with `bun install`.
+2. Build the native launcher with `bun run build:native`.
+3. Start OpenJaws with `openjaws` or `.\openjaws.bat`.
+4. Run `/login`, `/provider`, and `/status`.
+5. Use `/immaculate` to inspect the live orchestration layer behind routing, agents, and remote execution.

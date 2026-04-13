@@ -56,7 +56,7 @@ export async function getClaudeDesktopConfigPath(): Promise<string> {
     try {
       const userDirs = await readdir(usersDir, { withFileTypes: true })
 
-      // Look for Claude Desktop config in each user directory
+      // Look for OpenJaws Desktop config in each user directory
       for (const user of userDirs) {
         if (
           user.name === 'Public' ||

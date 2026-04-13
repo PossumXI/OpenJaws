@@ -1,10 +1,10 @@
-import { BROWSER_TOOLS } from '@ant/claude-for-chrome-mcp'
 import { BASE_CHROME_PROMPT } from '../../utils/claudeInChrome/prompt.js'
 import { shouldAutoEnableClaudeInChrome } from '../../utils/claudeInChrome/setup.js'
+import { CHROME_TOOL_NAMES } from '../../utils/claudeInChrome/toolNames.js'
 import { registerBundledSkill } from '../bundledSkills.js'
 
-const CLAUDE_IN_CHROME_MCP_TOOLS = BROWSER_TOOLS.map(
-  tool => `mcp__claude-in-chrome__${tool.name}`,
+const CLAUDE_IN_CHROME_MCP_TOOLS = CHROME_TOOL_NAMES.map(
+  toolName => `mcp__claude-in-chrome__${toolName}`,
 )
 
 const SKILL_ACTIVATION_MESSAGE = `
@@ -15,7 +15,8 @@ IMPORTANT: Start by calling mcp__claude-in-chrome__tabs_context_mcp to get infor
 
 export function registerClaudeInChromeSkill(): void {
   registerBundledSkill({
-    name: 'claude-in-chrome',
+    name: 'openjaws-in-chrome',
+    aliases: ['claude-in-chrome'],
     description:
       'Automates your Chrome browser to interact with web pages - clicking elements, filling forms, capturing screenshots, reading console logs, and navigating sites. Opens pages in new tabs within your existing Chrome session. Requires site-level permissions before executing (configured in the extension).',
     whenToUse:

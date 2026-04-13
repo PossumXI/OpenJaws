@@ -28,7 +28,7 @@ function isDevMode(): boolean {
 }
 
 /**
- * Builds a deep link URL for Claude Desktop to resume a CLI session.
+ * Builds a deep link URL for OpenJaws Desktop to resume a CLI session.
  * Format: claude://resume?session={sessionId}&cwd={cwd}
  * In dev mode: claude-dev://resume?session={sessionId}&cwd={cwd}
  */
@@ -41,7 +41,7 @@ function buildDesktopDeepLink(sessionId: string): string {
 }
 
 /**
- * Check if Claude Desktop app is installed.
+ * Check if OpenJaws Desktop app is installed.
  * On macOS, checks for /Applications/Claude.app.
  * On Linux, checks if xdg-open can handle claude:// protocol.
  * On Windows, checks if the protocol handler exists.
@@ -81,7 +81,7 @@ async function isDesktopInstalled(): Promise<boolean> {
 }
 
 /**
- * Detect the installed Claude Desktop version.
+ * Detect the installed OpenJaws Desktop version.
  * On macOS, reads CFBundleShortVersionString from the app plist.
  * On Windows, finds the highest app-X.Y.Z directory in the Squirrel install.
  * Returns null if version cannot be determined.
@@ -200,7 +200,7 @@ async function openDeepLink(deepLinkUrl: string): Promise<boolean> {
 }
 
 /**
- * Build and open a deep link to resume the current session in Claude Desktop.
+ * Build and open a deep link to resume the current session in OpenJaws Desktop.
  * Returns an object with success status and any error message.
  */
 export async function openCurrentSessionInDesktop(): Promise<{

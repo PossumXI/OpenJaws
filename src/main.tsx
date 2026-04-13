@@ -851,7 +851,7 @@ export async function main() {
     setQuestionPreviewFormat('markdown');
   }
 
-  // Tag sessions created via `claude remote-control` so the backend can identify them
+  // Tag sessions created via `openjaws remote-control` so the backend can identify them
   if (process.env.OPENJAWS_ENVIRONMENT_KIND === 'bridge') {
     setSessionSource('remote-control');
   }
@@ -1531,7 +1531,7 @@ async function run(): Promise<CommanderCommand> {
       }
     }
 
-    // Extract Claude in Chrome option and enforce openjaws.dev subscriber check (unless user is jaws)
+    // Extract OpenJaws in Chrome option and enforce openjaws.dev subscriber check (unless user is jaws)
     const chromeOpts = options as {
       chrome?: boolean;
     };

@@ -53,6 +53,30 @@ Release verification:
 bun run verify:release
 ```
 
+Hosted GitHub verification:
+
+```powershell
+bun run verify:public
+```
+
+## Install and First Run
+
+OpenJaws is currently distributed as source plus native local builds.
+
+1. Install [Bun](https://bun.sh).
+2. Clone this repo.
+3. Run `bun install`.
+4. Run `bun run build:native`.
+5. Start the cockpit with `openjaws` or `.\openjaws.bat`.
+
+Useful first-run operator commands:
+
+- `/login` to authenticate your selected provider or web account flow
+- `/provider` to choose model/provider wiring
+- `/status` to inspect harness, route queue, worker health, and runtime wiring
+- `/immaculate` to inspect live orchestration topology and control state
+- `/chrome` and `/voice` to configure browser and speech surfaces when available
+
 ## Core Capabilities
 
 - Flight-deck TUI with compact receipts, task inspection, and crew-pressure summaries.
@@ -89,6 +113,9 @@ The current benchmark story is grounded in live Immaculate runs, not placeholder
   https://wandb.ai/arobi-arobi-technology-alliance/Immaculate/runs/5dnpoes7
 - 60-second benchmark run:
   https://wandb.ai/arobi-arobi-technology-alliance/Immaculate/runs/wm8wf7bf
+- benchmark source commit in Immaculate: `b7a571f`
+- soak lane runtime: `April 12, 2026`, `3,600,967.49 ms`
+- benchmark lane runtime: `April 12, 2026`, `61,098.97 ms`
 
 Headline soak metrics from commit `b7a571f` in Immaculate:
 
@@ -106,7 +133,7 @@ See [Benchmark Status](docs/wiki/Benchmark-Status.md) for the detailed record an
 - MIT licensed.
 - Public-release docs and contribution policy are included in this repo.
 - Generated artifacts, logs, local runtime state, datasets, and env files are excluded from version control.
-- GitHub workflow scaffolding is provided for CI, system verification, CodeQL, dependency review, and optional GitGuardian scanning when configured.
+- GitHub workflow scaffolding is provided for CI, hosted verification, CodeQL, dependency review, gitleaks, and optional GitGuardian scanning when configured with a repository secret.
 
 Start here:
 

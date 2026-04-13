@@ -910,14 +910,16 @@ export const connectToServer = memoize(
         const { createChromeContext } = await import(
           '../../utils/claudeInChrome/mcpServer.js'
         )
-        const { createClaudeForChromeMcpServer } = await import(
-          '@ant/claude-for-chrome-mcp'
+        const { createChromeMcpServer } = await import(
+          '../../utils/claudeInChrome/optionalChromeMcp.js'
         )
         const { createLinkedTransportPair } = await import(
           './InProcessTransport.js'
         )
         const context = createChromeContext(serverRef.env)
-        inProcessServer = createClaudeForChromeMcpServer(context)
+        inProcessServer = (await createChromeMcpServer(context)) as {
+          connect(transport: unknown): Promise<void>
+        }
         const [clientTransport, serverTransport] = createLinkedTransportPair()
         await inProcessServer.connect(serverTransport)
         transport = clientTransport

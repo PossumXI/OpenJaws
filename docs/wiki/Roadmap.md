@@ -2,10 +2,11 @@
 
 ## Near-Term
 
+- real Immaculate-side worker assignment policy for named off-host executors
 - remote result streaming or continuous reconciliation in the worker loop
-- harness-visible remote capability registry for off-host Gemma workers
 - tighter public-release debranding across remaining legacy help/error surfaces
 - broader contribution templates and issue triage
+- public wiki synchronization from repo docs
 
 ## Mid-Term
 
@@ -13,9 +14,25 @@
 - deeper Firecrawl-to-dataset labeling flows
 - richer benchmark publication from OpenJaws surfaces
 - more reproducible remote worker provisioning and registration
+- broader harness-backed benchmark export from OpenJaws into public operator surfaces
 
 ## Long-Term
 
 - larger-scale model routing and orchestration through Immaculate
 - cleaner cross-machine training and evaluation loops
 - more operator-visible intelligence topology inside the TUI
+
+## Current Release Blockers vs Future Work
+
+Release-critical:
+
+- clean public branding on all user-facing surfaces
+- green local `verify:release`
+- green hosted GitHub workflows
+- no leaked secrets, runtime state, or generated artifacts
+
+Future-facing:
+
+- richer remote worker fleets
+- larger benchmark publication loops
+- deeper training and evaluation automation

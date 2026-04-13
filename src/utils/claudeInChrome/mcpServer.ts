@@ -1,9 +1,3 @@
-import {
-  type ClaudeForChromeContext,
-  createClaudeForChromeMcpServer,
-  type Logger,
-  type PermissionMode,
-} from '@ant/claude-for-chrome-mcp'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { format } from 'util'
 import { shutdownDatadog } from '../../services/analytics/datadog.js'
@@ -20,6 +14,12 @@ import { logForDebugging } from '../debug.js'
 import { isEnvTruthy } from '../envUtils.js'
 import { sideQuery } from '../sideQuery.js'
 import { getAllSocketPaths, getSecureSocketPath } from './common.js'
+import {
+  createChromeMcpServer,
+  type ChromeContext,
+  type ChromeLogger as Logger,
+  type ChromePermissionMode as PermissionMode,
+} from './optionalChromeMcp.js'
 
 const EXTENSION_DOWNLOAD_URL = 'https://openjaws.dev/chrome'
 const BUG_REPORT_URL =
@@ -84,7 +84,7 @@ function isLocalBridge(): boolean {
  */
 export function createChromeContext(
   env?: Record<string, string>,
-): ClaudeForChromeContext {
+): ChromeContext {
   const logger = new DebugLogger()
   const chromeBridgeUrl = getChromeBridgeUrl()
   logger.info(`Bridge URL: ${chromeBridgeUrl ?? 'none (using native socket)'}`)
@@ -102,18 +102,18 @@ export function createChromeContext(
     }
   }
   return {
-    serverName: 'Claude in Chrome',
+    serverName: 'OpenJaws in Chrome',
     logger,
     socketPath: getSecureSocketPath(),
     getSocketPaths: getAllSocketPaths,
     clientTypeId: 'openjaws',
     onAuthenticationError: () => {
       logger.warn(
-        'Authentication error occurred. Please ensure you are logged into the Claude browser extension with the same openjaws.dev account as OpenJaws.',
+        'Authentication error occurred. Please ensure you are logged into the OpenJaws browser extension with the same openjaws.dev account as OpenJaws.',
       )
     },
     onToolCallDisconnected: () => {
-      return `Browser extension is not connected. Please ensure the Claude browser extension is installed and running (${EXTENSION_DOWNLOAD_URL}), and that you are logged into openjaws.dev with the same account as OpenJaws. If this is your first time connecting to Chrome, you may need to restart Chrome for the installation to take effect. If you continue to experience issues, please report a bug: ${BUG_REPORT_URL}`
+      return `Browser extension is not connected. Please ensure the OpenJaws browser extension is installed and running (${EXTENSION_DOWNLOAD_URL}), and that you are logged into openjaws.dev with the same account as OpenJaws. If this is your first time connecting to Chrome, you may need to restart Chrome for the installation to take effect. If you continue to experience issues, please report a bug: ${BUG_REPORT_URL}`
     },
     onExtensionPaired: (deviceId: string, name: string) => {
       saveGlobalConfig(config => {
@@ -160,13 +160,8 @@ export function createChromeContext(
     // ListTools also filters browser_task + lightning_turn out, so external
     // users never see the tools advertised. Three independent gates.
     //
-    // Types inlined: AnthropicMessagesRequest/Response live in
-    // @ant/claude-for-chrome-mcp@0.4.0 which isn't published yet. CI installs
-    // 0.3.0. The callAnthropicMessages field is also 0.4.0-only, but spreading
-    // an extra property into ClaudeForChromeContext is fine against either
-    // version — 0.3.0 sees an unknown field (allowed in spread), 0.4.0 sees a
-    // structurally-matching one. Once 0.4.0 is published, this can switch to
-    // the package's exported types and the dep can be bumped.
+    // Types are intentionally inlined here so the public repo does not need a
+    // compile-time dependency on the optional Chrome MCP package.
     ...(process.env.USER_TYPE === 'jaws' && {
       callAnthropicMessages: async (req: {
         model: string
@@ -250,7 +245,7 @@ export async function runClaudeInChromeMcpServer(): Promise<void> {
   initializeAnalyticsSink()
   const context = createChromeContext()
 
-  const server = createClaudeForChromeMcpServer(context)
+  const server = await createChromeMcpServer(context)
   const transport = new StdioServerTransport()
 
   // Exit when parent process dies (stdin pipe closes).
@@ -269,9 +264,9 @@ export async function runClaudeInChromeMcpServer(): Promise<void> {
   process.stdin.on('end', () => void shutdownAndExit())
   process.stdin.on('error', () => void shutdownAndExit())
 
-  logForDebugging('[Claude in Chrome] Starting MCP server')
-  await server.connect(transport)
-  logForDebugging('[Claude in Chrome] MCP server started')
+  logForDebugging('[OpenJaws in Chrome] Starting MCP server')
+  await (server as { connect(transport: StdioServerTransport): Promise<void> }).connect(transport)
+  logForDebugging('[OpenJaws in Chrome] MCP server started')
 }
 
 class DebugLogger implements Logger {

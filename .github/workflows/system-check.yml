@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  verify-release:
+  verify-public:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -19,5 +19,5 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - name: Install dependencies
         run: bun install --frozen-lockfile
-      - name: Full verification
-        run: bun run verify:release
+      - name: Hosted verification
+        run: bun run verify:public

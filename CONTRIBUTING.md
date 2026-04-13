@@ -2,6 +2,8 @@
 
 OpenJaws is a public MIT-licensed project. Contributions are welcome, but changes need to preserve the repo's operator focus, release hygiene, and fail-closed execution model.
 
+Maintainer and project home: [PossumX.dev](https://possumx.dev)
+
 ## Local Setup
 
 ```powershell
@@ -15,6 +17,12 @@ Recommended full verification before opening a PR:
 
 ```powershell
 bun run verify:release
+```
+
+Hosted-runner baseline used by GitHub Actions:
+
+```powershell
+bun run verify:public
 ```
 
 ## Contribution Rules
@@ -43,6 +51,13 @@ bun run verify:release
 - `bun run system:check` passes
 - docs updated if user-visible behavior changed
 - no secrets or local artifacts added
+
+## Community Workflow
+
+- File bugs and feature requests through GitHub Issues.
+- Keep pull requests focused; smaller changes are easier to verify and review.
+- Link relevant docs/wiki updates when a change affects commands, routing, orchestration, or operator surfaces.
+- Follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for project conduct expectations.
 
 ## Security
 
