@@ -1,0 +1,19 @@
+[install]
+auto = "fallback"
+
+[install.scopes]
+
+[install.scopes.npm]
+# Override npm registry if needed
+
+[run]
+# Node options
+nodeOptions = ""
+
+[build]
+# Target for compilation
+target = "bun"
+
+[build.native]
+# Build native binaries
+strip = true

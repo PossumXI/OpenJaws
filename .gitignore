@@ -1,0 +1,57 @@
+# Dependencies and builds
+node_modules/
+dist/
+.venv-gemma4/
+coverage/
+
+# Runtime state and generated artifacts
+artifacts/
+wandb/
+latest
+.tmp-config/
+.tmp-config-*/
+.claude/
+.runtime/
+.runtime-*/
+.runtime-smoke-*/
+*.bun-build
+
+# Local env and secrets
+.env
+.env.local
+.env.*.local
+.env.txt
+!.env.example
+
+# Logs and crash output
+*.log
+*.out
+*.err
+
+# Generated binaries
+*.exe
+openjaws_patched*.exe
+
+# Top-level scratch/debug assets and scripts
+/*.py
+/*.png
+/*.html
+/TaskbarTopper.cs
+/TaskbarTopper.exe
+/capture-wallpaper.ps1
+/install-screensaver.ps1
+/lively-refresh.ps1
+/move-taskbar-top.ps1
+/set-wallpaper.ps1
+/start-wallpaper.ps1
+/taskbar-top.ps1
+
+# Training/data outputs
+data/web-datasets/
+data/sft/
+training/gemma4/__pycache__/
+tmp-probe.h5
+
+# IDE / OS noise
+.DS_Store
+Thumbs.db

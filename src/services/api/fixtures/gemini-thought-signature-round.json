@@ -1,0 +1,78 @@
+{
+  "request": {
+    "system": [
+      {
+        "text": "system prompt"
+      }
+    ],
+    "messages": [
+      {
+        "type": "assistant",
+        "message": {
+          "content": [
+            {
+              "type": "text",
+              "text": "Listing files."
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_1",
+              "name": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "extra_content": {
+                "google": {
+                  "thought_signature": "sig_123"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "response": {
+    "model": "gemini-3.1-pro-preview",
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "I need to inspect the working directory."
+            },
+            {
+              "type": "tool_call",
+              "id": "call_part",
+              "function": {
+                "name": "Read",
+                "arguments": "{\"file_path\":\"package.json\"}"
+              }
+            }
+          ],
+          "tool_calls": [
+            {
+              "id": "call_main",
+              "extra_content": {
+                "google": {
+                  "thought_signature": "sig_456"
+                }
+              },
+              "function": {
+                "name": "Bash",
+                "arguments": "```json\n{\"command\":\"pwd\",}\n```"
+              }
+            }
+          ],
+          "function_call": {
+            "name": "Glob",
+            "arguments": "{\"pattern\":\"src/**/*.ts\"}"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+OpenJaws ultraplan compatibility prompt placeholder.
+
+Use this reminder channel to keep planning output concise, actionable, and
+aligned with the current OpenJaws branding.
