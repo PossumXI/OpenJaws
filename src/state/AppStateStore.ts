@@ -34,6 +34,7 @@ import type {
   ImmaculateCrewWaveState,
 } from '../utils/immaculateHarness.js'
 import type { ImmaculateDeferredTeammateLaunch } from '../utils/immaculateDeferredLaunches.js'
+import type { ExternalProviderProbeResult } from '../utils/externalProviderProbe.js'
 import type { SessionHooksState } from '../utils/hooks/sessionHooks.js'
 import type { ModelSetting } from '../utils/model/model.js'
 import type { DenialTrackingState } from '../utils/permissions/denialTracking.js'
@@ -113,6 +114,7 @@ export type AppState = DeepImmutable<{
   // Lives in AppState so pill components rendered outside PromptInput
   // (CompanionSprite in REPL.tsx) can read their own focused state.
   footerSelection: FooterItem | null
+  externalProviderProbe: ExternalProviderProbeResult | null
   immaculateCrewWave?: ImmaculateCrewWaveState
   immaculateCrewBurstBudget?: ImmaculateCrewBurstBudget
   immaculateDeferredTeammateLaunches: ImmaculateDeferredTeammateLaunch[]
@@ -494,6 +496,7 @@ export function getDefaultAppState(): AppState {
     coordinatorTaskIndex: -1,
     viewSelectionMode: 'none',
     footerSelection: null,
+    externalProviderProbe: null,
     immaculateCrewWave: undefined,
     immaculateCrewBurstBudget: undefined,
     immaculateDeferredTeammateLaunches: [],

@@ -18,8 +18,14 @@ import {
   normalizeExternalProvider,
   rememberExternalModel,
   rememberExternalProviderConfig,
+  setExternalProviderProbe,
   setCurrentExternalModel,
 } from '../../utils/externalProviderSetup.js'
+import {
+  probeExternalProviderModel,
+  resolveProviderProbeModelRef,
+  type ExternalProviderProbeResult,
+} from '../../utils/externalProviderProbe.js'
 
 const HELP_ARGS = new Set(['help', '-h', '--help'])
 const STATUS_ARGS = new Set(['', 'status', 'list', 'current'])
@@ -49,18 +55,20 @@ function buildStatusMessage(context: LocalJSXCommandContext): string {
   const currentModel =
     context.getAppState().mainLoopModel ?? getInitialSettings().model ?? null
   const currentDisplay =
-    currentModel === null ? 'default' : modelDisplayString(currentModel)
+    currentModel === null ? 'default (public default oci:Q)' : modelDisplayString(currentModel)
   const providerLines = EXTERNAL_MODEL_PROVIDERS.map(provider =>
     formatProviderStatus(provider, context),
   )
   return [
     `Current model: ${currentDisplay}`,
+    'Public default runtime: oci:Q',
     '',
     'External providers:',
     ...providerLines,
     '',
     'Examples:',
     '- /provider use oci Q',
+    '- /provider test oci Q',
     '- /provider key oci <api-key>',
     '- /provider use openai gpt-5.4',
     '- /provider model gemini gemini-3.1-pro-preview',
@@ -71,12 +79,13 @@ function buildStatusMessage(context: LocalJSXCommandContext): string {
 
 function buildHelpMessage(): string {
   return [
-    'Usage: /provider [status|use|key|clear-key|model|base-url] ...',
+    'Usage: /provider [status|use|key|clear-key|model|base-url|test] ...',
     '',
     'Commands:',
     '- /provider',
     '- /provider status',
     '- /provider use <provider> [model]',
+    '- /provider test [provider] [model]',
     '- /provider key <provider> <api-key>',
     '- /provider clear-key <provider>',
     '- /provider model <provider> <model>',
@@ -84,9 +93,32 @@ function buildHelpMessage(): string {
     '',
     'Notes:',
     '- /provider use switches the active model for this session and future launches.',
+    '- /provider test sends a lightweight live probe to the configured provider endpoint.',
     '- /provider key stores the key in user settings.json. It is convenient, but it is still plaintext on disk.',
     '- /provider model remembers a model option for the picker without switching immediately.',
   ].join('\n')
+}
+
+function buildProbeMessage(probe: ExternalProviderProbeResult): string {
+  const fixHints =
+    probe.provider === 'ollama'
+      ? [`/provider base-url ollama <url>`]
+      : [
+          `/provider key ${probe.provider} <api-key>`,
+          `/provider base-url ${probe.provider} <url>`,
+        ]
+
+  return [
+    `Provider test: ${probe.summary}`,
+    `Model: ${probe.modelRef}`,
+    `Base URL: ${probe.baseURL}`,
+    `Endpoint: ${probe.endpoint}`,
+    `Auth: ${probe.apiKeySource ?? (probe.provider === 'ollama' ? 'not required' : 'not configured')}`,
+    probe.detail ? `Detail: ${probe.detail}` : null,
+    probe.ok ? null : `Fix with: ${fixHints.join(' · ')}`,
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
 export async function call(
@@ -107,6 +139,29 @@ export async function call(
 
   const parts = args.split(/\s+/).filter(Boolean)
   const action = parts[0]?.toLowerCase()
+
+  if (action === 'test' || action === 'validate') {
+    const explicitModel = parts.slice(2).join(' ').trim()
+    const modelRef = resolveProviderProbeModelRef(
+      parts[1] ?? null,
+      explicitModel,
+      context.getAppState().mainLoopModel,
+    )
+
+    if (!modelRef) {
+      onDone(
+        'No provider model is configured yet. Use /provider use oci Q or /provider use <provider> <model> first.',
+        { display: 'system' },
+      )
+      return null
+    }
+
+    const probe = await probeExternalProviderModel(modelRef)
+    setExternalProviderProbe(context.setAppState, probe)
+    onDone(buildProbeMessage(probe), { display: 'system' })
+    return null
+  }
+
   const provider = normalizeExternalProvider(parts[1] ?? '')
 
   if (!action || !provider) {
@@ -250,9 +305,12 @@ export async function call(
         : resolved?.apiKeySource
           ? `${provider} key source: ${resolved.apiKeySource}`
           : `No ${provider} key is configured yet.`
-    onDone(`Set active model to ${modelRef}. ${keyNote}`, {
-      display: 'system',
-    })
+    onDone(
+      `Set active model to ${modelRef}. ${keyNote} Run /provider test ${provider} ${model} to validate reachability.`,
+      {
+        display: 'system',
+      },
+    )
     return null
   }
 

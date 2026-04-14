@@ -73,14 +73,16 @@ After the first launch:
 
 1. Use the built-in first-run setup lane to choose provider/model and wire your key or auth path.
 2. Fresh public installs default to `OCI:Q`; if you are keeping that path, store your key with `/provider key oci <api-key>` or set `Q_API_KEY`, `OCI_API_KEY`, or `OCI_GENAI_API_KEY`.
-3. Run `/login` if your selected provider still requires account auth.
-4. Run `/provider` if you want to change the provider/model chosen during first-run setup.
-5. Run `/status` and verify:
+3. Let the first-run lane complete its live provider check, or run `/provider test oci Q`.
+4. Run `/login` if your selected provider still requires account auth.
+5. Run `/provider` if you want to change the provider/model chosen during first-run setup.
+6. Run `/status` and verify:
    - active provider and model
+   - latest provider reachability receipt
    - runtime mode
    - sandbox state
    - routed work or worker state, if present
-6. Run `/immaculate status` if you want to inspect orchestration pressure and worker health before heavier work.
+7. Run `/immaculate status` if you want to inspect orchestration pressure and worker health before heavier work.
 
 ## Provider Switching
 
@@ -88,13 +90,15 @@ OpenJaws supports switching providers and models from the terminal, but the safe
 
 1. Run `/provider`.
 2. Select the provider and model.
-3. If you are changing execution location, also run `/remote-env` when needed.
-4. Run `/status` and confirm the active wiring before continuing.
+3. Run `/provider test <provider> <model>`.
+4. If you are changing execution location, also run `/remote-env` when needed.
+5. Run `/status` and confirm the active wiring before continuing.
 
 Common OCI/Q controls:
 
 - `/provider use oci Q`
 - `/provider key oci <api-key>`
+- `/provider test oci Q`
 - `/provider base-url oci <url>`
 
 See [Q and OCI Setup](Q-and-OCI-Setup.md) for the canonical shipped-runtime setup flow.

@@ -1,4 +1,5 @@
 import type { AppState } from '../state/AppStateStore.js'
+import type { ExternalProviderProbeResult } from './externalProviderProbe.js'
 import { settingsChangeDetector } from './settings/changeDetector.js'
 import {
   type ExternalModelProvider,
@@ -81,8 +82,19 @@ export function setCurrentExternalModel(
 ): void {
   setAppState(prev => ({
     ...prev,
+    externalProviderProbe: null,
     mainLoopModel: modelRef,
     mainLoopModelForSession: null,
+  }))
+}
+
+export function setExternalProviderProbe(
+  setAppState: AppStateUpdater,
+  probe: ExternalProviderProbeResult | null,
+): void {
+  setAppState(prev => ({
+    ...prev,
+    externalProviderProbe: probe,
   }))
 }
 

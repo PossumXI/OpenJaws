@@ -373,6 +373,15 @@ async function main() {
     }),
   )
   results.push(
+    await runJsonCommandCheck('provider-probe-live', 'bun', [
+      'run',
+      'provider:probe',
+    ], {
+      successSummary: 'Provider probe command validates OCI:Q reachability and updates app state',
+      timeoutMs: 60_000,
+    }),
+  )
+  results.push(
     await runJsonCommandCheck('deferred-launch-walkthrough-live', 'bun', [
       'run',
       'deferred-launch:walkthrough',

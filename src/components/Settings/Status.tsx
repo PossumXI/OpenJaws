@@ -9,7 +9,7 @@ import { type AppState, useAppState } from '../../state/AppState.js';
 import { getCwd } from '../../utils/cwd.js';
 import { getCurrentSessionTitle } from '../../utils/sessionStorage.js';
 import { getEnvironmentSelectionInfo } from '../../utils/teleport/environmentSelection.js';
-import { buildAccountProperties, buildAPIProviderProperties, buildExecutionProperties, buildQTrainingProperties, buildIDEProperties, buildImmaculateDiagnostics, buildImmaculateGuidanceProperties, buildImmaculateProperties, buildInstallationDiagnostics, buildInstallationHealthDiagnostics, buildMcpProperties, buildMemoryDiagnostics, buildProviderGuidanceProperties, buildSandboxProperties, buildSessionUsageProperties, buildSettingSourcesProperties, buildStartupHarnessDiagnostics, buildToolchainProperties, buildVoiceProperties, type Diagnostic, getModelDisplayLabel, type Property } from '../../utils/status.js';
+import { buildAccountProperties, buildAPIProviderProperties, buildExecutionProperties, buildProviderProbeProperties, buildQTrainingProperties, buildIDEProperties, buildImmaculateDiagnostics, buildImmaculateGuidanceProperties, buildImmaculateProperties, buildInstallationDiagnostics, buildInstallationHealthDiagnostics, buildMcpProperties, buildMemoryDiagnostics, buildProviderGuidanceProperties, buildSandboxProperties, buildSessionUsageProperties, buildSettingSourcesProperties, buildStartupHarnessDiagnostics, buildToolchainProperties, buildVoiceProperties, type Diagnostic, getModelDisplayLabel, type Property } from '../../utils/status.js';
 import { getImmaculateHarnessDeckReceipt, getImmaculateHarnessStatus, getImmaculateHarnessWorkers } from '../../utils/immaculateHarness.js';
 import type { ThemeName } from '../../utils/theme.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
@@ -45,7 +45,8 @@ function buildSecondarySection({
   environmentSelection,
   immaculateHarnessStatus,
   immaculateDeckReceipt,
-  immaculateWorkers
+  immaculateWorkers,
+  externalProviderProbe,
 }: {
   mainLoopModel: AppState['mainLoopModel'];
   mcp: AppState['mcp'];
@@ -56,6 +57,7 @@ function buildSecondarySection({
   immaculateHarnessStatus: Awaited<ReturnType<typeof getImmaculateHarnessStatus>> | null;
   immaculateDeckReceipt: Awaited<ReturnType<typeof getImmaculateHarnessDeckReceipt>> | null;
   immaculateWorkers: Awaited<ReturnType<typeof getImmaculateHarnessWorkers>> | null;
+  externalProviderProbe: AppState['externalProviderProbe'];
 }): Property[] {
   const modelLabel = getModelDisplayLabel(mainLoopModel);
   const externalModel =
@@ -68,7 +70,7 @@ function buildSecondarySection({
     configuredDefaultEnvironmentId: environmentSelection?.configuredDefaultEnvironmentId ?? null,
     missingConfiguredDefaultEnvironment: environmentSelection?.missingConfiguredDefaultEnvironment ?? false,
     suggestedEnvironmentLabel: environmentSelection?.suggestedEnvironment ? `${environmentSelection.suggestedEnvironment.name} (${environmentSelection.suggestedEnvironment.environment_id})` : null
-  }), ...buildProviderGuidanceProperties(externalModel), ...buildImmaculateProperties(immaculateHarnessStatus, immaculateDeckReceipt, immaculateWorkers), ...buildImmaculateGuidanceProperties(immaculateHarnessStatus), ...buildIDEProperties(mcp.clients, context.options.ideInstallationStatus, theme), ...buildMcpProperties(mcp.clients, theme), ...buildSandboxProperties(), ...buildToolchainProperties(), ...buildVoiceProperties(), ...buildQTrainingProperties(immaculateWorkers), ...buildSessionUsageProperties(), ...buildSettingSourcesProperties()];
+  }), ...buildProviderProbeProperties(externalModel, externalProviderProbe), ...buildProviderGuidanceProperties(externalModel), ...buildImmaculateProperties(immaculateHarnessStatus, immaculateDeckReceipt, immaculateWorkers), ...buildImmaculateGuidanceProperties(immaculateHarnessStatus), ...buildIDEProperties(mcp.clients, context.options.ideInstallationStatus, theme), ...buildMcpProperties(mcp.clients, theme), ...buildSandboxProperties(), ...buildToolchainProperties(), ...buildVoiceProperties(), ...buildQTrainingProperties(immaculateWorkers), ...buildSessionUsageProperties(), ...buildSettingSourcesProperties()];
 }
 export async function buildDiagnostics(): Promise<Diagnostic[]> {
   return [...(await buildInstallationDiagnostics()), ...(await buildInstallationHealthDiagnostics()), ...(await buildStartupHarnessDiagnostics()), ...(await buildImmaculateDiagnostics()), ...(await buildMemoryDiagnostics())];
@@ -96,6 +98,7 @@ export function Status({
   diagnosticsPromise
 }: Props): React.ReactNode {
   const mainLoopModel = useAppState(s => s.mainLoopModel);
+  const externalProviderProbe = useAppState(s => s.externalProviderProbe);
   const mcp = useAppState(s => s.mcp);
   const replBridgeStartupIssue = useAppState(s => s.replBridgeStartupIssue);
   const [environmentSelectionPromise] = React.useState(() => getEnvironmentSelectionInfo().catch(() => null));
@@ -120,9 +123,10 @@ export function Status({
       environmentSelection,
       immaculateHarnessStatus,
       immaculateDeckReceipt,
-      immaculateWorkers
+      immaculateWorkers,
+      externalProviderProbe
     })
-  ], [context, environmentSelection, immaculateDeckReceipt, immaculateHarnessStatus, immaculateWorkers, mainLoopModel, mcp, primarySection, replBridgeStartupIssue, theme]);
+  ], [context, environmentSelection, externalProviderProbe, immaculateDeckReceipt, immaculateHarnessStatus, immaculateWorkers, mainLoopModel, mcp, primarySection, replBridgeStartupIssue, theme]);
   const grow = useIsInsideModal() ? 1 : undefined;
 
   return <Box flexDirection="column" flexGrow={grow}>

@@ -87,18 +87,79 @@ async function startHarnessServer(): Promise<{
   }
 }
 
+async function startProviderServer(expectedApiKey: string): Promise<{
+  url: string
+  close: () => Promise<void>
+}> {
+  const server = http.createServer((req, res) => {
+    const writeJson = (status: number, body: unknown): void => {
+      res.statusCode = status
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify(body))
+    }
+
+    if (req.url === '/models') {
+      if (req.headers.authorization !== `Bearer ${expectedApiKey}`) {
+        writeJson(401, { message: 'Unauthorized' })
+        return
+      }
+
+      writeJson(200, {
+        data: [{ id: 'Q' }, { id: 'Q-coder' }],
+      })
+      return
+    }
+
+    writeJson(404, { message: 'not found' })
+  })
+
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => resolve())
+  })
+
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to start onboarding walkthrough provider server')
+  }
+
+  return {
+    url: `http://127.0.0.1:${address.port}`,
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close(error => {
+          if (error) {
+            reject(error)
+            return
+          }
+          resolve()
+        })
+      }),
+  }
+}
+
 async function main(): Promise<void> {
+  const expectedApiKey = 'sk-openjaws-onboarding-test'
   const tempConfigDir = mkdtempSync(
     join(tmpdir(), 'openjaws-onboarding-walkthrough-'),
   )
   const previousConfigDir = process.env.CLAUDE_CONFIG_DIR
   const previousAnthropicModel = process.env.ANTHROPIC_MODEL
   const previousHarnessUrl = process.env.IMMACULATE_HARNESS_URL
+  const previousQBaseUrl = process.env.Q_BASE_URL
+  const previousQApiKey = process.env.Q_API_KEY
+  const previousOciApiKey = process.env.OCI_API_KEY
+  const previousOciGenAiApiKey = process.env.OCI_GENAI_API_KEY
   const harness = await startHarnessServer()
+  const provider = await startProviderServer(expectedApiKey)
 
   process.env.CLAUDE_CONFIG_DIR = tempConfigDir
   process.env.ANTHROPIC_MODEL = 'oci:Q'
   process.env.IMMACULATE_HARNESS_URL = harness.url
+  process.env.Q_BASE_URL = provider.url
+  delete process.env.Q_API_KEY
+  delete process.env.OCI_API_KEY
+  delete process.env.OCI_GENAI_API_KEY
 
   try {
     await setMacroVersionFromPackageJson()
@@ -189,24 +250,33 @@ async function main(): Promise<void> {
 
     if (keyOrImmaculateFrame.includes('API key')) {
       recordStep('provider-key', keyOrImmaculateFrame)
-      stdin.write('sk-openjaws-onboarding-test')
+      stdin.write(expectedApiKey)
       stdin.write('\r')
     } else {
       recordStep('provider-key-existing', keyOrImmaculateFrame)
     }
 
+    const providerProbeFrame = await waitForFrame(
+      readFrame,
+      frame =>
+        frame.includes('reachability') &&
+        frame.includes('reachable') &&
+        frame.includes('/models'),
+      WALKTHROUGH_TIMEOUT_MS,
+      'Onboarding walkthrough did not confirm provider reachability',
+    )
+    recordStep('provider-reachability', providerProbeFrame)
+    await confirmSelection()
+
     const immaculateFrame =
-      keyOrImmaculateFrame.includes('Immaculate reachability') &&
-      keyOrImmaculateFrame.includes('immaculate online')
-        ? keyOrImmaculateFrame
-        : await waitForFrame(
-            readFrame,
-            frame =>
-              frame.includes('Immaculate reachability') &&
-              frame.includes('immaculate online'),
-            WALKTHROUGH_TIMEOUT_MS,
-            'Onboarding walkthrough did not confirm Immaculate reachability',
-          )
+      await waitForFrame(
+        readFrame,
+        frame =>
+          frame.includes('Immaculate reachability') &&
+          frame.includes('immaculate online'),
+        WALKTHROUGH_TIMEOUT_MS,
+        'Onboarding walkthrough did not confirm Immaculate reachability',
+      )
     recordStep('immaculate', immaculateFrame)
     await confirmSelection()
 
@@ -260,6 +330,27 @@ async function main(): Promise<void> {
     } else {
       process.env.IMMACULATE_HARNESS_URL = previousHarnessUrl
     }
+    if (previousQBaseUrl === undefined) {
+      delete process.env.Q_BASE_URL
+    } else {
+      process.env.Q_BASE_URL = previousQBaseUrl
+    }
+    if (previousQApiKey === undefined) {
+      delete process.env.Q_API_KEY
+    } else {
+      process.env.Q_API_KEY = previousQApiKey
+    }
+    if (previousOciApiKey === undefined) {
+      delete process.env.OCI_API_KEY
+    } else {
+      process.env.OCI_API_KEY = previousOciApiKey
+    }
+    if (previousOciGenAiApiKey === undefined) {
+      delete process.env.OCI_GENAI_API_KEY
+    } else {
+      process.env.OCI_GENAI_API_KEY = previousOciGenAiApiKey
+    }
+    await provider.close()
     await harness.close()
     rmSync(tempConfigDir, { recursive: true, force: true })
   }

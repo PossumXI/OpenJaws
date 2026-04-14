@@ -16,12 +16,22 @@ import {
   getSavedOrConfiguredModelForProvider,
   rememberExternalModel,
   rememberExternalProviderConfig,
+  setExternalProviderProbe,
   setCurrentExternalModel,
 } from '../utils/externalProviderSetup.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
+import {
+  probeExternalProviderModel,
+  type ExternalProviderProbeResult,
+} from '../utils/externalProviderProbe.js'
 
 type RuntimeChoice = ExternalModelProvider | 'openjaws-account'
-type SetupStage = 'runtime' | 'model' | 'key'
+type SetupStage = 'runtime' | 'model' | 'key' | 'probe'
+
+type ProbeState = {
+  loading: boolean
+  result: ExternalProviderProbeResult | null
+}
 
 type Props = {
   oauthEnabled: boolean
@@ -71,6 +81,11 @@ export function OnboardingRuntimeSetup({
   const [apiKeyValue, setApiKeyValue] = useState('')
   const [apiKeyCursorOffset, setApiKeyCursorOffset] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [probeNonce, setProbeNonce] = useState(0)
+  const [probeState, setProbeState] = useState<ProbeState>({
+    loading: false,
+    result: null,
+  })
   const initialRuntimeChoice = useMemo(
     () => getInitialRuntimeChoice(),
     [],
@@ -133,6 +148,18 @@ export function OnboardingRuntimeSetup({
     [setAppState],
   )
 
+  const beginProbe = useCallback((provider: ExternalModelProvider, model: string) => {
+    setError(null)
+    setSelectedProvider(provider)
+    setModelValue(model.trim())
+    setProbeState({
+      loading: true,
+      result: null,
+    })
+    setStage('probe')
+    setProbeNonce(prev => prev + 1)
+  }, [])
+
   const handleRuntimeChoice = useCallback(
     (choice: RuntimeChoice) => {
       setError(null)
@@ -184,9 +211,9 @@ export function OnboardingRuntimeSetup({
         return
       }
 
-      onDone(true)
+      beginProbe(selectedProvider, trimmedModel)
     },
-    [applyExternalSelection, onDone, selectedProvider],
+    [applyExternalSelection, beginProbe, selectedProvider],
   )
 
   const handleApiKeySubmit = useCallback(
@@ -206,10 +233,44 @@ export function OnboardingRuntimeSetup({
         return
       }
 
-      onDone(true)
+      beginProbe(selectedProvider, modelValue)
     },
-    [applyExternalSelection, modelValue, onDone, selectedProvider],
+    [applyExternalSelection, beginProbe, modelValue, selectedProvider],
   )
+
+  React.useEffect(() => {
+    if (stage !== 'probe' || !selectedProvider || !modelValue.trim()) {
+      return
+    }
+
+    let cancelled = false
+    const modelRef = buildExternalProviderModelRef(
+      selectedProvider,
+      modelValue.trim(),
+    )
+
+    setProbeState({
+      loading: true,
+      result: null,
+    })
+
+    void (async () => {
+      const result = await probeExternalProviderModel(modelRef)
+      if (cancelled) {
+        return
+      }
+
+      setExternalProviderProbe(setAppState, result)
+      setProbeState({
+        loading: false,
+        result,
+      })
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [modelValue, probeNonce, selectedProvider, setAppState, stage])
 
   if (stage === 'runtime') {
     return (
@@ -269,6 +330,98 @@ export function OnboardingRuntimeSetup({
         </Box>
         <Text dimColor>Enter to continue with this model.</Text>
         {error ? <Text color="error">{error}</Text> : null}
+      </Box>
+    )
+  }
+
+  if (stage === 'probe') {
+    const providerLabel = selectedProvider
+      ? getExternalProviderDefaults(selectedProvider).label
+      : 'Provider'
+    const probeOptions: OptionWithDescription<'continue' | 'retry' | 'edit'>[] = [
+      {
+        label:
+          probeState.result?.ok === false ? 'Continue anyway' : 'Continue',
+        value: 'continue',
+        description:
+          probeState.result?.ok === false
+            ? 'Keep startup moving and fix provider wiring later from the deck.'
+            : 'Provider wiring is reachable enough to continue.',
+      },
+      {
+        label: 'Retry check',
+        value: 'retry',
+        description: 'Run the live provider check again.',
+      },
+      {
+        label: 'Edit setup',
+        value: 'edit',
+        description: 'Go back and change the model or key before continuing.',
+      },
+    ]
+
+    if (probeState.loading || !probeState.result) {
+      return (
+        <Box flexDirection="column" gap={1} paddingLeft={1}>
+          <Text bold>Validate {providerLabel} wiring</Text>
+          <Box width={78}>
+            <Text dimColor>
+              Running a lightweight live reachability check before OpenJaws
+              enters the main deck.
+            </Text>
+          </Box>
+        </Box>
+      )
+    }
+
+    return (
+      <Box flexDirection="column" gap={1} paddingLeft={1}>
+        <Text bold>{providerLabel} reachability</Text>
+        <Box width={80}>
+          <Text dimColor>{probeState.result.summary}</Text>
+        </Box>
+        <Text dimColor>Model: {probeState.result.modelRef}</Text>
+        <Text dimColor>Base URL: {probeState.result.baseURL}</Text>
+        <Text dimColor>Endpoint: {probeState.result.endpoint}</Text>
+        <Text dimColor>
+          Auth:{' '}
+          {probeState.result.apiKeySource ??
+            (probeState.result.provider === 'ollama'
+              ? 'not required'
+              : 'not configured')}
+        </Text>
+        {probeState.result.detail ? (
+          <Box width={80}>
+            {probeState.result.ok ? (
+              <Text dimColor>{probeState.result.detail}</Text>
+            ) : (
+              <Text color="warning">{probeState.result.detail}</Text>
+            )}
+          </Box>
+        ) : null}
+        <Box width={80}>
+          <Text dimColor>
+            Controls: /provider test {probeState.result.provider}{' '}
+            {probeState.result.model} · /provider base-url{' '}
+            {probeState.result.provider} &lt;url&gt;
+          </Text>
+        </Box>
+        <Select
+          options={probeOptions}
+          defaultValue="continue"
+          defaultFocusValue="continue"
+          onChange={value => {
+            if (value === 'retry') {
+              setProbeNonce(prev => prev + 1)
+              return
+            }
+            if (value === 'edit') {
+              setStage(selectedProvider === 'ollama' ? 'model' : 'key')
+              return
+            }
+            onDone(true)
+          }}
+        />
       </Box>
     )
   }

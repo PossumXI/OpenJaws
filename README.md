@@ -158,19 +158,21 @@ Useful first-run operator commands:
 
 - `/login` to authenticate your selected provider or OpenJaws account flow
 - `/provider` to choose provider/model wiring or rotate keys later
+- `/provider test [provider] [model]` to prove the selected provider path is reachable
 - `/status` to inspect harness, route queue, worker health, and runtime wiring
 - `/immaculate` to inspect live orchestration topology and control state
 - `/chrome` and `/voice` to configure browser and speech surfaces when available
 
-Fresh installs also get a first-run setup lane inside the TUI for provider/model selection, API-key wiring, and live Immaculate reachability checks before heavier work starts.
+Fresh installs also get a first-run setup lane inside the TUI for provider/model selection, API-key wiring, live provider reachability checks, and live Immaculate reachability checks before heavier work starts.
 
 Recommended first-run checklist:
 
 1. Start OpenJaws.
 2. If you are staying on the public default runtime, store your `OCI` key with `/provider key oci <api-key>` or set `Q_API_KEY`, `OCI_API_KEY`, or `OCI_GENAI_API_KEY`.
-3. Run `/provider` if you want to switch away from `OCI:Q`, rotate keys, or override the base URL.
-4. Run `/status` and confirm runtime, sandbox, route queue, voice state, and provider wiring.
-5. Run `/immaculate status` if you want to inspect orchestration state before heavy work.
+3. Run `/provider test oci Q` to confirm the selected `OCI:Q` path is reachable.
+4. Run `/provider` if you want to switch away from `OCI:Q`, rotate keys, or override the base URL.
+5. Run `/status` and confirm runtime, sandbox, route queue, voice state, provider wiring, and the latest reachability receipt.
+6. Run `/immaculate status` if you want to inspect orchestration state before heavy work.
 
 ## Provider Switching
 
@@ -180,13 +182,15 @@ Safe operator flow:
 
 1. Run `/provider`.
 2. Select the provider and model you intend to use.
-3. Run `/status`.
-4. Confirm the active provider, model, runtime path, and any remote or routed execution state before starting work.
+3. Run `/provider test <provider> <model>` to confirm the live endpoint before heavier work.
+4. Run `/status`.
+5. Confirm the active provider, model, runtime path, and any remote or routed execution state before starting work.
 
 Common OCI/Q controls:
 
 - `/provider use oci Q`
 - `/provider key oci <api-key>`
+- `/provider test oci Q`
 - `/provider base-url oci <url>`
 
 When switching execution strategy, use the matching controls:

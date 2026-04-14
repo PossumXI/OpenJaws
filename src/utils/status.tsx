@@ -52,6 +52,7 @@ import type { ThemeName } from './theme.js';
 import { getGitBashStatus } from './windowsPaths.js';
 import { evaluateStartupHarness, summarizeStartupHarness } from './startupHarness.js';
 import { getElevenLabsConfig } from '../services/voiceOutput.js';
+import type { ExternalProviderProbeResult } from './externalProviderProbe.js';
 import {
   getQTrainingRouteQueueStatusSummary,
   getLatestQTrainingSnapshot,
@@ -280,6 +281,7 @@ export function buildProviderGuidanceProperties(
       value: [
         '/provider status',
         '/provider use <provider> <model>',
+        '/provider test [provider] [model]',
         'Settings > Config > Model',
       ],
     },
@@ -291,22 +293,24 @@ export function buildProviderGuidanceProperties(
   if (externalModel.provider === 'ollama') {
     properties.push({
       label: `${externalModel.label} setup`,
-      value: [
-        '/provider use ollama <model>',
-        '/provider base-url ollama <url>',
-        `env ${defaults.baseURLEnvVars.join(' / ')}`,
-      ],
+        value: [
+          '/provider use ollama <model>',
+          '/provider test ollama <model>',
+          '/provider base-url ollama <url>',
+          `env ${defaults.baseURLEnvVars.join(' / ')}`,
+        ],
     })
     return properties
   }
   if (!externalModel.apiKeySource) {
     properties.push({
       label: `${externalModel.label} setup`,
-      value: [
-        `/provider key ${externalModel.provider} <api-key>`,
-        `/provider base-url ${externalModel.provider} <url>`,
-        `env ${defaults.apiKeyEnvVars.join(' / ')}`,
-        `settings.llmProviders.${externalModel.provider}.apiKey`,
+        value: [
+          `/provider key ${externalModel.provider} <api-key>`,
+          `/provider test ${externalModel.provider} <model>`,
+          `/provider base-url ${externalModel.provider} <url>`,
+          `env ${defaults.apiKeyEnvVars.join(' / ')}`,
+          `settings.llmProviders.${externalModel.provider}.apiKey`,
       ],
     })
     return properties
@@ -317,10 +321,32 @@ export function buildProviderGuidanceProperties(
         `/provider key ${externalModel.provider} <api-key>`,
         `/provider clear-key ${externalModel.provider}`,
         `/provider model ${externalModel.provider} <model>`,
+        `/provider test ${externalModel.provider} <model>`,
         `/provider base-url ${externalModel.provider} <url>`,
       ],
     })
   return properties
+}
+export function buildProviderProbeProperties(
+  externalModel: ResolvedExternalModelConfig | null = null,
+  probe: ExternalProviderProbeResult | null = null,
+): Property[] {
+  if (!externalModel || !probe || probe.modelRef !== externalModel.rawModel) {
+    return []
+  }
+
+  return [{
+    label: `${externalModel.label} reachability`,
+    value: [
+      probe.ok ? 'validated' : 'failed',
+      probe.endpointLabel,
+      probe.httpStatus ? `HTTP ${probe.httpStatus}` : probe.code.replace(/_/g, ' '),
+      probe.apiKeySource ?? (probe.provider === 'ollama' ? 'auth not required' : 'auth not configured'),
+    ],
+  }, ...(probe.detail && !probe.ok ? [{
+    label: `${externalModel.label} probe detail`,
+    value: probe.detail,
+  }] : [])]
 }
 export function buildImmaculateGuidanceProperties(
   harnessStatus: ImmaculateGuidanceStatus | null = null,

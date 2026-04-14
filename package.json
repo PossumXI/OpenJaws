@@ -38,6 +38,7 @@
     "q-route:remote-completion": "bun scripts/q-route-remote-completion-live.ts",
     "deferred-launch:walkthrough": "bun scripts/deferred-launch-walkthrough.tsx",
     "deferred-launch:controls": "bun scripts/deferred-launch-controls-live.ts",
+    "provider:probe": "bun scripts/provider-probe-live.ts",
     "onboarding:walkthrough": "bun scripts/onboarding-setup-walkthrough.tsx",
     "settings:walkthrough": "bun scripts/settings-walkthrough.tsx",
     "system:check": "bun scripts/system-check.ts"

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   buildImmaculateGuidanceProperties,
+  buildProviderProbeProperties,
   buildProviderGuidanceProperties,
 } from './status.js'
 
@@ -12,6 +13,7 @@ describe('buildProviderGuidanceProperties', () => {
         value: [
           '/provider status',
           '/provider use <provider> <model>',
+          '/provider test [provider] [model]',
           'Settings > Config > Model',
         ],
       },
@@ -31,6 +33,7 @@ describe('buildProviderGuidanceProperties', () => {
         value: [
           '/provider status',
           '/provider use <provider> <model>',
+          '/provider test [provider] [model]',
           'Settings > Config > Model',
         ],
       },
@@ -38,6 +41,7 @@ describe('buildProviderGuidanceProperties', () => {
         label: 'OpenAI setup',
         value: [
           '/provider key openai <api-key>',
+          '/provider test openai <model>',
           '/provider base-url openai <url>',
           'env OPENAI_API_KEY',
           'settings.llmProviders.openai.apiKey',
@@ -59,6 +63,7 @@ describe('buildProviderGuidanceProperties', () => {
         value: [
           '/provider status',
           '/provider use <provider> <model>',
+          '/provider test [provider] [model]',
           'Settings > Config > Model',
         ],
       },
@@ -66,6 +71,7 @@ describe('buildProviderGuidanceProperties', () => {
         label: 'OCI setup',
         value: [
           '/provider key oci <api-key>',
+          '/provider test oci <model>',
           '/provider base-url oci <url>',
           'env Q_API_KEY / OCI_API_KEY / OCI_GENAI_API_KEY',
           'settings.llmProviders.oci.apiKey',
@@ -87,6 +93,7 @@ describe('buildProviderGuidanceProperties', () => {
         value: [
           '/provider status',
           '/provider use <provider> <model>',
+          '/provider test [provider] [model]',
           'Settings > Config > Model',
         ],
       },
@@ -94,9 +101,100 @@ describe('buildProviderGuidanceProperties', () => {
         label: 'Ollama setup',
         value: [
           '/provider use ollama <model>',
+          '/provider test ollama <model>',
           '/provider base-url ollama <url>',
           'env OLLAMA_BASE_URL',
         ],
+      },
+    ])
+  })
+})
+
+describe('buildProviderProbeProperties', () => {
+  test('returns no probe properties when the active model does not match the probe', () => {
+    expect(
+      buildProviderProbeProperties(
+        {
+          rawModel: 'oci:Q',
+          provider: 'oci',
+          model: 'Q',
+          label: 'OCI',
+          source: 'prefix',
+          apiKey: 'sk-test',
+          apiKeySource: 'settings.llmProviders.oci.apiKey',
+          baseURL: 'https://example.com/openai/v1',
+          baseURLSource: null,
+          headers: {},
+        },
+        {
+          ok: true,
+          code: 'ok',
+          provider: 'openai',
+          label: 'OpenAI',
+          model: 'gpt-5.4',
+          modelRef: 'openai:gpt-5.4',
+          baseURL: 'https://api.openai.com/v1',
+          baseURLSource: null,
+          apiKeySource: 'OPENAI_API_KEY',
+          endpoint: 'https://api.openai.com/v1/models',
+          endpointLabel: '/models',
+          method: 'GET',
+          checkedAt: 1,
+          httpStatus: 200,
+          modelCount: 10,
+          summary: 'OpenAI:gpt-5.4 reachable · /models · 200 · 10 models',
+        },
+      ),
+    ).toEqual([])
+  })
+
+  test('surfaces the latest matching reachability receipt', () => {
+    expect(
+      buildProviderProbeProperties(
+        {
+          rawModel: 'oci:Q',
+          provider: 'oci',
+          model: 'Q',
+          label: 'OCI',
+          source: 'prefix',
+          apiKey: 'sk-test',
+          apiKeySource: 'settings.llmProviders.oci.apiKey',
+          baseURL: 'https://example.com/openai/v1',
+          baseURLSource: null,
+          headers: {},
+        },
+        {
+          ok: false,
+          code: 'auth_failed',
+          provider: 'oci',
+          label: 'OCI',
+          model: 'Q',
+          modelRef: 'oci:Q',
+          baseURL: 'https://example.com/openai/v1',
+          baseURLSource: null,
+          apiKeySource: 'settings.llmProviders.oci.apiKey',
+          endpoint: 'https://example.com/openai/v1/models',
+          endpointLabel: '/models',
+          method: 'GET',
+          checkedAt: 1,
+          httpStatus: 401,
+          detail: 'The provider rejected the configured key or auth headers.',
+          summary: 'OCI:Q failed · auth rejected (401)',
+        },
+      ),
+    ).toEqual([
+      {
+        label: 'OCI reachability',
+        value: [
+          'failed',
+          '/models',
+          'HTTP 401',
+          'settings.llmProviders.oci.apiKey',
+        ],
+      },
+      {
+        label: 'OCI probe detail',
+        value: 'The provider rejected the configured key or auth headers.',
       },
     ])
   })
