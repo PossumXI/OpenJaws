@@ -60,6 +60,18 @@ Immaculate is not just a future idea in this project. The current benchmark stor
 - 60-second benchmark snapshot from a live Immaculate run
 - a plain explanation of why those numbers matter for OpenJaws routing, pacing, retries, and remote execution
 
+OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
+
+- `bun run q:bridgebench` evaluates audited packs like `all`, `coding`, `agentic`, and `security`
+- `bun run q:curriculum` runs bounded specialization passes and benchmarks the resulting adapters back against those packs
+- the local lane writes `reward.json` and `reward-details.json` so the results are easy to compare with Rewardkit-style tooling
+
+Honest boundary:
+
+- the local `Q` lane is for in-repo evaluation and tuning
+- the public benchmark source of truth still lives in Immaculate
+- OpenJaws is not yet pretending to be a full Harbor / Terminal-Bench agent adapter
+
 ## Public Release Notes
 
 - OpenJaws is public and MIT licensed, but it is still changing quickly.

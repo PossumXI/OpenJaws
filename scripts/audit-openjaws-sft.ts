@@ -1,9 +1,18 @@
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import { dirname, resolve } from 'path'
 import {
+  buildOpenJawsSftBundleManifest,
+  groupPreparedSamplesByLanguage,
+  groupPreparedSamplesByTag,
+  summarizePreparedOpenJawsSftSamples,
+} from '../src/utils/openjawsSftBundles.js'
+import {
   auditOpenJawsSftSamples,
   filterCleanPreparedOpenJawsSftSamples,
 } from '../src/utils/openjawsSftQuality.js'
+import {
+  type OpenJawsSftPreparationManifest,
+} from '../src/utils/openjawsSftPreparation.js'
 import type { PreparedOpenJawsSftSample } from '../src/utils/openjawsSftPreparation.js'
 
 type CliOptions = {
@@ -78,6 +87,9 @@ async function main() {
   const cleanSamples = filterCleanPreparedOpenJawsSftSamples(samples)
   const cleanTrain = cleanSamples.filter(sample => sample.split === 'train')
   const cleanEval = cleanSamples.filter(sample => sample.split === 'eval')
+  const cleanManifest = summarizePreparedOpenJawsSftSamples(cleanSamples)
+  const tagGroups = groupPreparedSamplesByTag(cleanSamples)
+  const languageGroups = groupPreparedSamplesByLanguage(cleanSamples)
   const flagged = audit.results
     .filter(result => result.issues.length > 0)
     .map(result => ({
@@ -93,17 +105,65 @@ async function main() {
   await writeJsonl(resolve(options.outDir, 'all.jsonl'), cleanSamples)
   await writeJsonl(resolve(options.outDir, 'train.jsonl'), cleanTrain)
   await writeJsonl(resolve(options.outDir, 'eval.jsonl'), cleanEval)
+  for (const [tag, group] of Object.entries(tagGroups)) {
+    await writeJsonl(resolve(options.outDir, 'tags', tag, 'all.jsonl'), group.all)
+    await writeJsonl(
+      resolve(options.outDir, 'tags', tag, 'train.jsonl'),
+      group.train,
+    )
+    await writeJsonl(
+      resolve(options.outDir, 'tags', tag, 'eval.jsonl'),
+      group.eval,
+    )
+  }
+  for (const [language, group] of Object.entries(languageGroups)) {
+    await writeJsonl(
+      resolve(options.outDir, 'languages', language, 'all.jsonl'),
+      group.all,
+    )
+    await writeJsonl(
+      resolve(options.outDir, 'languages', language, 'train.jsonl'),
+      group.train,
+    )
+    await writeJsonl(
+      resolve(options.outDir, 'languages', language, 'eval.jsonl'),
+      group.eval,
+    )
+  }
+  await writeFile(
+    resolve(options.outDir, 'manifest.json'),
+    `${JSON.stringify(cleanManifest satisfies OpenJawsSftPreparationManifest, null, 2)}\n`,
+    'utf8',
+  )
+  const bundleManifest = buildOpenJawsSftBundleManifest({
+    bundleId: `audited-${Date.now()}`,
+    sourcePath: options.inputPath,
+    outDir: options.outDir,
+    preparedManifest: cleanManifest,
+    samples: cleanSamples,
+  })
+  await writeFile(
+    resolve(options.outDir, 'bundle-manifest.json'),
+    `${JSON.stringify(bundleManifest, null, 2)}\n`,
+    'utf8',
+  )
   await writeFile(
     resolve(options.outDir, 'audit-report.json'),
     `${JSON.stringify(
       {
         inputPath: options.inputPath,
         outputDir: options.outDir,
-        cleanCounts: {
-          all: cleanSamples.length,
-          train: cleanTrain.length,
-          eval: cleanEval.length,
-        },
+        cleanCounts: cleanManifest.splitCounts
+          ? {
+              all: cleanSamples.length,
+              train: cleanManifest.splitCounts.train,
+              eval: cleanManifest.splitCounts.eval,
+            }
+          : {
+              all: cleanSamples.length,
+              train: cleanTrain.length,
+              eval: cleanEval.length,
+            },
         ...audit.summary,
         flaggedSamples: flagged,
       },
@@ -120,10 +180,11 @@ async function main() {
         outDir: options.outDir,
         cleanCounts: {
           all: cleanSamples.length,
-          train: cleanTrain.length,
-          eval: cleanEval.length,
+          train: cleanManifest.splitCounts.train,
+          eval: cleanManifest.splitCounts.eval,
         },
         ...audit.summary,
+        bundleManifest: resolve(options.outDir, 'bundle-manifest.json'),
       },
       null,
       2,

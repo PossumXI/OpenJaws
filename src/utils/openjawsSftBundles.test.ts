@@ -3,6 +3,7 @@ import {
   buildOpenJawsSftBundleManifest,
   groupPreparedSamplesByLanguage,
   groupPreparedSamplesByTag,
+  summarizePreparedOpenJawsSftSamples,
 } from './openjawsSftBundles.js'
 import type { PreparedOpenJawsSftSample } from './openjawsSftPreparation.js'
 
@@ -101,5 +102,59 @@ describe('openjaws SFT bundles', () => {
     expect(manifest.files.languages.python.files.eval).toBe(
       'languages/python/eval.jsonl',
     )
+  })
+
+  it('can summarize prepared samples without a separate preparation manifest', () => {
+    const manifest = summarizePreparedOpenJawsSftSamples(samples)
+
+    expect(manifest).toEqual({
+      totalInputSamples: 3,
+      dedupedSamples: 3,
+      droppedDuplicates: 0,
+      splitCounts: {
+        train: 2,
+        eval: 1,
+      },
+      tagCounts: {
+        coding: 2,
+        agentic: 1,
+        security: 1,
+        general: 1,
+      },
+      languageCounts: {
+        typescript: 1,
+        javascript: 0,
+        python: 1,
+        go: 0,
+        rust: 0,
+        java: 0,
+        csharp: 0,
+        cpp: 0,
+        shell: 1,
+        powershell: 0,
+        json: 0,
+        yaml: 0,
+        sql: 0,
+        html: 0,
+        css: 0,
+        unknown: 1,
+      },
+    })
+  })
+
+  it('builds a bundle manifest from samples alone when no preparation manifest is passed', () => {
+    const manifest = buildOpenJawsSftBundleManifest({
+      bundleId: 'bundle-derived',
+      sourcePath: 'D:\\openjaws\\OpenJaws\\data\\sft\\openjaws-q.jsonl',
+      outDir: 'D:\\openjaws\\OpenJaws\\data\\sft\\audited-demo',
+      samples,
+    })
+
+    expect(manifest.splitCounts).toEqual({
+      train: 2,
+      eval: 1,
+    })
+    expect(manifest.tagCounts.coding).toBe(2)
+    expect(manifest.languageCounts.python).toBe(1)
   })
 })

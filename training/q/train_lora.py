@@ -7,7 +7,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from datasets import load_dataset
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig, PeftModel, get_peft_model
 import torch
 from transformers import (
     AutoModelForCausalLM,
@@ -110,6 +110,38 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--wandb-project", default=None)
     parser.add_argument("--wandb-entity", default=None)
     parser.add_argument("--run-name", default=None)
+    parser.add_argument(
+        "--eval-only",
+        action="store_true",
+        help="Skip training and run only the evaluation lane against the selected pack",
+    )
+    parser.add_argument(
+        "--adapter-dir",
+        default=None,
+        help="Optional LoRA adapter directory to load before evaluation",
+    )
+    parser.add_argument(
+        "--curriculum-profile",
+        default=None,
+        help="Optional curriculum profile label written into run metadata",
+    )
+    parser.add_argument(
+        "--benchmark-pack",
+        default=None,
+        help="Optional benchmark pack label written into run metadata",
+    )
+    parser.add_argument(
+        "--max-train-samples",
+        type=int,
+        default=None,
+        help="Optional cap for train samples after filtering",
+    )
+    parser.add_argument(
+        "--max-eval-samples",
+        type=int,
+        default=None,
+        help="Optional cap for eval samples after filtering",
+    )
     return parser.parse_args()
 
 
@@ -146,19 +178,31 @@ def resolve_report_to(args: argparse.Namespace) -> list[str]:
     return []
 
 
-def build_metrics_summary(log_history: list[dict]) -> dict:
-    train_metrics = None
-    eval_metrics = None
+def build_metrics_summary(
+    log_history: list[dict],
+    explicit_train_metrics: dict | None = None,
+    explicit_eval_metrics: dict | None = None,
+) -> dict:
+    train_metrics = explicit_train_metrics
+    eval_metrics = explicit_eval_metrics
     for row in log_history:
         if "eval_loss" in row:
             eval_metrics = row
-        if "train_runtime" in row or "loss" in row:
+        if "train_runtime" in row or "loss" in row or "train_loss" in row:
             train_metrics = row
     return {
         "latest_train_metrics": train_metrics,
         "latest_eval_metrics": eval_metrics,
         "log_history": log_history,
     }
+
+
+def cap_dataset_rows(dataset_split, limit: int | None):
+    if dataset_split is None or limit is None or limit < 0:
+        return dataset_split
+    if len(dataset_split) <= limit:
+        return dataset_split
+    return dataset_split.select(range(limit))
 
 
 def now_iso() -> str:
@@ -258,13 +302,19 @@ def main() -> None:
             )
         )
 
-    raw_eval_dataset = dataset["eval"] if "eval" in dataset and len(dataset["eval"]) > 0 else None
+    raw_train_dataset = cap_dataset_rows(dataset["train"], args.max_train_samples)
+    raw_eval_dataset = (
+        cap_dataset_rows(dataset["eval"], args.max_eval_samples)
+        if "eval" in dataset and len(dataset["eval"]) > 0
+        else None
+    )
     run_state_path = Path(args.output_dir, "run-state.json")
     run_state_writer = RunStateWriter(
         run_state_path,
         {
             "status": "initializing",
             "executionMode": args.execution_mode,
+            "mode": "eval_only" if args.eval_only else "train",
             "pid": os.getpid(),
             "createdAt": now_iso(),
             "baseModel": args.base_model,
@@ -274,11 +324,17 @@ def main() -> None:
             "runName": args.run_name,
             "selectedTags": sorted(selected_tags),
             "selectedLanguages": sorted(selected_languages),
+            "evalOnly": args.eval_only,
+            "adapterDir": args.adapter_dir,
+            "curriculumProfile": args.curriculum_profile,
+            "benchmarkPack": args.benchmark_pack,
             "routeManifestPath": args.route_manifest,
             "routeRequest": load_route_request(args.route_manifest),
             "useCpu": args.use_cpu,
             "maxSteps": args.max_steps,
-            "trainSampleCount": len(dataset["train"]),
+            "maxTrainSamples": args.max_train_samples,
+            "maxEvalSamples": args.max_eval_samples,
+            "trainSampleCount": len(raw_train_dataset),
             "evalSampleCount": len(raw_eval_dataset) if raw_eval_dataset is not None else 0,
         },
     )
@@ -309,52 +365,87 @@ def main() -> None:
         low_cpu_mem_usage=True,
     )
     model.config.use_cache = False
-    target_modules = resolve_lora_target_modules(model)
+    target_modules: list[str] = []
     run_state_writer.update(
         status="configuring_adapters",
         modelReadyAt=now_iso(),
-        targetModuleCount=len(target_modules),
+        targetModuleCount=0,
+        adapterDir=args.adapter_dir,
     )
 
-    lora_config = LoraConfig(
-        r=args.lora_r,
-        lora_alpha=args.lora_alpha,
-        lora_dropout=args.lora_dropout,
-        bias="none",
-        task_type="CAUSAL_LM",
-        target_modules=target_modules,
-    )
-    model = get_peft_model(model, lora_config)
-    run_state_writer.update(
-        status="preparing_dataset",
-        adaptersReadyAt=now_iso(),
-    )
+    if args.adapter_dir:
+        model = PeftModel.from_pretrained(
+            model,
+            args.adapter_dir,
+            is_trainable=not args.eval_only,
+        )
+        run_state_writer.update(
+            status="preparing_dataset",
+            adaptersReadyAt=now_iso(),
+            targetModuleCount=0,
+        )
+    elif args.eval_only:
+        run_state_writer.update(
+            status="preparing_dataset",
+            adaptersReadyAt=now_iso(),
+            targetModuleCount=0,
+        )
+    else:
+        target_modules = resolve_lora_target_modules(model)
+        run_state_writer.update(
+            status="configuring_adapters",
+            modelReadyAt=now_iso(),
+            targetModuleCount=len(target_modules),
+        )
+        lora_config = LoraConfig(
+            r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=args.lora_dropout,
+            bias="none",
+            task_type="CAUSAL_LM",
+            target_modules=target_modules,
+        )
+        model = get_peft_model(model, lora_config)
+        run_state_writer.update(
+            status="preparing_dataset",
+            adaptersReadyAt=now_iso(),
+            targetModuleCount=len(target_modules),
+        )
 
-    dataset = dataset.map(
+    train_dataset = raw_train_dataset.map(
         lambda example: format_chat(example, tokenizer),
-        remove_columns=dataset["train"].column_names,
+        remove_columns=raw_train_dataset.column_names,
     )
-    eval_dataset = dataset["eval"] if "eval" in dataset and len(dataset["eval"]) > 0 else None
+    eval_dataset = (
+        raw_eval_dataset.map(
+            lambda example: format_chat(example, tokenizer),
+            remove_columns=raw_eval_dataset.column_names,
+        )
+        if raw_eval_dataset is not None
+        else None
+    )
+    if args.eval_only and (eval_dataset is None or len(eval_dataset) == 0):
+        raise RuntimeError("Evaluation-only runs require at least one eval sample.")
     report_to = resolve_report_to(args)
     run_state_writer.update(
         status="building_trainer",
-        preparedTrainSampleCount=len(dataset["train"]),
+        preparedTrainSampleCount=len(train_dataset),
         preparedEvalSampleCount=len(eval_dataset) if eval_dataset is not None else 0,
     )
 
     training_args = SFTConfig(
         output_dir=args.output_dir,
         learning_rate=args.learning_rate,
-        num_train_epochs=args.num_train_epochs,
-        max_steps=args.max_steps,
+        num_train_epochs=0.0 if args.eval_only else args.num_train_epochs,
+        max_steps=0 if args.eval_only else args.max_steps,
         per_device_train_batch_size=args.per_device_train_batch_size,
         per_device_eval_batch_size=args.per_device_eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         logging_steps=args.logging_steps,
         save_steps=args.save_steps,
         eval_steps=args.eval_steps,
-        eval_strategy="steps" if eval_dataset is not None else "no",
-        save_strategy="steps",
+        eval_strategy="no" if args.eval_only or eval_dataset is None else "steps",
+        save_strategy="no" if args.eval_only else "steps",
         bf16=args.bf16,
         report_to=report_to,
         run_name=args.run_name,
@@ -367,7 +458,7 @@ def main() -> None:
     trainer = SFTTrainer(
         model=model,
         processing_class=tokenizer,
-        train_dataset=dataset["train"],
+        train_dataset=train_dataset if len(train_dataset) > 0 else eval_dataset,
         eval_dataset=eval_dataset,
         args=training_args,
     )
@@ -378,10 +469,26 @@ def main() -> None:
     )
 
     try:
-        trainer.train()
-        trainer.save_model(args.output_dir)
-        tokenizer.save_pretrained(args.output_dir)
-        metrics_summary = build_metrics_summary(trainer.state.log_history)
+        explicit_train_metrics = None
+        explicit_eval_metrics = None
+        if args.eval_only:
+            run_state_writer.update(
+                status="running",
+                startedAt=now_iso(),
+                globalStep=int(trainer.state.global_step),
+                epoch=float(trainer.state.epoch) if trainer.state.epoch is not None else None,
+                maxSteps=0,
+            )
+            explicit_eval_metrics = trainer.evaluate()
+        else:
+            trainer.train()
+            trainer.save_model(args.output_dir)
+            tokenizer.save_pretrained(args.output_dir)
+        metrics_summary = build_metrics_summary(
+            trainer.state.log_history,
+            explicit_train_metrics=explicit_train_metrics,
+            explicit_eval_metrics=explicit_eval_metrics,
+        )
 
         summary = {
             "base_model": args.base_model,
@@ -390,7 +497,13 @@ def main() -> None:
             "output_dir": args.output_dir,
             "selected_tags": sorted(selected_tags),
             "selected_languages": sorted(selected_languages),
+            "eval_only": args.eval_only,
+            "adapter_dir": args.adapter_dir,
+            "curriculum_profile": args.curriculum_profile,
+            "benchmark_pack": args.benchmark_pack,
             "max_steps": args.max_steps,
+            "max_train_samples": args.max_train_samples,
+            "max_eval_samples": args.max_eval_samples,
             "use_cpu": args.use_cpu,
             "target_module_count": len(target_modules),
             "report_to": report_to,
@@ -412,6 +525,9 @@ def main() -> None:
                 float(metrics_summary["latest_train_metrics"]["loss"])
                 if metrics_summary["latest_train_metrics"]
                 and "loss" in metrics_summary["latest_train_metrics"]
+                else float(metrics_summary["latest_train_metrics"]["train_loss"])
+                if metrics_summary["latest_train_metrics"]
+                and "train_loss" in metrics_summary["latest_train_metrics"]
                 else None
             ),
             evalLoss=(

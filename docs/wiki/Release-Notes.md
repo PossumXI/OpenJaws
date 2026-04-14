@@ -51,6 +51,14 @@ The public benchmark narrative now comes from live Immaculate runs, not placehol
 
 See [Benchmark Status](Benchmark-Status.md) for the currently published benchmark record and why it improves OpenJaws.
 
+OpenJaws now also has a local `Q` comparison lane for real repo work:
+
+- audited bundles now emit pack-ready `bundle-manifest.json` data for `all`, `coding`, `agentic`, `security`, and `general`
+- `bun run q:bridgebench` runs eval-only local pack checks and writes Rewardkit-style `reward.json` receipts
+- `bun run q:curriculum` runs bounded specialization passes and benchmarks those adapters back against the audited packs
+
+This is useful for tuning and honest before/after comparison. It is not a replacement for the public Immaculate benchmark source or a fake Harbor / Terminal-Bench leaderboard claim.
+
 ## What Is Planned Next
 
 - deeper off-host worker execution through Immaculate-visible capability assignment

@@ -29,6 +29,10 @@ Audited output files:
 - `data/sft/audited/train.jsonl`
 - `data/sft/audited/eval.jsonl`
 - `data/sft/audited/audit-report.json`
+- `data/sft/audited/manifest.json`
+- `data/sft/audited/bundle-manifest.json`
+- `data/sft/audited/tags/<tag>/{all,train,eval}.jsonl`
+- `data/sft/audited/languages/<language>/{all,train,eval}.jsonl`
 
 Each row includes:
 
@@ -96,6 +100,24 @@ python training/q/train_lora.py ^
   --max-seq-length 4096
 ```
 
+Run an eval-only benchmark over the audited bundle:
+
+```powershell
+bun run q:bridgebench --bundle-dir data/sft/audited --base-model q-lite --pack all
+```
+
+That writes:
+
+- `bridgebench-report.json`
+- `reward.json`
+- `reward-details.json`
+
+Run a bounded specialization pass plus follow-up benchmark:
+
+```powershell
+bun run q:curriculum --bundle-dir data/sft/audited --base-model q-lite --profile agentic --benchmark-pack all
+```
+
 ## Current Intent
 
 This scaffold is aimed at:
@@ -110,6 +132,10 @@ without retracing the raw transcript corpus.
 The trainer already supports tag filtering through repeated `--tag` flags.
 It also writes `metrics-summary.json` beside `run-summary.json` so local runs
 stay reviewable even without W&B.
+
+The benchmark lane uses those same audited packs. It is meant for honest local
+comparison, not for pretending OpenJaws already owns the Harbor or
+Terminal-Bench leaderboard story.
 
 Train from the audited splits, not the raw prepared set, once you start doing
 longer runs.

@@ -14,6 +14,7 @@ import {
   releaseQTrainingRouteQueueClaim,
   readQTrainingRouteManifest,
   resolveQTrainingRoutePath,
+  resolveQTrainingPythonCommand,
   upsertQTrainingRegistryEntry,
   updateQTrainingRouteQueueClaim,
   verifyQTrainingRouteManifest,
@@ -37,16 +38,10 @@ type CliOptions = {
 }
 
 function parseArgs(argv: string[]): CliOptions {
-  const candidatePythons = [
-    resolve(process.cwd(), '.venv-q', 'Scripts', 'python.exe'),
-    resolve(process.cwd(), '.venv-gemma4', 'Scripts', 'python.exe'),
-  ]
-  const venvPython =
-    candidatePythons.find(candidate => existsSync(candidate)) ?? null
   const options: CliOptions = {
     root: null,
     manifestPath: null,
-    python: venvPython ?? 'python',
+    python: resolveQTrainingPythonCommand(process.cwd()),
     dryRun: false,
     allowHostRisk: false,
     workerId: `local-dispatcher:${process.pid}`,

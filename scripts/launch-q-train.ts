@@ -10,6 +10,7 @@ import {
   getQTrainingRouteQueueEntry,
   getQTrainingRunsDir,
   getOpenJawsTrainingModelLabel,
+  resolveQTrainingPythonCommand,
   stageQTrainingRouteFile,
   type QTrainingExecutionMode,
   type QTrainingRouteFailure,
@@ -44,19 +45,13 @@ type CliOptions = {
 }
 
 function parseArgs(argv: string[]): CliOptions {
-  const candidatePythons = [
-    resolve(process.cwd(), '.venv-q', 'Scripts', 'python.exe'),
-    resolve(process.cwd(), '.venv-gemma4', 'Scripts', 'python.exe'),
-  ]
-  const venvPython =
-    candidatePythons.find(candidate => existsSync(candidate)) ?? null
   const options: CliOptions = {
     root: null,
     bundleDir: resolve(process.cwd(), 'data', 'sft', 'audited-v2'),
     outputDir: null,
     baseModel: DEFAULT_Q_BASE_MODEL,
     runName: null,
-    python: venvPython ?? 'python',
+    python: resolveQTrainingPythonCommand(process.cwd()),
     tags: [],
     languages: [],
     useCpu: true,

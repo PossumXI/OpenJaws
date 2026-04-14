@@ -29,6 +29,8 @@
     "prepare:sft": "bun scripts/prepare-openjaws-sft.ts",
     "audit:sft": "bun scripts/audit-openjaws-sft.ts",
     "launch:q": "bun scripts/launch-q-train.ts",
+    "q:bridgebench": "bun scripts/q-bridgebench.ts",
+    "q:curriculum": "bun scripts/run-q-curriculum.ts",
     "dispatch:q-route": "bun scripts/dispatch-q-route.ts",
     "process:q-routes": "bun scripts/process-q-routes.ts",
     "poll:q-route": "bun scripts/poll-q-route-result.ts",

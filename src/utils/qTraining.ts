@@ -366,6 +366,7 @@ export type QTrainingRegistryEntry = {
 export type QRunState = {
   status: QTrainingStatus
   executionMode?: QTrainingExecutionMode
+  mode?: 'train' | 'eval_only' | null
   pid: number | null
   createdAt?: string | null
   startedAt?: string | null
@@ -378,8 +379,14 @@ export type QRunState = {
   runName: string | null
   selectedTags: string[]
   selectedLanguages: string[]
+  evalOnly?: boolean | null
+  adapterDir?: string | null
+  curriculumProfile?: string | null
+  benchmarkPack?: string | null
   globalStep?: number | null
   maxSteps?: number | null
+  maxTrainSamples?: number | null
+  maxEvalSamples?: number | null
   trainSampleCount?: number | null
   evalSampleCount?: number | null
   epoch?: number | null
@@ -424,6 +431,14 @@ export const DEFAULT_Q_BASE_MODEL = Q_UPSTREAM_MODEL_IDS.main
 export const Q_SMOKE_BASE_MODEL = Q_UPSTREAM_MODEL_IDS.lite
 export const Q_PRO_BASE_MODEL = Q_UPSTREAM_MODEL_IDS.pro
 export const Q_ULTRA_BASE_MODEL = Q_UPSTREAM_MODEL_IDS.ultra
+
+export function resolveQTrainingPythonCommand(root = process.cwd()): string {
+  const candidatePythons = [
+    resolve(root, '.venv-q', 'Scripts', 'python.exe'),
+    resolve(root, '.venv-gemma4', 'Scripts', 'python.exe'),
+  ]
+  return candidatePythons.find(candidate => existsSync(candidate)) ?? 'python'
+}
 
 function normalizeQBaseModel(baseModel: string): string {
   const trimmed = baseModel.trim()

@@ -7,6 +7,7 @@ import {
   getOpenJawsTrainingModelDisplay,
   Q_SMOKE_BASE_MODEL,
   readQTrainingRouteManifest,
+  resolveQTrainingPythonCommand,
   verifyQTrainingRouteManifest,
   verifyQTrainingRouteManifestIntegrity,
 } from '../src/utils/qTraining.js'
@@ -42,12 +43,7 @@ const runDir = resolve(rootDir, 'artifacts', 'system-check', runId)
 const qSmokeBaseModelSource =
   process.env.OPENJAWS_Q_SMOKE_MODEL ?? Q_SMOKE_BASE_MODEL
 const qSmokeBaseModel = getOpenJawsTrainingModelDisplay(qSmokeBaseModelSource)
-const qCandidatePythons = [
-  resolve(rootDir, '.venv-q', 'Scripts', 'python.exe'),
-  resolve(rootDir, '.venv-gemma4', 'Scripts', 'python.exe'),
-]
-const qPythonCommand =
-  qCandidatePythons.find(candidate => existsSync(candidate)) ?? 'python'
+const qPythonCommand = resolveQTrainingPythonCommand(rootDir)
 
 function tailText(text: string, maxLines = 40, maxChars = 4000): string {
   const trimmed = text.trim()
@@ -652,6 +648,39 @@ async function main() {
         state: await readJson(join(liveTrainDir, 'run-state.json')),
       },
     })
+    results.push(
+      await runJsonCommandCheck(
+        'q-bridgebench-live',
+        'bun',
+        [
+          'scripts/q-bridgebench.ts',
+          '--bundle-dir',
+          auditedDir,
+          '--out-dir',
+          join(runDir, 'q-bridgebench'),
+          '--base-model',
+          qSmokeBaseModelSource,
+          '--adapter-dir',
+          liveTrainDir,
+          '--python',
+          qPythonCommand,
+          '--pack',
+          'all',
+          '--max-seq-length',
+          '128',
+          '--max-train-samples',
+          '1',
+          '--max-eval-samples',
+          '1',
+          '--timeout-ms',
+          '900000',
+        ],
+        {
+          successSummary: `Q BridgeBench local smoke completed (${qSmokeBaseModel})`,
+          timeoutMs: 900_000,
+        },
+      ),
+    )
   } else {
     results.push({
       name: 'q-live-metrics',
@@ -668,6 +697,22 @@ async function main() {
           : qLiveSmokeTrainWithState.status === 'warning'
           ? `live Q metrics were not written because smoke training was skipped (${qSmokeBaseModel})`
           : `live Q metrics were not written (${qSmokeBaseModel})`,
+    })
+    results.push({
+      name: 'q-bridgebench-live',
+      status:
+        qLiveSmokeTrainWithState.status === 'failed'
+          ? 'failed'
+          : qLiveSmokeTrainWithState.status === 'warning'
+            ? 'warning'
+            : 'passed',
+      durationMs: 0,
+      summary:
+        qLiveSmokeTrainWithState.status === 'passed'
+          ? `Q BridgeBench smoke was intentionally skipped because the live Q smoke did not emit a local adapter (${qSmokeBaseModel})`
+          : qLiveSmokeTrainWithState.status === 'warning'
+            ? `Q BridgeBench smoke was skipped because the live Q smoke stayed in a warning state (${qSmokeBaseModel})`
+            : `Q BridgeBench smoke could not run because the live Q smoke failed (${qSmokeBaseModel})`,
     })
   }
 

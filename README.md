@@ -264,6 +264,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - OpenCheek agent orchestration with deferred launch queueing, burst budgets, and Immaculate pacing.
 - Tool execution across local shells, PowerShell, files, web fetch, MCP, skills, and remote workers.
 - `Q` local and routed training harness with signed manifests, queue state, remote dispatch, and completion reconciliation.
+- Native `Q` benchmark and curriculum lanes over audited packs so coding, agentic, and security slices can be compared in-repo.
 - Voice surfaces for speech input/output wiring, including ElevenLabs summary playback configuration.
 - Firecrawl dataset skill for crawl/search -> structured dataset pipelines.
 - Remote Control, environment validation, startup harness receipts, and fail-closed configuration checks.
@@ -309,6 +310,18 @@ Headline soak metrics from commit `b7a571f` in Immaculate:
 - Recovery: `checkpoint`
 - Integrity: `verified`
 - Failed assertions: `0`
+
+OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
+
+- `bun run q:bridgebench` runs eval-only pack checks over audited `Q` bundles
+- `bun run q:curriculum` trains bounded specialization adapters and benchmarks them back against those same packs
+- benchmark artifacts now write `bridgebench-report.json` plus `reward.json` and `reward-details.json` in a Rewardkit-style shape so the results are easy to inspect or reuse
+
+Important boundary:
+
+- these local `Q` receipts are for comparing training and evaluation runs inside OpenJaws
+- they do not replace the public Immaculate benchmark record
+- OpenJaws is not yet claiming to be a full Harbor or Terminal-Bench agent adapter
 
 See [Benchmark Status](docs/wiki/Benchmark-Status.md) for the detailed record and why those numbers matter to OpenJaws.
 

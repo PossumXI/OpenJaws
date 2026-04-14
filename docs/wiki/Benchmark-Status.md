@@ -71,14 +71,24 @@ The soak result is the stronger signal. It shows that the harness can hold bound
 These are the current live-check lanes OpenJaws can run honestly against its shipped orchestration path:
 
 - `bun run system:check` for the full release-style harness pass
+- `bun run q:bridgebench` for local pack-by-pack `Q` evaluation over audited bundles
+- `bun run q:curriculum` for bounded specialization runs plus follow-up local pack comparison
 - `bun run q-route:assignment` for `Q` route assignment behavior
 - `bun run q-route:remote-dispatch` for signed remote-dispatch behavior
 - `bun run q-route:remote-completion` for signed remote-result reconciliation
+
+The local `Q` benchmark lane follows the same broad principles used by Harbor, Terminal-Bench, LLM-as-a-judge flows, and Rewardkit:
+
+- benchmark work is written to inspectable JSON receipts
+- local results can emit `reward.json` and `reward-details.json` for downstream comparison
+- small wiring smokes stay clearly labeled as local proof, not leaderboard claims
+- any heavier public benchmark story still needs real provenance
 
 Important honesty boundary:
 
 - a local route that stays `pending_assignment` because no healthy Immaculate worker is eligible is a valid fail-closed result, not a fake dispatch success
 - the W&B benchmark numbers above come from Immaculate itself; OpenJaws consumes and explains those records rather than inventing its own benchmark figures
+- the local `Q` benchmark lane is useful for tuning and comparison, but it is not the public Terminal-Bench or Harbor leaderboard record
 
 ## Reproducibility Notes
 

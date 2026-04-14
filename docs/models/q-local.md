@@ -60,6 +60,7 @@ The audit step then:
 - flags bad literal-response pairs like `Reply with exactly X` -> wrong answer
 - drops hard-fail examples into a cleaned dataset
 - writes `audit-report.json` so you can inspect what was removed
+- writes `bundle-manifest.json` plus pack files under `tags/` and `languages/` so you can benchmark focused slices later
 
 ## Fine-Tune Track
 
@@ -95,9 +96,32 @@ Recommended first specialization areas:
 - Security review and bug triage
 - Multi-agent orchestration summaries
 
+## Local Benchmark and Curriculum Lane
+
+Use the native in-repo benchmark lane when you want an honest local comparison before moving to heavier external suites:
+
+```powershell
+bun run q:bridgebench --bundle-dir data/sft/audited --base-model q-lite --pack all
+```
+
+That runs eval-only checks over audited packs and writes:
+
+- `bridgebench-report.json`
+- `reward.json`
+- `reward-details.json`
+
+Use the curriculum wrapper when you want a bounded specialization pass and an immediate follow-up benchmark:
+
+```powershell
+bun run q:curriculum --bundle-dir data/sft/audited --base-model q-lite --profile agentic --benchmark-pack all
+```
+
+This is good for comparing coding, agentic, and security-focused adapters inside the repo.
+
 ## Boundaries
 
 - This repo includes dataset export and a first local trainer scaffold.
 - Ollama is the local inference path.
-- The local trainer is a scaffold, not a full experiment manager.
+- The local trainer and benchmark lane are scaffolds, not a public leaderboard service.
 - Longer or heavier runs should still move onto a properly sized remote box.
+- Public Immaculate benchmark numbers remain the authoritative published benchmark story.

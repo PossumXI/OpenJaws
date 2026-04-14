@@ -5,6 +5,7 @@
 - real Immaculate-side worker assignment policy for named off-host executors
 - remote result streaming or continuous reconciliation in the worker loop
 - tighter public-release help and recovery clarity across remaining operator surfaces
+- Harbor / Terminal-Bench agent adapter work for running OpenJaws or `Q` against external benchmark suites with real provenance
 - broader contribution templates and issue triage
 - public wiki synchronization from repo docs
 
@@ -13,6 +14,7 @@
 - stronger OpenCheek swarm planning and release strategy
 - deeper Firecrawl-to-dataset labeling flows
 - richer benchmark snapshot surfacing from OpenJaws surfaces
+- broader Harbor trace import and SFT export loops for `Q` tuning
 - more reproducible remote worker provisioning and registration
 - broader harness-backed benchmark export from OpenJaws into public operator surfaces
 
