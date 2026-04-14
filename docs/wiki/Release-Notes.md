@@ -6,7 +6,7 @@ This page summarizes the current public OpenJaws surface that is already working
 
 ## TUI and Branding
 
-- FIGlet-style ASCII/ANSI-inspired `OPENJAWS` banner with the `OPENCHEEKS // FLIGHT DECK // IMMACULATE` deck line now anchors the startup TUI
+- FIGlet-style `OPENJAWS` banner now uses a six-row ANSI-shadow treatment with the `OPENCHEEKS // ANSI-SHADOW FLIGHT DECK // IMMACULATE` deck line across the startup TUI
 - ocean-blue flight-deck styling is used across the cockpit, footer, task surfaces, and wiki/repo entry pages
 - shark mascot animation now breaches through the waterline instead of acting as a static icon
 - public docs and wiki now mirror the same branded banner treatment

@@ -27,7 +27,7 @@ import {
 } from './OverageCreditUpsell.js'
 
 const CONDENSED_SKYLINE =
-  'FLIGHT DECK · IMMACULATE · OPENCHEEK CREW · ROUTED TOOLS'
+  'ANSI SHADOW · FLIGHT DECK · IMMACULATE · OPENCHEEK CREW'
 const CONDENSED_WAKE =
   'inspect each cut · keep workers honest · ship through the blue waterline'
 

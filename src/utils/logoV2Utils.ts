@@ -13,13 +13,24 @@ import { getStoredChangelogFromMemory, parseChangelog } from './releaseNotes.js'
 import { gt } from './semver.js'
 import { loadMessageLogs } from './sessionStorage.js'
 import { getInitialSettings } from './settings/settings.js'
+import { getOpenJawsAsciiBannerWidth } from '../components/LogoV2/openjawsBannerData.js'
 
 // Layout constants
-const MAX_LEFT_WIDTH = 50
+export const LOGO_V2_MAX_LEFT_WIDTH = Math.max(
+  50,
+  getOpenJawsAsciiBannerWidth(),
+)
 const MAX_USERNAME_LENGTH = 20
 const BORDER_PADDING = 4
 const DIVIDER_WIDTH = 1
 const CONTENT_PADDING = 2
+const MIN_RIGHT_WIDTH = 30
+const HORIZONTAL_LAYOUT_MIN_WIDTH =
+  LOGO_V2_MAX_LEFT_WIDTH +
+  BORDER_PADDING +
+  CONTENT_PADDING +
+  DIVIDER_WIDTH +
+  MIN_RIGHT_WIDTH
 
 export type LayoutMode = 'horizontal' | 'compact'
 
@@ -33,7 +44,7 @@ export type LayoutDimensions = {
  * Determines the layout mode based on terminal width
  */
 export function getLayoutMode(columns: number): LayoutMode {
-  if (columns >= 70) return 'horizontal'
+  if (columns >= HORIZONTAL_LAYOUT_MIN_WIDTH) return 'horizontal'
   return 'compact'
 }
 
@@ -51,7 +62,7 @@ export function calculateLayoutDimensions(
       BORDER_PADDING + CONTENT_PADDING + DIVIDER_WIDTH + leftWidth
     const availableForRight = columns - usedSpace
 
-    let rightWidth = Math.max(30, availableForRight)
+    let rightWidth = Math.max(MIN_RIGHT_WIDTH, availableForRight)
     const totalWidth = Math.min(
       leftWidth + rightWidth + DIVIDER_WIDTH + CONTENT_PADDING,
       columns - BORDER_PADDING,
@@ -66,7 +77,10 @@ export function calculateLayoutDimensions(
   }
 
   // Vertical mode
-  const totalWidth = Math.min(columns - BORDER_PADDING, MAX_LEFT_WIDTH + 20)
+  const totalWidth = Math.min(
+    columns - BORDER_PADDING,
+    LOGO_V2_MAX_LEFT_WIDTH + 20,
+  )
   return {
     leftWidth: totalWidth,
     rightWidth: totalWidth,
@@ -86,9 +100,9 @@ export function calculateOptimalLeftWidth(
     stringWidth(welcomeMessage),
     stringWidth(truncatedCwd),
     stringWidth(modelLine),
-    32, // Minimum for the shared ASCII banner + shark art
+    getOpenJawsAsciiBannerWidth(), // Minimum for the shared banner + shark art
   )
-  return Math.min(contentWidth + 4, MAX_LEFT_WIDTH) // +4 for padding
+  return Math.min(contentWidth + 4, LOGO_V2_MAX_LEFT_WIDTH) // +4 for padding
 }
 
 /**

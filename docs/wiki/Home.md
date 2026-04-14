@@ -1,28 +1,28 @@
 # OpenJaws Wiki
 
-OpenJaws is a terminal-first coding cockpit with OpenCheek agents and Immaculate orchestration at the center of execution, routing, and operator visibility.
+OpenJaws is a coding workspace for the terminal.
+
+In plain terms: it gives you a command center for coding, running tools, using helper agents, and checking what model, provider, and control layer are actually active.
 
 Built and maintained by [PossumX.dev](https://possumx.dev).
 
 ```text
-  ___   ___  ___ _  _
- / _ \ | _ \| __| \| |
-| (_) ||  _/| _|| .` |
- \___/ |_|  |___|_|\_|
-    _   ___ __      __ ___
-   | | / / |\ \    / // __|
-   | |/ /| | \ \/\/ / \__ \
-   |___/ |_|  \_/\_/  |___/
+ ██████╗ ██████╗ ███████╗███╗   ██╗     ██╗ █████╗ ██╗    ██╗███████╗
+██╔═══██╗██╔══██╗██╔════╝████╗  ██║     ██║██╔══██╗██║    ██║██╔════╝
+██║   ██║██████╔╝█████╗  ██╔██╗ ██║     ██║███████║██║ █╗ ██║███████╗
+██║   ██║██╔═══╝ ██╔══╝  ██║╚██╗██║██   ██║██╔══██║██║███╗██║╚════██║
+╚██████╔╝██║     ███████╗██║ ╚████║╚█████╔╝██║  ██║╚███╔███╔╝███████║
+ ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝ ╚════╝ ╚═╝  ╚═╝ ╚══╝╚══╝ ╚══════╝
 
-OPENCHEEKS // FLIGHT DECK // IMMACULATE
+OPENCHEEKS // ANSI-SHADOW FLIGHT DECK // IMMACULATE
    /VVV VVV\
   >|       |<
    \^^^ ^^^/
 ```
 
-GitHub and the repo wiki render the banner as monochrome ASCII. The live OpenJaws TUI renders the same banner with ocean-blue gradient styling and darker deck trim.
+GitHub and the repo wiki render the banner as monochrome FIGlet art. The live OpenJaws TUI renders the same banner with a six-stop gold-to-deep-ocean truecolor gradient and darker deck trim.
 
-OpenJaws ships as an ocean-deck terminal cockpit: blue-water TUI surfaces, OpenCheek agents, explicit operator receipts, and Immaculate orchestration at the center of routing and execution.
+OpenJaws is meant to feel like a real control deck, not a blind text box. You can see what is running, what is queued, what provider is active, and whether the orchestration layer is healthy before you trust the result.
 
 ## Start Here
 
@@ -38,36 +38,36 @@ OpenJaws ships as an ocean-deck terminal cockpit: blue-water TUI surfaces, OpenC
 
 ## Glossary
 
-- `OpenCheek agents`: OpenJaws background workers for research, implementation, verification, and queued teammate execution.
-- `Immaculate`: the orchestration layer that shapes routing, pacing, retries, worker assignment, and remote execution policy.
-- `Q routes`: signed training/execution bundles used to move `Q` fine-tune work through queue, worker assignment, remote dispatch, and result reconciliation.
+- `OpenCheek agents`: background helpers that can research, code, verify, or work on queued tasks while you keep moving.
+- `Immaculate`: the control layer that helps OpenJaws decide how to route work, pace retries, use workers, and handle remote execution.
+- `Q routes`: signed bundles that let `Q` training or execution jobs move safely through queueing, assignment, dispatch, and result reporting.
 
 ## Current Release Themes
 
-- branded flight-deck TUI
-- OCI/Q as the public default runtime path
-- inspectable background crews and deferred launch queueing
-- fail-closed `Q` route assignment and remote dispatch
-- worker capability registry and heartbeat-backed health
-- public-release security and verification scaffolding
-- explicit provider and orchestration visibility for installed users
+- a clearer TUI with stronger OpenJaws branding
+- `Q` on `OCI` as the default public starting point
+- helper-agent crews you can inspect instead of hidden background work
+- safer routed `Q` execution with signed requests and explicit assignment
+- worker health checks instead of silent failures
+- safer public update and release verification
+- clearer status for everyday installed users
 
 ## Live Benchmark Record
 
-Immaculate is not an aspirational dependency here. The current public benchmark story is backed by live W&B runs and a repo-documented benchmark snapshot:
+Immaculate is not just a future idea in this project. The current benchmark story is backed by live W&B runs and a repo-documented benchmark snapshot:
 
 - 60-minute soak with verified integrity and checkpointed recovery
 - 60-second benchmark snapshot from a live Immaculate run
-- operator-facing explanation of how those numbers affect OpenJaws routing, pacing, retries, and remote execution
+- a plain explanation of why those numbers matter for OpenJaws routing, pacing, retries, and remote execution
 
 ## Public Release Notes
 
-- OpenJaws is public and MIT licensed, but the project is still moving quickly.
-- Prefer official repository builds and published tags over third-party mirrors.
-- Tagged installed releases advance from the official `release-policy.json`, not directly from every `main` push.
-- Treat `/status` as the source of truth for what is actually active: provider, runtime, sandbox, routed work, and worker health.
-- Use `/provider` and `/remote-env` deliberately. OpenJaws is designed to reduce silent fallbacks, not hide them.
-- Fresh installs default to `OCI:Q`; use `/provider` when you want to rotate keys, change the base URL, or switch providers entirely.
+- OpenJaws is public and MIT licensed, but it is still changing quickly.
+- Stick to the official repo and official tagged releases.
+- Tagged installs update from the official release policy, not from every `main` push.
+- Use `/status` when you want the plain truth about what is active: provider, runtime, sandbox, routed work, and worker health.
+- Use `/provider` and `/remote-env` on purpose. OpenJaws is built to show setup changes, not hide them.
+- Fresh installs start on `OCI:Q`; use `/provider` when you want to rotate keys, change the base URL, or switch providers.
 
 ## Install Paths
 

@@ -20,6 +20,7 @@
     "build:native": "bun scripts/build-native.ts",
     "release:version": "bun scripts/print-release-version.ts",
     "release:asset": "bun scripts/build-release-asset.ts",
+    "banner:export": "bun scripts/export-openjaws-banner.ts",
     "test": "bun test",
     "verify:ci": "bun test && bun run build",
     "verify:public": "bun test && bun run build && bun run build:native",

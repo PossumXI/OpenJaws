@@ -5,6 +5,7 @@ import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
 import { Clawd, type ClawdPose } from './Clawd.js'
 import { OpenJawsAsciiBanner } from './OpenJawsAsciiBanner.js'
+import { getOpenJawsAsciiBannerWidth } from './openjawsBannerData.js'
 
 type Frame = {
   pose: ClawdPose
@@ -43,8 +44,11 @@ const SHARK_STAGE_HEIGHT = 5
 export function AnimatedClawd(): React.ReactNode {
   const { columns } = useTerminalSize()
   const { pose, stageOffset, wake, onClick } = useClawdAnimation()
-  const compactBanner = columns < 92
-  const bannerWidth = Math.max(20, Math.min(columns - 6, 32))
+  const compactBanner = columns < getOpenJawsAsciiBannerWidth() + 8
+  const bannerWidth = Math.max(
+    24,
+    Math.min(columns - 6, getOpenJawsAsciiBannerWidth(compactBanner)),
+  )
 
   return (
     <Box flexDirection="column" alignItems="center" onClick={onClick}>

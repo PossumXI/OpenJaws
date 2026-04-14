@@ -1,8 +1,8 @@
 # Q and OCI Setup
 
-This is the canonical public setup page for the shipped OpenJaws runtime path.
+This is the main setup page for the default OpenJaws runtime path.
 
-Fresh public installs default to `OCI:Q`.
+Fresh public installs start on `OCI:Q`.
 
 ## Default Runtime
 
@@ -13,6 +13,8 @@ Fresh public installs default to `OCI:Q`.
 OpenJaws keeps provider, model, base URL, and Immaculate reachability visible so installs do not drift silently.
 OpenJaws now also has a first-class live provider probe, so `configured` and `reachable` are no longer treated as the same thing.
 
+In plain terms: OpenJaws does not just save your settings and hope for the best. It can check whether the provider path is actually live.
+
 ## First Run
 
 1. Start OpenJaws.
@@ -22,7 +24,7 @@ OpenJaws now also has a first-class live provider probe, so `configured` and `re
    - `Q_API_KEY`
    - `OCI_API_KEY`
    - `OCI_GENAI_API_KEY`
-5. Let the first-run lane complete its live provider check, or run `/provider test oci Q` yourself.
+5. Let the first-run flow finish its live provider check, or run `/provider test oci Q` yourself.
 6. If your OCI endpoint differs, set it with `/provider base-url oci <url>`.
 7. Run `/status` and confirm:
    - provider = `oci`
@@ -48,7 +50,7 @@ OpenJaws now also has a first-class live provider probe, so `configured` and `re
 3. Update the matching API key or auth path.
 4. Run `/provider test <provider> <model>`.
 5. Run `/status`.
-6. Verify provider, model, runtime, route state, worker state, and the latest reachability receipt before starting heavier work.
+6. Verify the provider, model, runtime, route state, worker state, and latest reachability receipt before starting heavier work.
 
 ## Verify Immaculate Reachability
 
@@ -58,7 +60,7 @@ Use either of these:
 - `/status`
 - `/immaculate status`
 
-If Immaculate is unreachable, OpenJaws should tell you that explicitly instead of silently pretending the control plane is healthy.
+If Immaculate is unreachable, OpenJaws should tell you that directly instead of pretending the control plane is healthy.
 
 ## Security Notes
 

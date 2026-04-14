@@ -1,26 +1,26 @@
 # OpenJaws
 
-OpenJaws is an open-source terminal coding cockpit with a branded flight-deck TUI, OpenCheek agents, routed tool orchestration, and Immaculate-backed control loops for local and remote execution.
+OpenJaws is an open-source coding workspace that runs in your terminal.
+
+In plain terms: it gives you one place to code, run tools, manage background helper agents, switch AI providers, and see what the system is actually doing instead of guessing.
 
 Built and attributed to [PossumX.dev](https://possumx.dev).
 
 ```text
-  ___   ___  ___ _  _
- / _ \ | _ \| __| \| |
-| (_) ||  _/| _|| .` |
- \___/ |_|  |___|_|\_|
-    _   ___ __      __ ___
-   | | / / |\ \    / // __|
-   | |/ /| | \ \/\/ / \__ \
-   |___/ |_|  \_/\_/  |___/
+ ██████╗ ██████╗ ███████╗███╗   ██╗     ██╗ █████╗ ██╗    ██╗███████╗
+██╔═══██╗██╔══██╗██╔════╝████╗  ██║     ██║██╔══██╗██║    ██║██╔════╝
+██║   ██║██████╔╝█████╗  ██╔██╗ ██║     ██║███████║██║ █╗ ██║███████╗
+██║   ██║██╔═══╝ ██╔══╝  ██║╚██╗██║██   ██║██╔══██║██║███╗██║╚════██║
+╚██████╔╝██║     ███████╗██║ ╚████║╚█████╔╝██║  ██║╚███╔███╔╝███████║
+ ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝ ╚════╝ ╚═╝  ╚═╝ ╚══╝╚══╝ ╚══════╝
 
-OPENCHEEKS // FLIGHT DECK // IMMACULATE
+OPENCHEEKS // ANSI-SHADOW FLIGHT DECK // IMMACULATE
    /VVV VVV\
   >|       |<
    \^^^ ^^^/
 ```
 
-GitHub renders the banner monochrome. The live TUI renders the same banner in ocean-blue gradient tones with darker deck trim and shark-stage shading.
+GitHub renders the banner monochrome. The live TUI renders the same banner with a six-stop gold-to-deep-ocean truecolor gradient, darker deck trim, and shark-stage shading.
 
 ## Start Here
 
@@ -39,23 +39,23 @@ GitHub renders the banner monochrome. The live TUI renders the same banner in oc
 
 ## What OpenJaws Does
 
-- Runs coding sessions directly in the terminal with a modern TUI and persistent status surfaces.
-- Uses OpenCheek agents for parallel background work, queued supervision, and inspectable crew coordination.
-- Routes models, tools, retries, and remote worker decisions through the Immaculate orchestration layer.
-- Defaults fresh public installs to `Q` on `OCI`, while still supporting explicit provider/model switching.
-- Supports local and remote model execution, including signed `Q` training routes and worker assignment.
-- Exposes practical operator surfaces: `/status`, `/immaculate`, `/provider`, `/voice`, `/remote-env`, and background task inspection.
-- Includes built-in skills and dataset flows such as Firecrawl web dataset generation and `Q` SFT export/prep/training harnesses.
+- Lets you work in the terminal with a real app surface instead of a bare chat box.
+- Gives you OpenCheek helper agents that can do research, coding, checking, and background tasks in parallel.
+- Keeps provider, model, routing, and remote-worker state visible so the app does not quietly drift into a different setup.
+- Starts new public installs on `Q` with `OCI`, but still lets you switch providers and models on purpose.
+- Supports both local and remote execution, including signed `Q` training routes and worker assignment.
+- Gives you practical controls like `/status`, `/immaculate`, `/provider`, `/voice`, and `/remote-env`.
+- Includes built-in dataset and training tools for improving `Q` over time.
 
 ## Live Immaculate Benchmarks
 
-The current public benchmark record comes from live Immaculate runs, not placeholder numbers.
+These are real benchmark records from live Immaculate runs, not placeholder numbers and not marketing copy.
 
 - 60-minute soak: `1270.73 events/s`, reflex `P50 17.46 ms`, cognitive `P50 50.50 ms`
 - 60-second benchmark: green in the live Immaculate source run
 - source of truth: [Benchmark Status](docs/wiki/Benchmark-Status.md)
 
-These runs matter because OpenJaws now uses Immaculate in real control paths: route assignment, worker heartbeat, retry pacing, burst budgeting, and routed `Q` execution.
+They matter because OpenJaws uses Immaculate for real decisions: picking routes, pacing retries, tracking workers, controlling agent bursts, and handling routed `Q` execution.
 
 ## Install Paths
 
@@ -117,7 +117,7 @@ bun run build:native
 
 ## Release Model
 
-OpenJaws is currently a fast-moving public project with source builds and native local builds. Treat `main` as active development. If you want the newest work, pull from the official repository and rebuild locally. If you want a slower-moving install surface, prefer tagged releases when available.
+OpenJaws is moving quickly. Treat `main` as the bleeding edge. If you want the newest work, pull from the official repo and rebuild locally. If you want the safer path, use tagged releases.
 
 Use only official sources:
 
@@ -145,7 +145,7 @@ Main-branch pushes do not directly advance installed public binaries. Installed 
 
 ## Install and First Run
 
-OpenJaws is currently distributed as source plus native local builds.
+OpenJaws currently ships as source plus native local builds.
 
 1. Install [Bun](https://bun.sh).
 2. Clone this repo.
@@ -163,7 +163,7 @@ Useful first-run operator commands:
 - `/immaculate` to inspect live orchestration topology and control state
 - `/chrome` and `/voice` to configure browser and speech surfaces when available
 
-Fresh installs also get a first-run setup lane inside the TUI for provider/model selection, API-key wiring, live provider reachability checks, and live Immaculate reachability checks before heavier work starts.
+Fresh installs also get a first-run setup flow inside the TUI. It helps you pick a provider, store a key, test that the provider is actually reachable, and confirm Immaculate is online before you start heavier work.
 
 Recommended first-run checklist:
 
@@ -176,7 +176,7 @@ Recommended first-run checklist:
 
 ## Provider Switching
 
-OpenJaws is designed to make provider/model changes explicit instead of silently drifting between backends.
+OpenJaws is built to make provider and model changes obvious instead of silently bouncing between backends.
 
 Safe operator flow:
 

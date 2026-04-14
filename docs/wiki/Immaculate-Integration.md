@@ -1,24 +1,26 @@
 # Immaculate Integration
 
-Immaculate is the orchestration layer inside OpenJaws. It is not treated as a sidecar feature.
+Immaculate is the control layer inside OpenJaws.
+
+In plain terms: it helps OpenJaws make smarter decisions about where work should run, when retries should happen, which worker is healthy, and whether the app should fail closed instead of pretending everything is fine.
 
 ## What It Does
 
-- injects per-turn system checkpoints into the main loop
-- informs tool orchestration and retry shaping
-- influences OpenCheek agent spawn, resume, burst pacing, and deferred release
-- tracks worker capabilities and route assignment for `Q` execution
-- exposes topology, execution load, and control lanes to operators
+- adds live checkpoints to the main loop
+- helps shape tool routing and retries
+- influences how OpenCheek agents start, resume, and pace themselves
+- tracks which workers can handle `Q` jobs
+- exposes system state so operators can see what is happening
 
 ## How It Improves OpenJaws
 
-Immaculate improves OpenJaws by making execution decisions more explicit, more inspectable, and less heuristic.
+Immaculate improves OpenJaws by replacing guesswork with visible decisions.
 
-- fewer silent fallbacks when a route, worker, or runtime is not actually available
-- better load shaping when multiple OpenCheek agents are active at once
-- cleaner remote execution policy for `Q` routes and worker assignment
-- one orchestration vocabulary across `/immaculate`, `/status`, background task surfaces, and route state
-- more useful operator receipts for installed users who need to know what the system is doing before they trust it
+- fewer silent fallbacks when a route, worker, or runtime is not really available
+- better load handling when several OpenCheek agents are active at once
+- clearer remote execution rules for `Q`
+- one shared control language across `/immaculate`, `/status`, background tasks, and route state
+- better receipts for users who want to know what the app is actually doing before they trust it
 
 ## Execution Model
 
@@ -29,7 +31,7 @@ Immaculate improves OpenJaws by making execution decisions more explicit, more i
 
 ## What Installed Users See
 
-OpenJaws surfaces Immaculate through public operator paths, not hidden internal controls.
+OpenJaws shows Immaculate through normal operator paths, not hidden internal controls.
 
 - `/status` shows route queue state, worker health, runtime mode, and routed execution details
 - flight-deck notices surface pending assignment and routed `Q` state
@@ -38,7 +40,7 @@ OpenJaws surfaces Immaculate through public operator paths, not hidden internal 
 
 ## Security and Reliability Posture
 
-Immaculate is used to reduce hidden failure modes, not to bypass local operator control.
+Immaculate is there to reduce hidden failure modes, not to take control away from the local operator.
 
 - permission prompts still belong to OpenJaws and the operator
 - route assignment and worker capability checks are fail-closed
@@ -49,10 +51,10 @@ Immaculate is used to reduce hidden failure modes, not to bypass local operator 
 ## Why It Matters
 
 - fewer silent fallbacks
-- more explicit operator visibility
-- better pacing under concurrent load
-- cleaner remote execution semantics
-- one control language across TUI, workers, queue state, and status receipts
+- clearer visibility
+- steadier behavior under concurrent load
+- safer remote execution
+- one shared control language across the TUI, workers, queue state, and status receipts
 
 ## Current Working Areas
 

@@ -4,7 +4,7 @@ import * as React from 'react';
 import { Box, Text, color } from '../../ink.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { stringWidth } from '../../ink/stringWidth.js';
-import { getLayoutMode, calculateLayoutDimensions, calculateOptimalLeftWidth, formatWelcomeMessage, truncatePath, getRecentActivitySync, getRecentReleaseNotesSync, getLogoDisplayData } from '../../utils/logoV2Utils.js';
+import { getLayoutMode, calculateLayoutDimensions, calculateOptimalLeftWidth, formatWelcomeMessage, truncatePath, getRecentActivitySync, getRecentReleaseNotesSync, getLogoDisplayData, LOGO_V2_MAX_LEFT_WIDTH } from '../../utils/logoV2Utils.js';
 import { truncate } from '../../utils/format.js';
 import { getDisplayPath } from '../../utils/file.js';
 import { AnimatedClawd } from './AnimatedClawd.js';
@@ -43,8 +43,7 @@ import { useAppState } from '../../state/AppState.js';
 import { getEffortSuffix } from '../../utils/effort.js';
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { renderModelSetting } from '../../utils/model/model.js';
-const LEFT_PANEL_MAX_WIDTH = 50;
-const OPEN_WATER_LINE = 'OPENCHEEKS // FLIGHT DECK // IMMACULATE';
+const OPEN_WATER_LINE = 'OPENCHEEKS // ANSI-SHADOW FLIGHT DECK // IMMACULATE';
 const JAWS_WAKE_LINE = 'ocean-blue shell · opencheek crew · routed tools · signed receipts';
 export function LogoV2() {
   const $ = _c(94);
@@ -171,7 +170,7 @@ export function LogoV2() {
   const t9 = fullModelDisplayName + effortSuffix;
   let t10;
   if ($[13] !== t9) {
-    t10 = truncate(t9, LEFT_PANEL_MAX_WIDTH - 20);
+    t10 = truncate(t9, LOGO_V2_MAX_LEFT_WIDTH - 20);
     $[13] = t9;
     $[14] = t10;
   } else {
@@ -332,7 +331,7 @@ export function LogoV2() {
   }
   const welcomeMessage_0 = formatWelcomeMessage(username);
   const modelLine = !process.env.IS_DEMO && config.oauthAccount?.organizationName ? `${modelDisplayName} · ${billingType} · ${config.oauthAccount.organizationName}` : `${modelDisplayName} · ${billingType}`;
-  const cwdAvailableWidth_0 = agentName ? LEFT_PANEL_MAX_WIDTH - 1 - stringWidth(agentName) - 3 : LEFT_PANEL_MAX_WIDTH;
+  const cwdAvailableWidth_0 = agentName ? LOGO_V2_MAX_LEFT_WIDTH - 1 - stringWidth(agentName) - 3 : LOGO_V2_MAX_LEFT_WIDTH;
   const truncatedCwd_0 = truncatePath(cwd, Math.max(cwdAvailableWidth_0, 10));
   const cwdLine = agentName ? `@${agentName} · ${truncatedCwd_0}` : truncatedCwd_0;
   const optimalLeftWidth = calculateOptimalLeftWidth(welcomeMessage_0, cwdLine, modelLine);

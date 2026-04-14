@@ -2,7 +2,7 @@ import React from 'react'
 import { Box, Text, useTheme } from 'src/ink.js'
 import { AnimatedClawd } from './AnimatedClawd.js'
 
-const WELCOME_V2_WIDTH = 58
+const WELCOME_V2_WIDTH = 86
 const LIGHT_THEMES = new Set([
   'light',
   'opencheeks-light',
@@ -19,6 +19,7 @@ export function WelcomeV2(): React.ReactNode {
     : '~~~~~ ocean-blue water under a black midnight sky ~~~~'
 
   const wakeLine = '~~~~~ shark breaching high above the ocean wake ~~~~~'
+  const deckLine = 'OPENCHEEKS // ANSI-SHADOW FLIGHT DECK // IMMACULATE'
 
   return (
     <Box width={WELCOME_V2_WIDTH} flexDirection="column">
@@ -30,7 +31,9 @@ export function WelcomeV2(): React.ReactNode {
       <Box alignItems="center" marginY={1}>
         <AnimatedClawd />
       </Box>
-      <Text color="clawd_body">~~~~~~~~~~~~~~~ openjaws ~~~~~~~~~~~~~~~</Text>
+      <Text color="clawd_body" bold>
+        {deckLine}
+      </Text>
       <Text color="inactive">{wakeLine}</Text>
     </Box>
   )

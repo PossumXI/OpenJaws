@@ -3,7 +3,7 @@
 ## Current Notable Working Areas
 
 - Flight-deck TUI with stronger branding and operator visibility
-- FIGlet-style ASCII banner and ocean-deck shark branding in the TUI, repo root, and wiki home
+- FIGlet-style ANSI-shadow `OPENJAWS` banner and ocean-deck shark branding in the TUI, repo root, and wiki home
 - OpenCheek deferred launch queue, inspectable crew summaries, and burst budgeting
 - Immaculate as default orchestration context, not a bolt-on
 - Signed `Q` route manifests, queue state, worker capability assignment, remote dispatch, and signed terminal results
