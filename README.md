@@ -18,6 +18,7 @@ OPENCHEEKS // ANSI-SHADOW FLIGHT DECK // IMMACULATE
    /VVV VVV\
   >|       |<
    \^^^ ^^^/
+OCEAN-BLUE SHELL // OPENCHEEK CREW // ROUTED TOOLS
 ```
 
 GitHub renders the banner monochrome. The live TUI renders the same banner with a six-stop gold-to-deep-ocean truecolor gradient, darker deck trim, and shark-stage shading.

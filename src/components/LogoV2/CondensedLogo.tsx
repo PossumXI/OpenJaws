@@ -16,6 +16,10 @@ import { renderModelSetting } from '../../utils/model/model.js'
 import { OffscreenFreeze } from '../OffscreenFreeze.js'
 import { AnimatedClawd } from './AnimatedClawd.js'
 import {
+  OPENJAWS_ASCII_TRIM_BOTTOM,
+  OPENJAWS_ASCII_TRIM_TOP,
+} from './openjawsBannerData.js'
+import {
   GuestPassesUpsell,
   incrementGuestPassesSeenCount,
   useShowGuestPassesUpsell,
@@ -26,10 +30,8 @@ import {
   useShowOverageCreditUpsell,
 } from './OverageCreditUpsell.js'
 
-const CONDENSED_SKYLINE =
-  'ANSI SHADOW · FLIGHT DECK · IMMACULATE · OPENCHEEK CREW'
-const CONDENSED_WAKE =
-  'inspect each cut · keep workers honest · ship through the blue waterline'
+const CONDENSED_SKYLINE = OPENJAWS_ASCII_TRIM_TOP
+const CONDENSED_WAKE = OPENJAWS_ASCII_TRIM_BOTTOM
 
 export function CondensedLogo(): ReactNode {
   const { columns } = useTerminalSize()

@@ -18,6 +18,7 @@ OPENCHEEKS // ANSI-SHADOW FLIGHT DECK // IMMACULATE
    /VVV VVV\
   >|       |<
    \^^^ ^^^/
+OCEAN-BLUE SHELL // OPENCHEEK CREW // ROUTED TOOLS
 ```
 
 GitHub and the repo wiki render the banner as monochrome FIGlet art. The live OpenJaws TUI renders the same banner with a six-stop gold-to-deep-ocean truecolor gradient and darker deck trim.

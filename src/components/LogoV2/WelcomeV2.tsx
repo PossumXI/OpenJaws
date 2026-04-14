@@ -1,6 +1,10 @@
 import React from 'react'
 import { Box, Text, useTheme } from 'src/ink.js'
 import { AnimatedClawd } from './AnimatedClawd.js'
+import {
+  OPENJAWS_ASCII_TRIM_BOTTOM,
+  OPENJAWS_ASCII_TRIM_TOP,
+} from './openjawsBannerData.js'
 
 const WELCOME_V2_WIDTH = 86
 const LIGHT_THEMES = new Set([
@@ -18,8 +22,8 @@ export function WelcomeV2(): React.ReactNode {
     ? '~~~~ ocean-blue water under an egg-yolk morning sky ~~~~'
     : '~~~~~ ocean-blue water under a black midnight sky ~~~~'
 
-  const wakeLine = '~~~~~ shark breaching high above the ocean wake ~~~~~'
-  const deckLine = 'OPENCHEEKS // ANSI-SHADOW FLIGHT DECK // IMMACULATE'
+  const wakeLine = OPENJAWS_ASCII_TRIM_BOTTOM
+  const deckLine = OPENJAWS_ASCII_TRIM_TOP
 
   return (
     <Box width={WELCOME_V2_WIDTH} flexDirection="column">
