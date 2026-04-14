@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-04-13T00:00:00.000Z",
+  "repo": "PossumXI/OpenJaws",
+  "minimumSupportedVersion": null,
+  "blockedVersions": [],
+  "channels": {
+    "stable": {
+      "version": "2.1.86",
+      "notes": "Public stable lane for tagged native releases.",
+      "rollout": {
+        "percentage": 100,
+        "seed": "openjaws-stable"
+      }
+    },
+    "latest": {
+      "version": "2.1.86",
+      "notes": "Public latest lane for tagged native releases and prerelease validation.",
+      "rollout": {
+        "percentage": 100,
+        "seed": "openjaws-latest"
+      }
+    }
+  }
+}

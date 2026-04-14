@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, rmSync } from 'fs'
 import { readFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { dirname, join, resolve } from 'path'
@@ -8,14 +8,16 @@ import {
   getImmaculateHarnessWorkers,
 } from '../src/utils/immaculateHarness.js'
 import {
-  buildGemmaTrainingRouteResultEnvelope,
-  getGemmaTrainingRouteQueueEntry,
-  verifyGemmaTrainingRouteDispatchEnvelope,
-  type GemmaTrainingRouteDispatchEnvelope,
-} from '../src/utils/gemmaTraining.js'
+  DEFAULT_Q_BASE_MODEL,
+  buildQTrainingRouteResultEnvelope,
+  getQTrainingRouteQueueEntry,
+  readQTrainingRouteWorkers,
+  verifyQTrainingRouteDispatchEnvelope,
+  type QTrainingRouteDispatchEnvelope,
+} from '../src/utils/qTraining.js'
 
 function makeRoot(): string {
-  return mkdtempSync(join(tmpdir(), 'openjaws-gemma-route-remote-completion-'))
+  return mkdtempSync(join(tmpdir(), 'openjaws-q-route-remote-completion-'))
 }
 
 async function readJson<T>(path: string): Promise<T> {
@@ -23,25 +25,19 @@ async function readJson<T>(path: string): Promise<T> {
 }
 
 async function waitForWorker(
+  root: string,
   workerId: string,
   timeoutMs = 15_000,
-): Promise<Awaited<ReturnType<typeof getImmaculateHarnessWorkers>>> {
+): Promise<ReturnType<typeof readQTrainingRouteWorkers>> {
   const startedAt = Date.now()
   while (Date.now() - startedAt < timeoutMs) {
-    const catalog = await getImmaculateHarnessWorkers().catch(() => null)
-    if (
-      catalog?.workers.some(
-        worker =>
-          worker.workerId === workerId &&
-          worker.healthStatus === 'healthy' &&
-          worker.assignmentEligible === true,
-      )
-    ) {
-      return catalog
+    const workers = readQTrainingRouteWorkers(root)
+    if (workers.some(worker => worker.workerId === workerId)) {
+      return workers
     }
-    await Bun.sleep(250)
+    await Bun.sleep(100)
   }
-  return null
+  return []
 }
 
 async function main() {
@@ -77,8 +73,8 @@ async function main() {
       payloadSha256: string | null
       runId: string | null
     }
-    envelope: GemmaTrainingRouteDispatchEnvelope
-    verification: ReturnType<typeof verifyGemmaTrainingRouteDispatchEnvelope>
+    envelope: QTrainingRouteDispatchEnvelope
+    verification: ReturnType<typeof verifyQTrainingRouteDispatchEnvelope>
   } | null = null
   let stateRequests = 0
   let stateUrl = ''
@@ -90,8 +86,8 @@ async function main() {
       const url = new URL(request.url)
       if (request.method === 'POST' && url.pathname === '/execute') {
         const envelope =
-          (await request.json()) as GemmaTrainingRouteDispatchEnvelope
-        const verification = verifyGemmaTrainingRouteDispatchEnvelope(envelope)
+          (await request.json()) as QTrainingRouteDispatchEnvelope
+        const verification = verifyQTrainingRouteDispatchEnvelope(envelope)
         dispatchRequest = {
           headers: {
             signature: request.headers.get('x-openjaws-route-signature'),
@@ -137,7 +133,7 @@ async function main() {
         const finishedAt = new Date(
           Date.parse(dispatchedAt) + 60_000,
         ).toISOString()
-        const resultEnvelope = buildGemmaTrainingRouteResultEnvelope({
+        const resultEnvelope = buildQTrainingRouteResultEnvelope({
           runId: dispatchRequest.envelope.payload.runId,
           manifestPath: dispatchRequest.envelope.payload.manifestPath,
           workerId,
@@ -203,7 +199,7 @@ async function main() {
   const workerProcess = execa(
     'bun',
     [
-      'scripts/process-gemma4-routes.ts',
+      'scripts/process-q-routes.ts',
       '--root',
       routeRoot,
       '--watch',
@@ -218,7 +214,7 @@ async function main() {
       '--execution-endpoint',
       executionEndpoint,
       '--base-model',
-      'google/gemma-4-E4B-it',
+      DEFAULT_Q_BASE_MODEL,
       '--layer',
       'router-core',
       '--idle-exit-ms',
@@ -234,11 +230,12 @@ async function main() {
   )
 
   try {
-    const harnessWorkersBeforeLaunch = await waitForWorker(workerId)
+    const localWorkersBeforeLaunch = await waitForWorker(routeRoot, workerId)
+    const harnessWorkersBeforeLaunch = await getImmaculateHarnessWorkers().catch(() => null)
     const launch = await execa(
       'bun',
       [
-        'scripts/launch-gemma4-train.ts',
+        'scripts/launch-q-train.ts',
         '--root',
         routeRoot,
         '--bundle-dir',
@@ -266,16 +263,23 @@ async function main() {
       routeRequest?: {
         manifestPath?: string
       } | null
+      routeQueueDisplayStatus?: string | null
+      routeQueueSummary?: string | null
     }
     const workerResult = await workerProcess
-    const queueEntry = getGemmaTrainingRouteQueueEntry(launchJson.runId, routeRoot)
+    const queueEntry = getQTrainingRouteQueueEntry(launchJson.runId, routeRoot)
     const runState = await readJson<Record<string, unknown>>(launchJson.runStatePath)
-    const runSummary = await readJson<Record<string, unknown>>(
-      join(dirname(launchJson.runStatePath), 'run-summary.json'),
+    const runSummaryPath = join(dirname(launchJson.runStatePath), 'run-summary.json')
+    const metricsSummaryPath = join(
+      dirname(launchJson.runStatePath),
+      'metrics-summary.json',
     )
-    const metricsSummary = await readJson<Record<string, unknown>>(
-      join(dirname(launchJson.runStatePath), 'metrics-summary.json'),
-    )
+    const runSummary = existsSync(runSummaryPath)
+      ? await readJson<Record<string, unknown>>(runSummaryPath)
+      : null
+    const metricsSummary = existsSync(metricsSummaryPath)
+      ? await readJson<Record<string, unknown>>(metricsSummaryPath)
+      : null
     const routeQueueFromState =
       typeof runState.routeQueue === 'object' && runState.routeQueue !== null
         ? (runState.routeQueue as Record<string, unknown>)
@@ -287,14 +291,21 @@ async function main() {
         ? (routeQueueFromState.dispatch as Record<string, unknown>)
         : null
 
-    const ok =
-      harnessWorkersBeforeLaunch?.workers.some(
+    const registeredWorker =
+      harnessWorkersBeforeLaunch?.workers.find(
+        worker => worker.workerId === workerId,
+      ) ?? null
+    const noVisibleWorker =
+      registeredWorker === null &&
+      localWorkersBeforeLaunch.some(
         worker =>
           worker.workerId === workerId &&
-          worker.executionEndpoint === executionEndpoint &&
-          worker.healthStatus === 'healthy' &&
-          worker.assignmentEligible === true,
-      ) === true &&
+          worker.executionProfile === 'remote',
+      )
+    const assignedMode =
+      registeredWorker?.executionEndpoint === executionEndpoint &&
+      registeredWorker.healthStatus === 'healthy' &&
+      registeredWorker.assignmentEligible === true &&
       launch.exitCode === 0 &&
       launchJson.status === 'route_requested' &&
       dispatchRequest?.verification.valid === true &&
@@ -318,19 +329,51 @@ async function main() {
       routeDispatchFromState?.remoteCompletionSummary ===
         'remote execution completed' &&
       runState.status === 'completed' &&
-      runSummary.base_model === 'google/gemma-4-E4B-it' &&
-      metricsSummary.latest_eval_metrics &&
+      runSummary?.base_model === DEFAULT_Q_BASE_MODEL &&
+      metricsSummary?.latest_eval_metrics &&
       typeof metricsSummary.latest_eval_metrics === 'object'
+    const blockedMode =
+      ((registeredWorker?.executionEndpoint === executionEndpoint &&
+        registeredWorker.healthStatus === 'faulted' &&
+        registeredWorker.assignmentEligible === false &&
+        registeredWorker.assignmentBlockedReason ===
+          'unverified federation worker') ||
+        noVisibleWorker) &&
+      launch.exitCode === 0 &&
+      launchJson.status === 'route_requested' &&
+      launchJson.routeQueueDisplayStatus === 'pending_assignment' &&
+      launchJson.routeQueueSummary === 'pending assignment' &&
+      dispatchRequest === null &&
+      stateRequests === 0 &&
+      queueEntry?.status === 'queued' &&
+      queueEntry.assignment === null &&
+      queueEntry.claim === null &&
+      queueEntry.dispatch === null &&
+      routeDispatchFromState === null &&
+      workerResult.exitCode === 0 &&
+      workerResult.stdout.includes('"status": "idle"') &&
+      runState.status === 'route_requested' &&
+      runSummary === null &&
+      metricsSummary === null
+    const ok = Boolean(assignedMode || blockedMode)
 
     console.log(
       JSON.stringify(
         {
           status: ok ? 'passed' : 'failed',
+          mode: assignedMode
+            ? 'verified_remote_completion'
+            : blockedMode
+              ? registeredWorker
+                ? 'blocked_unverified_worker'
+                : 'pending_assignment_no_visible_worker'
+              : 'unknown',
           routeRoot,
           executionEndpoint,
           stateUrl,
           harnessStatus,
           harnessWorkersBeforeLaunch,
+          localWorkersBeforeLaunch,
           launchJson,
           dispatchRequest,
           queueEntry,

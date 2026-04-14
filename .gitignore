@@ -49,7 +49,7 @@ openjaws_patched*.exe
 # Training/data outputs
 data/web-datasets/
 data/sft/
-training/gemma4/__pycache__/
+training/q/__pycache__/
 tmp-probe.h5
 
 # IDE / OS noise

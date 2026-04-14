@@ -29,7 +29,7 @@ import { getSettings_DEPRECATED } from './settings/settings.js';
 import { evaluateStartupHarness } from './startupHarness.js';
 import type { EnvironmentSelectionInfo } from './teleport/environmentSelection.js';
 import { getGitBashStatus } from './windowsPaths.js';
-import { buildGemmaTrainingRouteReceipt } from './gemmaTraining.js';
+import { buildQTrainingRouteReceipt } from './qTraining.js';
 
 // Types
 export type StatusNoticeType = 'warning' | 'info';
@@ -190,12 +190,12 @@ const immaculateHarnessWarningNotice: StatusNoticeDefinition = {
       </Box>;
   }
 };
-const gemmaTrainingRouteNotice: StatusNoticeDefinition = {
-  id: 'gemma-training-route',
+const qTrainingRouteNotice: StatusNoticeDefinition = {
+  id: 'q-training-route',
   type: 'warning',
-  isActive: () => buildGemmaTrainingRouteReceipt()?.displayStatus === 'pending_assignment',
+  isActive: () => buildQTrainingRouteReceipt()?.displayStatus === 'pending_assignment',
   render: () => {
-    const receipt = buildGemmaTrainingRouteReceipt()
+    const receipt = buildQTrainingRouteReceipt()
     if (!receipt) {
       return null
     }
@@ -229,11 +229,11 @@ const executionReceiptNotice: StatusNoticeDefinition = {
     if (context.immaculateHarnessStatus?.enabled) {
       parts.push(formatImmaculateHarnessInlineStatus(context.immaculateHarnessStatus));
     }
-    const gemmaRouteReceipt = buildGemmaTrainingRouteReceipt({
+    const qRouteReceipt = buildQTrainingRouteReceipt({
       compact: true
     });
-    if (gemmaRouteReceipt) {
-      parts.push(gemmaRouteReceipt.text);
+    if (qRouteReceipt) {
+      parts.push(qRouteReceipt.text);
     }
     parts.push(`harness ${startupHarness.status}`);
     if (getRemoteControlAtStartup() && !isRemoteControlStartupBlocked(context)) {
@@ -421,7 +421,7 @@ const jetbrainsPluginNotice: StatusNoticeDefinition = {
 };
 
 // All notice definitions
-export const statusNoticeDefinitions: StatusNoticeDefinition[] = [remoteControlStartupBlockedNotice, startupHarnessWarningNotice, providerSetupWarningNotice, immaculateHarnessWarningNotice, gemmaTrainingRouteNotice, executionReceiptNotice, largeMemoryFilesNotice, largeAgentDescriptionsNotice, openjawsSubscriberExternalTokenNotice, apiKeyConflictNotice, bothAuthMethodsNotice, jetbrainsPluginNotice];
+export const statusNoticeDefinitions: StatusNoticeDefinition[] = [remoteControlStartupBlockedNotice, startupHarnessWarningNotice, providerSetupWarningNotice, immaculateHarnessWarningNotice, qTrainingRouteNotice, executionReceiptNotice, largeMemoryFilesNotice, largeAgentDescriptionsNotice, openjawsSubscriberExternalTokenNotice, apiKeyConflictNotice, bothAuthMethodsNotice, jetbrainsPluginNotice];
 
 // Helper functions for external use
 export function getActiveNotices(context: StatusNoticeContext): StatusNoticeDefinition[] {

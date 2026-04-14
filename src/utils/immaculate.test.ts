@@ -9,6 +9,8 @@ import {
 
 describe('immaculate orchestration policy', () => {
   test('defaults to enabled balanced mode', () => {
+    const prompt = buildImmaculateSystemPrompt({})
+
     expect(isImmaculateEnabled({})).toBe(true)
     expect(getImmaculateMode({})).toBe('balanced')
     expect(getImmaculateStatus({})).toEqual({
@@ -16,8 +18,12 @@ describe('immaculate orchestration policy', () => {
       mode: 'balanced',
       label: 'on · balanced',
     })
-    expect(buildImmaculateSystemPrompt({})).toContain(
-      '# Immaculate orchestration',
+    expect(prompt).toContain('# Immaculate orchestration')
+    expect(prompt).toContain(
+      'research the current state first',
+    )
+    expect(prompt).toContain(
+      'Default to up-to-date implementation choices.',
     )
   })
 

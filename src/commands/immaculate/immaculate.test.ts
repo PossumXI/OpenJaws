@@ -20,10 +20,10 @@ describe('/immaculate command parsing', () => {
 
   test('parses run with optional layer flag', () => {
     expect(
-      parseImmaculateCommand('run --layer ollama-mid-gemma4-e4b tighten routing'),
+      parseImmaculateCommand('run --layer ollama-mid-q-e4b tighten routing'),
     ).toEqual({
       type: 'run',
-      layerId: 'ollama-mid-gemma4-e4b',
+      layerId: 'ollama-mid-q-e4b',
       objective: 'tighten routing',
     })
   })
@@ -59,7 +59,7 @@ describe('/immaculate status formatting', () => {
           edges: 16,
           layerCount: 1,
           executionCount: 0,
-          recommendedLayerId: 'ollama-mid-gemma4-e4b',
+          recommendedLayerId: 'ollama-mid-q-e4b',
         },
       ),
     ).toContain(

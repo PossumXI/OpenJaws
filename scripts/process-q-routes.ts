@@ -2,32 +2,32 @@ import { existsSync } from 'fs'
 import { execa } from 'execa'
 import { resolve } from 'path'
 import {
-  claimGemmaTrainingRouteQueueEntry,
-  claimNextQueuedGemmaTrainingRoute,
-  getNextGemmaTrainingRoutePendingRemoteResult,
-  getGemmaTrainingRouteQueueEntry,
-  getGemmaTrainingRouteQueueStatusSummary,
-  isGemmaTrainingRouteQueuePendingAssignment,
-  removeGemmaTrainingRouteWorkerRuntimeStatus,
-  readGemmaTrainingRouteQueue,
-  removeGemmaTrainingRouteWorker,
-  reapStaleGemmaTrainingRouteQueueClaims,
-  reapStaleGemmaTrainingRouteWorkers,
-  readGemmaTrainingRouteManifest,
-  renewGemmaTrainingRouteQueueClaim,
-  type GemmaTrainingRouteWorkerRuntimeEntry,
-  type GemmaTrainingRouteWorkerExecutionProfile,
-  type GemmaTrainingRouteQueueEntry,
-  upsertGemmaTrainingRouteWorkerRuntimeStatus,
-  upsertGemmaTrainingRouteWorker,
-} from '../src/utils/gemmaTraining.js'
+  claimQTrainingRouteQueueEntry,
+  claimNextQueuedQTrainingRoute,
+  getNextQTrainingRoutePendingRemoteResult,
+  getQTrainingRouteQueueEntry,
+  getQTrainingRouteQueueStatusSummary,
+  isQTrainingRouteQueuePendingAssignment,
+  removeQTrainingRouteWorkerRuntimeStatus,
+  readQTrainingRouteQueue,
+  removeQTrainingRouteWorker,
+  reapStaleQTrainingRouteQueueClaims,
+  reapStaleQTrainingRouteWorkers,
+  readQTrainingRouteManifest,
+  renewQTrainingRouteQueueClaim,
+  type QTrainingRouteWorkerRuntimeEntry,
+  type QTrainingRouteWorkerExecutionProfile,
+  type QTrainingRouteQueueEntry,
+  upsertQTrainingRouteWorkerRuntimeStatus,
+  upsertQTrainingRouteWorker,
+} from '../src/utils/qTraining.js'
 import {
   getImmaculateHarnessStatus,
   heartbeatImmaculateHarnessWorker,
   registerImmaculateHarnessWorker,
   unregisterImmaculateHarnessWorker,
 } from '../src/utils/immaculateHarness.js'
-import { reconcileGemmaTrainingRouteResult } from './poll-gemma4-route-result.js'
+import { reconcileQTrainingRouteResult } from './poll-q-route-result.js'
 
 type CliOptions = {
   root: string | null
@@ -38,7 +38,7 @@ type CliOptions = {
   workerId: string
   workerLabel: string | null
   hostLabel: string | null
-  executionProfile: GemmaTrainingRouteWorkerExecutionProfile
+  executionProfile: QTrainingRouteWorkerExecutionProfile
   executionEndpoint: string | null
   baseModels: string[]
   preferredLayers: string[]
@@ -166,7 +166,7 @@ function parseArgs(argv: string[]): CliOptions {
 function printHelpAndExit(): never {
   console.log(
     [
-      'Usage: bun scripts/process-gemma4-routes.ts [options]',
+      'Usage: bun scripts/process-q-routes.ts [options]',
       '',
       'Options:',
       '  --root <path>             Root directory for registry/queue artifacts',
@@ -206,7 +206,7 @@ function validateWorkerOptions(options: CliOptions): void {
     (!options.executionEndpoint || !options.executionEndpoint.trim())
   ) {
     throw new Error(
-      'Remote Gemma route workers require --execution-endpoint so Immaculate can assign them safely.',
+      'Remote Q route workers require --execution-endpoint so Immaculate can assign them safely.',
     )
   }
 }
@@ -216,7 +216,7 @@ function upsertWorkerRegistration(
   heartbeatAt = new Date().toISOString(),
 ): void {
   const leaseDurationMs = getWorkerLeaseDurationMs(options)
-  upsertGemmaTrainingRouteWorker(
+  upsertQTrainingRouteWorker(
     {
       workerId: options.workerId,
       workerLabel: options.workerLabel,
@@ -243,17 +243,17 @@ function upsertWorkerRegistration(
 
 type WorkerSyncResult = {
   ok: boolean
-  runtime: GemmaTrainingRouteWorkerRuntimeEntry
+  runtime: QTrainingRouteWorkerRuntimeEntry
 }
 
 function buildWorkerRuntimeEntry(args: {
   options: CliOptions
   updatedAt?: string
-  status: GemmaTrainingRouteWorkerRuntimeEntry['status']
+  status: QTrainingRouteWorkerRuntimeEntry['status']
   summary: string
   detail?: string | null
   harnessUrl?: string | null
-}): GemmaTrainingRouteWorkerRuntimeEntry {
+}): QTrainingRouteWorkerRuntimeEntry {
   return {
     workerId: args.options.workerId,
     workerLabel: args.options.workerLabel,
@@ -270,10 +270,10 @@ function buildWorkerRuntimeEntry(args: {
 }
 
 function writeWorkerRuntimeStatus(
-  entry: GemmaTrainingRouteWorkerRuntimeEntry,
+  entry: QTrainingRouteWorkerRuntimeEntry,
   root = process.cwd(),
-): GemmaTrainingRouteWorkerRuntimeEntry {
-  upsertGemmaTrainingRouteWorkerRuntimeStatus(entry, root)
+): QTrainingRouteWorkerRuntimeEntry {
+  upsertQTrainingRouteWorkerRuntimeStatus(entry, root)
   return entry
 }
 
@@ -382,10 +382,10 @@ async function syncImmaculateWorkerRegistration(
 
 function resolveQueueTarget(
   options: CliOptions,
-): { manifestPath: string | null; queueEntry: GemmaTrainingRouteQueueEntry | null } {
+): { manifestPath: string | null; queueEntry: QTrainingRouteQueueEntry | null } {
   const root = options.root ?? process.cwd()
   if (options.manifestPath) {
-    const queueEntry = claimGemmaTrainingRouteQueueEntry({
+    const queueEntry = claimQTrainingRouteQueueEntry({
       manifestPath: options.manifestPath,
       workerId: options.workerId,
       claimTtlMs: options.claimTtlMs ?? undefined,
@@ -396,7 +396,7 @@ function resolveQueueTarget(
       queueEntry,
     }
   }
-  const queueEntry = claimNextQueuedGemmaTrainingRoute({
+  const queueEntry = claimNextQueuedQTrainingRoute({
     workerId: options.workerId,
     claimTtlMs: options.claimTtlMs ?? undefined,
     root,
@@ -409,9 +409,9 @@ function resolveQueueTarget(
 
 function resolvePendingRemoteResultTarget(
   options: CliOptions,
-): { manifestPath: string | null; queueEntry: GemmaTrainingRouteQueueEntry | null } {
+): { manifestPath: string | null; queueEntry: QTrainingRouteQueueEntry | null } {
   const root = options.root ?? process.cwd()
-  const queueEntry = getNextGemmaTrainingRoutePendingRemoteResult({
+  const queueEntry = getNextQTrainingRoutePendingRemoteResult({
     workerId: options.workerId,
     manifestPath: options.manifestPath,
     root,
@@ -428,17 +428,17 @@ function sleep(ms: number): Promise<void> {
 
 async function dispatchClaimedRoute(args: {
   options: CliOptions
-  target: { manifestPath: string; queueEntry: GemmaTrainingRouteQueueEntry }
+  target: { manifestPath: string; queueEntry: QTrainingRouteQueueEntry }
 }): Promise<{
   status: 'processed' | 'blocked'
   workerId: string
   manifestPath: string
-  queueEntry: GemmaTrainingRouteQueueEntry
+  queueEntry: QTrainingRouteQueueEntry
   dispatch: unknown
-  workerRuntime?: GemmaTrainingRouteWorkerRuntimeEntry | null
+  workerRuntime?: QTrainingRouteWorkerRuntimeEntry | null
 }> {
   let heartbeat: ReturnType<typeof setInterval> | null = null
-  let heartbeatFailure: GemmaTrainingRouteWorkerRuntimeEntry | null = null
+  let heartbeatFailure: QTrainingRouteWorkerRuntimeEntry | null = null
   if (
     args.options.heartbeatMs &&
     args.options.heartbeatMs > 0 &&
@@ -464,7 +464,7 @@ async function dispatchClaimedRoute(args: {
           }
           return
         }
-        renewGemmaTrainingRouteQueueClaim({
+        renewQTrainingRouteQueueClaim({
           runId: args.target.queueEntry.runId,
           workerId: args.options.workerId,
           claimTtlMs: args.options.claimTtlMs ?? undefined,
@@ -478,7 +478,7 @@ async function dispatchClaimedRoute(args: {
 
   try {
     const dispatchArgs = [
-      'scripts/dispatch-gemma4-route.ts',
+      'scripts/dispatch-q-route.ts',
       '--manifest',
       args.target.manifestPath,
       ...(args.options.root ? ['--root', args.options.root] : []),
@@ -530,24 +530,24 @@ async function dispatchClaimedRoute(args: {
 
 async function reconcileRemoteResult(args: {
   options: CliOptions
-  target: { manifestPath: string; queueEntry: GemmaTrainingRouteQueueEntry }
+  target: { manifestPath: string; queueEntry: QTrainingRouteQueueEntry }
 }): Promise<
   | {
       status: 'processed'
       workerId: string
       manifestPath: string
-      queueEntry: GemmaTrainingRouteQueueEntry
-      result: Awaited<ReturnType<typeof reconcileGemmaTrainingRouteResult>>
+      queueEntry: QTrainingRouteQueueEntry
+      result: Awaited<ReturnType<typeof reconcileQTrainingRouteResult>>
     }
   | {
       status: 'pending' | 'blocked'
       workerId: string
       manifestPath: string
-      queueEntry: GemmaTrainingRouteQueueEntry
-      result: Awaited<ReturnType<typeof reconcileGemmaTrainingRouteResult>>
+      queueEntry: QTrainingRouteQueueEntry
+      result: Awaited<ReturnType<typeof reconcileQTrainingRouteResult>>
     }
 > {
-  const result = await reconcileGemmaTrainingRouteResult({
+  const result = await reconcileQTrainingRouteResult({
     root: args.options.root,
     manifestPath: args.target.manifestPath,
     stateUrl: args.target.queueEntry.dispatch?.remoteStateUrl ?? null,
@@ -566,7 +566,7 @@ async function reconcileRemoteResult(args: {
     workerId: args.options.workerId,
     manifestPath: args.target.manifestPath,
     queueEntry:
-      getGemmaTrainingRouteQueueEntry(args.target.queueEntry.runId, args.options.root ?? process.cwd()) ??
+      getQTrainingRouteQueueEntry(args.target.queueEntry.runId, args.options.root ?? process.cwd()) ??
       args.target.queueEntry,
     result,
   }
@@ -605,8 +605,8 @@ async function main() {
 
   try {
     while (true) {
-      reapStaleGemmaTrainingRouteWorkers({ root })
-      reapStaleGemmaTrainingRouteQueueClaims({ root })
+      reapStaleQTrainingRouteWorkers({ root })
+      reapStaleQTrainingRouteQueueClaims({ root })
       const heartbeatAt = new Date().toISOString()
       upsertWorkerRegistration(options, heartbeatAt)
       const heartbeatSync = await syncImmaculateWorkerRegistration(
@@ -665,19 +665,19 @@ async function main() {
       }
       const target = resolveQueueTarget(options)
       if (options.manifestPath && target.manifestPath && !target.queueEntry) {
-        const manifest = readGemmaTrainingRouteManifest(target.manifestPath)
-        const queueEntry = getGemmaTrainingRouteQueueEntry(manifest.runId, root)
-        const pendingAssignment = isGemmaTrainingRouteQueuePendingAssignment(queueEntry)
+        const manifest = readQTrainingRouteManifest(target.manifestPath)
+        const queueEntry = getQTrainingRouteQueueEntry(manifest.runId, root)
+        const pendingAssignment = isQTrainingRouteQueuePendingAssignment(queueEntry)
         console.log(
           JSON.stringify(
             {
               status: pendingAssignment ? 'pending_assignment' : 'blocked',
               summary: pendingAssignment
-                ? 'Gemma route manifest is waiting for an Immaculate worker assignment.'
-                : 'Gemma route manifest is already claimed by another worker or assigned elsewhere.',
+                ? 'Q route manifest is waiting for an Immaculate worker assignment.'
+                : 'Q route manifest is already claimed by another worker or assigned elsewhere.',
               workerId: options.workerId,
               manifestPath: target.manifestPath,
-              queueStatus: getGemmaTrainingRouteQueueStatusSummary(queueEntry),
+              queueStatus: getQTrainingRouteQueueStatusSummary(queueEntry),
             },
             null,
             2,
@@ -711,8 +711,8 @@ async function main() {
       }
 
       if (!options.watch) {
-        const pendingAssignments = readGemmaTrainingRouteQueue(root).filter(entry =>
-          isGemmaTrainingRouteQueuePendingAssignment(entry),
+        const pendingAssignments = readQTrainingRouteQueue(root).filter(entry =>
+          isQTrainingRouteQueuePendingAssignment(entry),
         )
         if (pendingAssignments.length > 0) {
           console.log(
@@ -721,15 +721,15 @@ async function main() {
                 status: 'pending_assignment',
                 summary:
                   pendingAssignments.length === 1
-                    ? '1 Gemma route is queued but waiting for an Immaculate worker assignment.'
-                    : `${pendingAssignments.length} Gemma routes are queued but waiting for Immaculate worker assignment.`,
+                    ? '1 Q route is queued but waiting for an Immaculate worker assignment.'
+                    : `${pendingAssignments.length} Q routes are queued but waiting for Immaculate worker assignment.`,
                 workerId: options.workerId,
                 pendingAssignments: pendingAssignments.map(entry => ({
                   runId: entry.runId,
                   manifestPath: entry.manifestPath,
                   target: entry.target ?? null,
                   recommendedLayerId: entry.recommendedLayerId ?? null,
-                  queueStatus: getGemmaTrainingRouteQueueStatusSummary(entry),
+                  queueStatus: getQTrainingRouteQueueStatusSummary(entry),
                 })),
               },
               null,
@@ -742,7 +742,7 @@ async function main() {
           JSON.stringify(
             {
               status: 'idle',
-              summary: 'No queued Gemma route manifests ready for processing.',
+              summary: 'No queued Q route manifests ready for processing.',
               workerId: options.workerId,
               manifestPath: target.manifestPath,
             },
@@ -758,7 +758,7 @@ async function main() {
           JSON.stringify(
             {
               status: 'idle',
-              summary: 'Gemma route worker exited after the configured idle window.',
+              summary: 'Q route worker exited after the configured idle window.',
               workerId: options.workerId,
               idleExitMs: options.idleExitMs,
             },
@@ -772,10 +772,10 @@ async function main() {
       await sleep(options.pollMs)
     }
   } finally {
-    removeGemmaTrainingRouteWorker(options.workerId, root)
+    removeQTrainingRouteWorker(options.workerId, root)
     await unregisterImmaculateHarnessWorker(options.workerId).catch(() => null)
     if (!preserveWorkerRuntimeStatus) {
-      removeGemmaTrainingRouteWorkerRuntimeStatus(options.workerId, root)
+      removeQTrainingRouteWorkerRuntimeStatus(options.workerId, root)
     }
   }
 }

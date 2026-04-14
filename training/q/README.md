@@ -1,14 +1,18 @@
-# Gemma 4 LoRA Scaffold
+# Q LoRA Scaffold
 
-This directory is the first local fine-tuning scaffold for `google/gemma-4-E4B-it`.
+This directory contains the local fine-tuning scaffold for `Q`.
+
+OpenJaws treats `Q` as the public model family name. The trainer resolves that
+label to the upstream checkpoint internally, so operator docs and commands stay
+consistent with the shipped product surface.
 
 ## Inputs
 
 Generate raw and prepared datasets first:
 
 ```powershell
-bun run export:sft --project openjaws --out data/sft/openjaws-gemma4.jsonl
-bun run prepare:sft --in data/sft/openjaws-gemma4.jsonl --out-dir data/sft/prepared
+bun run export:sft --project openjaws --out data/sft/openjaws-q.jsonl
+bun run prepare:sft --in data/sft/openjaws-q.jsonl --out-dir data/sft/prepared
 bun run audit:sft --in data/sft/prepared/all.jsonl --out-dir data/sft/audited
 ```
 
@@ -39,28 +43,28 @@ Each row includes:
 Install Python dependencies:
 
 ```powershell
-python -m pip install -r training/gemma4/requirements.txt
+python -m pip install -r training/q/requirements.txt
 ```
 
 For a Windows CPU-only machine, use:
 
 ```powershell
-python -m pip install -r training/gemma4/requirements-windows-cpu.txt
+python -m pip install -r training/q/requirements-windows-cpu.txt
 ```
 
 Run a first local adapter fine-tune:
 
 ```powershell
-python training/gemma4/train_lora.py --load-in-4bit --bf16
+python training/q/train_lora.py --load-in-4bit --bf16
 ```
 
-For a bounded CPU smoke train on this machine shape:
+For a bounded CPU smoke run on this machine shape:
 
 ```powershell
-python training/gemma4/train_lora.py ^
+python training/q/train_lora.py ^
   --train-file data/sft/prepared/train.jsonl ^
   --eval-file data/sft/prepared/eval.jsonl ^
-  --output-dir artifacts/gemma4-cpu-smoke ^
+  --output-dir artifacts/q-cpu-smoke ^
   --tag agentic ^
   --use-cpu ^
   --max-seq-length 256 ^
@@ -72,21 +76,21 @@ python training/gemma4/train_lora.py ^
 Enable W&B on tracked runs:
 
 ```powershell
-python training/gemma4/train_lora.py ^
+python training/q/train_lora.py ^
   --train-file data/sft/prepared/train.jsonl ^
   --eval-file data/sft/prepared/eval.jsonl ^
   --wandb-entity arobi-arobi-technology-alliance ^
-  --wandb-project openjaws-gemma4 ^
-  --run-name gemma4-agentic-smoke
+  --wandb-project openjaws-q ^
+  --run-name q-agentic-smoke
 ```
 
 Useful overrides:
 
 ```powershell
-python training/gemma4/train_lora.py ^
+python training/q/train_lora.py ^
   --train-file data/sft/prepared/train.jsonl ^
   --eval-file data/sft/prepared/eval.jsonl ^
-  --output-dir artifacts/gemma4-coding-lora ^
+  --output-dir artifacts/q-coding-lora ^
   --num-train-epochs 2 ^
   --learning-rate 1e-4 ^
   --max-seq-length 4096
@@ -100,8 +104,12 @@ This scaffold is aimed at:
 - agentic shell/tool behavior
 - security review and triage
 
-The dataset preparer already tags samples into `coding`, `agentic`, `security`, and `general`, so the next pass can add tag-based subset training rather than retracing the raw transcript corpus.
+The dataset preparer already tags samples into `coding`, `agentic`,
+`security`, and `general`, so the next pass can add tag-based subset training
+without retracing the raw transcript corpus.
 The trainer already supports tag filtering through repeated `--tag` flags.
-It also writes `metrics-summary.json` beside `run-summary.json` so local runs stay reviewable even without W&B.
+It also writes `metrics-summary.json` beside `run-summary.json` so local runs
+stay reviewable even without W&B.
 
-Train from the audited splits, not the raw prepared set, once you start doing longer runs.
+Train from the audited splits, not the raw prepared set, once you start doing
+longer runs.

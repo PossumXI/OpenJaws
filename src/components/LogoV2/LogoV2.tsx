@@ -44,8 +44,8 @@ import { getEffortSuffix } from '../../utils/effort.js';
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { renderModelSetting } from '../../utils/model/model.js';
 const LEFT_PANEL_MAX_WIDTH = 50;
-const OPEN_WATER_LINE = 'OPENJAWS // OPENCHEEKS // FLIGHT DECK';
-const JAWS_WAKE_LINE = 'sunlit shell · agents · notes · tools · receipts';
+const OPEN_WATER_LINE = 'OPENCHEEKS // FLIGHT DECK // IMMACULATE';
+const JAWS_WAKE_LINE = 'ocean-blue shell · opencheek crew · routed tools · signed receipts';
 export function LogoV2() {
   const $ = _c(94);
   const activities = getRecentActivitySync();

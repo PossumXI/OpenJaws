@@ -9,6 +9,9 @@ OpenJaws runs directly in your terminal. It understands your codebase, edits fil
 handles git workflows, coordinates background agents, and exposes operator surfaces such as `/status`,
 `/immaculate`, `/provider`, `/voice`, and background task inspection.
 
+Fresh public installs default to `OCI:Q`. Use `/provider` when you want to
+rotate keys, change the OCI base URL, or switch providers entirely.
+
 ## Privacy First
 
 This build removes telemetry and non-essential traffic by default:
@@ -54,6 +57,8 @@ OpenJaws reads settings from `~/.openjaws/settings.json`. Common keys:
 
 - `apiKey` — Your direct provider API key when using API-key auth
 - `model` — Default model
+- `llmProviders.oci.apiKey` — Stored `OCI` / `Q` API key when you use `/provider key oci`
+- `llmProviders.oci.baseUrl` — Optional OCI endpoint override when you use `/provider base-url oci`
 - `additionalDirectories` — Extra directories to include
 - `permissionMode` — Default permission behavior
 
@@ -61,8 +66,12 @@ OpenJaws reads settings from `~/.openjaws/settings.json`. Common keys:
 
 OpenJaws supports both API-key and web-account flows depending on provider and feature:
 
-- Environment variable: provider-specific key such as `OPENAI_API_KEY` or your selected provider's API key variable
+- Environment variable: provider-specific key such as `Q_API_KEY`, `OCI_API_KEY`, `OCI_GENAI_API_KEY`, or another selected provider's API key variable
 - `/login` command: `openjaws /login`
+- `/provider` commands:
+  - `/provider use oci Q`
+  - `/provider key oci <api-key>`
+  - `/provider base-url oci <url>`
 - Settings file: `~/.openjaws/settings.json`
 
 ## Keyboard Shortcuts

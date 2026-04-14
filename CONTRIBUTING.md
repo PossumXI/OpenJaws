@@ -32,6 +32,8 @@ bun run verify:public
 - Prefer fail-closed behavior over silent fallbacks.
 - Add or update tests when you change queueing, orchestration, permissions, routing, or status surfaces.
 - If you touch worker/routing logic, run the full harness checks, not just unit tests.
+- If you touch release/update behavior, keep the tagged-release lane, `release-policy.json`, and public recovery docs in sync.
+- Do not introduce unofficial install/update hosts, mirrored binaries, or copy-paste installer snippets to unknown origins.
 
 ## High-Value Areas
 
@@ -39,7 +41,7 @@ bun run verify:public
 - OpenCheek agent orchestration
 - Immaculate integration and route assignment
 - Tool calling correctness and retry shaping
-- Gemma dataset/training flows
+- Q dataset/training flows
 - Security hardening and public-release hygiene
 - Documentation and wiki accuracy
 
@@ -50,6 +52,7 @@ bun run verify:public
 - `bun run build:native` passes
 - `bun run system:check` passes
 - docs updated if user-visible behavior changed
+- release/update docs updated if release semantics, rollout policy, or install guidance changed
 - no secrets or local artifacts added
 
 ## Community Workflow

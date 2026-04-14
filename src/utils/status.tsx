@@ -53,13 +53,14 @@ import { getGitBashStatus } from './windowsPaths.js';
 import { evaluateStartupHarness, summarizeStartupHarness } from './startupHarness.js';
 import { getElevenLabsConfig } from '../services/voiceOutput.js';
 import {
-  getGemmaTrainingRouteQueueStatusSummary,
-  getLatestGemmaTrainingSnapshot,
-  isGemmaTrainingRouteQueuePendingAssignment,
-  isGemmaTrainingRouteQueueClaimExpired,
-  readGemmaTrainingRouteWorkerRuntimeStatuses,
-  readGemmaTrainingRouteWorkers,
-} from './gemmaTraining.js';
+  getQTrainingRouteQueueStatusSummary,
+  getLatestQTrainingSnapshot,
+  getOpenJawsTrainingModelDisplay,
+  isQTrainingRouteQueuePendingAssignment,
+  isQTrainingRouteQueueClaimExpired,
+  readQTrainingRouteWorkerRuntimeStatuses,
+  readQTrainingRouteWorkers,
+} from './qTraining.js';
 export type Property = {
   label?: string;
   value: React.ReactNode | Array<string>;
@@ -293,7 +294,7 @@ export function buildProviderGuidanceProperties(
       value: [
         '/provider use ollama <model>',
         '/provider base-url ollama <url>',
-        `env ${defaults.baseURLEnvVar}`,
+        `env ${defaults.baseURLEnvVars.join(' / ')}`,
       ],
     })
     return properties
@@ -303,20 +304,22 @@ export function buildProviderGuidanceProperties(
       label: `${externalModel.label} setup`,
       value: [
         `/provider key ${externalModel.provider} <api-key>`,
+        `/provider base-url ${externalModel.provider} <url>`,
         `env ${defaults.apiKeyEnvVars.join(' / ')}`,
         `settings.llmProviders.${externalModel.provider}.apiKey`,
       ],
     })
     return properties
   }
-  properties.push({
-    label: `${externalModel.label} controls`,
-    value: [
-      `/provider key ${externalModel.provider} <api-key>`,
-      `/provider clear-key ${externalModel.provider}`,
-      `/provider model ${externalModel.provider} <model>`,
-    ],
-  })
+    properties.push({
+      label: `${externalModel.label} controls`,
+      value: [
+        `/provider key ${externalModel.provider} <api-key>`,
+        `/provider clear-key ${externalModel.provider}`,
+        `/provider model ${externalModel.provider} <model>`,
+        `/provider base-url ${externalModel.provider} <url>`,
+      ],
+    })
   return properties
 }
 export function buildImmaculateGuidanceProperties(
@@ -373,12 +376,12 @@ export function buildVoiceProperties(): Property[] {
     ]
   }]
 }
-export function buildGemmaTrainingProperties(
+export function buildQTrainingProperties(
   immaculateWorkers: ImmaculateHarnessWorkerCatalog | null = null,
 ): Property[] {
-  const snapshot = getLatestGemmaTrainingSnapshot()
-  const workers = readGemmaTrainingRouteWorkers()
-  const workerRuntime = readGemmaTrainingRouteWorkerRuntimeStatuses()
+  const snapshot = getLatestQTrainingSnapshot()
+  const workers = readQTrainingRouteWorkers()
+  const workerRuntime = readQTrainingRouteWorkerRuntimeStatuses()
   if (!snapshot) {
     if (workers.length === 0 && workerRuntime.length === 0) {
       return []
@@ -433,7 +436,7 @@ export function buildGemmaTrainingProperties(
   const tagLabel = snapshot.registry.selectedTags.length > 0 ? snapshot.registry.selectedTags.join(', ') : 'all tags'
   const languageLabel = snapshot.registry.selectedLanguages.length > 0 ? snapshot.registry.selectedLanguages.join(', ') : 'all languages'
   const properties: Property[] = [{
-    label: 'Gemma training',
+    label: 'Q training',
     value: progressParts
   }]
   if (preflight) {
@@ -447,7 +450,7 @@ export function buildGemmaTrainingProperties(
   }
   if (routeFailure) {
     properties.push({
-      label: 'Training route',
+      label: 'Q route',
       value: [
         routeFailure.route,
         'request failed',
@@ -465,7 +468,7 @@ export function buildGemmaTrainingProperties(
     })
     if (routeFailure.harnessUrl || routeFailure.detail) {
       properties.push({
-        label: 'Training route failure',
+        label: 'Q route failure',
         value: [
           ...(routeFailure.harnessUrl ? [routeFailure.harnessUrl] : []),
           ...(routeFailure.detail ? [routeFailure.detail] : []),
@@ -475,7 +478,7 @@ export function buildGemmaTrainingProperties(
   }
   if (routeRequest) {
     properties.push({
-      label: 'Training route',
+      label: 'Q route',
       value: [
         routeRequest.route,
         routeRequest.controlAccepted === true
@@ -490,12 +493,12 @@ export function buildGemmaTrainingProperties(
       ]
     })
     properties.push({
-      label: 'Training route manifest',
+      label: 'Q route manifest',
       value: routeRequest.manifestPath
     })
     if (routeRequest.security) {
       properties.push({
-        label: 'Training route security',
+        label: 'Q route security',
         value: [
           routeRequest.security.algorithm,
           routeRequest.security.secretSource,
@@ -505,7 +508,7 @@ export function buildGemmaTrainingProperties(
     }
     if (routeRequest.integrity) {
       properties.push({
-        label: 'Training route integrity',
+        label: 'Q route integrity',
         value: [
           routeRequest.integrity.algorithm,
           `train ${routeRequest.integrity.trainFile.sha256.slice(0, 12)}`,
@@ -517,13 +520,13 @@ export function buildGemmaTrainingProperties(
     }
     if (!routeQueue) {
       properties.push({
-        label: 'Training route queue',
+        label: 'Q route queue',
         value: ['missing verified queue state', 'route request recorded without a current queue snapshot']
       })
     }
   }
   if (routeQueue) {
-    const pendingAssignment = isGemmaTrainingRouteQueuePendingAssignment(routeQueue)
+    const pendingAssignment = isQTrainingRouteQueuePendingAssignment(routeQueue)
     const liveHealthyWorkerCount = immaculateWorkers?.healthyWorkerCount
     const liveStaleWorkerCount = immaculateWorkers?.staleWorkerCount
     const liveFaultedWorkerCount = immaculateWorkers?.faultedWorkerCount
@@ -541,16 +544,16 @@ export function buildGemmaTrainingProperties(
         ].filter((value): value is string => Boolean(value))
       : []
     properties.push({
-      label: 'Training route queue',
+      label: 'Q route queue',
       value: [
-        getGemmaTrainingRouteQueueStatusSummary(routeQueue),
+        getQTrainingRouteQueueStatusSummary(routeQueue),
         routeQueue.claim?.workerId ??
           routeQueue.assignment?.workerLabel ??
           routeQueue.assignment?.workerId ??
           (pendingAssignment ? 'worker pending' : 'unclaimed'),
         ...(routeQueue.claim?.leaseExpiresAt
           ? [
-              isGemmaTrainingRouteQueueClaimExpired(routeQueue)
+              isQTrainingRouteQueueClaimExpired(routeQueue)
                 ? 'lease expired'
                 : `lease ${routeQueue.claim.leaseExpiresAt}`,
             ]
@@ -606,7 +609,7 @@ export function buildGemmaTrainingProperties(
     })
     if (routeQueue.assignment) {
       properties.push({
-        label: 'Training route assignment',
+        label: 'Q route assignment',
         value: [
           routeQueue.assignment.workerLabel ?? routeQueue.assignment.workerId,
           routeQueue.assignment.executionProfile,
@@ -629,7 +632,7 @@ export function buildGemmaTrainingProperties(
       })
     } else if (pendingAssignment) {
       properties.push({
-        label: 'Training route assignment',
+        label: 'Q route assignment',
         value: [
           'pending assignment',
           routeQueue.requestedExecutionDecision ?? 'decision pending',
@@ -677,8 +680,8 @@ export function buildGemmaTrainingProperties(
     })
   }
   properties.push({
-    label: 'Training model',
-    value: snapshot.registry.baseModel
+    label: 'Q base',
+    value: getOpenJawsTrainingModelDisplay(snapshot.registry.baseModel)
   }, {
     label: 'Training scope',
     value: [tagLabel, languageLabel]

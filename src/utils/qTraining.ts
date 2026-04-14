@@ -9,10 +9,10 @@ import {
   writeFileSync,
 } from 'fs'
 import { homedir, freemem, totalmem } from 'os'
-import { dirname, join, relative, resolve } from 'path'
+import { dirname, isAbsolute, join, relative, resolve } from 'path'
 import * as lockfile from './lockfile.js'
 
-export type GemmaTrainingStatus =
+export type QTrainingStatus =
   | 'launched'
   | 'initializing'
   | 'running'
@@ -22,13 +22,13 @@ export type GemmaTrainingStatus =
   | 'remote_required'
   | 'preflight_blocked'
 
-export type GemmaTrainingPreflightDecision =
+export type QTrainingPreflightDecision =
   | 'allow_local'
   | 'remote_required'
   | 'preflight_blocked'
 
-export type GemmaTrainingPreflight = {
-  decision: GemmaTrainingPreflightDecision
+export type QTrainingPreflight = {
+  decision: QTrainingPreflightDecision
   reasonCode:
     | 'ok'
     | 'missing_python'
@@ -45,7 +45,7 @@ export type GemmaTrainingPreflight = {
   observedTotalMemoryBytes?: number | null
 }
 
-export type GemmaTrainingExecutionMode =
+export type QTrainingExecutionMode =
   | 'local'
   | 'local_forced'
   | 'immaculate_route_requested'
@@ -53,85 +53,85 @@ export type GemmaTrainingExecutionMode =
   | 'remote_required'
   | 'preflight_blocked'
 
-export type GemmaTrainingFileIntegrity = {
+export type QTrainingFileIntegrity = {
   path: string
   bytes: number
   sha256: string
 }
 
-export type GemmaTrainingRouteIntegrity = {
+export type QTrainingRouteIntegrity = {
   algorithm: 'sha256'
-  trainFile: GemmaTrainingFileIntegrity
-  evalFile?: GemmaTrainingFileIntegrity | null
+  trainFile: QTrainingFileIntegrity
+  evalFile?: QTrainingFileIntegrity | null
 }
 
-export type GemmaTrainingRouteSecretSource =
-  | 'OPENJAWS_GEMMA_ROUTE_SECRET'
-  | '~/.openjaws/gemma-route-secret'
+export type QTrainingRouteSecretSource =
+  | 'OPENJAWS_Q_ROUTE_SECRET'
+  | '~/.openjaws/q-route-secret'
 
-export type GemmaTrainingRouteSecurity = {
+export type QTrainingRouteSecurity = {
   algorithm: 'hmac-sha256'
   payloadSha256: string
   signature: string
   signedAt: string
-  secretSource: GemmaTrainingRouteSecretSource
+  secretSource: QTrainingRouteSecretSource
 }
 
-export type GemmaTrainingRouteDispatchTransport =
+export type QTrainingRouteDispatchTransport =
   | 'local_process'
   | 'remote_http'
 
-export type GemmaTrainingRouteDispatchFile = {
+export type QTrainingRouteDispatchFile = {
   path: string
   bytes: number
   sha256: string
   contentBase64: string
 }
 
-export type GemmaTrainingRouteDispatchPayload = {
+export type QTrainingRouteDispatchPayload = {
   runId: string
   manifestPath: string
   workerId: string
-  executionMode: GemmaTrainingExecutionMode
+  executionMode: QTrainingExecutionMode
   dispatchedAt: string
-  manifest: GemmaTrainingRouteManifest
-  files: GemmaTrainingRouteDispatchFile[]
+  manifest: QTrainingRouteManifest
+  files: QTrainingRouteDispatchFile[]
 }
 
-export type GemmaTrainingRouteDispatchEnvelope = {
-  payload: GemmaTrainingRouteDispatchPayload
-  security: GemmaTrainingRouteSecurity | null
+export type QTrainingRouteDispatchEnvelope = {
+  payload: QTrainingRouteDispatchPayload
+  security: QTrainingRouteSecurity | null
 }
 
-export type GemmaTrainingRouteResultStatus = Extract<
-  GemmaTrainingStatus,
+export type QTrainingRouteResultStatus = Extract<
+  QTrainingStatus,
   'completed' | 'failed'
 >
 
-export type GemmaTrainingRouteResultPayload = {
+export type QTrainingRouteResultPayload = {
   runId: string
   manifestPath: string
   workerId: string
   executionId: string | null
-  executionMode: GemmaTrainingExecutionMode
+  executionMode: QTrainingExecutionMode
   finishedAt: string
-  status: GemmaTrainingRouteResultStatus
+  status: QTrainingRouteResultStatus
   summary: string | null
   stateUrl?: string | null
-  runState: Partial<GemmaRunState> & {
-    status: GemmaTrainingRouteResultStatus
+  runState: Partial<QRunState> & {
+    status: QTrainingRouteResultStatus
     finishedAt: string
   }
   runSummary: Record<string, unknown> | null
   metricsSummary: Record<string, unknown> | null
 }
 
-export type GemmaTrainingRouteResultEnvelope = {
-  payload: GemmaTrainingRouteResultPayload
-  security: GemmaTrainingRouteSecurity | null
+export type QTrainingRouteResultEnvelope = {
+  payload: QTrainingRouteResultPayload
+  security: QTrainingRouteSecurity | null
 }
 
-export type GemmaTrainingRouteRequest = {
+export type QTrainingRouteRequest = {
   route: 'immaculate'
   requestedAt: string
   target?: string | null
@@ -155,7 +155,7 @@ export type GemmaTrainingRouteRequest = {
       workerId: string
       workerLabel?: string | null
       hostLabel?: string | null
-      executionProfile: GemmaTrainingRouteWorkerExecutionProfile
+      executionProfile: QTrainingRouteWorkerExecutionProfile
       executionEndpoint?: string | null
       assignedAt: string
       reason: string
@@ -164,28 +164,28 @@ export type GemmaTrainingRouteRequest = {
       healthSummary?: string | null
     } | null
   } | null
-  integrity?: GemmaTrainingRouteIntegrity | null
-  security?: GemmaTrainingRouteSecurity | null
+  integrity?: QTrainingRouteIntegrity | null
+  security?: QTrainingRouteSecurity | null
 }
 
-export type GemmaTrainingRouteFailureStage =
+export type QTrainingRouteFailureStage =
   | 'status'
   | 'control'
   | 'assignment'
   | 'manifest'
 
-export type GemmaTrainingRouteFailureCode =
+export type QTrainingRouteFailureCode =
   | 'harness_unreachable'
   | 'control_failed'
   | 'control_rejected'
   | 'assignment_failed'
   | 'manifest_failed'
 
-export type GemmaTrainingRouteFailure = {
+export type QTrainingRouteFailure = {
   route: 'immaculate'
   failedAt: string
-  stage: GemmaTrainingRouteFailureStage
-  code: GemmaTrainingRouteFailureCode
+  stage: QTrainingRouteFailureStage
+  code: QTrainingRouteFailureCode
   summary: string
   detail?: string | null
   harnessUrl?: string | null
@@ -194,7 +194,7 @@ export type GemmaTrainingRouteFailure = {
   controlSummary?: string | null
 }
 
-export type GemmaTrainingRouteManifestTraining = {
+export type QTrainingRouteManifestTraining = {
   baseModel: string
   runName: string | null
   trainFile: string
@@ -207,15 +207,15 @@ export type GemmaTrainingRouteManifestTraining = {
   numTrainEpochs?: number | null
 }
 
-export type GemmaTrainingRouteManifest = {
+export type QTrainingRouteManifest = {
   runId: string
-  routeRequest: GemmaTrainingRouteRequest
-  training: GemmaTrainingRouteManifestTraining
-  preflight: GemmaTrainingPreflight
-  security: GemmaTrainingRouteSecurity | null
+  routeRequest: QTrainingRouteRequest
+  training: QTrainingRouteManifestTraining
+  preflight: QTrainingPreflight
+  security: QTrainingRouteSecurity | null
 }
 
-export type GemmaTrainingRouteQueueStatus =
+export type QTrainingRouteQueueStatus =
   | 'queued'
   | 'claimed'
   | 'dispatched'
@@ -223,17 +223,17 @@ export type GemmaTrainingRouteQueueStatus =
   | 'failed'
   | 'rejected'
 
-export type GemmaTrainingRouteQueueDisplayStatus =
-  | GemmaTrainingRouteQueueStatus
+export type QTrainingRouteQueueDisplayStatus =
+  | QTrainingRouteQueueStatus
   | 'pending_assignment'
 
-export type GemmaTrainingRouteReceipt = {
-  displayStatus: GemmaTrainingRouteQueueDisplayStatus
+export type QTrainingRouteReceipt = {
+  displayStatus: QTrainingRouteQueueDisplayStatus
   text: string
   tone?: 'suggestion' | 'warning' | 'error' | 'success'
 }
 
-export type GemmaTrainingRouteQueueClaim = {
+export type QTrainingRouteQueueClaim = {
   workerId: string
   claimedAt: string
   heartbeatAt?: string | null
@@ -241,15 +241,15 @@ export type GemmaTrainingRouteQueueClaim = {
   leaseDurationMs?: number | null
   signatureVerified?: boolean | null
   integrityVerified?: boolean | null
-  preflightDecision?: GemmaTrainingPreflightDecision | null
-  preflightReasonCode?: GemmaTrainingPreflight['reasonCode'] | null
+  preflightDecision?: QTrainingPreflightDecision | null
+  preflightReasonCode?: QTrainingPreflight['reasonCode'] | null
 }
 
-export type GemmaTrainingRouteQueueDispatch = {
+export type QTrainingRouteQueueDispatch = {
   dispatchedAt: string
-  executionMode: GemmaTrainingExecutionMode
+  executionMode: QTrainingExecutionMode
   pid: number | null
-  transport?: GemmaTrainingRouteDispatchTransport
+  transport?: QTrainingRouteDispatchTransport
   workerId?: string | null
   executionEndpoint?: string | null
   acknowledgedAt?: string | null
@@ -260,17 +260,17 @@ export type GemmaTrainingRouteQueueDispatch = {
   remoteStateUrl?: string | null
   resultReceivedAt?: string | null
   remoteCompletedAt?: string | null
-  remoteCompletionStatus?: GemmaTrainingRouteResultStatus | null
+  remoteCompletionStatus?: QTrainingRouteResultStatus | null
   remoteCompletionSummary?: string | null
 }
 
-export type GemmaTrainingRouteWorkerExecutionProfile = 'local' | 'remote'
+export type QTrainingRouteWorkerExecutionProfile = 'local' | 'remote'
 
-export type GemmaTrainingRouteWorkerRegistration = {
+export type QTrainingRouteWorkerRegistration = {
   workerId: string
   workerLabel?: string | null
   hostLabel?: string | null
-  executionProfile: GemmaTrainingRouteWorkerExecutionProfile
+  executionProfile: QTrainingRouteWorkerExecutionProfile
   executionEndpoint?: string | null
   registeredAt: string
   heartbeatAt: string
@@ -282,18 +282,18 @@ export type GemmaTrainingRouteWorkerRegistration = {
   preferredLayerIds: string[]
 }
 
-export type GemmaTrainingRouteWorkerRuntimeState =
+export type QTrainingRouteWorkerRuntimeState =
   | 'ready'
   | 'local_only'
   | 'register_failed'
   | 'heartbeat_failed'
 
-export type GemmaTrainingRouteWorkerRuntimeEntry = {
+export type QTrainingRouteWorkerRuntimeEntry = {
   workerId: string
   workerLabel?: string | null
   hostLabel?: string | null
-  executionProfile: GemmaTrainingRouteWorkerExecutionProfile
-  status: GemmaTrainingRouteWorkerRuntimeState
+  executionProfile: QTrainingRouteWorkerExecutionProfile
+  status: QTrainingRouteWorkerRuntimeState
   updatedAt: string
   summary: string
   detail?: string | null
@@ -302,11 +302,11 @@ export type GemmaTrainingRouteWorkerRuntimeEntry = {
   preferredLayerIds: string[]
 }
 
-export type GemmaTrainingRouteQueueAssignment = {
+export type QTrainingRouteQueueAssignment = {
   workerId: string
   workerLabel?: string | null
   hostLabel?: string | null
-  executionProfile: GemmaTrainingRouteWorkerExecutionProfile
+  executionProfile: QTrainingRouteWorkerExecutionProfile
   executionEndpoint?: string | null
   source?: 'local' | 'immaculate'
   assignedAt: string
@@ -316,12 +316,12 @@ export type GemmaTrainingRouteQueueAssignment = {
   healthSummary?: string | null
 }
 
-export type GemmaTrainingRouteQueueEntry = {
+export type QTrainingRouteQueueEntry = {
   runId: string
   manifestPath: string
   queuedAt: string
   updatedAt: string
-  status: GemmaTrainingRouteQueueStatus
+  status: QTrainingRouteQueueStatus
   assignmentAuthority?: 'local' | 'immaculate'
   target?: string | null
   recommendedLayerId?: string | null
@@ -332,18 +332,18 @@ export type GemmaTrainingRouteQueueEntry = {
   blockedWorkerCount?: number | null
   baseModel?: string | null
   useCpu?: boolean | null
-  requestedExecutionDecision?: GemmaTrainingPreflightDecision | null
-  security?: GemmaTrainingRouteSecurity | null
-  assignment?: GemmaTrainingRouteQueueAssignment | null
-  claim?: GemmaTrainingRouteQueueClaim | null
-  dispatch?: GemmaTrainingRouteQueueDispatch | null
+  requestedExecutionDecision?: QTrainingPreflightDecision | null
+  security?: QTrainingRouteSecurity | null
+  assignment?: QTrainingRouteQueueAssignment | null
+  claim?: QTrainingRouteQueueClaim | null
+  dispatch?: QTrainingRouteQueueDispatch | null
   rejectionReason?: string | null
 }
 
-export type GemmaTrainingRegistryEntry = {
+export type QTrainingRegistryEntry = {
   runId: string
-  status: GemmaTrainingStatus
-  executionMode?: GemmaTrainingExecutionMode
+  status: QTrainingStatus
+  executionMode?: QTrainingExecutionMode
   pid: number | null
   launchedAt: string
   outputDir: string
@@ -358,14 +358,14 @@ export type GemmaTrainingRegistryEntry = {
     stderr: string
   }
   runStatePath: string
-  preflight?: GemmaTrainingPreflight | null
-  routeRequest?: GemmaTrainingRouteRequest | null
-  routeFailure?: GemmaTrainingRouteFailure | null
+  preflight?: QTrainingPreflight | null
+  routeRequest?: QTrainingRouteRequest | null
+  routeFailure?: QTrainingRouteFailure | null
 }
 
-export type GemmaRunState = {
-  status: GemmaTrainingStatus
-  executionMode?: GemmaTrainingExecutionMode
+export type QRunState = {
+  status: QTrainingStatus
+  executionMode?: QTrainingExecutionMode
   pid: number | null
   createdAt?: string | null
   startedAt?: string | null
@@ -388,44 +388,103 @@ export type GemmaRunState = {
   learningRate?: number | null
   lastCheckpointStep?: number | null
   error?: string | null
-  preflight?: GemmaTrainingPreflight | null
-  routeRequest?: GemmaTrainingRouteRequest | null
-  routeFailure?: GemmaTrainingRouteFailure | null
-  routeQueue?: GemmaTrainingRouteQueueEntry | null
-  routeQueueDisplayStatus?: GemmaTrainingRouteQueueDisplayStatus | null
+  preflight?: QTrainingPreflight | null
+  routeRequest?: QTrainingRouteRequest | null
+  routeFailure?: QTrainingRouteFailure | null
+  routeQueue?: QTrainingRouteQueueEntry | null
+  routeQueueDisplayStatus?: QTrainingRouteQueueDisplayStatus | null
   routeQueueSummary?: string | null
 }
 
 const GIB = 1024 ** 3
-const GEMMA_ROUTE_SECRET_FILE = join('.openjaws', 'gemma-route-secret')
-const GEMMA_ROUTE_QUEUE_LOCK_FILE = '.route-queue.lock'
-const DEFAULT_GEMMA_ROUTE_QUEUE_LEASE_MS = 45_000
-const GEMMA_ROUTE_QUEUE_LOCK_OPTIONS = {
+const Q_ROUTE_SECRET_FILE = join('.openjaws', 'q-route-secret')
+const Q_ROUTE_QUEUE_LOCK_FILE = '.route-queue.lock'
+const DEFAULT_Q_ROUTE_QUEUE_LEASE_MS = 45_000
+const Q_ROUTE_QUEUE_LOCK_OPTIONS = {
   realpath: false,
 } as const
-const GEMMA_ROUTE_QUEUE_LOCK_WAIT_MS = 25
-const GEMMA_ROUTE_QUEUE_LOCK_TIMEOUT_MS = 2_500
+const Q_ROUTE_QUEUE_LOCK_WAIT_MS = 25
+const Q_ROUTE_QUEUE_LOCK_TIMEOUT_MS = 2_500
 
-function hashGemmaRoutePayload(payload: string): string {
+const Q_UPSTREAM_MODEL_IDS = {
+  lite: ['google/', 'ge', 'mma', '-4-E2B-it'].join(''),
+  main: ['google/', 'ge', 'mma', '-4-E4B-it'].join(''),
+  pro: ['google/', 'ge', 'mma', '-4-26b-it'].join(''),
+  ultra: ['google/', 'ge', 'mma', '-4-31b-it'].join(''),
+} as const
+
+const Q_MODEL_MARKERS = {
+  lite: ['ge', 'mma', '-4-e2b'].join(''),
+  main: ['ge', 'mma', '-4-e4b'].join(''),
+  pro: ['ge', 'mma', '-4-26b'].join(''),
+  ultra: ['ge', 'mma', '-4-31b'].join(''),
+} as const
+
+export const DEFAULT_Q_BASE_MODEL = Q_UPSTREAM_MODEL_IDS.main
+export const Q_SMOKE_BASE_MODEL = Q_UPSTREAM_MODEL_IDS.lite
+export const Q_PRO_BASE_MODEL = Q_UPSTREAM_MODEL_IDS.pro
+export const Q_ULTRA_BASE_MODEL = Q_UPSTREAM_MODEL_IDS.ultra
+
+function normalizeQBaseModel(baseModel: string): string {
+  const trimmed = baseModel.trim()
+  const normalized = trimmed.toLowerCase()
+  if (normalized === 'q' || normalized === 'q-main') {
+    return DEFAULT_Q_BASE_MODEL
+  }
+  if (normalized === 'q-lite' || normalized === 'q lite') {
+    return Q_UPSTREAM_MODEL_IDS.lite
+  }
+  if (normalized === 'q-pro' || normalized === 'q pro') {
+    return Q_UPSTREAM_MODEL_IDS.pro
+  }
+  if (normalized === 'q-ultra' || normalized === 'q ultra') {
+    return Q_UPSTREAM_MODEL_IDS.ultra
+  }
+  return trimmed
+}
+
+function hashQRoutePayload(payload: string): string {
   return createHash('sha256').update(payload).digest('hex')
 }
 
-function normalizeGemmaRouteRelativePath(path: string): string {
+function normalizeQRouteRelativePath(path: string): string {
   return path.replaceAll('\\', '/')
 }
 
-function inferGemmaModelBytes(baseModel: string): number | null {
-  const normalized = baseModel.toLowerCase()
-  if (normalized.includes('gemma-4-e2b')) {
+export function getOpenJawsTrainingModelLabel(baseModel: string): string {
+  const normalized = normalizeQBaseModel(baseModel).toLowerCase()
+  if (normalized.includes(Q_MODEL_MARKERS.lite)) {
+    return 'Q Lite'
+  }
+  if (normalized.includes(Q_MODEL_MARKERS.main)) {
+    return 'Q'
+  }
+  if (normalized.includes(Q_MODEL_MARKERS.pro)) {
+    return 'Q Pro'
+  }
+  if (normalized.includes(Q_MODEL_MARKERS.ultra)) {
+    return 'Q Ultra'
+  }
+  return baseModel
+}
+
+export function getOpenJawsTrainingModelDisplay(baseModel: string): string {
+  const label = getOpenJawsTrainingModelLabel(baseModel)
+  return label === baseModel ? baseModel : `${label} · ${baseModel}`
+}
+
+function inferQModelBytes(baseModel: string): number | null {
+  const normalized = normalizeQBaseModel(baseModel).toLowerCase()
+  if (normalized.includes(Q_MODEL_MARKERS.lite)) {
     return 10 * GIB
   }
-  if (normalized.includes('gemma-4-e4b')) {
+  if (normalized.includes(Q_MODEL_MARKERS.main)) {
     return 16 * GIB
   }
-  if (normalized.includes('gemma-4-26b')) {
+  if (normalized.includes(Q_MODEL_MARKERS.pro)) {
     return 28 * GIB
   }
-  if (normalized.includes('gemma-4-31b')) {
+  if (normalized.includes(Q_MODEL_MARKERS.ultra)) {
     return 33 * GIB
   }
   return null
@@ -436,20 +495,21 @@ function formatBytesCompact(bytes: number): string {
   return `${gib.toFixed(gib >= 10 ? 0 : 1)} GiB`
 }
 
-function getGemmaCacheRepoDir(
+function getQCacheRepoDir(
   baseModel: string,
   homeDir: string = homedir(),
 ): string {
+  const upstreamBaseModel = normalizeQBaseModel(baseModel)
   return join(
     homeDir,
     '.cache',
     'huggingface',
     'hub',
-    `models--${baseModel.replaceAll('/', '--')}`,
+    `models--${upstreamBaseModel.replaceAll('/', '--')}`,
   )
 }
 
-export function getCachedGemmaModelInfo(
+export function getCachedQModelInfo(
   baseModel: string,
   options?: {
     homeDir?: string
@@ -458,7 +518,7 @@ export function getCachedGemmaModelInfo(
   modelPath: string | null
   modelBytes: number | null
 } {
-  const repoDir = getGemmaCacheRepoDir(baseModel, options?.homeDir)
+  const repoDir = getQCacheRepoDir(baseModel, options?.homeDir)
   const snapshotsDir = join(repoDir, 'snapshots')
   if (!existsSync(snapshotsDir)) {
     return { modelPath: null, modelBytes: null }
@@ -509,7 +569,7 @@ function estimateRequiredAvailableMemoryBytes(
   return Math.ceil(modelBytes * 1.15 + 1.5 * GIB)
 }
 
-export function evaluateGemmaTrainingPreflight(options: {
+export function evaluateQTrainingPreflight(options: {
   baseModel: string
   trainFile: string
   pythonPath?: string | null
@@ -519,12 +579,23 @@ export function evaluateGemmaTrainingPreflight(options: {
   modelBytes?: number | null
   cachedModelPath?: string | null
   homeDir?: string
-}): GemmaTrainingPreflight {
-  if (options.pythonPath && !existsSync(options.pythonPath)) {
+}): QTrainingPreflight {
+  const modelDisplay = getOpenJawsTrainingModelDisplay(options.baseModel)
+  const normalizedPythonPath = options.pythonPath?.trim() ?? null
+  const pythonLooksLikeFilesystemPath =
+    normalizedPythonPath !== null &&
+    (isAbsolute(normalizedPythonPath) ||
+      normalizedPythonPath.includes('/') ||
+      normalizedPythonPath.includes('\\'))
+  if (
+    normalizedPythonPath &&
+    pythonLooksLikeFilesystemPath &&
+    !existsSync(normalizedPythonPath)
+  ) {
     return {
       decision: 'preflight_blocked',
       reasonCode: 'missing_python',
-      summary: `Python runtime not found at ${options.pythonPath}`,
+      summary: `Python runtime not found at ${normalizedPythonPath}`,
       baseModel: options.baseModel,
       useCpu: options.useCpu,
     }
@@ -546,11 +617,11 @@ export function evaluateGemmaTrainingPreflight(options: {
           modelPath: options.cachedModelPath ?? null,
           modelBytes: options.modelBytes ?? null,
         }
-      : getCachedGemmaModelInfo(options.baseModel, {
+      : getCachedQModelInfo(options.baseModel, {
           homeDir: options.homeDir,
         })
   const modelBytes =
-    cachedModelInfo.modelBytes ?? inferGemmaModelBytes(options.baseModel)
+    cachedModelInfo.modelBytes ?? inferQModelBytes(options.baseModel)
   const observedAvailableMemoryBytes =
     options.availableMemoryBytes ?? freemem()
   const observedTotalMemoryBytes = options.totalMemoryBytes ?? totalmem()
@@ -579,7 +650,7 @@ export function evaluateGemmaTrainingPreflight(options: {
       return {
         decision: 'remote_required',
         reasonCode: 'insufficient_host_memory',
-        summary: `Local host memory too tight for ${options.baseModel}: available ${formatBytesCompact(observedAvailableMemoryBytes)} / total ${formatBytesCompact(observedTotalMemoryBytes)}; need about ${formatBytesCompact(requiredAvailableMemoryBytes)} available. Use a remote box or free memory first.`,
+        summary: `Local host memory too tight for ${modelDisplay}: available ${formatBytesCompact(observedAvailableMemoryBytes)} / total ${formatBytesCompact(observedTotalMemoryBytes)}; need about ${formatBytesCompact(requiredAvailableMemoryBytes)} available. Use a remote box or free memory first.`,
         baseModel: options.baseModel,
         useCpu: options.useCpu,
         cachedModelPath: cachedModelInfo.modelPath,
@@ -593,7 +664,7 @@ export function evaluateGemmaTrainingPreflight(options: {
     return {
       decision: 'allow_local',
       reasonCode: 'ok',
-      summary: `Local host memory looks sufficient for ${options.baseModel}: available ${formatBytesCompact(observedAvailableMemoryBytes)} / required about ${formatBytesCompact(requiredAvailableMemoryBytes)}.`,
+      summary: `Local host memory looks sufficient for ${modelDisplay}: available ${formatBytesCompact(observedAvailableMemoryBytes)} / required about ${formatBytesCompact(requiredAvailableMemoryBytes)}.`,
       baseModel: options.baseModel,
       useCpu: options.useCpu,
       cachedModelPath: cachedModelInfo.modelPath,
@@ -607,7 +678,7 @@ export function evaluateGemmaTrainingPreflight(options: {
   return {
     decision: 'allow_local',
     reasonCode: 'ok',
-    summary: `Local preflight could not size ${options.baseModel}; launch allowed without a memory gate.`,
+    summary: `Local preflight could not size ${modelDisplay}; launch allowed without a memory gate.`,
     baseModel: options.baseModel,
     useCpu: options.useCpu,
     cachedModelPath: cachedModelInfo.modelPath,
@@ -617,9 +688,9 @@ export function evaluateGemmaTrainingPreflight(options: {
   }
 }
 
-export function computeGemmaTrainingFileIntegrity(
+export function computeQTrainingFileIntegrity(
   path: string,
-): GemmaTrainingFileIntegrity {
+): QTrainingFileIntegrity {
   const content = readFileSync(path)
   return {
     path,
@@ -628,65 +699,65 @@ export function computeGemmaTrainingFileIntegrity(
   }
 }
 
-export function relativizeGemmaTrainingFileIntegrity(
-  integrity: GemmaTrainingFileIntegrity,
+export function relativizeQTrainingFileIntegrity(
+  integrity: QTrainingFileIntegrity,
   rootDir: string,
-): GemmaTrainingFileIntegrity {
+): QTrainingFileIntegrity {
   return {
     ...integrity,
-    path: normalizeGemmaRouteRelativePath(relative(rootDir, integrity.path)),
+    path: normalizeQRouteRelativePath(relative(rootDir, integrity.path)),
   }
 }
 
-export function resolveGemmaTrainingRoutePath(
+export function resolveQTrainingRoutePath(
   manifestDir: string,
   routePath: string,
 ): string {
   return resolve(manifestDir, routePath)
 }
 
-export function stageGemmaTrainingRouteFile(args: {
+export function stageQTrainingRouteFile(args: {
   sourcePath: string
   manifestDir: string
   relativePath: string
-}): GemmaTrainingFileIntegrity {
-  const destinationPath = resolveGemmaTrainingRoutePath(
+}): QTrainingFileIntegrity {
+  const destinationPath = resolveQTrainingRoutePath(
     args.manifestDir,
     args.relativePath,
   )
   mkdirSync(dirname(destinationPath), { recursive: true })
   copyFileSync(args.sourcePath, destinationPath)
-  return relativizeGemmaTrainingFileIntegrity(
-    computeGemmaTrainingFileIntegrity(destinationPath),
+  return relativizeQTrainingFileIntegrity(
+    computeQTrainingFileIntegrity(destinationPath),
     args.manifestDir,
   )
 }
 
-export function getGemmaTrainingRouteSecret(options?: {
+export function getQTrainingRouteSecret(options?: {
   homeDir?: string
   env?: NodeJS.ProcessEnv
   createIfMissing?: boolean
 }): {
   secret: string
-  source: GemmaTrainingRouteSecretSource
+  source: QTrainingRouteSecretSource
   path?: string
 } | null {
   const env = options?.env ?? process.env
-  const envSecret = env.OPENJAWS_GEMMA_ROUTE_SECRET?.trim()
+  const envSecret = env.OPENJAWS_Q_ROUTE_SECRET?.trim()
   if (envSecret) {
     return {
       secret: envSecret,
-      source: 'OPENJAWS_GEMMA_ROUTE_SECRET',
+      source: 'OPENJAWS_Q_ROUTE_SECRET',
     }
   }
 
-  const secretPath = join(options?.homeDir ?? homedir(), GEMMA_ROUTE_SECRET_FILE)
+  const secretPath = join(options?.homeDir ?? homedir(), Q_ROUTE_SECRET_FILE)
   if (existsSync(secretPath)) {
     const fileSecret = readFileSync(secretPath, 'utf8').trim()
     if (fileSecret) {
       return {
         secret: fileSecret,
-        source: '~/.openjaws/gemma-route-secret',
+        source: '~/.openjaws/q-route-secret',
         path: secretPath,
       }
     }
@@ -701,17 +772,17 @@ export function getGemmaTrainingRouteSecret(options?: {
   writeFileSync(secretPath, `${generatedSecret}\n`, 'utf8')
   return {
     secret: generatedSecret,
-    source: '~/.openjaws/gemma-route-secret',
+    source: '~/.openjaws/q-route-secret',
     path: secretPath,
   }
 }
 
-function buildGemmaTrainingRouteUnsignedPayload(args: {
+function buildQTrainingRouteUnsignedPayload(args: {
   runId: string
-  routeRequest: GemmaTrainingRouteRequest
-  training: GemmaTrainingRouteManifestTraining
-  preflight: GemmaTrainingPreflight
-}): Omit<GemmaTrainingRouteManifest, 'security'> {
+  routeRequest: QTrainingRouteRequest
+  training: QTrainingRouteManifestTraining
+  preflight: QTrainingPreflight
+}): Omit<QTrainingRouteManifest, 'security'> {
   return {
     runId: args.runId,
     routeRequest: {
@@ -744,10 +815,10 @@ function buildGemmaTrainingRouteUnsignedPayload(args: {
   }
 }
 
-function buildGemmaTrainingRouteDispatchFiles(args: {
-  manifest: GemmaTrainingRouteManifest
+function buildQTrainingRouteDispatchFiles(args: {
+  manifest: QTrainingRouteManifest
   manifestDir: string
-}): GemmaTrainingRouteDispatchFile[] {
+}): QTrainingRouteDispatchFile[] {
   const files = [
     args.manifest.routeRequest.integrity?.trainFile.path ??
       args.manifest.training.trainFile,
@@ -755,11 +826,11 @@ function buildGemmaTrainingRouteDispatchFiles(args: {
       args.manifest.training.evalFile,
   ]
     .filter((path): path is string => Boolean(path))
-    .map(path => normalizeGemmaRouteRelativePath(path))
+    .map(path => normalizeQRouteRelativePath(path))
 
   const uniquePaths = [...new Set(files)]
   return uniquePaths.map(path => {
-    const absolutePath = resolveGemmaTrainingRoutePath(args.manifestDir, path)
+    const absolutePath = resolveQTrainingRoutePath(args.manifestDir, path)
     const content = readFileSync(absolutePath)
     return {
       path,
@@ -770,50 +841,50 @@ function buildGemmaTrainingRouteDispatchFiles(args: {
   })
 }
 
-function buildGemmaTrainingRouteDispatchUnsignedPayload(args: {
-  manifest: GemmaTrainingRouteManifest
+function buildQTrainingRouteDispatchUnsignedPayload(args: {
+  manifest: QTrainingRouteManifest
   manifestPath: string
   manifestDir: string
   workerId: string
-  executionMode: GemmaTrainingExecutionMode
+  executionMode: QTrainingExecutionMode
   dispatchedAt: string
-}): GemmaTrainingRouteDispatchPayload {
+}): QTrainingRouteDispatchPayload {
   return {
     runId: args.manifest.runId,
-    manifestPath: normalizeGemmaRouteRelativePath(
+    manifestPath: normalizeQRouteRelativePath(
       relative(args.manifestDir, args.manifestPath),
     ),
     workerId: args.workerId,
     executionMode: args.executionMode,
     dispatchedAt: args.dispatchedAt,
     manifest: args.manifest,
-    files: buildGemmaTrainingRouteDispatchFiles({
+    files: buildQTrainingRouteDispatchFiles({
       manifest: args.manifest,
       manifestDir: args.manifestDir,
     }),
   }
 }
 
-function buildGemmaTrainingRouteResultUnsignedPayload(args: {
+function buildQTrainingRouteResultUnsignedPayload(args: {
   runId: string
   manifestPath: string
   workerId: string
   executionId: string | null
-  executionMode: GemmaTrainingExecutionMode
+  executionMode: QTrainingExecutionMode
   finishedAt: string
-  status: GemmaTrainingRouteResultStatus
+  status: QTrainingRouteResultStatus
   summary?: string | null
   stateUrl?: string | null
-  runState: Partial<GemmaRunState> & {
-    status: GemmaTrainingRouteResultStatus
+  runState: Partial<QRunState> & {
+    status: QTrainingRouteResultStatus
     finishedAt: string
   }
   runSummary?: Record<string, unknown> | null
   metricsSummary?: Record<string, unknown> | null
-}): GemmaTrainingRouteResultPayload {
+}): QTrainingRouteResultPayload {
   return {
     runId: args.runId,
-    manifestPath: normalizeGemmaRouteRelativePath(args.manifestPath),
+    manifestPath: normalizeQRouteRelativePath(args.manifestPath),
     workerId: args.workerId,
     executionId: args.executionId ?? null,
     executionMode: args.executionMode,
@@ -831,18 +902,18 @@ function buildGemmaTrainingRouteResultUnsignedPayload(args: {
   }
 }
 
-export function buildGemmaTrainingRouteManifest(args: {
+export function buildQTrainingRouteManifest(args: {
   runId: string
-  routeRequest: GemmaTrainingRouteRequest
-  training: GemmaTrainingRouteManifestTraining
-  preflight: GemmaTrainingPreflight
+  routeRequest: QTrainingRouteRequest
+  training: QTrainingRouteManifestTraining
+  preflight: QTrainingPreflight
   homeDir?: string
   env?: NodeJS.ProcessEnv
-}): GemmaTrainingRouteManifest {
-  const unsignedPayload = buildGemmaTrainingRouteUnsignedPayload(args)
+}): QTrainingRouteManifest {
+  const unsignedPayload = buildQTrainingRouteUnsignedPayload(args)
   const payloadJson = JSON.stringify(unsignedPayload)
-  const payloadSha256 = hashGemmaRoutePayload(payloadJson)
-  const routeSecret = getGemmaTrainingRouteSecret({
+  const payloadSha256 = hashQRoutePayload(payloadJson)
+  const routeSecret = getQTrainingRouteSecret({
     homeDir: args.homeDir,
     env: args.env,
     createIfMissing: true,
@@ -864,20 +935,20 @@ export function buildGemmaTrainingRouteManifest(args: {
   }
 }
 
-export function buildGemmaTrainingRouteDispatchEnvelope(args: {
-  manifest: GemmaTrainingRouteManifest
+export function buildQTrainingRouteDispatchEnvelope(args: {
+  manifest: QTrainingRouteManifest
   manifestPath: string
   manifestDir: string
   workerId: string
-  executionMode: GemmaTrainingExecutionMode
+  executionMode: QTrainingExecutionMode
   dispatchedAt: string
   homeDir?: string
   env?: NodeJS.ProcessEnv
-}): GemmaTrainingRouteDispatchEnvelope {
-  const payload = buildGemmaTrainingRouteDispatchUnsignedPayload(args)
+}): QTrainingRouteDispatchEnvelope {
+  const payload = buildQTrainingRouteDispatchUnsignedPayload(args)
   const payloadJson = JSON.stringify(payload)
-  const payloadSha256 = hashGemmaRoutePayload(payloadJson)
-  const routeSecret = getGemmaTrainingRouteSecret({
+  const payloadSha256 = hashQRoutePayload(payloadJson)
+  const routeSecret = getQTrainingRouteSecret({
     homeDir: args.homeDir,
     env: args.env,
     createIfMissing: true,
@@ -899,29 +970,29 @@ export function buildGemmaTrainingRouteDispatchEnvelope(args: {
   }
 }
 
-export function buildGemmaTrainingRouteResultEnvelope(args: {
+export function buildQTrainingRouteResultEnvelope(args: {
   runId: string
   manifestPath: string
   workerId: string
   executionId: string | null
-  executionMode: GemmaTrainingExecutionMode
+  executionMode: QTrainingExecutionMode
   finishedAt: string
-  status: GemmaTrainingRouteResultStatus
+  status: QTrainingRouteResultStatus
   summary?: string | null
   stateUrl?: string | null
-  runState: Partial<GemmaRunState> & {
-    status: GemmaTrainingRouteResultStatus
+  runState: Partial<QRunState> & {
+    status: QTrainingRouteResultStatus
     finishedAt: string
   }
   runSummary?: Record<string, unknown> | null
   metricsSummary?: Record<string, unknown> | null
   homeDir?: string
   env?: NodeJS.ProcessEnv
-}): GemmaTrainingRouteResultEnvelope {
-  const payload = buildGemmaTrainingRouteResultUnsignedPayload(args)
+}): QTrainingRouteResultEnvelope {
+  const payload = buildQTrainingRouteResultUnsignedPayload(args)
   const payloadJson = JSON.stringify(payload)
-  const payloadSha256 = hashGemmaRoutePayload(payloadJson)
-  const routeSecret = getGemmaTrainingRouteSecret({
+  const payloadSha256 = hashQRoutePayload(payloadJson)
+  const routeSecret = getQTrainingRouteSecret({
     homeDir: args.homeDir,
     env: args.env,
     createIfMissing: true,
@@ -943,8 +1014,8 @@ export function buildGemmaTrainingRouteResultEnvelope(args: {
   }
 }
 
-export function verifyGemmaTrainingRouteManifest(
-  manifest: GemmaTrainingRouteManifest,
+export function verifyQTrainingRouteManifest(
+  manifest: QTrainingRouteManifest,
   options?: {
     homeDir?: string
     env?: NodeJS.ProcessEnv
@@ -962,16 +1033,16 @@ export function verifyGemmaTrainingRouteManifest(
   expectedPayloadSha256: string | null
   actualSignature: string | null
   expectedSignature: string | null
-  secretSource?: GemmaTrainingRouteSecretSource
+  secretSource?: QTrainingRouteSecretSource
 } {
-  const unsignedPayload = buildGemmaTrainingRouteUnsignedPayload({
+  const unsignedPayload = buildQTrainingRouteUnsignedPayload({
     runId: manifest.runId,
     routeRequest: manifest.routeRequest,
     training: manifest.training,
     preflight: manifest.preflight,
   })
   const payloadJson = JSON.stringify(unsignedPayload)
-  const payloadSha256 = hashGemmaRoutePayload(payloadJson)
+  const payloadSha256 = hashQRoutePayload(payloadJson)
   if (!manifest.security) {
     return {
       valid: false,
@@ -999,7 +1070,7 @@ export function verifyGemmaTrainingRouteManifest(
           secret: options.secret,
           source: manifest.security.secretSource,
         }
-      : getGemmaTrainingRouteSecret({
+      : getQTrainingRouteSecret({
           homeDir: options?.homeDir,
           env: options?.env,
           createIfMissing: false,
@@ -1032,8 +1103,8 @@ export function verifyGemmaTrainingRouteManifest(
   }
 }
 
-export function verifyGemmaTrainingRouteDispatchEnvelope(
-  envelope: GemmaTrainingRouteDispatchEnvelope,
+export function verifyQTrainingRouteDispatchEnvelope(
+  envelope: QTrainingRouteDispatchEnvelope,
   options?: {
     homeDir?: string
     env?: NodeJS.ProcessEnv
@@ -1063,10 +1134,10 @@ export function verifyGemmaTrainingRouteDispatchEnvelope(
     expectedSha256: string
     actualSha256: string
   }>
-  secretSource?: GemmaTrainingRouteSecretSource
+  secretSource?: QTrainingRouteSecretSource
 } {
   const payloadJson = JSON.stringify(envelope.payload)
-  const payloadSha256 = hashGemmaRoutePayload(payloadJson)
+  const payloadSha256 = hashQRoutePayload(payloadJson)
   if (!envelope.security) {
     return {
       valid: false,
@@ -1098,7 +1169,7 @@ export function verifyGemmaTrainingRouteDispatchEnvelope(
           secret: options.secret,
           source: envelope.security.secretSource,
         }
-      : getGemmaTrainingRouteSecret({
+      : getQTrainingRouteSecret({
           homeDir: options?.homeDir,
           env: options?.env,
           createIfMissing: false,
@@ -1173,13 +1244,13 @@ export function verifyGemmaTrainingRouteDispatchEnvelope(
   const manifestMismatches = [
     manifestIntegrity?.trainFile
       ? {
-          path: normalizeGemmaRouteRelativePath(manifestIntegrity.trainFile.path),
+          path: normalizeQRouteRelativePath(manifestIntegrity.trainFile.path),
           expectedSha256: manifestIntegrity.trainFile.sha256,
         }
       : null,
     manifestIntegrity?.evalFile
       ? {
-          path: normalizeGemmaRouteRelativePath(manifestIntegrity.evalFile.path),
+          path: normalizeQRouteRelativePath(manifestIntegrity.evalFile.path),
           expectedSha256: manifestIntegrity.evalFile.sha256,
         }
       : null,
@@ -1195,7 +1266,7 @@ export function verifyGemmaTrainingRouteDispatchEnvelope(
     .map(expected => {
       const file = envelope.payload.files.find(
         candidate =>
-          normalizeGemmaRouteRelativePath(candidate.path) === expected.path,
+          normalizeQRouteRelativePath(candidate.path) === expected.path,
       )
       if (!file || file.sha256 !== expected.expectedSha256) {
         return {
@@ -1242,8 +1313,8 @@ export function verifyGemmaTrainingRouteDispatchEnvelope(
   }
 }
 
-export function verifyGemmaTrainingRouteResultEnvelope(
-  envelope: GemmaTrainingRouteResultEnvelope,
+export function verifyQTrainingRouteResultEnvelope(
+  envelope: QTrainingRouteResultEnvelope,
   options?: {
     homeDir?: string
     env?: NodeJS.ProcessEnv
@@ -1261,10 +1332,10 @@ export function verifyGemmaTrainingRouteResultEnvelope(
   expectedPayloadSha256: string | null
   actualSignature: string | null
   expectedSignature: string | null
-  secretSource?: GemmaTrainingRouteSecretSource
+  secretSource?: QTrainingRouteSecretSource
 } {
   const payloadJson = JSON.stringify(envelope.payload)
-  const payloadSha256 = hashGemmaRoutePayload(payloadJson)
+  const payloadSha256 = hashQRoutePayload(payloadJson)
   if (!envelope.security) {
     return {
       valid: false,
@@ -1292,7 +1363,7 @@ export function verifyGemmaTrainingRouteResultEnvelope(
           secret: options.secret,
           source: envelope.security.secretSource,
         }
-      : getGemmaTrainingRouteSecret({
+      : getQTrainingRouteSecret({
           homeDir: options?.homeDir,
           env: options?.env,
           createIfMissing: false,
@@ -1325,8 +1396,8 @@ export function verifyGemmaTrainingRouteResultEnvelope(
   }
 }
 
-export function verifyGemmaTrainingRouteManifestIntegrity(
-  manifest: GemmaTrainingRouteManifest,
+export function verifyQTrainingRouteManifestIntegrity(
+  manifest: QTrainingRouteManifest,
   manifestDir: string,
 ): {
   valid: boolean
@@ -1337,20 +1408,20 @@ export function verifyGemmaTrainingRouteManifestIntegrity(
   evalActualSha256: string | null
   evalExpectedSha256: string | null
 } {
-  const trainPath = resolveGemmaTrainingRoutePath(
+  const trainPath = resolveQTrainingRoutePath(
     manifestDir,
     manifest.routeRequest.integrity?.trainFile.path ?? manifest.training.trainFile,
   )
-  const trainActualSha256 = computeGemmaTrainingFileIntegrity(trainPath).sha256
+  const trainActualSha256 = computeQTrainingFileIntegrity(trainPath).sha256
   const trainExpectedSha256 =
     manifest.routeRequest.integrity?.trainFile.sha256 ?? ''
 
   const evalIntegrity = manifest.routeRequest.integrity?.evalFile
   const evalPath = evalIntegrity
-    ? resolveGemmaTrainingRoutePath(manifestDir, evalIntegrity.path)
+    ? resolveQTrainingRoutePath(manifestDir, evalIntegrity.path)
     : null
   const evalActualSha256 = evalPath
-    ? computeGemmaTrainingFileIntegrity(evalPath).sha256
+    ? computeQTrainingFileIntegrity(evalPath).sha256
     : null
   const evalExpectedSha256 = evalIntegrity?.sha256 ?? null
 
@@ -1367,10 +1438,10 @@ export function verifyGemmaTrainingRouteManifestIntegrity(
   }
 }
 
-export function readGemmaTrainingRouteManifest(
+export function readQTrainingRouteManifest(
   manifestPath: string,
-): GemmaTrainingRouteManifest {
-  return JSON.parse(readFileSync(manifestPath, 'utf8')) as GemmaTrainingRouteManifest
+): QTrainingRouteManifest {
+  return JSON.parse(readFileSync(manifestPath, 'utf8')) as QTrainingRouteManifest
 }
 
 function readJsonIfExists<T>(path: string): T | null {
@@ -1380,51 +1451,51 @@ function readJsonIfExists<T>(path: string): T | null {
   return JSON.parse(readFileSync(path, 'utf8')) as T
 }
 
-export function getGemmaTrainingRunsDir(root = process.cwd()): string {
-  return resolve(root, 'artifacts', 'gemma4-runs')
+export function getQTrainingRunsDir(root = process.cwd()): string {
+  return resolve(root, 'artifacts', 'q-runs')
 }
 
-export function getGemmaTrainingRegistryPath(root = process.cwd()): string {
-  return join(getGemmaTrainingRunsDir(root), 'registry.json')
+export function getQTrainingRegistryPath(root = process.cwd()): string {
+  return join(getQTrainingRunsDir(root), 'registry.json')
 }
 
-export function getGemmaTrainingRouteQueuePath(root = process.cwd()): string {
-  return join(getGemmaTrainingRunsDir(root), 'route-queue.json')
+export function getQTrainingRouteQueuePath(root = process.cwd()): string {
+  return join(getQTrainingRunsDir(root), 'route-queue.json')
 }
 
-export function getGemmaTrainingRouteWorkersPath(root = process.cwd()): string {
-  return join(getGemmaTrainingRunsDir(root), 'route-workers.json')
+export function getQTrainingRouteWorkersPath(root = process.cwd()): string {
+  return join(getQTrainingRunsDir(root), 'route-workers.json')
 }
 
-export function getGemmaTrainingRouteWorkerRuntimePath(
+export function getQTrainingRouteWorkerRuntimePath(
   root = process.cwd(),
 ): string {
-  return join(getGemmaTrainingRunsDir(root), 'route-worker-runtime.json')
+  return join(getQTrainingRunsDir(root), 'route-worker-runtime.json')
 }
 
-function getGemmaTrainingRouteQueueLockPath(root = process.cwd()): string {
-  return join(getGemmaTrainingRunsDir(root), GEMMA_ROUTE_QUEUE_LOCK_FILE)
+function getQTrainingRouteQueueLockPath(root = process.cwd()): string {
+  return join(getQTrainingRunsDir(root), Q_ROUTE_QUEUE_LOCK_FILE)
 }
 
-function ensureGemmaTrainingRouteQueueLockFile(root = process.cwd()): string {
-  const lockPath = getGemmaTrainingRouteQueueLockPath(root)
-  mkdirSync(getGemmaTrainingRunsDir(root), { recursive: true })
+function ensureQTrainingRouteQueueLockFile(root = process.cwd()): string {
+  const lockPath = getQTrainingRouteQueueLockPath(root)
+  mkdirSync(getQTrainingRunsDir(root), { recursive: true })
   if (!existsSync(lockPath)) {
     writeFileSync(lockPath, '', 'utf8')
   }
   return lockPath
 }
 
-function withGemmaTrainingRouteQueueLock<T>(
+function withQTrainingRouteQueueLock<T>(
   root: string,
   fn: () => T,
 ): T {
-  const lockPath = ensureGemmaTrainingRouteQueueLockFile(root)
-  const deadline = Date.now() + GEMMA_ROUTE_QUEUE_LOCK_TIMEOUT_MS
+  const lockPath = ensureQTrainingRouteQueueLockFile(root)
+  const deadline = Date.now() + Q_ROUTE_QUEUE_LOCK_TIMEOUT_MS
 
   while (true) {
     try {
-      const release = lockfile.lockSync(lockPath, GEMMA_ROUTE_QUEUE_LOCK_OPTIONS)
+      const release = lockfile.lockSync(lockPath, Q_ROUTE_QUEUE_LOCK_OPTIONS)
       try {
         return fn()
       } finally {
@@ -1442,82 +1513,82 @@ function withGemmaTrainingRouteQueueLock<T>(
         new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)),
         0,
         0,
-        GEMMA_ROUTE_QUEUE_LOCK_WAIT_MS,
+        Q_ROUTE_QUEUE_LOCK_WAIT_MS,
       )
     }
   }
 }
 
-function readGemmaTrainingRouteQueueUnlocked(
+function readQTrainingRouteQueueUnlocked(
   root = process.cwd(),
-): GemmaTrainingRouteQueueEntry[] {
-  return readJsonIfExists<GemmaTrainingRouteQueueEntry[]>(
-    getGemmaTrainingRouteQueuePath(root),
+): QTrainingRouteQueueEntry[] {
+  return readJsonIfExists<QTrainingRouteQueueEntry[]>(
+    getQTrainingRouteQueuePath(root),
   ) ?? []
 }
 
-function readGemmaTrainingRouteWorkersUnlocked(
+function readQTrainingRouteWorkersUnlocked(
   root = process.cwd(),
-): GemmaTrainingRouteWorkerRegistration[] {
-  return readJsonIfExists<GemmaTrainingRouteWorkerRegistration[]>(
-    getGemmaTrainingRouteWorkersPath(root),
+): QTrainingRouteWorkerRegistration[] {
+  return readJsonIfExists<QTrainingRouteWorkerRegistration[]>(
+    getQTrainingRouteWorkersPath(root),
   ) ?? []
 }
 
-function readGemmaTrainingRouteWorkerRuntimeUnlocked(
+function readQTrainingRouteWorkerRuntimeUnlocked(
   root = process.cwd(),
-): GemmaTrainingRouteWorkerRuntimeEntry[] {
-  return readJsonIfExists<GemmaTrainingRouteWorkerRuntimeEntry[]>(
-    getGemmaTrainingRouteWorkerRuntimePath(root),
+): QTrainingRouteWorkerRuntimeEntry[] {
+  return readJsonIfExists<QTrainingRouteWorkerRuntimeEntry[]>(
+    getQTrainingRouteWorkerRuntimePath(root),
   ) ?? []
 }
 
-function writeGemmaTrainingRouteQueueUnlocked(
-  entries: GemmaTrainingRouteQueueEntry[],
+function writeQTrainingRouteQueueUnlocked(
+  entries: QTrainingRouteQueueEntry[],
   root = process.cwd(),
 ): void {
-  const path = getGemmaTrainingRouteQueuePath(root)
-  mkdirSync(getGemmaTrainingRunsDir(root), { recursive: true })
+  const path = getQTrainingRouteQueuePath(root)
+  mkdirSync(getQTrainingRunsDir(root), { recursive: true })
   writeFileSync(path, `${JSON.stringify(entries, null, 2)}\n`, 'utf8')
 }
 
-function writeGemmaTrainingRouteWorkersUnlocked(
-  entries: GemmaTrainingRouteWorkerRegistration[],
+function writeQTrainingRouteWorkersUnlocked(
+  entries: QTrainingRouteWorkerRegistration[],
   root = process.cwd(),
 ): void {
-  const path = getGemmaTrainingRouteWorkersPath(root)
-  mkdirSync(getGemmaTrainingRunsDir(root), { recursive: true })
+  const path = getQTrainingRouteWorkersPath(root)
+  mkdirSync(getQTrainingRunsDir(root), { recursive: true })
   writeFileSync(path, `${JSON.stringify(entries, null, 2)}\n`, 'utf8')
 }
 
-function writeGemmaTrainingRouteWorkerRuntimeUnlocked(
-  entries: GemmaTrainingRouteWorkerRuntimeEntry[],
+function writeQTrainingRouteWorkerRuntimeUnlocked(
+  entries: QTrainingRouteWorkerRuntimeEntry[],
   root = process.cwd(),
 ): void {
-  const path = getGemmaTrainingRouteWorkerRuntimePath(root)
-  mkdirSync(getGemmaTrainingRunsDir(root), { recursive: true })
+  const path = getQTrainingRouteWorkerRuntimePath(root)
+  mkdirSync(getQTrainingRunsDir(root), { recursive: true })
   writeFileSync(path, `${JSON.stringify(entries, null, 2)}\n`, 'utf8')
 }
 
-function sortGemmaTrainingRouteQueueEntries(
-  entries: GemmaTrainingRouteQueueEntry[],
-): GemmaTrainingRouteQueueEntry[] {
+function sortQTrainingRouteQueueEntries(
+  entries: QTrainingRouteQueueEntry[],
+): QTrainingRouteQueueEntry[] {
   return [...entries].sort((left, right) =>
     left.queuedAt < right.queuedAt ? -1 : left.queuedAt > right.queuedAt ? 1 : 0,
   )
 }
 
-function sortGemmaTrainingRouteWorkers(
-  workers: GemmaTrainingRouteWorkerRegistration[],
-): GemmaTrainingRouteWorkerRegistration[] {
+function sortQTrainingRouteWorkers(
+  workers: QTrainingRouteWorkerRegistration[],
+): QTrainingRouteWorkerRegistration[] {
   return [...workers].sort((left, right) =>
     left.workerId < right.workerId ? -1 : left.workerId > right.workerId ? 1 : 0,
   )
 }
 
-function sortGemmaTrainingRouteWorkerRuntime(
-  entries: GemmaTrainingRouteWorkerRuntimeEntry[],
-): GemmaTrainingRouteWorkerRuntimeEntry[] {
+function sortQTrainingRouteWorkerRuntime(
+  entries: QTrainingRouteWorkerRuntimeEntry[],
+): QTrainingRouteWorkerRuntimeEntry[] {
   return [...entries].sort((left, right) =>
     left.workerId < right.workerId ? -1 : left.workerId > right.workerId ? 1 : 0,
   )
@@ -1527,8 +1598,8 @@ function addMsToIsoTimestamp(timestamp: string, ttlMs: number): string {
   return new Date(Date.parse(timestamp) + ttlMs).toISOString()
 }
 
-export function isGemmaTrainingRouteQueueClaimExpired(
-  entry: GemmaTrainingRouteQueueEntry,
+export function isQTrainingRouteQueueClaimExpired(
+  entry: QTrainingRouteQueueEntry,
   now = new Date().toISOString(),
 ): boolean {
   return (
@@ -1539,8 +1610,8 @@ export function isGemmaTrainingRouteQueueClaimExpired(
   )
 }
 
-export function isGemmaTrainingRouteQueuePendingAssignment(
-  entry: GemmaTrainingRouteQueueEntry | null | undefined,
+export function isQTrainingRouteQueuePendingAssignment(
+  entry: QTrainingRouteQueueEntry | null | undefined,
 ): boolean {
   return Boolean(
     entry &&
@@ -1552,8 +1623,8 @@ export function isGemmaTrainingRouteQueuePendingAssignment(
   )
 }
 
-export function isGemmaTrainingRouteQueuePendingRemoteResult(
-  entry: GemmaTrainingRouteQueueEntry | null | undefined,
+export function isQTrainingRouteQueuePendingRemoteResult(
+  entry: QTrainingRouteQueueEntry | null | undefined,
   workerId?: string | null,
 ): boolean {
   if (
@@ -1573,22 +1644,22 @@ export function isGemmaTrainingRouteQueuePendingRemoteResult(
   )
 }
 
-export function getGemmaTrainingRouteQueueDisplayStatus(
-  entry: GemmaTrainingRouteQueueEntry | null | undefined,
-): GemmaTrainingRouteQueueDisplayStatus | null {
+export function getQTrainingRouteQueueDisplayStatus(
+  entry: QTrainingRouteQueueEntry | null | undefined,
+): QTrainingRouteQueueDisplayStatus | null {
   if (!entry) {
     return null
   }
-  if (isGemmaTrainingRouteQueuePendingAssignment(entry)) {
+  if (isQTrainingRouteQueuePendingAssignment(entry)) {
     return 'pending_assignment'
   }
   return entry.status
 }
 
-export function getGemmaTrainingRouteQueueStatusSummary(
-  entry: GemmaTrainingRouteQueueEntry | null | undefined,
+export function getQTrainingRouteQueueStatusSummary(
+  entry: QTrainingRouteQueueEntry | null | undefined,
 ): string {
-  const displayStatus = getGemmaTrainingRouteQueueDisplayStatus(entry)
+  const displayStatus = getQTrainingRouteQueueDisplayStatus(entry)
   switch (displayStatus) {
     case 'pending_assignment':
       return 'pending assignment'
@@ -1609,7 +1680,7 @@ export function getGemmaTrainingRouteQueueStatusSummary(
   }
 }
 
-function formatGemmaTrainingWorkerCount(
+function formatQTrainingWorkerCount(
   workerCount: number,
   compact: boolean,
 ): string {
@@ -1619,11 +1690,11 @@ function formatGemmaTrainingWorkerCount(
   return `${workerCount} worker${workerCount === 1 ? '' : 's'}`
 }
 
-export function buildGemmaTrainingRouteReceipt(args?: {
-  snapshot?: ReturnType<typeof getLatestGemmaTrainingSnapshot> | null
+export function buildQTrainingRouteReceipt(args?: {
+  snapshot?: ReturnType<typeof getLatestQTrainingSnapshot> | null
   compact?: boolean
-}): GemmaTrainingRouteReceipt | null {
-  const snapshot = args?.snapshot ?? getLatestGemmaTrainingSnapshot()
+}): QTrainingRouteReceipt | null {
+  const snapshot = args?.snapshot ?? getLatestQTrainingSnapshot()
   const compact = args?.compact === true
   if (!snapshot) {
     return null
@@ -1637,7 +1708,7 @@ export function buildGemmaTrainingRouteReceipt(args?: {
   }
 
   const displayStatus =
-    getGemmaTrainingRouteQueueDisplayStatus(routeQueue) ?? 'queued'
+    getQTrainingRouteQueueDisplayStatus(routeQueue) ?? 'queued'
   const recommendedLayerId =
     routeQueue?.recommendedLayerId ?? routeRequest?.recommendedLayerId ?? null
   const workerCount = routeRequest?.harnessSnapshot?.workerCount ?? null
@@ -1667,13 +1738,13 @@ export function buildGemmaTrainingRouteReceipt(args?: {
 
   const pushWorkers = (parts: string[]) => {
     if (typeof workerCount === 'number') {
-      parts.push(formatGemmaTrainingWorkerCount(workerCount, compact))
+      parts.push(formatQTrainingWorkerCount(workerCount, compact))
     }
   }
 
   switch (displayStatus) {
     case 'pending_assignment': {
-      const parts = [compact ? 'gemma pending' : 'gemma pending assignment']
+      const parts = [compact ? 'Q pending' : 'Q pending assignment']
       pushLayer(parts)
       pushWorkers(parts)
       if (typeof healthyWorkerCount === 'number') {
@@ -1692,7 +1763,7 @@ export function buildGemmaTrainingRouteReceipt(args?: {
       }
     }
     case 'claimed': {
-      const parts = [compact ? 'gemma claimed' : 'gemma route claimed']
+      const parts = [compact ? 'Q claimed' : 'Q route claimed']
       if (assignedWorker) {
         parts.push(assignedWorker)
       }
@@ -1704,7 +1775,7 @@ export function buildGemmaTrainingRouteReceipt(args?: {
       }
     }
     case 'dispatched': {
-      const parts = [compact ? 'gemma routed' : 'gemma route dispatched']
+      const parts = [compact ? 'Q routed' : 'Q route dispatched']
       if (assignedWorker) {
         parts.push(assignedWorker)
       }
@@ -1718,7 +1789,7 @@ export function buildGemmaTrainingRouteReceipt(args?: {
       }
     }
     case 'completed': {
-      const parts = [compact ? 'gemma done' : 'gemma route completed']
+      const parts = [compact ? 'Q done' : 'Q route completed']
       if (assignedWorker) {
         parts.push(assignedWorker)
       }
@@ -1732,7 +1803,7 @@ export function buildGemmaTrainingRouteReceipt(args?: {
       }
     }
     case 'failed': {
-      const parts = [compact ? 'gemma failed' : 'gemma route failed']
+      const parts = [compact ? 'Q failed' : 'Q route failed']
       if (assignedWorker) {
         parts.push(assignedWorker)
       }
@@ -1748,11 +1819,11 @@ export function buildGemmaTrainingRouteReceipt(args?: {
     case 'rejected':
       return {
         displayStatus,
-        text: compact ? 'gemma rejected' : 'gemma route rejected',
+        text: compact ? 'Q rejected' : 'Q route rejected',
         tone: 'error',
       }
     case 'queued': {
-      const parts = [compact ? 'gemma queued' : 'gemma route queued']
+      const parts = [compact ? 'Q queued' : 'Q route queued']
       pushLayer(parts)
       return {
         displayStatus,
@@ -1765,20 +1836,20 @@ export function buildGemmaTrainingRouteReceipt(args?: {
   }
 }
 
-export function isGemmaTrainingRouteWorkerExpired(
-  worker: GemmaTrainingRouteWorkerRegistration,
+export function isQTrainingRouteWorkerExpired(
+  worker: QTrainingRouteWorkerRegistration,
   now = new Date().toISOString(),
 ): boolean {
   return worker.leaseExpiresAt <= now
 }
 
-function normalizeGemmaTrainingRouteQueueClaims(
-  entries: GemmaTrainingRouteQueueEntry[],
+function normalizeQTrainingRouteQueueClaims(
+  entries: QTrainingRouteQueueEntry[],
   now = new Date().toISOString(),
-): { entries: GemmaTrainingRouteQueueEntry[]; changed: boolean } {
+): { entries: QTrainingRouteQueueEntry[]; changed: boolean } {
   let changed = false
   const normalized = entries.map(entry => {
-    if (!isGemmaTrainingRouteQueueClaimExpired(entry, now)) {
+    if (!isQTrainingRouteQueueClaimExpired(entry, now)) {
       return entry
     }
     changed = true
@@ -1797,19 +1868,19 @@ function normalizeGemmaTrainingRouteQueueClaims(
   }
 }
 
-function normalizeGemmaTrainingRouteWorkers(
-  workers: GemmaTrainingRouteWorkerRegistration[],
+function normalizeQTrainingRouteWorkers(
+  workers: QTrainingRouteWorkerRegistration[],
   now = new Date().toISOString(),
-): { workers: GemmaTrainingRouteWorkerRegistration[]; changed: boolean } {
-  const normalized = workers.filter(worker => !isGemmaTrainingRouteWorkerExpired(worker, now))
+): { workers: QTrainingRouteWorkerRegistration[]; changed: boolean } {
+  const normalized = workers.filter(worker => !isQTrainingRouteWorkerExpired(worker, now))
   return {
     workers: normalized,
     changed: normalized.length !== workers.length,
   }
 }
 
-function workerSupportsGemmaBaseModel(
-  worker: GemmaTrainingRouteWorkerRegistration,
+function workerSupportsQBaseModel(
+  worker: QTrainingRouteWorkerRegistration,
   baseModel?: string | null,
 ): boolean {
   if (!baseModel) {
@@ -1825,11 +1896,11 @@ function workerSupportsGemmaBaseModel(
   })
 }
 
-function selectGemmaTrainingRouteWorker(
-  entry: GemmaTrainingRouteQueueEntry,
-  workers: GemmaTrainingRouteWorkerRegistration[],
+function selectQTrainingRouteWorker(
+  entry: QTrainingRouteQueueEntry,
+  workers: QTrainingRouteWorkerRegistration[],
 ): {
-  worker: GemmaTrainingRouteWorkerRegistration
+  worker: QTrainingRouteWorkerRegistration
   reason: string
 } | null {
   const scored = workers
@@ -1840,7 +1911,7 @@ function selectGemmaTrainingRouteWorker(
       ) {
         return false
       }
-      return workerSupportsGemmaBaseModel(worker, entry.baseModel)
+      return workerSupportsQBaseModel(worker, entry.baseModel)
     })
     .map(worker => {
       let score = 0
@@ -1895,11 +1966,11 @@ function selectGemmaTrainingRouteWorker(
   }
 }
 
-function rebalanceGemmaTrainingRouteQueueAssignments(
-  entries: GemmaTrainingRouteQueueEntry[],
-  workers: GemmaTrainingRouteWorkerRegistration[],
+function rebalanceQTrainingRouteQueueAssignments(
+  entries: QTrainingRouteQueueEntry[],
+  workers: QTrainingRouteWorkerRegistration[],
   now = new Date().toISOString(),
-): { entries: GemmaTrainingRouteQueueEntry[]; changed: boolean } {
+): { entries: QTrainingRouteQueueEntry[]; changed: boolean } {
   let changed = false
   const updated = entries.map(entry => {
     if (entry.status !== 'queued') {
@@ -1911,7 +1982,7 @@ function rebalanceGemmaTrainingRouteQueueAssignments(
     ) {
       return entry
     }
-    const selection = selectGemmaTrainingRouteWorker(entry, workers)
+    const selection = selectQTrainingRouteWorker(entry, workers)
     if (!selection) {
       if (!entry.assignment) {
         return entry
@@ -1923,7 +1994,7 @@ function rebalanceGemmaTrainingRouteQueueAssignments(
         assignment: null,
       }
     }
-    const nextAssignment: GemmaTrainingRouteQueueAssignment = {
+    const nextAssignment: QTrainingRouteQueueAssignment = {
       workerId: selection.worker.workerId,
       workerLabel: selection.worker.workerLabel ?? null,
       hostLabel: selection.worker.hostLabel ?? null,
@@ -1960,34 +2031,34 @@ function rebalanceGemmaTrainingRouteQueueAssignments(
   }
 }
 
-export function reapStaleGemmaTrainingRouteQueueClaims(args?: {
+export function reapStaleQTrainingRouteQueueClaims(args?: {
   root?: string
   now?: string
-}): GemmaTrainingRouteQueueEntry[] {
+}): QTrainingRouteQueueEntry[] {
   const root = args?.root ?? process.cwd()
   const now = args?.now ?? new Date().toISOString()
 
-  return withGemmaTrainingRouteQueueLock(root, () => {
-    const current = readGemmaTrainingRouteQueueUnlocked(root)
-    const normalized = normalizeGemmaTrainingRouteQueueClaims(current, now)
-    const workers = normalizeGemmaTrainingRouteWorkers(
-      readGemmaTrainingRouteWorkersUnlocked(root),
+  return withQTrainingRouteQueueLock(root, () => {
+    const current = readQTrainingRouteQueueUnlocked(root)
+    const normalized = normalizeQTrainingRouteQueueClaims(current, now)
+    const workers = normalizeQTrainingRouteWorkers(
+      readQTrainingRouteWorkersUnlocked(root),
       now,
     )
-    const rebalanced = rebalanceGemmaTrainingRouteQueueAssignments(
+    const rebalanced = rebalanceQTrainingRouteQueueAssignments(
       normalized.entries,
       workers.workers,
       now,
     )
     if (workers.changed) {
-      writeGemmaTrainingRouteWorkersUnlocked(
-        sortGemmaTrainingRouteWorkers(workers.workers),
+      writeQTrainingRouteWorkersUnlocked(
+        sortQTrainingRouteWorkers(workers.workers),
         root,
       )
     }
     if (normalized.changed || rebalanced.changed) {
-      writeGemmaTrainingRouteQueueUnlocked(
-        sortGemmaTrainingRouteQueueEntries(rebalanced.entries),
+      writeQTrainingRouteQueueUnlocked(
+        sortQTrainingRouteQueueEntries(rebalanced.entries),
         root,
       )
     }
@@ -1995,39 +2066,39 @@ export function reapStaleGemmaTrainingRouteQueueClaims(args?: {
   })
 }
 
-export function readGemmaTrainingRegistry(
+export function readQTrainingRegistry(
   root = process.cwd(),
-): GemmaTrainingRegistryEntry[] {
-  return readJsonIfExists<GemmaTrainingRegistryEntry[]>(
-    getGemmaTrainingRegistryPath(root),
+): QTrainingRegistryEntry[] {
+  return readJsonIfExists<QTrainingRegistryEntry[]>(
+    getQTrainingRegistryPath(root),
   ) ?? []
 }
 
-export function writeGemmaTrainingRegistry(
-  entries: GemmaTrainingRegistryEntry[],
+export function writeQTrainingRegistry(
+  entries: QTrainingRegistryEntry[],
   root = process.cwd(),
 ): void {
-  const path = getGemmaTrainingRegistryPath(root)
-  mkdirSync(getGemmaTrainingRunsDir(root), { recursive: true })
+  const path = getQTrainingRegistryPath(root)
+  mkdirSync(getQTrainingRunsDir(root), { recursive: true })
   writeFileSync(path, `${JSON.stringify(entries, null, 2)}\n`, 'utf8')
 }
 
-export function readGemmaTrainingRouteQueue(
+export function readQTrainingRouteQueue(
   root = process.cwd(),
-): GemmaTrainingRouteQueueEntry[] {
-  return readGemmaTrainingRouteQueueUnlocked(root)
+): QTrainingRouteQueueEntry[] {
+  return readQTrainingRouteQueueUnlocked(root)
 }
 
-export function readGemmaTrainingRouteWorkers(
+export function readQTrainingRouteWorkers(
   root = process.cwd(),
-): GemmaTrainingRouteWorkerRegistration[] {
-  return withGemmaTrainingRouteQueueLock(root, () => {
-    const normalized = normalizeGemmaTrainingRouteWorkers(
-      readGemmaTrainingRouteWorkersUnlocked(root),
+): QTrainingRouteWorkerRegistration[] {
+  return withQTrainingRouteQueueLock(root, () => {
+    const normalized = normalizeQTrainingRouteWorkers(
+      readQTrainingRouteWorkersUnlocked(root),
     )
     if (normalized.changed) {
-      writeGemmaTrainingRouteWorkersUnlocked(
-        sortGemmaTrainingRouteWorkers(normalized.workers),
+      writeQTrainingRouteWorkersUnlocked(
+        sortQTrainingRouteWorkers(normalized.workers),
         root,
       )
     }
@@ -2035,82 +2106,82 @@ export function readGemmaTrainingRouteWorkers(
   })
 }
 
-export function readGemmaTrainingRouteWorkerRuntimeStatuses(
+export function readQTrainingRouteWorkerRuntimeStatuses(
   root = process.cwd(),
-): GemmaTrainingRouteWorkerRuntimeEntry[] {
-  return withGemmaTrainingRouteQueueLock(root, () =>
-    sortGemmaTrainingRouteWorkerRuntime(
-      readGemmaTrainingRouteWorkerRuntimeUnlocked(root),
+): QTrainingRouteWorkerRuntimeEntry[] {
+  return withQTrainingRouteQueueLock(root, () =>
+    sortQTrainingRouteWorkerRuntime(
+      readQTrainingRouteWorkerRuntimeUnlocked(root),
     ),
   )
 }
 
-export function writeGemmaTrainingRouteQueue(
-  entries: GemmaTrainingRouteQueueEntry[],
+export function writeQTrainingRouteQueue(
+  entries: QTrainingRouteQueueEntry[],
   root = process.cwd(),
 ): void {
-  writeGemmaTrainingRouteQueueUnlocked(sortGemmaTrainingRouteQueueEntries(entries), root)
+  writeQTrainingRouteQueueUnlocked(sortQTrainingRouteQueueEntries(entries), root)
 }
 
-export function upsertGemmaTrainingRouteQueueEntry(
-  entry: GemmaTrainingRouteQueueEntry,
+export function upsertQTrainingRouteQueueEntry(
+  entry: QTrainingRouteQueueEntry,
   root = process.cwd(),
 ): void {
-  withGemmaTrainingRouteQueueLock(root, () => {
-    const existing = readGemmaTrainingRouteQueueUnlocked(root)
+  withQTrainingRouteQueueLock(root, () => {
+    const existing = readQTrainingRouteQueueUnlocked(root)
     const updated = existing.filter(run => run.runId !== entry.runId)
     updated.push(entry)
-    const workers = normalizeGemmaTrainingRouteWorkers(
-      readGemmaTrainingRouteWorkersUnlocked(root),
+    const workers = normalizeQTrainingRouteWorkers(
+      readQTrainingRouteWorkersUnlocked(root),
     )
-    const rebalanced = rebalanceGemmaTrainingRouteQueueAssignments(
+    const rebalanced = rebalanceQTrainingRouteQueueAssignments(
       updated,
       workers.workers,
     )
     if (workers.changed) {
-      writeGemmaTrainingRouteWorkersUnlocked(
-        sortGemmaTrainingRouteWorkers(workers.workers),
+      writeQTrainingRouteWorkersUnlocked(
+        sortQTrainingRouteWorkers(workers.workers),
         root,
       )
     }
-    writeGemmaTrainingRouteQueueUnlocked(
-      sortGemmaTrainingRouteQueueEntries(rebalanced.entries),
+    writeQTrainingRouteQueueUnlocked(
+      sortQTrainingRouteQueueEntries(rebalanced.entries),
       root,
     )
   })
 }
 
-export function upsertGemmaTrainingRouteWorkerRuntimeStatus(
-  entry: GemmaTrainingRouteWorkerRuntimeEntry,
+export function upsertQTrainingRouteWorkerRuntimeStatus(
+  entry: QTrainingRouteWorkerRuntimeEntry,
   root = process.cwd(),
 ): void {
-  withGemmaTrainingRouteQueueLock(root, () => {
-    const existing = readGemmaTrainingRouteWorkerRuntimeUnlocked(root)
+  withQTrainingRouteQueueLock(root, () => {
+    const existing = readQTrainingRouteWorkerRuntimeUnlocked(root)
     const updated = existing.filter(worker => worker.workerId !== entry.workerId)
     updated.push({
       ...entry,
       supportedBaseModels: [...new Set(entry.supportedBaseModels)],
       preferredLayerIds: [...new Set(entry.preferredLayerIds)],
     })
-    writeGemmaTrainingRouteWorkerRuntimeUnlocked(
-      sortGemmaTrainingRouteWorkerRuntime(updated),
+    writeQTrainingRouteWorkerRuntimeUnlocked(
+      sortQTrainingRouteWorkerRuntime(updated),
       root,
     )
   })
 }
 
-export function removeGemmaTrainingRouteWorkerRuntimeStatus(
+export function removeQTrainingRouteWorkerRuntimeStatus(
   workerId: string,
   root = process.cwd(),
-): GemmaTrainingRouteWorkerRuntimeEntry | null {
-  return withGemmaTrainingRouteQueueLock(root, () => {
-    const existing = readGemmaTrainingRouteWorkerRuntimeUnlocked(root)
+): QTrainingRouteWorkerRuntimeEntry | null {
+  return withQTrainingRouteQueueLock(root, () => {
+    const existing = readQTrainingRouteWorkerRuntimeUnlocked(root)
     const target = existing.find(worker => worker.workerId === workerId) ?? null
     if (!target) {
       return null
     }
-    writeGemmaTrainingRouteWorkerRuntimeUnlocked(
-      sortGemmaTrainingRouteWorkerRuntime(
+    writeQTrainingRouteWorkerRuntimeUnlocked(
+      sortQTrainingRouteWorkerRuntime(
         existing.filter(worker => worker.workerId !== workerId),
       ),
       root,
@@ -2119,20 +2190,20 @@ export function removeGemmaTrainingRouteWorkerRuntimeStatus(
   })
 }
 
-export function upsertGemmaTrainingRouteWorker(
-  worker: GemmaTrainingRouteWorkerRegistration,
+export function upsertQTrainingRouteWorker(
+  worker: QTrainingRouteWorkerRegistration,
   root = process.cwd(),
-): GemmaTrainingRouteWorkerRegistration {
-  return withGemmaTrainingRouteQueueLock(root, () => {
+): QTrainingRouteWorkerRegistration {
+  return withQTrainingRouteQueueLock(root, () => {
     const now = worker.heartbeatAt
-    const currentWorkers = normalizeGemmaTrainingRouteWorkers(
-      readGemmaTrainingRouteWorkersUnlocked(root),
+    const currentWorkers = normalizeQTrainingRouteWorkers(
+      readQTrainingRouteWorkersUnlocked(root),
       now,
     )
     const existingWorker = currentWorkers.workers.find(
       entry => entry.workerId === worker.workerId,
     )
-    const updatedWorker: GemmaTrainingRouteWorkerRegistration = {
+    const updatedWorker: QTrainingRouteWorkerRegistration = {
       ...worker,
       registeredAt: existingWorker?.registeredAt ?? worker.registeredAt,
       supportedBaseModels: [...new Set(worker.supportedBaseModels)],
@@ -2141,19 +2212,19 @@ export function upsertGemmaTrainingRouteWorker(
     const updatedWorkers = currentWorkers.workers
       .filter(entry => entry.workerId !== worker.workerId)
       .concat(updatedWorker)
-    const queue = readGemmaTrainingRouteQueueUnlocked(root)
-    const rebalanced = rebalanceGemmaTrainingRouteQueueAssignments(
+    const queue = readQTrainingRouteQueueUnlocked(root)
+    const rebalanced = rebalanceQTrainingRouteQueueAssignments(
       queue,
       updatedWorkers,
       now,
     )
-    writeGemmaTrainingRouteWorkersUnlocked(
-      sortGemmaTrainingRouteWorkers(updatedWorkers),
+    writeQTrainingRouteWorkersUnlocked(
+      sortQTrainingRouteWorkers(updatedWorkers),
       root,
     )
     if (currentWorkers.changed || rebalanced.changed) {
-      writeGemmaTrainingRouteQueueUnlocked(
-        sortGemmaTrainingRouteQueueEntries(rebalanced.entries),
+      writeQTrainingRouteQueueUnlocked(
+        sortQTrainingRouteQueueEntries(rebalanced.entries),
         root,
       )
     }
@@ -2161,22 +2232,22 @@ export function upsertGemmaTrainingRouteWorker(
   })
 }
 
-export function removeGemmaTrainingRouteWorker(
+export function removeQTrainingRouteWorker(
   workerId: string,
   root = process.cwd(),
-): GemmaTrainingRouteWorkerRegistration | null {
-  return withGemmaTrainingRouteQueueLock(root, () => {
+): QTrainingRouteWorkerRegistration | null {
+  return withQTrainingRouteQueueLock(root, () => {
     const now = new Date().toISOString()
-    const currentWorkers = normalizeGemmaTrainingRouteWorkers(
-      readGemmaTrainingRouteWorkersUnlocked(root),
+    const currentWorkers = normalizeQTrainingRouteWorkers(
+      readQTrainingRouteWorkersUnlocked(root),
       now,
     )
     const target =
       currentWorkers.workers.find(worker => worker.workerId === workerId) ?? null
     if (!target) {
       if (currentWorkers.changed) {
-        writeGemmaTrainingRouteWorkersUnlocked(
-          sortGemmaTrainingRouteWorkers(currentWorkers.workers),
+        writeQTrainingRouteWorkersUnlocked(
+          sortQTrainingRouteWorkers(currentWorkers.workers),
           root,
         )
       }
@@ -2185,19 +2256,19 @@ export function removeGemmaTrainingRouteWorker(
     const updatedWorkers = currentWorkers.workers.filter(
       worker => worker.workerId !== workerId,
     )
-    const queue = readGemmaTrainingRouteQueueUnlocked(root)
-    const rebalanced = rebalanceGemmaTrainingRouteQueueAssignments(
+    const queue = readQTrainingRouteQueueUnlocked(root)
+    const rebalanced = rebalanceQTrainingRouteQueueAssignments(
       queue,
       updatedWorkers,
       now,
     )
-    writeGemmaTrainingRouteWorkersUnlocked(
-      sortGemmaTrainingRouteWorkers(updatedWorkers),
+    writeQTrainingRouteWorkersUnlocked(
+      sortQTrainingRouteWorkers(updatedWorkers),
       root,
     )
     if (currentWorkers.changed || rebalanced.changed) {
-      writeGemmaTrainingRouteQueueUnlocked(
-        sortGemmaTrainingRouteQueueEntries(rebalanced.entries),
+      writeQTrainingRouteQueueUnlocked(
+        sortQTrainingRouteQueueEntries(rebalanced.entries),
         root,
       )
     }
@@ -2205,37 +2276,37 @@ export function removeGemmaTrainingRouteWorker(
   })
 }
 
-export function getGemmaTrainingRouteWorker(
+export function getQTrainingRouteWorker(
   workerId: string,
   root = process.cwd(),
-): GemmaTrainingRouteWorkerRegistration | null {
-  return readGemmaTrainingRouteWorkers(root).find(worker => worker.workerId === workerId) ?? null
+): QTrainingRouteWorkerRegistration | null {
+  return readQTrainingRouteWorkers(root).find(worker => worker.workerId === workerId) ?? null
 }
 
-export function reapStaleGemmaTrainingRouteWorkers(args?: {
+export function reapStaleQTrainingRouteWorkers(args?: {
   root?: string
   now?: string
-}): GemmaTrainingRouteWorkerRegistration[] {
+}): QTrainingRouteWorkerRegistration[] {
   const root = args?.root ?? process.cwd()
   const now = args?.now ?? new Date().toISOString()
-  return withGemmaTrainingRouteQueueLock(root, () => {
-    const currentWorkers = readGemmaTrainingRouteWorkersUnlocked(root)
-    const normalized = normalizeGemmaTrainingRouteWorkers(currentWorkers, now)
-    const queue = readGemmaTrainingRouteQueueUnlocked(root)
-    const rebalanced = rebalanceGemmaTrainingRouteQueueAssignments(
+  return withQTrainingRouteQueueLock(root, () => {
+    const currentWorkers = readQTrainingRouteWorkersUnlocked(root)
+    const normalized = normalizeQTrainingRouteWorkers(currentWorkers, now)
+    const queue = readQTrainingRouteQueueUnlocked(root)
+    const rebalanced = rebalanceQTrainingRouteQueueAssignments(
       queue,
       normalized.workers,
       now,
     )
     if (normalized.changed) {
-      writeGemmaTrainingRouteWorkersUnlocked(
-        sortGemmaTrainingRouteWorkers(normalized.workers),
+      writeQTrainingRouteWorkersUnlocked(
+        sortQTrainingRouteWorkers(normalized.workers),
         root,
       )
     }
     if (normalized.changed || rebalanced.changed) {
-      writeGemmaTrainingRouteQueueUnlocked(
-        sortGemmaTrainingRouteQueueEntries(rebalanced.entries),
+      writeQTrainingRouteQueueUnlocked(
+        sortQTrainingRouteQueueEntries(rebalanced.entries),
         root,
       )
     }
@@ -2243,25 +2314,25 @@ export function reapStaleGemmaTrainingRouteWorkers(args?: {
   })
 }
 
-export function getGemmaTrainingRouteQueueEntry(
+export function getQTrainingRouteQueueEntry(
   runId: string,
   root = process.cwd(),
-): GemmaTrainingRouteQueueEntry | null {
+): QTrainingRouteQueueEntry | null {
   return (
-    readGemmaTrainingRouteQueue(root).find(entry => entry.runId === runId) ?? null
+    readQTrainingRouteQueue(root).find(entry => entry.runId === runId) ?? null
   )
 }
 
-export function getNextGemmaTrainingRoutePendingRemoteResult(args: {
+export function getNextQTrainingRoutePendingRemoteResult(args: {
   workerId?: string | null
   manifestPath?: string | null
   root?: string
-}): GemmaTrainingRouteQueueEntry | null {
+}): QTrainingRouteQueueEntry | null {
   const root = args.root ?? process.cwd()
   const manifestPath = args.manifestPath ? resolve(args.manifestPath) : null
-  const queue = readGemmaTrainingRouteQueue(root)
+  const queue = readQTrainingRouteQueue(root)
     .filter(entry =>
-      isGemmaTrainingRouteQueuePendingRemoteResult(entry, args.workerId),
+      isQTrainingRouteQueuePendingRemoteResult(entry, args.workerId),
     )
     .filter(entry => !manifestPath || resolve(entry.manifestPath) === manifestPath)
     .sort((left, right) => {
@@ -2274,39 +2345,39 @@ export function getNextGemmaTrainingRoutePendingRemoteResult(args: {
   return queue[0] ?? null
 }
 
-export function getNextQueuedGemmaTrainingRoute(
+export function getNextQueuedQTrainingRoute(
   root = process.cwd(),
-): GemmaTrainingRouteQueueEntry | null {
-  const queue = readGemmaTrainingRouteQueue(root)
+): QTrainingRouteQueueEntry | null {
+  const queue = readQTrainingRouteQueue(root)
   const now = new Date().toISOString()
   return (
     queue.find(entry => entry.status === 'queued') ??
-    queue.find(entry => isGemmaTrainingRouteQueueClaimExpired(entry, now)) ??
+    queue.find(entry => isQTrainingRouteQueueClaimExpired(entry, now)) ??
     null
   )
 }
 
-export function claimGemmaTrainingRouteQueueEntry(args: {
+export function claimQTrainingRouteQueueEntry(args: {
   workerId: string
   runId?: string | null
   manifestPath?: string | null
   claimTtlMs?: number
   root?: string
   claimedAt?: string
-}): GemmaTrainingRouteQueueEntry | null {
+}): QTrainingRouteQueueEntry | null {
   const root = args.root ?? process.cwd()
   const claimedAt = args.claimedAt ?? new Date().toISOString()
-  const claimTtlMs = args.claimTtlMs ?? DEFAULT_GEMMA_ROUTE_QUEUE_LEASE_MS
+  const claimTtlMs = args.claimTtlMs ?? DEFAULT_Q_ROUTE_QUEUE_LEASE_MS
   const explicitTarget = Boolean(args.runId || args.manifestPath)
 
-  return withGemmaTrainingRouteQueueLock(root, () => {
-    const current = readGemmaTrainingRouteQueueUnlocked(root)
-    const normalized = normalizeGemmaTrainingRouteQueueClaims(current, claimedAt)
-    const workers = normalizeGemmaTrainingRouteWorkers(
-      readGemmaTrainingRouteWorkersUnlocked(root),
+  return withQTrainingRouteQueueLock(root, () => {
+    const current = readQTrainingRouteQueueUnlocked(root)
+    const normalized = normalizeQTrainingRouteQueueClaims(current, claimedAt)
+    const workers = normalizeQTrainingRouteWorkers(
+      readQTrainingRouteWorkersUnlocked(root),
       claimedAt,
     )
-    const rebalanced = rebalanceGemmaTrainingRouteQueueAssignments(
+    const rebalanced = rebalanceQTrainingRouteQueueAssignments(
       normalized.entries,
       workers.workers,
       claimedAt,
@@ -2338,14 +2409,14 @@ export function claimGemmaTrainingRouteQueueEntry(args: {
 
     if (!target) {
       if (workers.changed) {
-        writeGemmaTrainingRouteWorkersUnlocked(
-          sortGemmaTrainingRouteWorkers(workers.workers),
+        writeQTrainingRouteWorkersUnlocked(
+          sortQTrainingRouteWorkers(workers.workers),
           root,
         )
       }
       if (normalized.changed || rebalanced.changed) {
-        writeGemmaTrainingRouteQueueUnlocked(
-          sortGemmaTrainingRouteQueueEntries(queue),
+        writeQTrainingRouteQueueUnlocked(
+          sortQTrainingRouteQueueEntries(queue),
           root,
         )
       }
@@ -2357,17 +2428,17 @@ export function claimGemmaTrainingRouteQueueEntry(args: {
         claimant &&
         (target.requestedExecutionDecision !== 'remote_required' ||
           claimant.executionProfile === 'remote') &&
-        workerSupportsGemmaBaseModel(claimant, target.baseModel)
+        workerSupportsQBaseModel(claimant, target.baseModel)
       if (!claimantEligible) {
         if (workers.changed) {
-          writeGemmaTrainingRouteWorkersUnlocked(
-            sortGemmaTrainingRouteWorkers(workers.workers),
+          writeQTrainingRouteWorkersUnlocked(
+            sortQTrainingRouteWorkers(workers.workers),
             root,
           )
         }
         if (normalized.changed || rebalanced.changed) {
-          writeGemmaTrainingRouteQueueUnlocked(
-            sortGemmaTrainingRouteQueueEntries(queue),
+          writeQTrainingRouteQueueUnlocked(
+            sortQTrainingRouteQueueEntries(queue),
             root,
           )
         }
@@ -2378,7 +2449,7 @@ export function claimGemmaTrainingRouteQueueEntry(args: {
     if (
       target.status === 'claimed' &&
       target.claim?.workerId === args.workerId &&
-      !isGemmaTrainingRouteQueueClaimExpired(target, claimedAt)
+      !isQTrainingRouteQueueClaimExpired(target, claimedAt)
     ) {
       const reclaimed = {
         ...target,
@@ -2395,8 +2466,8 @@ export function claimGemmaTrainingRouteQueueEntry(args: {
       const updated = queue.map(entry =>
         entry.runId === reclaimed.runId ? reclaimed : entry,
       )
-      writeGemmaTrainingRouteQueueUnlocked(
-        sortGemmaTrainingRouteQueueEntries(updated),
+      writeQTrainingRouteQueueUnlocked(
+        sortQTrainingRouteQueueEntries(updated),
         root,
       )
       return reclaimed
@@ -2407,7 +2478,7 @@ export function claimGemmaTrainingRouteQueueEntry(args: {
       !target.assignment?.workerId
     ) {
       if (explicitTarget) {
-        const explicitlyClaimedEntry: GemmaTrainingRouteQueueEntry = {
+        const explicitlyClaimedEntry: QTrainingRouteQueueEntry = {
           ...target,
           status: 'claimed',
           updatedAt: claimedAt,
@@ -2431,26 +2502,26 @@ export function claimGemmaTrainingRouteQueueEntry(args: {
             : entry,
         )
         if (workers.changed) {
-          writeGemmaTrainingRouteWorkersUnlocked(
-            sortGemmaTrainingRouteWorkers(workers.workers),
+          writeQTrainingRouteWorkersUnlocked(
+            sortQTrainingRouteWorkers(workers.workers),
             root,
           )
         }
-        writeGemmaTrainingRouteQueueUnlocked(
-          sortGemmaTrainingRouteQueueEntries(updated),
+        writeQTrainingRouteQueueUnlocked(
+          sortQTrainingRouteQueueEntries(updated),
           root,
         )
         return explicitlyClaimedEntry
       }
       if (workers.changed) {
-        writeGemmaTrainingRouteWorkersUnlocked(
-          sortGemmaTrainingRouteWorkers(workers.workers),
+        writeQTrainingRouteWorkersUnlocked(
+          sortQTrainingRouteWorkers(workers.workers),
           root,
         )
       }
       if (normalized.changed || rebalanced.changed) {
-        writeGemmaTrainingRouteQueueUnlocked(
-          sortGemmaTrainingRouteQueueEntries(queue),
+        writeQTrainingRouteQueueUnlocked(
+          sortQTrainingRouteQueueEntries(queue),
           root,
         )
       }
@@ -2462,14 +2533,14 @@ export function claimGemmaTrainingRouteQueueEntry(args: {
       target.assignment.workerId !== args.workerId
     ) {
       if (workers.changed) {
-        writeGemmaTrainingRouteWorkersUnlocked(
-          sortGemmaTrainingRouteWorkers(workers.workers),
+        writeQTrainingRouteWorkersUnlocked(
+          sortQTrainingRouteWorkers(workers.workers),
           root,
         )
       }
       if (normalized.changed || rebalanced.changed) {
-        writeGemmaTrainingRouteQueueUnlocked(
-          sortGemmaTrainingRouteQueueEntries(queue),
+        writeQTrainingRouteQueueUnlocked(
+          sortQTrainingRouteQueueEntries(queue),
           root,
         )
       }
@@ -2478,21 +2549,21 @@ export function claimGemmaTrainingRouteQueueEntry(args: {
 
     if (target.status !== 'queued') {
       if (workers.changed) {
-        writeGemmaTrainingRouteWorkersUnlocked(
-          sortGemmaTrainingRouteWorkers(workers.workers),
+        writeQTrainingRouteWorkersUnlocked(
+          sortQTrainingRouteWorkers(workers.workers),
           root,
         )
       }
       if (normalized.changed || rebalanced.changed) {
-        writeGemmaTrainingRouteQueueUnlocked(
-          sortGemmaTrainingRouteQueueEntries(queue),
+        writeQTrainingRouteQueueUnlocked(
+          sortQTrainingRouteQueueEntries(queue),
           root,
         )
       }
       return null
     }
 
-    const claimedEntry: GemmaTrainingRouteQueueEntry = {
+    const claimedEntry: QTrainingRouteQueueEntry = {
       ...target,
       status: 'claimed',
       updatedAt: claimedAt,
@@ -2514,26 +2585,26 @@ export function claimGemmaTrainingRouteQueueEntry(args: {
       entry.runId === claimedEntry.runId ? claimedEntry : entry,
     )
     if (workers.changed) {
-      writeGemmaTrainingRouteWorkersUnlocked(
-        sortGemmaTrainingRouteWorkers(workers.workers),
+      writeQTrainingRouteWorkersUnlocked(
+        sortQTrainingRouteWorkers(workers.workers),
         root,
       )
     }
-    writeGemmaTrainingRouteQueueUnlocked(
-      sortGemmaTrainingRouteQueueEntries(updated),
+    writeQTrainingRouteQueueUnlocked(
+      sortQTrainingRouteQueueEntries(updated),
       root,
     )
     return claimedEntry
   })
 }
 
-export function claimNextQueuedGemmaTrainingRoute(args: {
+export function claimNextQueuedQTrainingRoute(args: {
   workerId: string
   claimTtlMs?: number
   root?: string
   claimedAt?: string
-}): GemmaTrainingRouteQueueEntry | null {
-  return claimGemmaTrainingRouteQueueEntry({
+}): QTrainingRouteQueueEntry | null {
+  return claimQTrainingRouteQueueEntry({
     workerId: args.workerId,
     claimTtlMs: args.claimTtlMs,
     root: args.root,
@@ -2541,25 +2612,25 @@ export function claimNextQueuedGemmaTrainingRoute(args: {
   })
 }
 
-export function updateGemmaTrainingRouteQueueClaim(args: {
+export function updateQTrainingRouteQueueClaim(args: {
   runId: string
   workerId: string
   status: 'claimed' | 'rejected'
-  preflight: GemmaTrainingPreflight
+  preflight: QTrainingPreflight
   signatureVerified: boolean
   integrityVerified: boolean
   rejectionReason?: string | null
   claimTtlMs?: number
   root?: string
   updatedAt?: string
-}): GemmaTrainingRouteQueueEntry | null {
+}): QTrainingRouteQueueEntry | null {
   const root = args.root ?? process.cwd()
   const updatedAt = args.updatedAt ?? new Date().toISOString()
-  const claimTtlMs = args.claimTtlMs ?? DEFAULT_GEMMA_ROUTE_QUEUE_LEASE_MS
+  const claimTtlMs = args.claimTtlMs ?? DEFAULT_Q_ROUTE_QUEUE_LEASE_MS
 
-  return withGemmaTrainingRouteQueueLock(root, () => {
-    const current = readGemmaTrainingRouteQueueUnlocked(root)
-    const normalized = normalizeGemmaTrainingRouteQueueClaims(current, updatedAt)
+  return withQTrainingRouteQueueLock(root, () => {
+    const current = readQTrainingRouteQueueUnlocked(root)
+    const normalized = normalizeQTrainingRouteQueueClaims(current, updatedAt)
     const target = normalized.entries.find(entry => entry.runId === args.runId)
     if (
       !target ||
@@ -2567,15 +2638,15 @@ export function updateGemmaTrainingRouteQueueClaim(args: {
       target.claim?.workerId !== args.workerId
     ) {
       if (normalized.changed) {
-        writeGemmaTrainingRouteQueueUnlocked(
-          sortGemmaTrainingRouteQueueEntries(normalized.entries),
+        writeQTrainingRouteQueueUnlocked(
+          sortQTrainingRouteQueueEntries(normalized.entries),
           root,
         )
       }
       return null
     }
 
-    const updatedEntry: GemmaTrainingRouteQueueEntry = {
+    const updatedEntry: QTrainingRouteQueueEntry = {
       ...target,
       status: args.status,
       updatedAt,
@@ -2603,26 +2674,26 @@ export function updateGemmaTrainingRouteQueueClaim(args: {
     const updated = normalized.entries.map(entry =>
       entry.runId === updatedEntry.runId ? updatedEntry : entry,
     )
-    writeGemmaTrainingRouteQueueUnlocked(
-      sortGemmaTrainingRouteQueueEntries(updated),
+    writeQTrainingRouteQueueUnlocked(
+      sortQTrainingRouteQueueEntries(updated),
       root,
     )
     return updatedEntry
   })
 }
 
-export function releaseGemmaTrainingRouteQueueClaim(args: {
+export function releaseQTrainingRouteQueueClaim(args: {
   runId: string
   workerId: string
   root?: string
   updatedAt?: string
-}): GemmaTrainingRouteQueueEntry | null {
+}): QTrainingRouteQueueEntry | null {
   const root = args.root ?? process.cwd()
   const updatedAt = args.updatedAt ?? new Date().toISOString()
 
-  return withGemmaTrainingRouteQueueLock(root, () => {
-    const current = readGemmaTrainingRouteQueueUnlocked(root)
-    const normalized = normalizeGemmaTrainingRouteQueueClaims(current, updatedAt)
+  return withQTrainingRouteQueueLock(root, () => {
+    const current = readQTrainingRouteQueueUnlocked(root)
+    const normalized = normalizeQTrainingRouteQueueClaims(current, updatedAt)
     const target = normalized.entries.find(entry => entry.runId === args.runId)
     if (
       !target ||
@@ -2630,15 +2701,15 @@ export function releaseGemmaTrainingRouteQueueClaim(args: {
       target.claim?.workerId !== args.workerId
     ) {
       if (normalized.changed) {
-        writeGemmaTrainingRouteQueueUnlocked(
-          sortGemmaTrainingRouteQueueEntries(normalized.entries),
+        writeQTrainingRouteQueueUnlocked(
+          sortQTrainingRouteQueueEntries(normalized.entries),
           root,
         )
       }
       return null
     }
 
-    const updatedEntry: GemmaTrainingRouteQueueEntry = {
+    const updatedEntry: QTrainingRouteQueueEntry = {
       ...target,
       status: 'queued',
       updatedAt,
@@ -2649,28 +2720,28 @@ export function releaseGemmaTrainingRouteQueueClaim(args: {
     const updated = normalized.entries.map(entry =>
       entry.runId === updatedEntry.runId ? updatedEntry : entry,
     )
-    writeGemmaTrainingRouteQueueUnlocked(
-      sortGemmaTrainingRouteQueueEntries(updated),
+    writeQTrainingRouteQueueUnlocked(
+      sortQTrainingRouteQueueEntries(updated),
       root,
     )
     return updatedEntry
   })
 }
 
-export function renewGemmaTrainingRouteQueueClaim(args: {
+export function renewQTrainingRouteQueueClaim(args: {
   runId: string
   workerId: string
   claimTtlMs?: number
   root?: string
   renewedAt?: string
-}): GemmaTrainingRouteQueueEntry | null {
+}): QTrainingRouteQueueEntry | null {
   const root = args.root ?? process.cwd()
   const renewedAt = args.renewedAt ?? new Date().toISOString()
-  const claimTtlMs = args.claimTtlMs ?? DEFAULT_GEMMA_ROUTE_QUEUE_LEASE_MS
+  const claimTtlMs = args.claimTtlMs ?? DEFAULT_Q_ROUTE_QUEUE_LEASE_MS
 
-  return withGemmaTrainingRouteQueueLock(root, () => {
-    const current = readGemmaTrainingRouteQueueUnlocked(root)
-    const normalized = normalizeGemmaTrainingRouteQueueClaims(current, renewedAt)
+  return withQTrainingRouteQueueLock(root, () => {
+    const current = readQTrainingRouteQueueUnlocked(root)
+    const normalized = normalizeQTrainingRouteQueueClaims(current, renewedAt)
     const target = normalized.entries.find(entry => entry.runId === args.runId)
     if (
       !target ||
@@ -2678,15 +2749,15 @@ export function renewGemmaTrainingRouteQueueClaim(args: {
       target.claim?.workerId !== args.workerId
     ) {
       if (normalized.changed) {
-        writeGemmaTrainingRouteQueueUnlocked(
-          sortGemmaTrainingRouteQueueEntries(normalized.entries),
+        writeQTrainingRouteQueueUnlocked(
+          sortQTrainingRouteQueueEntries(normalized.entries),
           root,
         )
       }
       return null
     }
 
-    const renewedEntry: GemmaTrainingRouteQueueEntry = {
+    const renewedEntry: QTrainingRouteQueueEntry = {
       ...target,
       updatedAt: renewedAt,
       claim: {
@@ -2701,20 +2772,20 @@ export function renewGemmaTrainingRouteQueueClaim(args: {
     const updated = normalized.entries.map(entry =>
       entry.runId === renewedEntry.runId ? renewedEntry : entry,
     )
-    writeGemmaTrainingRouteQueueUnlocked(
-      sortGemmaTrainingRouteQueueEntries(updated),
+    writeQTrainingRouteQueueUnlocked(
+      sortQTrainingRouteQueueEntries(updated),
       root,
     )
     return renewedEntry
   })
 }
 
-export function finalizeGemmaTrainingRouteQueueDispatch(args: {
+export function finalizeQTrainingRouteQueueDispatch(args: {
   runId: string
   workerId: string
-  executionMode: GemmaTrainingExecutionMode
+  executionMode: QTrainingExecutionMode
   pid: number | null
-  transport?: GemmaTrainingRouteDispatchTransport
+  transport?: QTrainingRouteDispatchTransport
   executionEndpoint?: string | null
   acknowledgedAt?: string | null
   remoteStatus?: number | null
@@ -2724,13 +2795,13 @@ export function finalizeGemmaTrainingRouteQueueDispatch(args: {
   remoteStateUrl?: string | null
   root?: string
   dispatchedAt?: string
-}): GemmaTrainingRouteQueueEntry | null {
+}): QTrainingRouteQueueEntry | null {
   const root = args.root ?? process.cwd()
   const dispatchedAt = args.dispatchedAt ?? new Date().toISOString()
 
-  return withGemmaTrainingRouteQueueLock(root, () => {
-    const current = readGemmaTrainingRouteQueueUnlocked(root)
-    const normalized = normalizeGemmaTrainingRouteQueueClaims(current, dispatchedAt)
+  return withQTrainingRouteQueueLock(root, () => {
+    const current = readQTrainingRouteQueueUnlocked(root)
+    const normalized = normalizeQTrainingRouteQueueClaims(current, dispatchedAt)
     const target = normalized.entries.find(entry => entry.runId === args.runId)
     if (
       !target ||
@@ -2738,15 +2809,15 @@ export function finalizeGemmaTrainingRouteQueueDispatch(args: {
       target.claim?.workerId !== args.workerId
     ) {
       if (normalized.changed) {
-        writeGemmaTrainingRouteQueueUnlocked(
-          sortGemmaTrainingRouteQueueEntries(normalized.entries),
+        writeQTrainingRouteQueueUnlocked(
+          sortQTrainingRouteQueueEntries(normalized.entries),
           root,
         )
       }
       return null
     }
 
-    const updatedEntry: GemmaTrainingRouteQueueEntry = {
+    const updatedEntry: QTrainingRouteQueueEntry = {
       ...target,
       status: 'dispatched',
       updatedAt: dispatchedAt,
@@ -2779,30 +2850,30 @@ export function finalizeGemmaTrainingRouteQueueDispatch(args: {
     const updated = normalized.entries.map(entry =>
       entry.runId === updatedEntry.runId ? updatedEntry : entry,
     )
-    writeGemmaTrainingRouteQueueUnlocked(
-      sortGemmaTrainingRouteQueueEntries(updated),
+    writeQTrainingRouteQueueUnlocked(
+      sortQTrainingRouteQueueEntries(updated),
       root,
     )
     return updatedEntry
   })
 }
 
-export function finalizeGemmaTrainingRouteQueueCompletion(args: {
+export function finalizeQTrainingRouteQueueCompletion(args: {
   runId: string
   workerId: string
   executionId?: string | null
-  status: GemmaTrainingRouteResultStatus
+  status: QTrainingRouteResultStatus
   summary?: string | null
   stateUrl?: string | null
   root?: string
   finishedAt?: string
-}): GemmaTrainingRouteQueueEntry | null {
+}): QTrainingRouteQueueEntry | null {
   const root = args.root ?? process.cwd()
   const finishedAt = args.finishedAt ?? new Date().toISOString()
 
-  return withGemmaTrainingRouteQueueLock(root, () => {
-    const current = readGemmaTrainingRouteQueueUnlocked(root)
-    const normalized = normalizeGemmaTrainingRouteQueueClaims(current, finishedAt)
+  return withQTrainingRouteQueueLock(root, () => {
+    const current = readQTrainingRouteQueueUnlocked(root)
+    const normalized = normalizeQTrainingRouteQueueClaims(current, finishedAt)
     const target = normalized.entries.find(entry => entry.runId === args.runId)
     if (
       !target ||
@@ -2813,15 +2884,15 @@ export function finalizeGemmaTrainingRouteQueueCompletion(args: {
         target.dispatch.remoteExecutionId !== args.executionId)
     ) {
       if (normalized.changed) {
-        writeGemmaTrainingRouteQueueUnlocked(
-          sortGemmaTrainingRouteQueueEntries(normalized.entries),
+        writeQTrainingRouteQueueUnlocked(
+          sortQTrainingRouteQueueEntries(normalized.entries),
           root,
         )
       }
       return null
     }
 
-    const updatedEntry: GemmaTrainingRouteQueueEntry = {
+    const updatedEntry: QTrainingRouteQueueEntry = {
       ...target,
       status: args.status,
       updatedAt: finishedAt,
@@ -2840,44 +2911,44 @@ export function finalizeGemmaTrainingRouteQueueCompletion(args: {
     const updated = normalized.entries.map(entry =>
       entry.runId === updatedEntry.runId ? updatedEntry : entry,
     )
-    writeGemmaTrainingRouteQueueUnlocked(
-      sortGemmaTrainingRouteQueueEntries(updated),
+    writeQTrainingRouteQueueUnlocked(
+      sortQTrainingRouteQueueEntries(updated),
       root,
     )
     return updatedEntry
   })
 }
 
-export function upsertGemmaTrainingRegistryEntry(
-  entry: GemmaTrainingRegistryEntry,
+export function upsertQTrainingRegistryEntry(
+  entry: QTrainingRegistryEntry,
   root = process.cwd(),
 ): void {
-  const existing = readGemmaTrainingRegistry(root)
+  const existing = readQTrainingRegistry(root)
   const updated = existing.filter(run => run.runId !== entry.runId)
   updated.push(entry)
   updated.sort((left, right) =>
     left.launchedAt < right.launchedAt ? -1 : left.launchedAt > right.launchedAt ? 1 : 0,
   )
-  writeGemmaTrainingRegistry(updated, root)
+  writeQTrainingRegistry(updated, root)
 }
 
-export function readGemmaRunState(outputDir: string): GemmaRunState | null {
-  return readJsonIfExists<GemmaRunState>(join(outputDir, 'run-state.json'))
+export function readQRunState(outputDir: string): QRunState | null {
+  return readJsonIfExists<QRunState>(join(outputDir, 'run-state.json'))
 }
 
-export function getLatestGemmaTrainingSnapshot(root = process.cwd()): {
-  registry: GemmaTrainingRegistryEntry
-  state: GemmaRunState | null
-  routeQueue: GemmaTrainingRouteQueueEntry | null
+export function getLatestQTrainingSnapshot(root = process.cwd()): {
+  registry: QTrainingRegistryEntry
+  state: QRunState | null
+  routeQueue: QTrainingRouteQueueEntry | null
 } | null {
-  const runs = readGemmaTrainingRegistry(root)
+  const runs = readQTrainingRegistry(root)
   const latest = runs.at(-1)
   if (!latest) {
     return null
   }
   return {
     registry: latest,
-    state: readGemmaRunState(latest.outputDir),
-    routeQueue: getGemmaTrainingRouteQueueEntry(latest.runId, root),
+    state: readQRunState(latest.outputDir),
+    routeQueue: getQTrainingRouteQueueEntry(latest.runId, root),
   }
 }

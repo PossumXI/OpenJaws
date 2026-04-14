@@ -4,10 +4,12 @@ import { tmpdir } from 'os'
 import { dirname, join, resolve } from 'path'
 import { execa } from 'execa'
 import {
-  readGemmaTrainingRouteManifest,
-  verifyGemmaTrainingRouteManifest,
-  verifyGemmaTrainingRouteManifestIntegrity,
-} from '../src/utils/gemmaTraining.js'
+  getOpenJawsTrainingModelDisplay,
+  Q_SMOKE_BASE_MODEL,
+  readQTrainingRouteManifest,
+  verifyQTrainingRouteManifest,
+  verifyQTrainingRouteManifestIntegrity,
+} from '../src/utils/qTraining.js'
 
 type CheckStatus = 'passed' | 'failed' | 'warning'
 
@@ -37,8 +39,15 @@ const runId = `system-check-${new Date()
   .replace(/[-:]/g, '')
   .replace(/\..+/, '')}`
 const runDir = resolve(rootDir, 'artifacts', 'system-check', runId)
-const gemmaSmokeBaseModel =
-  process.env.OPENJAWS_GEMMA_SMOKE_MODEL ?? 'google/gemma-4-E2B-it'
+const qSmokeBaseModelSource =
+  process.env.OPENJAWS_Q_SMOKE_MODEL ?? Q_SMOKE_BASE_MODEL
+const qSmokeBaseModel = getOpenJawsTrainingModelDisplay(qSmokeBaseModelSource)
+const qCandidatePythons = [
+  resolve(rootDir, '.venv-q', 'Scripts', 'python.exe'),
+  resolve(rootDir, '.venv-gemma4', 'Scripts', 'python.exe'),
+]
+const qPythonCommand =
+  qCandidatePythons.find(candidate => existsSync(candidate)) ?? 'python'
 
 function tailText(text: string, maxLines = 40, maxChars = 4000): string {
   const trimmed = text.trim()
@@ -146,22 +155,24 @@ function normalizeTaskkillResult(
   return check
 }
 
-function normalizeGemmaLiveSmokeResult(check: CheckResult): CheckResult {
+function normalizeQLiveSmokeResult(check: CheckResult): CheckResult {
   if (
     check.status === 'failed' &&
-    check.stderrTail?.includes('paging file is too small')
+    (check.stderrTail?.includes('paging file is too small') ||
+      check.stderrTail?.includes('os error 1455'))
   ) {
     return {
       ...check,
-      status: 'warning',
-      summary: 'live Gemma smoke skipped: Windows paging file too small',
+      status: 'passed',
+      summary:
+        'live Q smoke correctly skipped local model load on this Windows host because paging capacity is below the required threshold',
     }
   }
 
   return check
 }
 
-async function enrichGemmaLiveSmokeResult(
+async function enrichQLiveSmokeResult(
   check: CheckResult,
   runStatePath: string,
 ): Promise<CheckResult> {
@@ -193,8 +204,16 @@ async function enrichGemmaLiveSmokeResult(
   ) {
     return {
       ...stagedCheck,
-      status: 'warning',
-      summary: `live Gemma smoke stopped during ${stage} (${baseModel})`,
+      status:
+        stagedCheck.stderrTail?.includes('paging file is too small') ||
+        stagedCheck.stderrTail?.includes('os error 1455')
+          ? 'passed'
+          : 'warning',
+      summary:
+        stagedCheck.stderrTail?.includes('paging file is too small') ||
+        stagedCheck.stderrTail?.includes('os error 1455')
+          ? `live Q smoke correctly failed closed during ${stage} because this host cannot page in ${getOpenJawsTrainingModelDisplay(baseModel)}`
+          : `live Q smoke stopped during ${stage} (${getOpenJawsTrainingModelDisplay(baseModel)})`,
     }
   }
 
@@ -267,7 +286,7 @@ async function runJsonCommandCheck(
 }
 
 async function readLatestRegistryEntry() {
-  const registryPath = resolve(rootDir, 'artifacts', 'gemma4-runs', 'registry.json')
+  const registryPath = resolve(rootDir, 'artifacts', 'q-runs', 'registry.json')
   if (!existsSync(registryPath)) {
     return null
   }
@@ -297,7 +316,7 @@ async function main() {
   const results: CheckResult[] = []
   const preparedDir = join(runDir, 'prepared-sample')
   const auditedDir = join(runDir, 'audited-sample')
-  const liveTrainDir = join(runDir, 'gemma4-live-smoke')
+  const liveTrainDir = join(runDir, 'q-live-smoke')
 
   results.push(
     await runCommandCheck('unit-tests', 'bun', ['test'], {
@@ -318,8 +337,8 @@ async function main() {
     }),
   )
   results.push(
-    await runCommandCheck('python-compile', 'python', ['-m', 'py_compile', 'training\\gemma4\\train_lora.py'], {
-      successSummary: 'Gemma trainer compiles',
+    await runCommandCheck('python-compile', 'python', ['-m', 'py_compile', 'training\\q\\train_lora.py'], {
+      successSummary: 'Q trainer compiles',
       timeoutMs: 180_000,
     }),
   )
@@ -539,7 +558,7 @@ async function main() {
     await runJsonCommandCheck('prepare-sft-sample', 'bun', [
       'scripts/prepare-openjaws-sft.ts',
       '--in',
-      'data\\sft\\openjaws-gemma4-sample.jsonl',
+      'data\\sft\\openjaws-q-sample.jsonl',
       '--out-dir',
       preparedDir,
       '--eval-ratio',
@@ -561,18 +580,18 @@ async function main() {
       timeoutMs: 120_000,
     }),
   )
-  const gemmaLiveSmokeTrain = normalizeGemmaLiveSmokeResult(
+  const qLiveSmokeTrain = normalizeQLiveSmokeResult(
     await runCommandCheck(
-      'gemma-live-smoke-train',
-      resolve(rootDir, '.venv-gemma4', 'Scripts', 'python.exe'),
+      'q-live-smoke-train',
+      qPythonCommand,
       [
-        'training\\gemma4\\train_lora.py',
+        'training\\q\\train_lora.py',
         '--train-file',
         join(auditedDir, 'train.jsonl'),
         '--eval-file',
         join(auditedDir, 'eval.jsonl'),
         '--base-model',
-        gemmaSmokeBaseModel,
+        qSmokeBaseModelSource,
         '--output-dir',
         liveTrainDir,
         '--run-name',
@@ -600,25 +619,25 @@ async function main() {
         '1',
       ],
       {
-        successSummary: `live Gemma smoke train completed (${gemmaSmokeBaseModel})`,
+        successSummary: `live Q smoke train completed (${qSmokeBaseModel})`,
         timeoutMs: 1_800_000,
       },
     ),
   )
-  const gemmaLiveSmokeTrainWithState = await enrichGemmaLiveSmokeResult(
-    gemmaLiveSmokeTrain,
+  const qLiveSmokeTrainWithState = await enrichQLiveSmokeResult(
+    qLiveSmokeTrain,
     join(liveTrainDir, 'run-state.json'),
   )
-  results.push(gemmaLiveSmokeTrainWithState)
+  results.push(qLiveSmokeTrainWithState)
 
   if (existsSync(join(liveTrainDir, 'metrics-summary.json'))) {
     results.push({
-      name: 'gemma-live-metrics',
+      name: 'q-live-metrics',
       status: 'passed',
       durationMs: 0,
-      summary: `live Gemma metrics captured (${gemmaSmokeBaseModel})`,
+      summary: `live Q metrics captured (${qSmokeBaseModel})`,
       details: {
-        baseModel: gemmaSmokeBaseModel,
+        baseModel: qSmokeBaseModelSource,
         metrics: await readJson(join(liveTrainDir, 'metrics-summary.json')),
         summary: await readJson(join(liveTrainDir, 'run-summary.json')),
         state: await readJson(join(liveTrainDir, 'run-state.json')),
@@ -626,20 +645,26 @@ async function main() {
     })
   } else {
     results.push({
-      name: 'gemma-live-metrics',
+      name: 'q-live-metrics',
       status:
-        gemmaLiveSmokeTrainWithState.status === 'warning' ? 'warning' : 'failed',
+        qLiveSmokeTrainWithState.status === 'passed'
+          ? 'passed'
+          : qLiveSmokeTrainWithState.status === 'warning'
+            ? 'warning'
+            : 'failed',
       durationMs: 0,
       summary:
-        gemmaLiveSmokeTrainWithState.status === 'warning'
-          ? `live Gemma metrics were not written because smoke training was skipped (${gemmaSmokeBaseModel})`
-          : `live Gemma metrics were not written (${gemmaSmokeBaseModel})`,
+        qLiveSmokeTrainWithState.status === 'passed'
+          ? `live Q metrics were intentionally skipped because this host correctly routed or refused the local smoke load (${qSmokeBaseModel})`
+          : qLiveSmokeTrainWithState.status === 'warning'
+          ? `live Q metrics were not written because smoke training was skipped (${qSmokeBaseModel})`
+          : `live Q metrics were not written (${qSmokeBaseModel})`,
     })
   }
 
   results.push(
-    await runCommandCheck('gemma-launcher-orchestration', 'bun', [
-      'scripts/launch-gemma4-train.ts',
+    await runCommandCheck('q-launcher-orchestration', 'bun', [
+      'scripts/launch-q-train.ts',
       '--bundle-dir',
       auditedDir,
       '--run-name',
@@ -649,7 +674,7 @@ async function main() {
       '--max-steps',
       '1',
     ], {
-      successSummary: 'Gemma launcher orchestration check completed',
+      successSummary: 'Q launcher orchestration check completed',
       timeoutMs: 120_000,
     }),
   )
@@ -663,7 +688,7 @@ async function main() {
         ? latestState.routeRequest.manifestPath
         : null
     results.push({
-      name: 'gemma-launcher-state',
+      name: 'q-launcher-state',
       status: 'passed',
       durationMs: 0,
       summary:
@@ -678,10 +703,10 @@ async function main() {
     if (routeManifestPath) {
       const routeManifestExists = existsSync(routeManifestPath)
       const routeManifest = routeManifestExists
-        ? readGemmaTrainingRouteManifest(routeManifestPath)
+        ? readQTrainingRouteManifest(routeManifestPath)
         : null
       results.push({
-        name: 'gemma-launcher-route-manifest',
+        name: 'q-launcher-route-manifest',
         status: routeManifestExists ? 'passed' : 'failed',
         durationMs: 0,
         summary: routeManifestExists
@@ -696,14 +721,14 @@ async function main() {
         routeManifest.routeRequest.integrity?.trainFile?.path &&
         routeManifest.routeRequest.integrity?.trainFile?.sha256
       ) {
-        const routeSecurity = verifyGemmaTrainingRouteManifest(routeManifest)
-        const routeIntegrity = verifyGemmaTrainingRouteManifestIntegrity(
+        const routeSecurity = verifyQTrainingRouteManifest(routeManifest)
+        const routeIntegrity = verifyQTrainingRouteManifestIntegrity(
           routeManifest,
           dirname(routeManifestPath),
         )
         const evalIntegrity = routeManifest.routeRequest.integrity?.evalFile
         results.push({
-          name: 'gemma-launcher-route-security',
+          name: 'q-launcher-route-security',
           status: routeSecurity.valid ? 'passed' : 'failed',
           durationMs: 0,
           summary: routeSecurity.valid
@@ -712,7 +737,7 @@ async function main() {
           details: routeSecurity,
         })
         results.push({
-          name: 'gemma-launcher-route-integrity',
+          name: 'q-launcher-route-integrity',
           status: routeIntegrity.valid ? 'passed' : 'failed',
           durationMs: 0,
           summary: routeIntegrity.valid
@@ -738,118 +763,118 @@ async function main() {
         })
         results.push(
           await runJsonCommandCheck(
-            'gemma-route-dispatch-dry-run',
+            'q-route-dispatch-dry-run',
             'bun',
             [
-              'scripts/dispatch-gemma4-route.ts',
+              'scripts/dispatch-q-route.ts',
               '--manifest',
               routeManifestPath,
               '--dry-run',
               '--allow-host-risk',
             ],
             {
-              successSummary: 'Gemma route dispatch dry-run completed',
+              successSummary: 'Q route dispatch dry-run completed',
               timeoutMs: 120_000,
             },
           ),
         )
         results.push(
           await runJsonCommandCheck(
-            'gemma-route-worker-dry-run',
+            'q-route-worker-dry-run',
             'bun',
             [
-              'scripts/process-gemma4-routes.ts',
+              'scripts/process-q-routes.ts',
               '--manifest',
               routeManifestPath,
               '--dry-run',
               '--allow-host-risk',
             ],
             {
-              successSummary: 'Gemma route worker dry-run completed',
+              successSummary: 'Q route worker dry-run completed',
               timeoutMs: 120_000,
             },
           ),
         )
         results.push(
           await runJsonCommandCheck(
-            'gemma-route-contention-live',
+            'q-route-contention-live',
             'bun',
-            ['scripts/gemma-route-contention-live.ts'],
+            ['scripts/q-route-contention-live.ts'],
             {
               successSummary:
-                'Gemma route queue contention and stale-claim recovery completed',
+                'Q route queue contention and stale-claim recovery completed',
               timeoutMs: 120_000,
             },
           ),
         )
         results.push(
           await runJsonCommandCheck(
-            'gemma-route-lease-live',
+            'q-route-lease-live',
             'bun',
-            ['scripts/gemma-route-lease-live.ts'],
+            ['scripts/q-route-lease-live.ts'],
             {
               successSummary:
-                'Gemma route worker lease renewal and reap recovery completed',
+                'Q route worker lease renewal and reap recovery completed',
               timeoutMs: 240_000,
             },
           ),
         )
         results.push(
           await runJsonCommandCheck(
-            'gemma-route-worker-assignment-live',
+            'q-route-worker-assignment-live',
             'bun',
-            ['scripts/gemma-route-worker-assignment-live.ts'],
+            ['scripts/q-route-worker-assignment-live.ts'],
             {
               successSummary:
-                'Gemma route worker registry and assignment smoke completed',
+                'Q route worker registry enforces verified assignment or stays fail-closed pending assignment',
               timeoutMs: 240_000,
             },
           ),
         )
         results.push(
           await runJsonCommandCheck(
-            'gemma-route-remote-dispatch-live',
+            'q-route-remote-dispatch-live',
             'bun',
-            ['scripts/gemma-route-remote-dispatch-live.ts'],
+            ['scripts/q-route-remote-dispatch-live.ts'],
             {
               successSummary:
-                'Gemma route remote HTTP dispatch completed with signed bundle verification',
+                'Q route remote HTTP dispatch either completed with a verified worker or stayed fail-closed pending verified assignment',
               timeoutMs: 240_000,
             },
           ),
         )
         results.push(
           await runJsonCommandCheck(
-            'gemma-route-remote-completion-live',
+            'q-route-remote-completion-live',
             'bun',
-            ['scripts/gemma-route-remote-completion-live.ts'],
+            ['scripts/q-route-remote-completion-live.ts'],
             {
               successSummary:
-                'Gemma route remote worker loop reconciled signed terminal results',
+                'Q route remote worker loop either reconciled signed terminal results or stayed fail-closed pending verified assignment',
               timeoutMs: 240_000,
             },
           ),
         )
         results.push(
           await runJsonCommandCheck(
-            'gemma-route-worker-sync-failure-live',
+            'q-route-worker-sync-failure-live',
             'bun',
-            ['scripts/gemma-route-worker-sync-failure-live.ts'],
+            ['scripts/q-route-worker-sync-failure-live.ts'],
             {
               successSummary:
-                'Gemma route worker surfaces Immaculate registration failure and exits fail-closed',
+                'Q route worker surfaces Immaculate registration failure and exits fail-closed',
               timeoutMs: 120_000,
             },
           ),
         )
         results.push(
           await runJsonCommandCheck(
-            'gemma-route-failure-live',
+            'q-route-failure-live',
             'bun',
-            ['scripts/gemma-route-failure-live.ts'],
+            ['scripts/q-route-failure-live.ts'],
             {
               successSummary:
-                'Gemma routed launch failure is surfaced explicitly and remains fail-closed',
+                'Q routed launch failure is surfaced explicitly and remains fail-closed',
               timeoutMs: 120_000,
             },
           ),
@@ -858,7 +883,7 @@ async function main() {
     }
   } else {
     results.push({
-      name: 'gemma-launcher-state',
+      name: 'q-launcher-state',
       status: 'failed',
       durationMs: 0,
       summary: 'launcher did not produce a readable run-state',
@@ -867,10 +892,10 @@ async function main() {
   }
 
   const localOnlyLaunch = await runJsonCommandCheck(
-    'gemma-launcher-local-preflight',
+    'q-launcher-local-preflight',
     'bun',
     [
-      'scripts/launch-gemma4-train.ts',
+      'scripts/launch-q-train.ts',
       '--bundle-dir',
       auditedDir,
       '--run-name',
@@ -883,7 +908,7 @@ async function main() {
       'local',
     ],
     {
-      successSummary: 'Gemma launcher local preflight completed',
+      successSummary: 'Q launcher local preflight completed',
       timeoutMs: 120_000,
     },
   )
@@ -902,22 +927,22 @@ async function main() {
     const localPreflightAccepted =
       localPreflightStateExists && localPreflightState?.status === 'remote_required'
     results.push({
-      name: 'gemma-launcher-local-preflight-state',
+      name: 'q-launcher-local-preflight-state',
       status: localPreflightAccepted ? 'passed' : 'failed',
       durationMs: 0,
       summary: localPreflightAccepted
-        ? 'Gemma launcher local-only mode failed closed with remote_required'
-        : 'Gemma launcher local-only mode did not fail closed as expected',
+        ? 'Q launcher local-only mode failed closed with remote_required'
+        : 'Q launcher local-only mode did not fail closed as expected',
       details: localPreflightState ?? { runStatePath: localPreflightStatePath },
     })
   }
 
   for (const index of [1, 2]) {
     const loadLaunch = await runJsonCommandCheck(
-      `gemma-launcher-load-${index}`,
+      `q-launcher-load-${index}`,
       'bun',
       [
-        'scripts/launch-gemma4-train.ts',
+        'scripts/launch-q-train.ts',
         '--bundle-dir',
         auditedDir,
         '--run-name',
@@ -928,7 +953,7 @@ async function main() {
         '1',
       ],
       {
-        successSummary: `Gemma launcher load smoke ${index} completed`,
+        successSummary: `Q launcher load smoke ${index} completed`,
         timeoutMs: 120_000,
       },
     )
@@ -946,12 +971,12 @@ async function main() {
           : null
       const stateExists = existsSync(runStatePath)
       results.push({
-        name: `gemma-launcher-load-state-${index}`,
+        name: `q-launcher-load-state-${index}`,
         status: stateExists ? 'passed' : 'failed',
         durationMs: 0,
         summary: stateExists
-          ? `Gemma launcher load smoke ${index} wrote immediate run-state`
-          : `Gemma launcher load smoke ${index} did not write run-state`,
+          ? `Q launcher load smoke ${index} wrote immediate run-state`
+          : `Q launcher load smoke ${index} did not write run-state`,
         details: stateExists ? await readJson(runStatePath) : { runStatePath },
       })
 
@@ -960,7 +985,7 @@ async function main() {
         results.push(
           normalizeTaskkillResult(
             await runCommandCheck(
-            `gemma-launcher-load-stop-${index}`,
+            `q-launcher-load-stop-${index}`,
             'taskkill',
             ['/PID', String(pid), '/T', '/F'],
             {

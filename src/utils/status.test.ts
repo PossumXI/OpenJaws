@@ -38,8 +38,37 @@ describe('buildProviderGuidanceProperties', () => {
         label: 'OpenAI setup',
         value: [
           '/provider key openai <api-key>',
+          '/provider base-url openai <url>',
           'env OPENAI_API_KEY',
           'settings.llmProviders.openai.apiKey',
+        ],
+      },
+    ])
+  })
+
+  test('adds OCI setup guidance for Q on OCI', () => {
+    expect(
+      buildProviderGuidanceProperties({
+        provider: 'oci',
+        label: 'OCI',
+        apiKeySource: null,
+      }),
+    ).toEqual([
+      {
+        label: 'Provider switch',
+        value: [
+          '/provider status',
+          '/provider use <provider> <model>',
+          'Settings > Config > Model',
+        ],
+      },
+      {
+        label: 'OCI setup',
+        value: [
+          '/provider key oci <api-key>',
+          '/provider base-url oci <url>',
+          'env Q_API_KEY / OCI_API_KEY / OCI_GENAI_API_KEY',
+          'settings.llmProviders.oci.apiKey',
         ],
       },
     ])

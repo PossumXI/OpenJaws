@@ -8,6 +8,7 @@ import {
 describe('externalProviderSetup', () => {
   test('normalizes provider ids case-insensitively', () => {
     expect(normalizeExternalProvider('OpenAI')).toBe('openai')
+    expect(normalizeExternalProvider('Q')).toBe('oci')
     expect(normalizeExternalProvider('not-a-provider')).toBeNull()
   })
 
@@ -21,6 +22,10 @@ describe('externalProviderSetup', () => {
     expect(
       getSavedOrConfiguredModelForProvider('openai', 'openai:gpt-5.4'),
     ).toBe('gpt-5.4')
+  })
+
+  test('keeps the Q default for OCI when nothing else is configured', () => {
+    expect(getSavedOrConfiguredModelForProvider('oci', null)).toBe('Q')
   })
 
   test('keeps an Ollama fallback when nothing else is configured', () => {

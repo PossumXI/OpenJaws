@@ -72,7 +72,7 @@ export const ExternalLLMModelOverrideSchema = lazySchema(() =>
       .string()
       .optional()
       .describe(
-        'Provider to route this exact model string through, such as "openai", "groq", "minimax", "gemini", "codex", "kimi", or "ollama".',
+        'Provider to route this exact model string through, such as "oci", "openai", "groq", "minimax", "gemini", "codex", "kimi", or "ollama".',
       ),
   }),
 )
@@ -319,7 +319,7 @@ export const SettingsSchema = lazySchema(() =>
           'Command to refresh GCP authentication (e.g., gcloud auth application-default login)',
         ),
       // Gated so the SDK generator (which runs without OPENJAWS_ENABLE_XAA)
-      // doesn't surface this in GlobalClaudeSettings. Read via getXaaIdpSettings().
+      // doesn't surface this in the public settings schema. Read via getXaaIdpSettings().
       // .passthrough() on the outer object keeps an existing settings.json key
       // alive across env-var-off sessions — it's just not schema-validated then.
       ...(isEnvTruthy(process.env.OPENJAWS_ENABLE_XAA)
@@ -433,15 +433,15 @@ export const SettingsSchema = lazySchema(() =>
         .record(z.string(), z.string())
         .optional()
         .describe(
-          'Override mapping from Anthropic model ID (e.g. "claude-opus-4-6") to provider-specific ' +
-            'model ID (e.g. a Bedrock inference profile ARN). Typically set in managed settings by ' +
+          'Override mapping from upstream model IDs to provider-specific ' +
+            'model IDs (for example a Bedrock inference profile ARN). Typically set in managed settings by ' +
             'enterprise administrators.',
         ),
       llmProviders: z
         .record(z.string(), ExternalLLMProviderSchema())
         .optional()
         .describe(
-          'Per-provider configuration for external models. Built-in provider names include openai, groq, minimax, gemini, codex, kimi, and ollama.',
+          'Per-provider configuration for external models. Built-in provider names include oci, openai, groq, minimax, gemini, codex, kimi, and ollama.',
         ),
       llmModelOverrides: z
         .record(z.string(), ExternalLLMModelOverrideSchema())
@@ -916,7 +916,7 @@ export const SettingsSchema = lazySchema(() =>
               .enum(['disable'])
               .optional()
               .describe(
-                'Prevent claude-cli:// protocol handler registration with the OS',
+                'Prevent OpenJaws deep-link protocol handler registration with the OS',
               ),
           }
         : {}),
@@ -1015,7 +1015,7 @@ export const SettingsSchema = lazySchema(() =>
           }
         : {}),
       // Teams/Enterprise opt-IN for channel notifications. Default OFF.
-      // MCP servers that declare the claude/channel capability can push
+      // MCP servers that declare the channel capability can push
       // inbound messages into the conversation; for managed orgs this only
       // works when explicitly enabled. Which servers can connect at all is
       // still governed by allowedMcpServers/deniedMcpServers. Not
@@ -1169,7 +1169,7 @@ export const SettingsSchema = lazySchema(() =>
                 'Default working directory on the remote host. ' +
                   'Supports tilde expansion (e.g. ~/projects). ' +
                   'If not specified, defaults to the remote user home directory. ' +
-                  'Can be overridden by the [dir] positional argument in `claude ssh <config> [dir]`.',
+                  'Can be overridden by the [dir] positional argument when launching an SSH remote session.',
               ),
           }),
         )

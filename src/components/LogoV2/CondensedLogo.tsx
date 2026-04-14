@@ -27,9 +27,9 @@ import {
 } from './OverageCreditUpsell.js'
 
 const CONDENSED_SKYLINE =
-  'FLIGHT DECK · SUNLIT SHELL · AGENTS · NOTES · TOOLS'
+  'FLIGHT DECK · IMMACULATE · OPENCHEEK CREW · ROUTED TOOLS'
 const CONDENSED_WAKE =
-  'inspect each cut · keep tools honest · ship in warm daylight'
+  'inspect each cut · keep workers honest · ship through the blue waterline'
 
 export function CondensedLogo(): ReactNode {
   const { columns } = useTerminalSize()

@@ -43,6 +43,8 @@ export function getSmallFastModel(): ModelName {
 
 function getExternalProviderModelFromEnv(): ModelSetting | undefined {
   const envProviders = [
+    ['Q_MODEL', 'oci'],
+    ['OCI_MODEL', 'oci'],
     ['OPENAI_MODEL', 'openai'],
     ['GROQ_MODEL', 'groq'],
     ['MINI_MAX_MODEL', 'minimax'],
@@ -128,6 +130,12 @@ export function getMainLoopModel(): ModelName {
 }
 
 export function getBestModel(): ModelName {
+  const defaultExternal = resolveExternalModelRef(getDefaultMainLoopModelSetting())
+  if (defaultExternal) {
+    return parseUserSpecifiedModel(
+      `${defaultExternal.provider}:${defaultExternal.model}`,
+    )
+  }
   return getDefaultOpusModel()
 }
 
@@ -206,6 +214,10 @@ export function getRuntimeMainLoopModel(params: {
  * @returns The default model setting to use
  */
 export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
+  if (process.env.USER_TYPE !== 'jaws') {
+    return 'oci:Q'
+  }
+
   // Ants default to defaultModel from flag config, or Opus 1M if not configured
   if (process.env.USER_TYPE === 'jaws') {
     return (
@@ -316,6 +328,11 @@ export function getCanonicalName(fullModelName: ModelName): ModelShortName {
 export function getOpenJawsDefaultModelDescription(
   fastMode = false,
 ): string {
+  const defaultExternal = resolveExternalModelRef(getDefaultMainLoopModelSetting())
+  if (defaultExternal) {
+    const latencyNote = fastMode ? ' · tuned for low-latency runtime' : ''
+    return `${defaultExternal.model} on ${defaultExternal.label} · OpenJaws default runtime${latencyNote}`
+  }
   if (isMaxSubscriber() || isTeamPremiumSubscriber()) {
     if (isOpus1mMergeEnabled()) {
       return `Opus 4.6 with 1M context · Most capable for complex work${fastMode ? getOpus46PricingSuffix(true) : ''}`

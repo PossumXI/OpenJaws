@@ -1,6 +1,13 @@
 import { readdir } from 'fs/promises'
 import { join } from 'path'
 import { coerce as semverCoerce } from 'semver'
+import {
+  LEGACY_DESKTOP_DEV_PROTOCOL,
+  LEGACY_DESKTOP_LINUX_SCHEME_HANDLER,
+  LEGACY_DESKTOP_MAC_APP_NAME,
+  LEGACY_DESKTOP_PROTOCOL,
+  LEGACY_DESKTOP_WINDOWS_PROTOCOL_CLASS,
+} from '../constants/legacyCompat.js'
 import { getSessionId } from '../bootstrap/state.js'
 import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
@@ -29,11 +36,12 @@ function isDevMode(): boolean {
 
 /**
  * Builds a deep link URL for OpenJaws Desktop to resume a CLI session.
- * Format: claude://resume?session={sessionId}&cwd={cwd}
- * In dev mode: claude-dev://resume?session={sessionId}&cwd={cwd}
+ * Uses the current Desktop resume protocol and passes session + cwd.
  */
 function buildDesktopDeepLink(sessionId: string): string {
-  const protocol = isDevMode() ? 'claude-dev' : 'claude'
+  const protocol = isDevMode()
+    ? LEGACY_DESKTOP_DEV_PROTOCOL
+    : LEGACY_DESKTOP_PROTOCOL
   const url = new URL(`${protocol}://resume`)
   url.searchParams.set('session', sessionId)
   url.searchParams.set('cwd', getCwd())
@@ -42,8 +50,8 @@ function buildDesktopDeepLink(sessionId: string): string {
 
 /**
  * Check if OpenJaws Desktop app is installed.
- * On macOS, checks for /Applications/Claude.app.
- * On Linux, checks if xdg-open can handle claude:// protocol.
+ * On macOS, checks for the Desktop app bundle in /Applications.
+ * On Linux, checks if xdg-open can handle the Desktop resume protocol.
  * On Windows, checks if the protocol handler exists.
  * In dev mode, always returns true (assumes dev Desktop is running).
  */
@@ -56,22 +64,21 @@ async function isDesktopInstalled(): Promise<boolean> {
   const platform = process.platform
 
   if (platform === 'darwin') {
-    // Check for Claude.app in /Applications
-    return pathExists('/Applications/Claude.app')
+    return pathExists(`/Applications/${LEGACY_DESKTOP_MAC_APP_NAME}`)
   } else if (platform === 'linux') {
-    // Check if xdg-mime can find a handler for claude://
+    // Check if xdg-mime can find a handler for the desktop resume protocol.
     // Note: xdg-mime returns exit code 0 even with no handler, so check stdout too
     const { code, stdout } = await execFileNoThrow('xdg-mime', [
       'query',
       'default',
-      'x-scheme-handler/claude',
+      LEGACY_DESKTOP_LINUX_SCHEME_HANDLER,
     ])
     return code === 0 && stdout.trim().length > 0
   } else if (platform === 'win32') {
     // On Windows, try to query the registry for the protocol handler
     const { code } = await execFileNoThrow('reg', [
       'query',
-      'HKEY_CLASSES_ROOT\\claude',
+      `HKEY_CLASSES_ROOT\\${LEGACY_DESKTOP_WINDOWS_PROTOCOL_CLASS}`,
       '/ve',
     ])
     return code === 0
@@ -92,7 +99,7 @@ async function getDesktopVersion(): Promise<string | null> {
   if (platform === 'darwin') {
     const { code, stdout } = await execFileNoThrow('defaults', [
       'read',
-      '/Applications/Claude.app/Contents/Info.plist',
+      `/Applications/${LEGACY_DESKTOP_MAC_APP_NAME}/Contents/Info.plist`,
       'CFBundleShortVersionString',
     ])
     if (code !== 0) {

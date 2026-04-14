@@ -29,13 +29,15 @@
 
 ## Provider and Runtime Control
 
+- `OCI:Q` as the public default runtime for fresh installs
 - provider/model switching through `/provider`
+- provider key rotation and base-URL override through `/provider key` and `/provider base-url`
 - remote environment selection through `/remote-env`
 - live runtime verification through `/status`
 - fail-closed route and worker reporting when remote execution is required
 - compatibility with local, hosted, and routed execution paths without hiding the current execution mode
 
-## Gemma and Training
+## Q and Training
 
 - transcript export to SFT JSONL
 - audited dataset preparation with tags and splits

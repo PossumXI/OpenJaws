@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { execa } from 'execa'
-import { getLatestGemmaTrainingSnapshot } from '../src/utils/gemmaTraining.js'
+import { getLatestQTrainingSnapshot } from '../src/utils/qTraining.js'
 
 function makeRoot(): string {
-  return mkdtempSync(join(tmpdir(), 'openjaws-gemma-route-failure-'))
+  return mkdtempSync(join(tmpdir(), 'openjaws-q-route-failure-'))
 }
 
 async function main() {
@@ -18,7 +18,7 @@ async function main() {
     const launch = await execa(
       'bun',
       [
-        'scripts/launch-gemma4-train.ts',
+        'scripts/launch-q-train.ts',
         '--root',
         routeRoot,
         '--bundle-dir',
@@ -56,7 +56,7 @@ async function main() {
         summary?: string | null
       } | null
     }
-    const snapshot = getLatestGemmaTrainingSnapshot(routeRoot)
+    const snapshot = getLatestQTrainingSnapshot(routeRoot)
 
     const ok =
       launch.exitCode === 0 &&

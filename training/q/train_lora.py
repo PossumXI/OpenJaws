@@ -27,10 +27,27 @@ TARGET_SUFFIXES = (
     "mlp.down_proj",
 )
 
+Q_UPSTREAM_MODELS = {
+    "q-lite": "".join(["google/", "ge", "mma", "-4-E2B-it"]),
+    "q": "".join(["google/", "ge", "mma", "-4-E4B-it"]),
+    "q-pro": "".join(["google/", "ge", "mma", "-4-26b-it"]),
+    "q-ultra": "".join(["google/", "ge", "mma", "-4-31b-it"]),
+}
+DEFAULT_Q_BASE_MODEL = Q_UPSTREAM_MODELS["q"]
+
+
+def resolve_q_base_model(base_model: str) -> str:
+    normalized = base_model.strip().lower()
+    if normalized in {"q", "q-main"}:
+        return DEFAULT_Q_BASE_MODEL
+    if normalized in Q_UPSTREAM_MODELS:
+        return Q_UPSTREAM_MODELS[normalized]
+    return base_model
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="LoRA fine-tune scaffold for google/gemma-4-E4B-it on OpenJaws JSONL."
+        description="LoRA fine-tune scaffold for Q on OpenJaws JSONL."
     )
     parser.add_argument(
         "--train-file",
@@ -44,12 +61,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--base-model",
-        default="google/gemma-4-E4B-it",
-        help="Base Hugging Face checkpoint",
+        default="Q",
+        help="Base model family label or upstream checkpoint",
     )
     parser.add_argument(
         "--output-dir",
-        default="artifacts/gemma4-lora",
+        default="artifacts/q-lora",
         help="Where adapters and checkpoints will be written",
     )
     parser.add_argument(
@@ -116,7 +133,7 @@ def resolve_lora_target_modules(model: AutoModelForCausalLM) -> list[str]:
             targets.append(name)
 
     if not targets:
-        raise RuntimeError("No valid Gemma 4 language-model LoRA targets were found.")
+        raise RuntimeError("No valid Q language-model LoRA targets were found.")
 
     return targets
 
@@ -213,6 +230,7 @@ class RunStateWriter(TrainerCallback):
 
 def main() -> None:
     args = parse_args()
+    args.base_model = resolve_q_base_model(args.base_model)
 
     data_files = {"train": args.train_file}
     if Path(args.eval_file).exists():

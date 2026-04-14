@@ -60,12 +60,12 @@ function buildStatusMessage(context: LocalJSXCommandContext): string {
     ...providerLines,
     '',
     'Examples:',
+    '- /provider use oci Q',
+    '- /provider key oci <api-key>',
     '- /provider use openai gpt-5.4',
-    '- /provider key openai <api-key>',
-    '- /provider use ollama gemma4:e4b',
     '- /provider model gemini gemini-3.1-pro-preview',
-    '- /provider base-url ollama http://127.0.0.1:11434',
-    '- /provider clear-key openai',
+    '- /provider base-url oci <url>',
+    '- /provider clear-key oci',
   ].join('\n')
 }
 

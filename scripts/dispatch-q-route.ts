@@ -2,27 +2,27 @@ import { closeSync, existsSync, openSync, writeFileSync } from 'fs'
 import { spawn } from 'child_process'
 import { dirname, join, resolve } from 'path'
 import {
-  buildGemmaTrainingRouteDispatchEnvelope,
-  claimGemmaTrainingRouteQueueEntry,
-  evaluateGemmaTrainingPreflight,
-  finalizeGemmaTrainingRouteQueueDispatch,
-  getGemmaTrainingRouteQueueDisplayStatus,
-  getGemmaTrainingRouteQueueStatusSummary,
-  getGemmaTrainingRouteQueueEntry,
-  getLatestGemmaTrainingSnapshot,
-  isGemmaTrainingRouteQueuePendingAssignment,
-  releaseGemmaTrainingRouteQueueClaim,
-  readGemmaTrainingRouteManifest,
-  resolveGemmaTrainingRoutePath,
-  upsertGemmaTrainingRegistryEntry,
-  updateGemmaTrainingRouteQueueClaim,
-  verifyGemmaTrainingRouteManifest,
-  verifyGemmaTrainingRouteManifestIntegrity,
-  type GemmaTrainingExecutionMode,
-  type GemmaTrainingPreflight,
-  type GemmaTrainingRouteDispatchTransport,
-  type GemmaTrainingRouteManifest,
-} from '../src/utils/gemmaTraining.js'
+  buildQTrainingRouteDispatchEnvelope,
+  claimQTrainingRouteQueueEntry,
+  evaluateQTrainingPreflight,
+  finalizeQTrainingRouteQueueDispatch,
+  getQTrainingRouteQueueDisplayStatus,
+  getQTrainingRouteQueueStatusSummary,
+  getQTrainingRouteQueueEntry,
+  getLatestQTrainingSnapshot,
+  isQTrainingRouteQueuePendingAssignment,
+  releaseQTrainingRouteQueueClaim,
+  readQTrainingRouteManifest,
+  resolveQTrainingRoutePath,
+  upsertQTrainingRegistryEntry,
+  updateQTrainingRouteQueueClaim,
+  verifyQTrainingRouteManifest,
+  verifyQTrainingRouteManifestIntegrity,
+  type QTrainingExecutionMode,
+  type QTrainingPreflight,
+  type QTrainingRouteDispatchTransport,
+  type QTrainingRouteManifest,
+} from '../src/utils/qTraining.js'
 
 type CliOptions = {
   root: string | null
@@ -37,16 +37,16 @@ type CliOptions = {
 }
 
 function parseArgs(argv: string[]): CliOptions {
-  const venvPython = resolve(
-    process.cwd(),
-    '.venv-gemma4',
-    'Scripts',
-    'python.exe',
-  )
+  const candidatePythons = [
+    resolve(process.cwd(), '.venv-q', 'Scripts', 'python.exe'),
+    resolve(process.cwd(), '.venv-gemma4', 'Scripts', 'python.exe'),
+  ]
+  const venvPython =
+    candidatePythons.find(candidate => existsSync(candidate)) ?? null
   const options: CliOptions = {
     root: null,
     manifestPath: null,
-    python: existsSync(venvPython) ? venvPython : 'python',
+    python: venvPython ?? 'python',
     dryRun: false,
     allowHostRisk: false,
     workerId: `local-dispatcher:${process.pid}`,
@@ -109,7 +109,7 @@ function parseArgs(argv: string[]): CliOptions {
 function printHelpAndExit(): never {
   console.log(
     [
-      'Usage: bun scripts/dispatch-gemma4-route.ts [options]',
+      'Usage: bun scripts/dispatch-q-route.ts [options]',
       '',
       'Options:',
       '  --root <path>             Root directory for registry/queue artifacts',
@@ -141,7 +141,7 @@ type RemoteDispatchAck = {
 
 async function postRemoteDispatchEnvelope(args: {
   endpoint: string
-  envelope: ReturnType<typeof buildGemmaTrainingRouteDispatchEnvelope>
+  envelope: ReturnType<typeof buildQTrainingRouteDispatchEnvelope>
 }): Promise<RemoteDispatchAck> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 20_000)
@@ -188,30 +188,30 @@ async function postRemoteDispatchEnvelope(args: {
 }
 
 function resolveManifestPathFromLatest(root = process.cwd()): string | null {
-  const latestSnapshot = getLatestGemmaTrainingSnapshot(root)
+  const latestSnapshot = getLatestQTrainingSnapshot(root)
   const manifestPath = latestSnapshot?.state?.routeRequest?.manifestPath ?? null
   return manifestPath ? resolve(manifestPath) : null
 }
 
 function buildPythonArgs(args: {
   manifestPath: string
-  manifest: GemmaTrainingRouteManifest
+  manifest: QTrainingRouteManifest
   manifestDir: string
-  executionMode: GemmaTrainingExecutionMode
+  executionMode: QTrainingExecutionMode
 }): string[] {
-  const trainFile = resolveGemmaTrainingRoutePath(
+  const trainFile = resolveQTrainingRoutePath(
     args.manifestDir,
     args.manifest.training.trainFile,
   )
   const evalFile = args.manifest.training.evalFile
-    ? resolveGemmaTrainingRoutePath(
+    ? resolveQTrainingRoutePath(
         args.manifestDir,
         args.manifest.training.evalFile,
       )
     : null
 
   const pythonArgs = [
-    resolve(process.cwd(), 'training', 'gemma4', 'train_lora.py'),
+    resolve(process.cwd(), 'training', 'q', 'train_lora.py'),
     '--train-file',
     trainFile,
     '--base-model',
@@ -255,16 +255,16 @@ function buildPythonArgs(args: {
 }
 
 function writeDispatchState(args: {
-  manifest: GemmaTrainingRouteManifest
+  manifest: QTrainingRouteManifest
   manifestPath: string
   manifestDir: string
   launchedAt: string
   pid: number | null
   stdoutLog: string
   stderrLog: string
-  executionMode: GemmaTrainingExecutionMode
-  preflight: GemmaTrainingPreflight
-  routeQueue: ReturnType<typeof getGemmaTrainingRouteQueueEntry>
+  executionMode: QTrainingExecutionMode
+  preflight: QTrainingPreflight
+  routeQueue: ReturnType<typeof getQTrainingRouteQueueEntry>
   root?: string
 }): void {
   const routeRequest = {
@@ -282,12 +282,12 @@ function writeDispatchState(args: {
         createdAt: args.launchedAt,
         updatedAt: args.launchedAt,
         baseModel: args.manifest.training.baseModel,
-        trainFile: resolveGemmaTrainingRoutePath(
+        trainFile: resolveQTrainingRoutePath(
           args.manifestDir,
           args.manifest.training.trainFile,
         ),
         evalFile: args.manifest.training.evalFile
-          ? resolveGemmaTrainingRoutePath(
+          ? resolveQTrainingRoutePath(
               args.manifestDir,
               args.manifest.training.evalFile,
             )
@@ -301,10 +301,10 @@ function writeDispatchState(args: {
         preflight: args.preflight,
         routeRequest,
         routeQueue: args.routeQueue,
-        routeQueueDisplayStatus: getGemmaTrainingRouteQueueDisplayStatus(
+        routeQueueDisplayStatus: getQTrainingRouteQueueDisplayStatus(
           args.routeQueue,
         ),
-        routeQueueSummary: getGemmaTrainingRouteQueueStatusSummary(
+        routeQueueSummary: getQTrainingRouteQueueStatusSummary(
           args.routeQueue,
         ),
       },
@@ -313,19 +313,19 @@ function writeDispatchState(args: {
     )}\n`,
     'utf8',
   )
-  upsertGemmaTrainingRegistryEntry({
+  upsertQTrainingRegistryEntry({
     runId: args.manifest.runId,
     status: 'launched',
     executionMode: args.executionMode,
     pid: args.pid,
     launchedAt: args.launchedAt,
     outputDir: args.manifestDir,
-    trainFile: resolveGemmaTrainingRoutePath(
+    trainFile: resolveQTrainingRoutePath(
       args.manifestDir,
       args.manifest.training.trainFile,
     ),
     evalFile: args.manifest.training.evalFile
-      ? resolveGemmaTrainingRoutePath(
+      ? resolveQTrainingRoutePath(
           args.manifestDir,
           args.manifest.training.evalFile,
         )
@@ -354,22 +354,22 @@ async function main() {
     )
   }
 
-  const manifest = readGemmaTrainingRouteManifest(manifestPath)
+  const manifest = readQTrainingRouteManifest(manifestPath)
   const manifestDir = dirname(manifestPath)
-  const routeSecurity = verifyGemmaTrainingRouteManifest(manifest)
-  const routeIntegrity = verifyGemmaTrainingRouteManifestIntegrity(
+  const routeSecurity = verifyQTrainingRouteManifest(manifest)
+  const routeIntegrity = verifyQTrainingRouteManifestIntegrity(
     manifest,
     manifestDir,
   )
-  const claimedRoute = claimGemmaTrainingRouteQueueEntry({
+  const claimedRoute = claimQTrainingRouteQueueEntry({
     runId: manifest.runId,
     manifestPath,
     workerId: options.workerId,
     root,
   })
   if (!claimedRoute) {
-    const queueEntry = getGemmaTrainingRouteQueueEntry(manifest.runId, root)
-    const pendingAssignment = isGemmaTrainingRouteQueuePendingAssignment(queueEntry)
+    const queueEntry = getQTrainingRouteQueueEntry(manifest.runId, root)
+    const pendingAssignment = isQTrainingRouteQueuePendingAssignment(queueEntry)
     console.log(
       JSON.stringify(
         {
@@ -378,9 +378,9 @@ async function main() {
           manifestPath,
           manifestDir,
           summary: pendingAssignment
-            ? 'Gemma route is waiting for an Immaculate worker assignment.'
-            : 'Gemma route manifest is already claimed by another worker or assigned elsewhere.',
-          queueStatus: getGemmaTrainingRouteQueueStatusSummary(queueEntry),
+            ? 'Q route is waiting for an Immaculate worker assignment.'
+            : 'Q route manifest is already claimed by another worker or assigned elsewhere.',
+          queueStatus: getQTrainingRouteQueueStatusSummary(queueEntry),
           queueEntry,
         },
         null,
@@ -390,11 +390,11 @@ async function main() {
     process.exit(1)
   }
 
-  const trainFile = resolveGemmaTrainingRoutePath(
+  const trainFile = resolveQTrainingRoutePath(
     manifestDir,
     manifest.training.trainFile,
   )
-  const localPreflight = evaluateGemmaTrainingPreflight({
+  const localPreflight = evaluateQTrainingPreflight({
     baseModel: manifest.training.baseModel,
     trainFile,
     pythonPath: options.python,
@@ -407,12 +407,12 @@ async function main() {
     options.executionEndpoint?.trim() ||
     claimedRoute.assignment?.executionEndpoint?.trim() ||
     null
-  const dispatchTransport: GemmaTrainingRouteDispatchTransport =
+  const dispatchTransport: QTrainingRouteDispatchTransport =
     remoteExecution && executionEndpoint ? 'remote_http' : 'local_process'
   const claimedRouteDisplayStatus =
-    getGemmaTrainingRouteQueueDisplayStatus(claimedRoute)
+    getQTrainingRouteQueueDisplayStatus(claimedRoute)
   const claimedRouteSummary =
-    getGemmaTrainingRouteQueueStatusSummary(claimedRoute)
+    getQTrainingRouteQueueStatusSummary(claimedRoute)
 
   const blocked =
     !routeSecurity.valid ||
@@ -421,7 +421,7 @@ async function main() {
     (!remoteExecution &&
       localPreflight.decision !== 'allow_local' &&
       !options.allowHostRisk)
-  updateGemmaTrainingRouteQueueClaim({
+  updateQTrainingRouteQueueClaim({
     runId: manifest.runId,
     workerId: options.workerId,
     root,
@@ -448,7 +448,7 @@ async function main() {
 
   if (options.dryRun || blocked) {
     if (options.dryRun && !blocked) {
-      releaseGemmaTrainingRouteQueueClaim({
+      releaseQTrainingRouteQueueClaim({
         runId: manifest.runId,
         workerId: options.workerId,
         root,
@@ -498,14 +498,14 @@ async function main() {
   const stdoutLog = join(manifestDir, 'route-dispatch.stdout.log')
   const stderrLog = join(manifestDir, 'route-dispatch.stderr.log')
   const launchedAt = new Date().toISOString()
-  const executionMode: GemmaTrainingExecutionMode = 'immaculate_routed'
+  const executionMode: QTrainingExecutionMode = 'immaculate_routed'
   if (options.dispatchDelayMs && options.dispatchDelayMs > 0) {
     await sleep(options.dispatchDelayMs)
   }
   let pid: number | null = null
   let remoteAck: RemoteDispatchAck | null = null
   if (dispatchTransport === 'remote_http') {
-    const envelope = buildGemmaTrainingRouteDispatchEnvelope({
+    const envelope = buildQTrainingRouteDispatchEnvelope({
       manifest,
       manifestPath,
       manifestDir,
@@ -518,7 +518,7 @@ async function main() {
       envelope,
     })
     if (!remoteAck.accepted || remoteAck.status >= 400) {
-      updateGemmaTrainingRouteQueueClaim({
+      updateQTrainingRouteQueueClaim({
         runId: manifest.runId,
         workerId: options.workerId,
         root,
@@ -547,11 +547,11 @@ async function main() {
             dispatchTransport,
             executionEndpoint,
             remoteDispatch: remoteAck,
-            routeQueueDisplayStatus: getGemmaTrainingRouteQueueDisplayStatus(
-              getGemmaTrainingRouteQueueEntry(manifest.runId, root),
+            routeQueueDisplayStatus: getQTrainingRouteQueueDisplayStatus(
+              getQTrainingRouteQueueEntry(manifest.runId, root),
             ),
-            routeQueueSummary: getGemmaTrainingRouteQueueStatusSummary(
-              getGemmaTrainingRouteQueueEntry(manifest.runId, root),
+            routeQueueSummary: getQTrainingRouteQueueStatusSummary(
+              getQTrainingRouteQueueEntry(manifest.runId, root),
             ),
           },
           null,
@@ -588,7 +588,7 @@ async function main() {
     child.unref()
     pid = child.pid ?? null
   }
-  finalizeGemmaTrainingRouteQueueDispatch({
+  finalizeQTrainingRouteQueueDispatch({
     runId: manifest.runId,
     workerId: options.workerId,
     root,
@@ -615,7 +615,7 @@ async function main() {
     stderrLog,
     executionMode,
     preflight: localPreflight,
-    routeQueue: getGemmaTrainingRouteQueueEntry(manifest.runId, root),
+    routeQueue: getQTrainingRouteQueueEntry(manifest.runId, root),
     root,
   })
 
@@ -636,11 +636,11 @@ async function main() {
         dispatchTransport,
         executionEndpoint,
         remoteDispatch: remoteAck,
-        routeQueueDisplayStatus: getGemmaTrainingRouteQueueDisplayStatus(
-          getGemmaTrainingRouteQueueEntry(manifest.runId, root),
+        routeQueueDisplayStatus: getQTrainingRouteQueueDisplayStatus(
+          getQTrainingRouteQueueEntry(manifest.runId, root),
         ),
-        routeQueueSummary: getGemmaTrainingRouteQueueStatusSummary(
-          getGemmaTrainingRouteQueueEntry(manifest.runId, root),
+        routeQueueSummary: getQTrainingRouteQueueStatusSummary(
+          getQTrainingRouteQueueEntry(manifest.runId, root),
         ),
       },
       null,

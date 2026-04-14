@@ -1,4 +1,3 @@
-import axios from 'axios'
 import { constants as fsConstants } from 'fs'
 import { access, writeFile } from 'fs/promises'
 import { homedir } from 'os'
@@ -25,11 +24,8 @@ import {
   readFileLines,
   writeFileLines,
 } from './shellConfig.js'
-import { getLatestVersionFromGithubRelease } from './publicReleaseSource.js'
+import { getPublicReleaseDecision } from './publicReleasePolicy.js'
 import { jsonParse } from './slowOperations.js'
-
-const GCS_BUCKET_URL =
-  'https://storage.googleapis.com/openjaws-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/openjaws-releases'
 
 class AutoUpdaterError extends OpenJawsError {}
 
@@ -51,6 +47,9 @@ export type MaxVersionConfig = {
   external_message?: string
   jaws_message?: string
 }
+
+const PUBLIC_NPM_REGISTRY_URL = 'https://registry.npmjs.org'
+const PUBLIC_NPM_USERCONFIG_FILENAME = '.public-npmrc'
 
 /**
  * Checks if the current version meets the minimum required version from Statsig config
@@ -301,6 +300,26 @@ async function getInstallationPrefix(): Promise<string | null> {
   return prefixResult.stdout.trim()
 }
 
+async function getPublicNpmLookupEnv(): Promise<NodeJS.ProcessEnv> {
+  const fs = getFsImplementation()
+  const userConfigPath = join(
+    getOpenJawsConfigHomeDir(),
+    PUBLIC_NPM_USERCONFIG_FILENAME,
+  )
+
+  try {
+    await access(userConfigPath, fsConstants.F_OK)
+  } catch {
+    await fs.mkdir(getOpenJawsConfigHomeDir())
+    await writeFile(userConfigPath, '', { encoding: 'utf8' })
+  }
+
+  return {
+    ...process.env,
+    NPM_CONFIG_USERCONFIG: userConfigPath,
+  }
+}
+
 export async function checkGlobalInstallPermissions(): Promise<{
   hasPermissions: boolean
   npmPrefix: string | null
@@ -332,13 +351,25 @@ export async function getLatestVersion(
   channel: ReleaseChannel,
 ): Promise<string | null> {
   const npmTag = channel === 'stable' ? 'stable' : 'latest'
+  const npmLookupEnv = await getPublicNpmLookupEnv()
 
   // Run from home directory to avoid reading project-level .npmrc
   // which could be maliciously crafted to redirect to an attacker's registry
   const result = await execFileNoThrowWithCwd(
     'npm',
-    ['view', `${MACRO.PACKAGE_URL}@${npmTag}`, 'version', '--prefer-online'],
-    { abortSignal: AbortSignal.timeout(5000), cwd: homedir() },
+    [
+      'view',
+      `${MACRO.PACKAGE_URL}@${npmTag}`,
+      'version',
+      '--prefer-online',
+      '--registry',
+      PUBLIC_NPM_REGISTRY_URL,
+    ],
+    {
+      abortSignal: AbortSignal.timeout(5000),
+      cwd: homedir(),
+      env: npmLookupEnv,
+    },
   )
   if (result.code !== 0) {
     logForDebugging(`npm view failed with code ${result.code}`)
@@ -349,9 +380,6 @@ export async function getLatestVersion(
     }
     if (result.stdout) {
       logForDebugging(`npm stdout: ${result.stdout.trim()}`)
-    }
-    if (process.env.USER_TYPE !== 'jaws') {
-      return getLatestVersionFromPublicReleaseSource(channel)
     }
     return null
   }
@@ -386,11 +414,25 @@ export function shouldInstallTargetVersion(
  * This is used by the doctor command to show users what versions are available.
  */
 export async function getNpmDistTags(): Promise<NpmDistTags> {
+  const npmLookupEnv = await getPublicNpmLookupEnv()
+
   // Run from home directory to avoid reading project-level .npmrc
   const result = await execFileNoThrowWithCwd(
     'npm',
-    ['view', MACRO.PACKAGE_URL, 'dist-tags', '--json', '--prefer-online'],
-    { abortSignal: AbortSignal.timeout(5000), cwd: homedir() },
+    [
+      'view',
+      MACRO.PACKAGE_URL,
+      'dist-tags',
+      '--json',
+      '--prefer-online',
+      '--registry',
+      PUBLIC_NPM_REGISTRY_URL,
+    ],
+    {
+      abortSignal: AbortSignal.timeout(5000),
+      cwd: homedir(),
+      env: npmLookupEnv,
+    },
   )
 
   if (result.code !== 0) {
@@ -410,38 +452,21 @@ export async function getNpmDistTags(): Promise<NpmDistTags> {
   }
 }
 
-/**
- * Get the latest version from GCS bucket for a given release channel.
- * This is used by installations that don't have npm (e.g. package manager installs).
- */
-export async function getLatestVersionFromGcs(
-  channel: ReleaseChannel,
-): Promise<string | null> {
-  try {
-    const response = await axios.get(`${GCS_BUCKET_URL}/${channel}`, {
-      timeout: 5000,
-      responseType: 'text',
-    })
-    return response.data.trim()
-  } catch (error) {
-    logForDebugging(`Failed to fetch ${channel} from GCS: ${error}`)
-    return null
-  }
-}
-
 export async function getLatestVersionFromPublicReleaseSource(
   channel: ReleaseChannel,
 ): Promise<string | null> {
-  const githubVersion = await getLatestVersionFromGithubRelease(channel)
-  if (githubVersion) {
-    return githubVersion
+  const decision = await getPublicReleaseDecision(channel, {
+    currentVersion: MACRO.VERSION,
+  })
+  if (decision.status === 'eligible' && decision.version) {
+    return decision.version
   }
 
-  if (process.env.OPENJAWS_ALLOW_GCS_RELEASE_FALLBACK !== '1') {
+  if (decision.status === 'held_back') {
     return null
   }
 
-  return getLatestVersionFromGcs(channel)
+  return null
 }
 
 export async function getPublicReleaseDistTags(): Promise<NpmDistTags> {
@@ -452,20 +477,6 @@ export async function getPublicReleaseDistTags(): Promise<NpmDistTags> {
 
   return { latest, stable }
 }
-
-/**
- * Get available versions from GCS bucket (for native installations).
- * Fetches both latest and stable channel pointers.
- */
-export async function getGcsDistTags(): Promise<NpmDistTags> {
-  const [latest, stable] = await Promise.all([
-    getLatestVersionFromGcs('latest'),
-    getLatestVersionFromGcs('stable'),
-  ])
-
-  return { latest, stable }
-}
-
 /**
  * Get version history from npm registry (jaws-only feature)
  * Returns versions sorted newest-first, limited to the specified count

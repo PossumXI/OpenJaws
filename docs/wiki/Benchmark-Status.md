@@ -7,7 +7,7 @@ This page tracks the live Immaculate benchmark record currently used to explain 
 - Immaculate commit: `b7a571f`
 - Branch: `main`
 - Benchmark publication date: `April 12, 2026`
-- Publication status reported green for benchmark publication, CI, security, and GitGuardian
+- Source Immaculate repo status on that benchmark pass: benchmark publication, CI, security, and GitGuardian were all green
 
 ## 60-Minute Soak Run
 
@@ -62,9 +62,23 @@ These runs are relevant to OpenJaws because they validate the orchestration subs
 - OpenCheek crew fan-out and deferred release
 - route-worker heartbeat and assignment decisions
 - fail-closed retry pacing under pressure
-- remote Gemma dispatch, acknowledgement, and completion reconciliation
+- remote `Q` dispatch, acknowledgement, and completion reconciliation
 
 The soak result is the stronger signal. It shows that the harness can hold bounded reflex and cognitive latency for an hour-class run while preserving checkpointed recovery and integrity, which is exactly the property OpenJaws needs when it is pacing agents, routing tools, and managing remote execution instead of just answering one request.
+
+## Live OpenJaws Verification Lanes
+
+These are the current live-check lanes OpenJaws can run honestly against its shipped orchestration path:
+
+- `bun run system:check` for the full release-style harness pass
+- `bun run q-route:assignment` for `Q` route assignment behavior
+- `bun run q-route:remote-dispatch` for signed remote-dispatch behavior
+- `bun run q-route:remote-completion` for signed remote-result reconciliation
+
+Important honesty boundary:
+
+- a local route that stays `pending_assignment` because no healthy Immaculate worker is eligible is a valid fail-closed result, not a fake dispatch success
+- the W&B benchmark numbers above come from Immaculate itself; OpenJaws consumes and explains those records rather than inventing its own benchmark figures
 
 ## Reproducibility Notes
 

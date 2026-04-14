@@ -24,7 +24,7 @@ function sample(
       transcriptPath: 'D:\\sessions\\demo.jsonl',
       userTimestamp: null,
       assistantTimestamp: null,
-      assistantModel: 'gemma4:e4b',
+      assistantModel: 'q',
       isSidechain: false,
     },
   }

@@ -19,10 +19,12 @@ import {
   installOrUpdateOpenJawsPackage,
   openJawsLocalInstallationExists,
 } from 'src/utils/localInstaller.js'
+import { getPublicReleaseDecision } from 'src/utils/publicReleasePolicy.js'
 import {
   installLatest as installLatestNative,
   removeInstalledSymlink,
 } from 'src/utils/nativeInstaller/index.js'
+import { getPlatform } from 'src/utils/nativeInstaller/installer.js'
 import { getPackageManager } from 'src/utils/nativeInstaller/packageManagers.js'
 import { writeToStdout } from 'src/utils/process.js'
 import { gte } from 'src/utils/semver.js'
@@ -44,6 +46,37 @@ export async function update() {
   logForDebugging(
     `update: Config install method: ${diagnostic.configInstallMethod}`,
   )
+  const publicReleaseDecision =
+    process.env.USER_TYPE !== 'jaws'
+      ? await getPublicReleaseDecision(channel, {
+          currentVersion: MACRO.VERSION,
+          platform: getPlatform(),
+        })
+      : null
+
+  if (publicReleaseDecision?.status === 'held_back') {
+    writeToStdout('\n')
+    writeToStdout(chalk.yellow(`${publicReleaseDecision.summary}\n`))
+    writeToStdout(
+      'Use openjaws install <version> only if you intentionally need a specific published tag before the public rollout reaches this install.\n',
+    )
+    await gracefulShutdown(0)
+  }
+
+  if (
+    publicReleaseDecision &&
+    publicReleaseDecision.status !== 'eligible'
+  ) {
+    process.stderr.write(chalk.red(`${publicReleaseDecision.summary}\n`))
+    process.stderr.write(
+      `Official policy URL: ${publicReleaseDecision.policyUrl}\n`,
+    )
+    process.stderr.write(
+      'No update will be installed until the official public release policy and tagged assets are healthy.\n',
+    )
+    await gracefulShutdown(1)
+  }
+  const publicTargetVersion = publicReleaseDecision?.version ?? null
 
   // Check for multiple installations
   if (diagnostic.multipleInstallations.length > 1) {
@@ -122,7 +155,7 @@ export async function update() {
 
     if (packageManager === 'homebrew') {
       writeToStdout('OpenJaws is managed by Homebrew.\n')
-      const latest = await getLatestVersion(channel)
+      const latest = publicTargetVersion ?? (await getLatestVersion(channel))
       if (latest && shouldInstallTargetVersion(MACRO.VERSION, latest)) {
         writeToStdout(`Update available: ${MACRO.VERSION} → ${latest}\n`)
         writeToStdout('\n')
@@ -133,7 +166,7 @@ export async function update() {
       }
     } else if (packageManager === 'winget') {
       writeToStdout('OpenJaws is managed by winget.\n')
-      const latest = await getLatestVersion(channel)
+      const latest = publicTargetVersion ?? (await getLatestVersion(channel))
       if (latest && shouldInstallTargetVersion(MACRO.VERSION, latest)) {
         writeToStdout(`Update available: ${MACRO.VERSION} → ${latest}\n`)
         writeToStdout('\n')
@@ -146,7 +179,7 @@ export async function update() {
       }
     } else if (packageManager === 'apk') {
       writeToStdout('OpenJaws is managed by apk.\n')
-      const latest = await getLatestVersion(channel)
+      const latest = publicTargetVersion ?? (await getLatestVersion(channel))
       if (latest && shouldInstallTargetVersion(MACRO.VERSION, latest)) {
         writeToStdout(`Update available: ${MACRO.VERSION} → ${latest}\n`)
         writeToStdout('\n')
@@ -270,7 +303,7 @@ export async function update() {
   const npmTag = channel === 'stable' ? 'stable' : 'latest'
   const npmCommand = `npm view ${MACRO.PACKAGE_URL}@${npmTag} version`
   logForDebugging(`update: Running: ${npmCommand}`)
-  const latestVersion = await getLatestVersion(channel)
+  const latestVersion = publicTargetVersion ?? (await getLatestVersion(channel))
   logForDebugging(
     `update: Latest version from npm: ${latestVersion || 'FAILED'}`,
   )

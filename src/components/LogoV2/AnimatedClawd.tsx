@@ -1,8 +1,10 @@
 import * as React from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { Box, Text } from '../../ink.js'
+import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
 import { Clawd, type ClawdPose } from './Clawd.js'
+import { OpenJawsAsciiBanner } from './OpenJawsAsciiBanner.js'
 
 type Frame = {
   pose: ClawdPose
@@ -20,35 +22,39 @@ function hold(
 }
 
 const SNAP_BITE: readonly Frame[] = [
-  ...hold('default', 1, '~~~~~ ocean wake ~~~~~', 4),
-  ...hold('look-left', 1, '~~~~~ ocean wake ~~~~~', 2),
-  ...hold('arms-up', 0, '~~ splash over wake ~~', 4),
-  ...hold('look-right', 0, '~ cresting over wake ~', 2),
-  ...hold('default', 1, '~~~~~ ocean wake ~~~~~', 4),
+  ...hold('default', 2, '~~~~ ocean cutline ~~~~', 4),
+  ...hold('look-left', 2, '~~~~ ocean cutline ~~~~', 2),
+  ...hold('arms-up', 0, '~~~ breach over wake ~~~', 4),
+  ...hold('look-right', 1, '~~ open-jaws splash ~~', 2),
+  ...hold('default', 2, '~~~~ ocean cutline ~~~~', 4),
 ]
 
 const CLICK_ANIMATIONS: readonly (readonly Frame[])[] = [SNAP_BITE]
 
 const IDLE: Frame = {
   pose: 'default',
-  offset: 1,
-  wake: '~~~~~ ocean wake ~~~~~',
+  offset: 2,
+  wake: '~~~~ ocean cutline ~~~~',
 }
 const FRAME_MS = 80
 const IDLE_PAUSE_MS = 1400
-const SHARK_STAGE_HEIGHT = 4
+const SHARK_STAGE_HEIGHT = 5
 
 export function AnimatedClawd(): React.ReactNode {
+  const { columns } = useTerminalSize()
   const { pose, stageOffset, wake, onClick } = useClawdAnimation()
+  const compactBanner = columns < 92
+  const bannerWidth = Math.max(20, Math.min(columns - 6, 32))
 
   return (
     <Box flexDirection="column" alignItems="center" onClick={onClick}>
+      <OpenJawsAsciiBanner compact={compactBanner} maxWidth={bannerWidth} />
       <Box height={SHARK_STAGE_HEIGHT} flexDirection="column">
         <Box marginTop={stageOffset} flexShrink={0}>
           <Clawd pose={pose} />
         </Box>
       </Box>
-      <Text color="promptBorder">{wake}</Text>
+      <Text color="clawd_background">{wake}</Text>
     </Box>
   )
 }

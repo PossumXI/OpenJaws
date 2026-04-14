@@ -4,7 +4,7 @@
 
 - real Immaculate-side worker assignment policy for named off-host executors
 - remote result streaming or continuous reconciliation in the worker loop
-- tighter public-release debranding across remaining legacy help/error surfaces
+- tighter public-release help and recovery clarity across remaining operator surfaces
 - broader contribution templates and issue triage
 - public wiki synchronization from repo docs
 
@@ -12,7 +12,7 @@
 
 - stronger OpenCheek swarm planning and release strategy
 - deeper Firecrawl-to-dataset labeling flows
-- richer benchmark publication from OpenJaws surfaces
+- richer benchmark snapshot surfacing from OpenJaws surfaces
 - more reproducible remote worker provisioning and registration
 - broader harness-backed benchmark export from OpenJaws into public operator surfaces
 
@@ -34,5 +34,5 @@ Release-critical:
 Future-facing:
 
 - richer remote worker fleets
-- larger benchmark publication loops
+- larger benchmark snapshot sync loops
 - deeper training and evaluation automation

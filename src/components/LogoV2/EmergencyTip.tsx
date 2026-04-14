@@ -40,7 +40,7 @@ export function EmergencyTip(): React.ReactNode {
       ? 'warning'
       : tip.color === 'error'
         ? 'error'
-        : 'claude'
+        : 'openjawsOcean'
   const label =
     tip.color === 'warning'
       ? 'Deck warning'

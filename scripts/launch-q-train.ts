@@ -2,21 +2,23 @@ import { closeSync, existsSync, mkdirSync, openSync, writeFileSync } from 'fs'
 import { resolve, join } from 'path'
 import { spawn } from 'child_process'
 import {
-  buildGemmaTrainingRouteManifest,
-  evaluateGemmaTrainingPreflight,
-  getGemmaTrainingRouteQueueDisplayStatus,
-  getGemmaTrainingRouteQueueStatusSummary,
-  getGemmaTrainingRouteQueueEntry,
-  getGemmaTrainingRunsDir,
-  stageGemmaTrainingRouteFile,
-  type GemmaTrainingExecutionMode,
-  type GemmaTrainingRouteFailure,
-  type GemmaTrainingPreflight,
-  type GemmaTrainingRouteRequest,
-  type GemmaTrainingStatus,
-  upsertGemmaTrainingRouteQueueEntry,
-  upsertGemmaTrainingRegistryEntry,
-} from '../src/utils/gemmaTraining.js'
+  DEFAULT_Q_BASE_MODEL,
+  buildQTrainingRouteManifest,
+  evaluateQTrainingPreflight,
+  getQTrainingRouteQueueDisplayStatus,
+  getQTrainingRouteQueueStatusSummary,
+  getQTrainingRouteQueueEntry,
+  getQTrainingRunsDir,
+  getOpenJawsTrainingModelLabel,
+  stageQTrainingRouteFile,
+  type QTrainingExecutionMode,
+  type QTrainingRouteFailure,
+  type QTrainingPreflight,
+  type QTrainingRouteRequest,
+  type QTrainingStatus,
+  upsertQTrainingRouteQueueEntry,
+  upsertQTrainingRegistryEntry,
+} from '../src/utils/qTraining.js'
 import {
   assignImmaculateHarnessWorker,
   callImmaculateHarness,
@@ -42,19 +44,19 @@ type CliOptions = {
 }
 
 function parseArgs(argv: string[]): CliOptions {
-  const venvPython = resolve(
-    process.cwd(),
-    '.venv-gemma4',
-    'Scripts',
-    'python.exe',
-  )
+  const candidatePythons = [
+    resolve(process.cwd(), '.venv-q', 'Scripts', 'python.exe'),
+    resolve(process.cwd(), '.venv-gemma4', 'Scripts', 'python.exe'),
+  ]
+  const venvPython =
+    candidatePythons.find(candidate => existsSync(candidate)) ?? null
   const options: CliOptions = {
     root: null,
     bundleDir: resolve(process.cwd(), 'data', 'sft', 'audited-v2'),
     outputDir: null,
-    baseModel: 'google/gemma-4-E4B-it',
+    baseModel: DEFAULT_Q_BASE_MODEL,
     runName: null,
-    python: existsSync(venvPython) ? venvPython : 'python',
+    python: venvPython ?? 'python',
     tags: [],
     languages: [],
     useCpu: true,
@@ -140,7 +142,7 @@ function parseArgs(argv: string[]): CliOptions {
 function printHelpAndExit(): never {
   console.log(
     [
-      'Usage: bun scripts/launch-gemma4-train.ts [options]',
+      'Usage: bun scripts/launch-q-train.ts [options]',
       '',
       'Options:',
       '  --root <path>              Root directory for registry/queue artifacts',
@@ -164,18 +166,19 @@ function printHelpAndExit(): never {
 
 function makeRunId(): string {
   const iso = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '')
-  return `gemma4-${iso}-${Math.random().toString(16).slice(2, 8)}`
+  return `q-${iso}-${Math.random().toString(16).slice(2, 8)}`
 }
 
-function buildGemmaRouteTarget(args: {
+function buildQRouteTarget(args: {
   baseModel: string
   tags: string[]
   languages: string[]
   runName: string | null
 }): string {
+  const modelLabel = getOpenJawsTrainingModelLabel(args.baseModel)
   const parts = [
-    'gemma-train',
-    args.baseModel,
+    'q-train',
+    modelLabel,
     'opencheek agents',
     'openjaws tools',
     'immaculate harness',
@@ -183,12 +186,12 @@ function buildGemmaRouteTarget(args: {
     args.languages.length > 0 ? `langs ${args.languages.join(',')}` : null,
     args.runName?.trim() ? `run ${args.runName.trim()}` : null,
   ].filter(Boolean)
-  return normalizeImmaculateObjective(parts.join(' · '), 160) ?? 'gemma-train'
+  return normalizeImmaculateObjective(parts.join(' · '), 160) ?? 'q-train'
 }
 
-function buildGemmaRouteFailure(args: {
-  stage: GemmaTrainingRouteFailure['stage']
-  code: GemmaTrainingRouteFailure['code']
+function buildQRouteFailure(args: {
+  stage: QTrainingRouteFailure['stage']
+  code: QTrainingRouteFailure['code']
   summary: string
   detail?: string | null
   harnessUrl?: string | null
@@ -196,7 +199,7 @@ function buildGemmaRouteFailure(args: {
   controlStatus?: number | null
   controlSummary?: string | null
   failedAt?: string
-}): GemmaTrainingRouteFailure {
+}): QTrainingRouteFailure {
   return {
     route: 'immaculate',
     failedAt: args.failedAt ?? new Date().toISOString(),
@@ -211,24 +214,24 @@ function buildGemmaRouteFailure(args: {
   }
 }
 
-type ImmaculateGemmaRouteAttempt = {
-  routeRequest: GemmaTrainingRouteRequest | null
-  routeFailure: GemmaTrainingRouteFailure | null
+type ImmaculateQRouteAttempt = {
+  routeRequest: QTrainingRouteRequest | null
+  routeFailure: QTrainingRouteFailure | null
 }
 
-function isGemmaRouteFailureLike(
+function isQRouteFailureLike(
   value: unknown,
-): value is GemmaTrainingRouteFailure {
+): value is QTrainingRouteFailure {
   return Boolean(
     value &&
       typeof value === 'object' &&
-      typeof (value as GemmaTrainingRouteFailure).failedAt === 'string' &&
-      typeof (value as GemmaTrainingRouteFailure).stage === 'string' &&
-      typeof (value as GemmaTrainingRouteFailure).code === 'string',
+      typeof (value as QTrainingRouteFailure).failedAt === 'string' &&
+      typeof (value as QTrainingRouteFailure).stage === 'string' &&
+      typeof (value as QTrainingRouteFailure).code === 'string',
   )
 }
 
-async function requestImmaculateGemmaRoute(args: {
+async function requestImmaculateQRoute(args: {
   root: string
   runId: string
   outputDir: string
@@ -241,13 +244,13 @@ async function requestImmaculateGemmaRoute(args: {
   useCpu: boolean
   maxSteps: number | null
   numTrainEpochs: number | null
-  preflight: GemmaTrainingPreflight
-}): Promise<ImmaculateGemmaRouteAttempt> {
+  preflight: QTrainingPreflight
+}): Promise<ImmaculateQRouteAttempt> {
   const status = await getImmaculateHarnessStatus()
   if (!status.enabled || !status.reachable) {
     return {
       routeRequest: null,
-      routeFailure: buildGemmaRouteFailure({
+      routeFailure: buildQRouteFailure({
         stage: 'status',
         code: 'harness_unreachable',
         summary: 'Immaculate route request failed: harness is unavailable.',
@@ -263,7 +266,7 @@ async function requestImmaculateGemmaRoute(args: {
   } catch {
     deckReceipt = null
   }
-  const target = buildGemmaRouteTarget({
+  const target = buildQRouteTarget({
     baseModel: args.baseModel,
     tags: args.selectedTags,
     languages: args.selectedLanguages,
@@ -271,13 +274,13 @@ async function requestImmaculateGemmaRoute(args: {
   })
   const requestedAt = new Date().toISOString()
   const manifestPath = join(args.outputDir, 'route-request.json')
-  const stagedTrainIntegrity = stageGemmaTrainingRouteFile({
+  const stagedTrainIntegrity = stageQTrainingRouteFile({
     sourcePath: args.trainFile,
     manifestDir: args.outputDir,
     relativePath: join('bundle', 'train.jsonl'),
   })
   const stagedEvalIntegrity = args.evalFile
-    ? stageGemmaTrainingRouteFile({
+    ? stageQTrainingRouteFile({
         sourcePath: args.evalFile,
         manifestDir: args.outputDir,
         relativePath: join('bundle', 'eval.jsonl'),
@@ -300,7 +303,7 @@ async function requestImmaculateGemmaRoute(args: {
   ).catch(error => {
     const message =
       error instanceof Error ? error.message : String(error)
-    return buildGemmaRouteFailure({
+    return buildQRouteFailure({
       stage: 'control',
       code: 'control_failed',
       summary: 'Immaculate route request failed during control pulse.',
@@ -309,7 +312,7 @@ async function requestImmaculateGemmaRoute(args: {
       recommendedLayerId: deckReceipt?.recommendedLayerId ?? null,
     })
   })
-  if (isGemmaRouteFailureLike(controlResult)) {
+  if (isQRouteFailureLike(controlResult)) {
     return {
       routeRequest: null,
       routeFailure: controlResult,
@@ -325,7 +328,7 @@ async function requestImmaculateGemmaRoute(args: {
   if (!controlAccepted) {
     return {
       routeRequest: null,
-      routeFailure: buildGemmaRouteFailure({
+      routeFailure: buildQRouteFailure({
         stage: 'control',
         code: 'control_rejected',
         summary: 'Immaculate route request was rejected by control pulse.',
@@ -349,7 +352,7 @@ async function requestImmaculateGemmaRoute(args: {
   }).catch(error => {
     const message =
       error instanceof Error ? error.message : String(error)
-    return buildGemmaRouteFailure({
+    return buildQRouteFailure({
       stage: 'assignment',
       code: 'assignment_failed',
       summary: 'Immaculate route worker assignment failed.',
@@ -360,7 +363,7 @@ async function requestImmaculateGemmaRoute(args: {
       controlSummary: controlResult.summary,
     })
   })
-  if (isGemmaRouteFailureLike(assignmentResult)) {
+  if (isQRouteFailureLike(assignmentResult)) {
     return {
       routeRequest: null,
       routeFailure: assignmentResult,
@@ -371,7 +374,7 @@ async function requestImmaculateGemmaRoute(args: {
     assignmentResult?.recommendedLayerId ?? deckReceipt?.recommendedLayerId ?? null
 
   try {
-    const routeRequest: GemmaTrainingRouteRequest = {
+    const routeRequest: QTrainingRouteRequest = {
       route: 'immaculate',
       requestedAt,
       target,
@@ -408,7 +411,7 @@ async function requestImmaculateGemmaRoute(args: {
       },
       integrity,
     }
-    const manifest = buildGemmaTrainingRouteManifest({
+    const manifest = buildQTrainingRouteManifest({
       runId: args.runId,
       routeRequest,
       training: {
@@ -426,7 +429,7 @@ async function requestImmaculateGemmaRoute(args: {
       preflight: args.preflight,
     })
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
-    upsertGemmaTrainingRouteQueueEntry({
+    upsertQTrainingRouteQueueEntry({
       runId: args.runId,
       manifestPath,
       queuedAt: requestedAt,
@@ -476,7 +479,7 @@ async function requestImmaculateGemmaRoute(args: {
       error instanceof Error ? error.message : String(error)
     return {
       routeRequest: null,
-      routeFailure: buildGemmaRouteFailure({
+      routeFailure: buildQRouteFailure({
         stage: 'manifest',
         code: 'manifest_failed',
         summary: 'Immaculate route request could not be recorded locally.',
@@ -490,10 +493,10 @@ async function requestImmaculateGemmaRoute(args: {
   }
 }
 
-function writeGemmaLaunchState(args: {
+function writeQLaunchState(args: {
   runId: string
-  status: GemmaTrainingStatus
-  executionMode: GemmaTrainingExecutionMode
+  status: QTrainingStatus
+  executionMode: QTrainingExecutionMode
   pid: number | null
   launchedAt: string
   outputDir: string
@@ -507,10 +510,10 @@ function writeGemmaLaunchState(args: {
   stdoutLog: string
   stderrLog: string
   runStatePath: string
-  preflight: GemmaTrainingPreflight | null
-  routeRequest: GemmaTrainingRouteRequest | null
-  routeFailure?: GemmaTrainingRouteFailure | null
-  routeQueue?: ReturnType<typeof getGemmaTrainingRouteQueueEntry> | null
+  preflight: QTrainingPreflight | null
+  routeRequest: QTrainingRouteRequest | null
+  routeFailure?: QTrainingRouteFailure | null
+  routeQueue?: ReturnType<typeof getQTrainingRouteQueueEntry> | null
   root?: string
 }): void {
   writeFileSync(
@@ -534,10 +537,10 @@ function writeGemmaLaunchState(args: {
         routeRequest: args.routeRequest,
         routeFailure: args.routeFailure ?? null,
         routeQueue: args.routeQueue ?? null,
-        routeQueueDisplayStatus: getGemmaTrainingRouteQueueDisplayStatus(
+        routeQueueDisplayStatus: getQTrainingRouteQueueDisplayStatus(
           args.routeQueue ?? null,
         ),
-        routeQueueSummary: getGemmaTrainingRouteQueueStatusSummary(
+        routeQueueSummary: getQTrainingRouteQueueStatusSummary(
           args.routeQueue ?? null,
         ),
       },
@@ -546,7 +549,7 @@ function writeGemmaLaunchState(args: {
     )}\n`,
     'utf8',
   )
-  upsertGemmaTrainingRegistryEntry({
+  upsertQTrainingRegistryEntry({
     runId: args.runId,
     status: args.status,
     executionMode: args.executionMode,
@@ -582,10 +585,10 @@ function buildPythonTrainArgs(args: {
   tags: string[]
   languages: string[]
   routeManifestPath?: string | null
-  executionMode?: GemmaTrainingExecutionMode | null
+  executionMode?: QTrainingExecutionMode | null
 }): string[] {
   const pythonArgs = [
-    resolve(process.cwd(), 'training', 'gemma4', 'train_lora.py'),
+    resolve(process.cwd(), 'training', 'q', 'train_lora.py'),
     '--train-file',
     args.trainFile,
     '--base-model',
@@ -629,7 +632,7 @@ async function main() {
   const root = options.root ?? process.cwd()
   const runId = makeRunId()
   const outputDir =
-    options.outputDir ?? resolve(getGemmaTrainingRunsDir(root), runId)
+    options.outputDir ?? resolve(getQTrainingRunsDir(root), runId)
   const trainFile = resolve(options.bundleDir, 'train.jsonl')
   const evalFile = resolve(options.bundleDir, 'eval.jsonl')
   const stdoutLog = join(outputDir, 'stdout.log')
@@ -645,7 +648,7 @@ async function main() {
 
   mkdirSync(outputDir, { recursive: true })
   const launchedAt = new Date().toISOString()
-  const preflight = evaluateGemmaTrainingPreflight({
+  const preflight = evaluateQTrainingPreflight({
     baseModel: options.baseModel,
     trainFile,
     pythonPath: options.python,
@@ -659,7 +662,7 @@ async function main() {
     !forceLocalLaunch &&
     options.routeMode !== 'local'
   const routeAttempt = wantsImmaculateRoute
-    ? await requestImmaculateGemmaRoute({
+    ? await requestImmaculateQRoute({
         runId,
         outputDir,
         baseModel: options.baseModel,
@@ -678,15 +681,15 @@ async function main() {
   const routeRequest = routeAttempt.routeRequest
   const routeFailure = routeAttempt.routeFailure
   const routeQueue = routeRequest
-    ? getGemmaTrainingRouteQueueEntry(runId, root)
+    ? getQTrainingRouteQueueEntry(runId, root)
     : null
-  const routeQueueDisplayStatus = getGemmaTrainingRouteQueueDisplayStatus(routeQueue)
-  const routeQueueSummary = getGemmaTrainingRouteQueueStatusSummary(routeQueue)
+  const routeQueueDisplayStatus = getQTrainingRouteQueueDisplayStatus(routeQueue)
+  const routeQueueSummary = getQTrainingRouteQueueStatusSummary(routeQueue)
 
   if (routeRequest) {
     writeFileSync(stdoutLog, `${routeRequest.controlSummary ?? 'route requested'}\n`, 'utf8')
     writeFileSync(stderrLog, '', 'utf8')
-    writeGemmaLaunchState({
+    writeQLaunchState({
       runId,
       status: 'route_requested',
       executionMode: 'immaculate_route_requested',
@@ -740,11 +743,11 @@ async function main() {
   }
 
   if (preflight.decision === 'preflight_blocked' || (preflight.decision === 'remote_required' && !forceLocalLaunch)) {
-    const status: GemmaTrainingStatus =
+    const status: QTrainingStatus =
       preflight.decision === 'remote_required'
         ? 'remote_required'
         : 'preflight_blocked'
-    const executionMode: GemmaTrainingExecutionMode =
+    const executionMode: QTrainingExecutionMode =
       preflight.decision === 'remote_required'
         ? 'remote_required'
         : 'preflight_blocked'
@@ -757,7 +760,7 @@ async function main() {
       return Boolean(value) && values.indexOf(value) === index
     })
     writeFileSync(stderrLog, `${stderrLines.join('\n')}\n`, 'utf8')
-    writeGemmaLaunchState({
+    writeQLaunchState({
       runId,
       status,
       executionMode,
@@ -838,10 +841,10 @@ async function main() {
   })()
   child.unref()
 
-  const executionMode: GemmaTrainingExecutionMode = forceLocalLaunch
+  const executionMode: QTrainingExecutionMode = forceLocalLaunch
     ? 'local_forced'
     : 'local'
-  writeGemmaLaunchState({
+  writeQLaunchState({
     runId,
     status: 'launched',
     executionMode,

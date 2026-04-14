@@ -68,7 +68,7 @@ export function ExistingWorkflowStep(t0) {
   }
   let t6;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    t6 = <Box flexDirection="column" marginBottom={1}><Text>An OpenJaws workflow file already exists at{" "}<Text color="claude">.github/workflows/openjaws.yml</Text></Text><Text dimColor={true}>What would you like to do?</Text></Box>;
+    t6 = <Box flexDirection="column" marginBottom={1}><Text>An OpenJaws workflow file already exists at{" "}<Text color="openjawsOcean">.github/workflows/openjaws.yml</Text></Text><Text dimColor={true}>What would you like to do?</Text></Box>;
     $[8] = t6;
   } else {
     t6 = $[8];
@@ -84,7 +84,7 @@ export function ExistingWorkflowStep(t0) {
   }
   let t8;
   if ($[12] === Symbol.for("react.memo_cache_sentinel")) {
-    t8 = <Box marginTop={1}><Text dimColor={true}>View the latest workflow setup notes at:{" "}<Text color="claude">{GITHUB_ACTION_SETUP_DOCS_URL}</Text></Text></Box>;
+    t8 = <Box marginTop={1}><Text dimColor={true}>View the latest workflow setup notes at:{" "}<Text color="openjawsOcean">{GITHUB_ACTION_SETUP_DOCS_URL}</Text></Text></Box>;
     $[12] = t8;
   } else {
     t8 = $[12];

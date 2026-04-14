@@ -2,18 +2,18 @@ import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
-  claimGemmaTrainingRouteQueueEntry,
-  getGemmaTrainingRouteQueueEntry,
-  upsertGemmaTrainingRouteWorker,
-  upsertGemmaTrainingRouteQueueEntry,
-} from '../src/utils/gemmaTraining.js'
+  claimQTrainingRouteQueueEntry,
+  getQTrainingRouteQueueEntry,
+  upsertQTrainingRouteWorker,
+  upsertQTrainingRouteQueueEntry,
+} from '../src/utils/qTraining.js'
 
 function makeRoot(): string {
-  return mkdtempSync(join(tmpdir(), 'openjaws-gemma-route-contention-'))
+  return mkdtempSync(join(tmpdir(), 'openjaws-q-route-contention-'))
 }
 
 function seedQueuedRoute(root: string, runId: string, queuedAt: string): void {
-  upsertGemmaTrainingRouteQueueEntry(
+  upsertQTrainingRouteQueueEntry(
     {
       runId,
       manifestPath: join(root, runId, 'route-request.json'),
@@ -30,7 +30,7 @@ function seedQueuedRoute(root: string, runId: string, queuedAt: string): void {
 async function main() {
   const root = makeRoot()
   try {
-    upsertGemmaTrainingRouteWorker(
+    upsertQTrainingRouteWorker(
       {
         workerId: 'worker-a',
         executionProfile: 'local',
@@ -45,7 +45,7 @@ async function main() {
       },
       root,
     )
-    upsertGemmaTrainingRouteWorker(
+    upsertQTrainingRouteWorker(
       {
         workerId: 'worker-b',
         executionProfile: 'local',
@@ -64,28 +64,28 @@ async function main() {
     seedQueuedRoute(root, 'run-a', '2026-04-12T14:00:00.000Z')
     seedQueuedRoute(root, 'run-b', '2026-04-12T14:00:01.000Z')
 
-    const firstClaim = claimGemmaTrainingRouteQueueEntry({
+    const firstClaim = claimQTrainingRouteQueueEntry({
       runId: 'run-a',
       workerId: 'worker-a',
       root,
       claimTtlMs: 50,
       claimedAt: '2026-04-12T14:00:02.000Z',
     })
-    const secondClaim = claimGemmaTrainingRouteQueueEntry({
+    const secondClaim = claimQTrainingRouteQueueEntry({
       runId: 'run-b',
       workerId: 'worker-b',
       root,
       claimTtlMs: 500,
       claimedAt: '2026-04-12T14:00:02.010Z',
     })
-    const blockedClaim = claimGemmaTrainingRouteQueueEntry({
+    const blockedClaim = claimQTrainingRouteQueueEntry({
       runId: 'run-a',
       workerId: 'worker-c',
       root,
       claimTtlMs: 50,
       claimedAt: '2026-04-12T14:00:02.020Z',
     })
-    const recoveredClaim = claimGemmaTrainingRouteQueueEntry({
+    const recoveredClaim = claimQTrainingRouteQueueEntry({
       runId: 'run-a',
       workerId: 'worker-c',
       root,
@@ -93,8 +93,8 @@ async function main() {
       claimedAt: '2026-04-12T14:00:02.250Z',
     })
 
-    const finalRunA = getGemmaTrainingRouteQueueEntry('run-a', root)
-    const finalRunB = getGemmaTrainingRouteQueueEntry('run-b', root)
+    const finalRunA = getQTrainingRouteQueueEntry('run-a', root)
+    const finalRunB = getQTrainingRouteQueueEntry('run-b', root)
     const ok =
       firstClaim?.runId === 'run-a' &&
       secondClaim?.runId === 'run-b' &&

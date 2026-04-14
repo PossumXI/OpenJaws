@@ -1,6 +1,7 @@
 import { getInitialSettings } from '../settings/settings.js'
 
 export const EXTERNAL_MODEL_PROVIDERS = [
+  'oci',
   'openai',
   'groq',
   'minimax',
@@ -17,7 +18,7 @@ export type ProviderDefaults = {
   apiKeyEnvVars: string[]
   modelEnvVars: string[]
   baseURL: string
-  baseURLEnvVar: string
+  baseURLEnvVars: string[]
 }
 
 type ExternalProviderConfig = {
@@ -62,54 +63,62 @@ export type ConfiguredExternalModel = {
 }
 
 const PROVIDER_DEFAULTS: Record<ExternalModelProvider, ProviderDefaults> = {
+  oci: {
+    label: 'OCI',
+    apiKeyEnvVars: ['Q_API_KEY', 'OCI_API_KEY', 'OCI_GENAI_API_KEY'],
+    modelEnvVars: ['Q_MODEL', 'OCI_MODEL'],
+    baseURL:
+      'https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1',
+    baseURLEnvVars: ['Q_BASE_URL', 'OCI_BASE_URL'],
+  },
   openai: {
     label: 'OpenAI',
     apiKeyEnvVars: ['OPENAI_API_KEY'],
     modelEnvVars: ['OPENAI_MODEL'],
     baseURL: 'https://api.openai.com/v1',
-    baseURLEnvVar: 'OPENAI_BASE_URL',
+    baseURLEnvVars: ['OPENAI_BASE_URL'],
   },
   groq: {
     label: 'Groq',
     apiKeyEnvVars: ['GROQ_API_KEY'],
     modelEnvVars: ['GROQ_MODEL'],
     baseURL: 'https://api.groq.com/openai/v1',
-    baseURLEnvVar: 'GROQ_BASE_URL',
+    baseURLEnvVars: ['GROQ_BASE_URL'],
   },
   minimax: {
     label: 'MiniMax',
     apiKeyEnvVars: ['MINI_MAX_API_KEY', 'MINIMAX_API_KEY'],
     modelEnvVars: ['MINI_MAX_MODEL', 'MINIMAX_MODEL'],
     baseURL: 'https://api.minimax.io/v1',
-    baseURLEnvVar: 'MINI_MAX_BASE_URL',
+    baseURLEnvVars: ['MINI_MAX_BASE_URL', 'MINIMAX_BASE_URL'],
   },
   gemini: {
     label: 'Gemini',
     apiKeyEnvVars: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
     modelEnvVars: ['GEMINI_MODEL'],
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    baseURLEnvVar: 'GEMINI_BASE_URL',
+    baseURLEnvVars: ['GEMINI_BASE_URL'],
   },
   codex: {
     label: 'Codex',
     apiKeyEnvVars: ['CODEX_API_KEY', 'OPENAI_API_KEY'],
     modelEnvVars: ['CODEX_MODEL'],
     baseURL: 'https://api.openai.com/v1',
-    baseURLEnvVar: 'CODEX_BASE_URL',
+    baseURLEnvVars: ['CODEX_BASE_URL'],
   },
   kimi: {
     label: 'Kimi',
     apiKeyEnvVars: ['KIMI_API_KEY', 'MOONSHOT_API_KEY'],
     modelEnvVars: ['KIMI_MODEL'],
     baseURL: 'https://api.moonshot.cn/v1',
-    baseURLEnvVar: 'KIMI_BASE_URL',
+    baseURLEnvVars: ['KIMI_BASE_URL'],
   },
   ollama: {
     label: 'Ollama',
     apiKeyEnvVars: ['OLLAMA_API_KEY'],
     modelEnvVars: ['OLLAMA_MODEL'],
     baseURL: 'http://127.0.0.1:11434',
-    baseURLEnvVar: 'OLLAMA_BASE_URL',
+    baseURLEnvVars: ['OLLAMA_BASE_URL'],
   },
 }
 
@@ -168,12 +177,24 @@ function getApiKeyFromEnvChain(
   envVarNames: string[],
 ): { apiKey: string | null; apiKeySource: string | null } {
   for (const envVar of envVarNames) {
-    const apiKey = getEnvValue(envVar)
-    if (apiKey) {
-      return { apiKey, apiKeySource: envVar }
+    const value = getEnvValue(envVar)
+    if (value) {
+      return { apiKey: value, apiKeySource: envVar }
     }
   }
   return { apiKey: null, apiKeySource: null }
+}
+
+function getBaseUrlFromEnvChain(
+  envVarNames: string[],
+): { baseURL: string | null; baseURLSource: string | null } {
+  for (const envVar of envVarNames) {
+    const value = getEnvValue(envVar)
+    if (value) {
+      return { baseURL: value, baseURLSource: envVar }
+    }
+  }
+  return { baseURL: null, baseURLSource: null }
 }
 
 function resolveModelPrefix(rawModel: string): ExternalModelRef | null {
@@ -268,10 +289,10 @@ export function resolveExternalModelConfig(
   } else if (providerSettings.baseURL?.trim()) {
     baseURLSource = `settings.llmProviders.${modelRef.provider}.baseURL`
   } else {
-    const envBaseURL = getEnvValue(defaults.baseURLEnvVar)
-    if (envBaseURL) {
-      baseURL = envBaseURL
-      baseURLSource = defaults.baseURLEnvVar
+    const envBaseURL = getBaseUrlFromEnvChain(defaults.baseURLEnvVars)
+    if (envBaseURL.baseURL) {
+      baseURL = envBaseURL.baseURL
+      baseURLSource = envBaseURL.baseURLSource
     }
   }
 

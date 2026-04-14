@@ -1,20 +1,20 @@
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { dirname, join, resolve } from 'path'
 import {
-  finalizeGemmaTrainingRouteQueueCompletion,
-  getGemmaTrainingRouteQueueDisplayStatus,
-  getGemmaTrainingRouteQueueEntry,
-  getGemmaTrainingRouteQueueStatusSummary,
-  getLatestGemmaTrainingSnapshot,
-  readGemmaRunState,
-  readGemmaTrainingRegistry,
-  readGemmaTrainingRouteManifest,
-  resolveGemmaTrainingRoutePath,
-  upsertGemmaTrainingRegistryEntry,
-  verifyGemmaTrainingRouteResultEnvelope,
-  type GemmaRunState,
-  type GemmaTrainingRouteResultEnvelope,
-} from '../src/utils/gemmaTraining.js'
+  finalizeQTrainingRouteQueueCompletion,
+  getQTrainingRouteQueueDisplayStatus,
+  getQTrainingRouteQueueEntry,
+  getQTrainingRouteQueueStatusSummary,
+  getLatestQTrainingSnapshot,
+  readQRunState,
+  readQTrainingRegistry,
+  readQTrainingRouteManifest,
+  resolveQTrainingRoutePath,
+  upsertQTrainingRegistryEntry,
+  verifyQTrainingRouteResultEnvelope,
+  type QRunState,
+  type QTrainingRouteResultEnvelope,
+} from '../src/utils/qTraining.js'
 
 type CliOptions = {
   root: string | null
@@ -24,7 +24,7 @@ type CliOptions = {
   timeoutMs: number
 }
 
-export type GemmaTrainingRouteResultReconcileArgs = {
+export type QTrainingRouteResultReconcileArgs = {
   root?: string | null
   manifestPath?: string | null
   stateUrl?: string | null
@@ -32,14 +32,14 @@ export type GemmaTrainingRouteResultReconcileArgs = {
   timeoutMs?: number
 }
 
-export type GemmaTrainingRouteResultReconcileOutcome = {
+export type QTrainingRouteResultReconcileOutcome = {
   runId: string
   status: 'completed' | 'failed' | 'pending'
   stateUrl: string
-  verification?: ReturnType<typeof verifyGemmaTrainingRouteResultEnvelope>
-  queueEntry?: ReturnType<typeof getGemmaTrainingRouteQueueEntry>
+  verification?: ReturnType<typeof verifyQTrainingRouteResultEnvelope>
+  queueEntry?: ReturnType<typeof getQTrainingRouteQueueEntry>
   runStatePath?: string
-  routeQueueDisplayStatus?: ReturnType<typeof getGemmaTrainingRouteQueueDisplayStatus>
+  routeQueueDisplayStatus?: ReturnType<typeof getQTrainingRouteQueueDisplayStatus>
   routeQueueSummary?: string
   httpStatus?: number | null
   details?: unknown
@@ -89,7 +89,7 @@ function parseArgs(argv: string[]): CliOptions {
 function printHelpAndExit(): never {
   console.log(
     [
-      'Usage: bun scripts/poll-gemma4-route-result.ts [options]',
+      'Usage: bun scripts/poll-q-route-result.ts [options]',
       '',
       'Options:',
       '  --root <path>         Root directory for route artifacts',
@@ -104,7 +104,7 @@ function printHelpAndExit(): never {
 }
 
 function resolveManifestPathFromLatest(root = process.cwd()): string | null {
-  const latestSnapshot = getLatestGemmaTrainingSnapshot(root)
+  const latestSnapshot = getLatestQTrainingSnapshot(root)
   const manifestPath = latestSnapshot?.state?.routeRequest?.manifestPath ?? null
   return manifestPath ? resolve(manifestPath) : null
 }
@@ -119,25 +119,25 @@ function writeJson(path: string, data: unknown): void {
 }
 
 function buildBaseRunState(args: {
-  current: GemmaRunState | null
+  current: QRunState | null
   manifestDir: string
-  manifest: ReturnType<typeof readGemmaTrainingRouteManifest>
+  manifest: ReturnType<typeof readQTrainingRouteManifest>
   status: 'completed' | 'failed'
   finishedAt: string
-  executionMode: GemmaRunState['executionMode']
-  queueEntry: ReturnType<typeof getGemmaTrainingRouteQueueEntry>
-  runStatePatch: Partial<GemmaRunState>
+  executionMode: QRunState['executionMode']
+  queueEntry: ReturnType<typeof getQTrainingRouteQueueEntry>
+  runStatePatch: Partial<QRunState>
 }): Record<string, unknown> {
   const trainFile =
     args.current?.trainFile ??
-    resolveGemmaTrainingRoutePath(
+    resolveQTrainingRoutePath(
       args.manifestDir,
       args.manifest.training.trainFile,
     )
   const evalFile =
     args.current?.evalFile ??
     (args.manifest.training.evalFile
-      ? resolveGemmaTrainingRoutePath(
+      ? resolveQTrainingRoutePath(
           args.manifestDir,
           args.manifest.training.evalFile,
         )
@@ -165,10 +165,10 @@ function buildBaseRunState(args: {
     routeRequest: args.current?.routeRequest ?? args.manifest.routeRequest,
     routeFailure: args.current?.routeFailure ?? null,
     routeQueue: args.queueEntry,
-    routeQueueDisplayStatus: getGemmaTrainingRouteQueueDisplayStatus(
+    routeQueueDisplayStatus: getQTrainingRouteQueueDisplayStatus(
       args.queueEntry,
     ),
-    routeQueueSummary: getGemmaTrainingRouteQueueStatusSummary(args.queueEntry),
+    routeQueueSummary: getQTrainingRouteQueueStatusSummary(args.queueEntry),
   }
   if (args.status === 'completed' && !('error' in args.runStatePatch)) {
     nextRunState.error = null
@@ -182,7 +182,7 @@ async function fetchResultEnvelope(args: {
   timeoutMs: number
   pollMs: number
 }): Promise<{
-  envelope: GemmaTrainingRouteResultEnvelope | null
+  envelope: QTrainingRouteResultEnvelope | null
   statusCode: number | null
   body: unknown
 }> {
@@ -217,7 +217,7 @@ async function fetchResultEnvelope(args: {
         isObjectRecord(parsed) &&
         isObjectRecord(parsed.payload) &&
         ('security' in parsed || 'payload' in parsed)
-          ? (parsed as GemmaTrainingRouteResultEnvelope)
+          ? (parsed as QTrainingRouteResultEnvelope)
           : null
 
       if (!envelope) {
@@ -247,9 +247,9 @@ async function fetchResultEnvelope(args: {
   }
 }
 
-export async function reconcileGemmaTrainingRouteResult(
-  args: GemmaTrainingRouteResultReconcileArgs,
-): Promise<GemmaTrainingRouteResultReconcileOutcome> {
+export async function reconcileQTrainingRouteResult(
+  args: QTrainingRouteResultReconcileArgs,
+): Promise<QTrainingRouteResultReconcileOutcome> {
   const root = args.root ?? process.cwd()
   const manifestPath =
     args.manifestPath ?? resolveManifestPathFromLatest(root)
@@ -259,19 +259,19 @@ export async function reconcileGemmaTrainingRouteResult(
     )
   }
 
-  const manifest = readGemmaTrainingRouteManifest(manifestPath)
+  const manifest = readQTrainingRouteManifest(manifestPath)
   const manifestDir = dirname(manifestPath)
-  const queueEntry = getGemmaTrainingRouteQueueEntry(manifest.runId, root)
+  const queueEntry = getQTrainingRouteQueueEntry(manifest.runId, root)
   const stateUrl =
     args.stateUrl?.trim() ||
     queueEntry?.dispatch?.remoteStateUrl?.trim() ||
     null
 
   if (!queueEntry || queueEntry.status !== 'dispatched' || !queueEntry.dispatch) {
-    throw new Error(`Gemma route ${manifest.runId} is not in a dispatched state.`)
+    throw new Error(`Q route ${manifest.runId} is not in a dispatched state.`)
   }
   if (!stateUrl) {
-    throw new Error(`Gemma route ${manifest.runId} has no remote state URL.`)
+    throw new Error(`Q route ${manifest.runId} has no remote state URL.`)
   }
 
   const polled = await fetchResultEnvelope({
@@ -291,7 +291,7 @@ export async function reconcileGemmaTrainingRouteResult(
     }
   }
 
-  const verification = verifyGemmaTrainingRouteResultEnvelope(polled.envelope)
+  const verification = verifyQTrainingRouteResultEnvelope(polled.envelope)
   const payload = polled.envelope.payload
   const workerId = queueEntry.dispatch.workerId ?? payload.workerId
 
@@ -323,7 +323,7 @@ export async function reconcileGemmaTrainingRouteResult(
     writeJson(join(manifestDir, 'metrics-summary.json'), payload.metricsSummary)
   }
 
-  const finalizedQueue = finalizeGemmaTrainingRouteQueueCompletion({
+  const finalizedQueue = finalizeQTrainingRouteQueueCompletion({
     runId: manifest.runId,
     workerId,
     executionId: payload.executionId,
@@ -339,7 +339,7 @@ export async function reconcileGemmaTrainingRouteResult(
     )
   }
 
-  const currentRunState = readGemmaRunState(manifestDir)
+  const currentRunState = readQRunState(manifestDir)
   const nextRunState = buildBaseRunState({
     current: currentRunState,
     manifestDir,
@@ -356,9 +356,9 @@ export async function reconcileGemmaTrainingRouteResult(
   writeJson(join(manifestDir, 'run-state.json'), nextRunState)
 
   const existingRegistry =
-    readGemmaTrainingRegistry(root).find(entry => entry.runId === manifest.runId) ??
+    readQTrainingRegistry(root).find(entry => entry.runId === manifest.runId) ??
     null
-  upsertGemmaTrainingRegistryEntry(
+  upsertQTrainingRegistryEntry(
     {
       runId: manifest.runId,
       status: payload.status,
@@ -375,11 +375,11 @@ export async function reconcileGemmaTrainingRouteResult(
       outputDir: manifestDir,
       trainFile:
         existingRegistry?.trainFile ??
-        resolveGemmaTrainingRoutePath(manifestDir, manifest.training.trainFile),
+        resolveQTrainingRoutePath(manifestDir, manifest.training.trainFile),
       evalFile:
         existingRegistry?.evalFile ??
         (manifest.training.evalFile
-          ? resolveGemmaTrainingRoutePath(
+          ? resolveQTrainingRoutePath(
               manifestDir,
               manifest.training.evalFile,
             )
@@ -411,16 +411,16 @@ export async function reconcileGemmaTrainingRouteResult(
     verification,
     queueEntry: finalizedQueue ?? undefined,
     runStatePath: join(manifestDir, 'run-state.json'),
-    routeQueueDisplayStatus: getGemmaTrainingRouteQueueDisplayStatus(
+    routeQueueDisplayStatus: getQTrainingRouteQueueDisplayStatus(
       finalizedQueue,
     ),
-    routeQueueSummary: getGemmaTrainingRouteQueueStatusSummary(finalizedQueue),
+    routeQueueSummary: getQTrainingRouteQueueStatusSummary(finalizedQueue),
   }
 }
 
 async function main() {
   const options = parseArgs(process.argv.slice(2))
-  const result = await reconcileGemmaTrainingRouteResult({
+  const result = await reconcileQTrainingRouteResult({
     root: options.root,
     manifestPath: options.manifestPath,
     stateUrl: options.stateUrl,

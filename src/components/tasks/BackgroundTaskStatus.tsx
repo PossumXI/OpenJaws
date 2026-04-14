@@ -21,7 +21,7 @@ import {
   summarizeImmaculateCrewWave,
 } from 'src/utils/immaculateHarness.js'
 import { countActiveDeferredTeammateLaunches } from 'src/utils/immaculateDeferredLaunches.js'
-import { buildGemmaTrainingRouteReceipt } from 'src/utils/gemmaTraining.js'
+import { buildQTrainingRouteReceipt } from 'src/utils/qTraining.js'
 import { Box, Text } from '../../ink.js'
 import {
   AGENT_COLOR_TO_THEME_COLOR,
@@ -167,8 +167,8 @@ export function BackgroundTaskStatus({
           tone: 'warning' as const,
         }
       : null
-  const gemmaRouteSummary = useMemo(
-    () => buildGemmaTrainingRouteReceipt({ compact: columns < 144 }),
+  const qRouteSummary = useMemo(
+    () => buildQTrainingRouteReceipt({ compact: columns < 144 }),
     [columns],
   )
 
@@ -216,8 +216,8 @@ export function BackgroundTaskStatus({
         {deferredSummary ? (
           <PressureSummaryText summary={deferredSummary} />
         ) : null}
-        {gemmaRouteSummary ? (
-          <PressureSummaryText summary={gemmaRouteSummary} />
+        {qRouteSummary ? (
+          <PressureSummaryText summary={qRouteSummary} />
         ) : null}
         <Text dimColor>
           {' '}
@@ -230,20 +230,20 @@ export function BackgroundTaskStatus({
   if (
     shouldHideTasksFooter(tasks ?? {}, showSpinnerTree) &&
     deferredLaunchCount === 0 &&
-    !gemmaRouteSummary
+    !qRouteSummary
   ) {
     return null
   }
 
-  if (runningTasks.length === 0 && deferredLaunchCount === 0 && !gemmaRouteSummary) {
+  if (runningTasks.length === 0 && deferredLaunchCount === 0 && !qRouteSummary) {
     return null
   }
 
   const pillLabel =
     runningTasks.length > 0
       ? `deck ${getPillLabel(runningTasks)}`
-      : gemmaRouteSummary
-        ? 'deck gemma'
+      : qRouteSummary
+        ? 'deck q'
         : 'deck queued'
   const showAggregatePressure =
     !(
@@ -257,7 +257,7 @@ export function BackgroundTaskStatus({
     deferredSummary?.tone ??
     burstSummary?.tone ??
     waveSummary?.tone ??
-    gemmaRouteSummary?.tone
+    qRouteSummary?.tone
 
   return (
     <>
@@ -274,8 +274,8 @@ export function BackgroundTaskStatus({
       {waveSummary ? <PressureSummaryText summary={waveSummary} /> : null}
       {burstSummary ? <PressureSummaryText summary={burstSummary} /> : null}
       {deferredSummary ? <PressureSummaryText summary={deferredSummary} /> : null}
-      {gemmaRouteSummary ? (
-        <PressureSummaryText summary={gemmaRouteSummary} />
+      {qRouteSummary ? (
+        <PressureSummaryText summary={qRouteSummary} />
       ) : null}
       {pillNeedsCta(runningTasks) ? (
         <Text dimColor> · {figures.arrowDown} inspect</Text>

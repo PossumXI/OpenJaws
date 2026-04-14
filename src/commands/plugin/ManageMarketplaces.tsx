@@ -627,13 +627,13 @@ export function ManageMarketplaces({
 
         {/* Processing indicator */}
         {isUpdating && <Box marginTop={1} flexDirection="column">
-            <Text color="claude">Updating marketplace…</Text>
+            <Text color="openjawsOcean">Updating marketplace…</Text>
             {progressMessage && <Text dimColor>{progressMessage}</Text>}
           </Box>}
 
         {/* Success message */}
         {!isUpdating && successMessage && <Box marginTop={1}>
-            <Text color="claude">{successMessage}</Text>
+            <Text color="openjawsOcean">{successMessage}</Text>
           </Box>}
 
         {/* Error message */}
@@ -713,9 +713,9 @@ export function ManageMarketplaces({
               <Box flexDirection="column" flexGrow={1}>
                 <Box flexDirection="row" gap={1}>
                   <Text bold strikethrough={state.pendingRemove} dimColor={state.pendingRemove}>
-                    {isOfficialMarketplace && <Text color="claude">✻ </Text>}
+                    {isOfficialMarketplace && <Text color="openjawsOcean">✻ </Text>}
                     {marketplaceLabel}
-                    {isOfficialMarketplace && <Text color="claude"> ✻</Text>}
+                    {isOfficialMarketplace && <Text color="openjawsOcean"> ✻</Text>}
                   </Text>
                   {indicators.length > 0 && <Text color="warning">[{indicators.join(', ')}]</Text>}
                 </Box>
@@ -750,7 +750,7 @@ export function ManageMarketplaces({
 
       {/* Processing indicator */}
       {isProcessing && <Box marginTop={1}>
-          <Text color="claude">Processing changes…</Text>
+          <Text color="openjawsOcean">Processing changes…</Text>
         </Box>}
 
       {/* Error display */}

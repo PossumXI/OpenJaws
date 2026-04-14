@@ -54,7 +54,7 @@ describe('buildOpenJawsSftSamples', () => {
           timestamp: '2026-04-11T15:01:05.000Z',
           message: {
             role: 'assistant',
-            model: 'gemma4:e4b',
+            model: 'q',
             content: [{ type: 'text', text: 'Auth failure is in the key load.' }],
           },
         },
@@ -80,7 +80,7 @@ describe('buildOpenJawsSftSamples', () => {
         transcriptPath: 'D:\\sessions\\demo.jsonl',
         userTimestamp: '2026-04-11T15:01:00.000Z',
         assistantTimestamp: '2026-04-11T15:01:05.000Z',
-        assistantModel: 'gemma4:e4b',
+        assistantModel: 'q',
         isSidechain: false,
       },
     })

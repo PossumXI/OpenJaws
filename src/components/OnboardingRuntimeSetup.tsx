@@ -28,7 +28,7 @@ type Props = {
   onDone: (skipOAuth: boolean) => void
 }
 
-function getInitialRuntimeChoice(oauthEnabled: boolean): RuntimeChoice {
+function getInitialRuntimeChoice(): RuntimeChoice {
   const currentModel = getInitialSettings().model
   const externalRef =
     typeof currentModel === 'string'
@@ -37,10 +37,7 @@ function getInitialRuntimeChoice(oauthEnabled: boolean): RuntimeChoice {
   if (externalRef) {
     return externalRef.provider
   }
-  if (oauthEnabled) {
-    return 'openjaws-account'
-  }
-  return 'openai'
+  return 'oci'
 }
 
 function buildRuntimeOptionDescription(
@@ -75,8 +72,8 @@ export function OnboardingRuntimeSetup({
   const [apiKeyCursorOffset, setApiKeyCursorOffset] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const initialRuntimeChoice = useMemo(
-    () => getInitialRuntimeChoice(oauthEnabled),
-    [oauthEnabled],
+    () => getInitialRuntimeChoice(),
+    [],
   )
 
   const runtimeOptions = useMemo<OptionWithDescription<RuntimeChoice>[]>(() => {
@@ -221,8 +218,8 @@ export function OnboardingRuntimeSetup({
         <Box width={76}>
           <Text dimColor>
             Pick the provider or account path you want OpenJaws to use first.
-            You can change it later in Settings &gt; Config &gt; Model or with
-            /provider.
+            Q on OCI is the default runtime path for fresh installs. You can
+            change it later in Settings &gt; Config &gt; Model or with /provider.
           </Text>
         </Box>
         <Select

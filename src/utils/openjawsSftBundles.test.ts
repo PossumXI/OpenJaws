@@ -22,7 +22,7 @@ function sample(
       transcriptPath: 'D:\\sessions\\demo.jsonl',
       userTimestamp: null,
       assistantTimestamp: null,
-      assistantModel: 'gemma4:e4b',
+      assistantModel: 'q',
       isSidechain: false,
     },
     tags,
@@ -58,7 +58,7 @@ describe('openjaws SFT bundles', () => {
   it('builds a bundle manifest with root and label file mappings', () => {
     const manifest = buildOpenJawsSftBundleManifest({
       bundleId: 'bundle-demo',
-      sourcePath: 'D:\\openjaws\\OpenJaws\\data\\sft\\openjaws-gemma4.jsonl',
+      sourcePath: 'D:\\openjaws\\OpenJaws\\data\\sft\\openjaws-q.jsonl',
       outDir: 'D:\\openjaws\\OpenJaws\\data\\sft\\prepared-demo',
       samples,
       preparedManifest: {

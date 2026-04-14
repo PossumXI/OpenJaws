@@ -2,10 +2,13 @@ import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { execa } from 'execa'
-import { readGemmaTrainingRouteWorkerRuntimeStatuses } from '../src/utils/gemmaTraining.js'
+import {
+  DEFAULT_Q_BASE_MODEL,
+  readQTrainingRouteWorkerRuntimeStatuses,
+} from '../src/utils/qTraining.js'
 
 function makeRoot(): string {
-  return mkdtempSync(join(tmpdir(), 'openjaws-gemma-worker-sync-failure-'))
+  return mkdtempSync(join(tmpdir(), 'openjaws-q-worker-sync-failure-'))
 }
 
 async function main() {
@@ -18,7 +21,7 @@ async function main() {
     const worker = await execa(
       'bun',
       [
-        'scripts/process-gemma4-routes.ts',
+        'scripts/process-q-routes.ts',
         '--root',
         routeRoot,
         '--watch',
@@ -34,7 +37,7 @@ async function main() {
         '--execution-endpoint',
         'https://dead-harness-box.example/execute',
         '--base-model',
-        'google/gemma-4-E4B-it',
+        DEFAULT_Q_BASE_MODEL,
         '--layer',
         'router-core',
         '--idle-exit-ms',
@@ -60,7 +63,7 @@ async function main() {
       harnessUrl?: string | null
       detail?: string | null
     }
-    const runtime = readGemmaTrainingRouteWorkerRuntimeStatuses(routeRoot)
+    const runtime = readQTrainingRouteWorkerRuntimeStatuses(routeRoot)
     const runtimeEntry = runtime.find(entry => entry.workerId === workerId) ?? null
 
     const ok =

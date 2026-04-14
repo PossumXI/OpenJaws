@@ -4,7 +4,6 @@
  * Handles downloading OpenJaws native binaries from various sources:
  * - Artifactory NPM packages
  * - GitHub Releases
- * - GCS bucket
  */
 
 import { feature } from 'bun:bundle'
@@ -19,70 +18,51 @@ import { toError } from '../errors.js'
 import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
 import { getFsImplementation } from '../fsOperations.js'
 import { logError } from '../log.js'
+import { getPublicReleaseDecision } from '../publicReleasePolicy.js'
 import {
   findGithubReleaseAsset,
   getGithubReleaseBinaryAssetName,
   getGithubReleaseByVersion,
   getGithubReleaseManifestAssetName,
-  getLatestVersionFromGithubRelease,
 } from '../publicReleaseSource.js'
+import { verifyReleaseManifestSignature } from '../releaseManifestSignature.js'
 import { sleep } from '../sleep.js'
 import { jsonStringify, writeFileSync_DEPRECATED } from '../slowOperations.js'
 import { getBinaryName, getPlatform } from './installer.js'
 
-const GCS_BUCKET_URL =
-  'https://storage.googleapis.com/openjaws-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/openjaws-releases'
 export const ARTIFACTORY_REGISTRY_URL =
   'https://artifactory.infra.ant.dev/artifactory/api/npm/npm-all/'
-
-function isLegacyPublicReleaseFallbackEnabled(): boolean {
-  return process.env.OPENJAWS_ALLOW_GCS_RELEASE_FALLBACK === '1'
-}
+const TRUSTED_GITHUB_RELEASE_HOSTS = new Set([
+  'github.com',
+  'objects.githubusercontent.com',
+  'github-releases.githubusercontent.com',
+])
 
 class GithubReleaseDownloadError extends Error {
-  constructor(
-    message: string,
-    readonly allowFallback: boolean,
-    options?: { cause?: unknown },
-  ) {
+  constructor(message: string, options?: { cause?: unknown }) {
     super(message, options)
     this.name = 'GithubReleaseDownloadError'
   }
 }
 
-function shouldFallbackFromGithubReleaseError(error: unknown): boolean {
-  if (error instanceof GithubReleaseDownloadError) {
-    return error.allowFallback
-  }
-
-  const message = error instanceof Error ? error.message : String(error)
-  if (message.includes('Checksum mismatch')) {
-    return false
-  }
-
-  if (axios.isAxiosError(error)) {
-    const status = error.response?.status
-    if (status !== undefined) {
-      return status >= 500 || status === 429
-    }
-    return (
-      error.code === 'ECONNABORTED' ||
-      error.code === 'ETIMEDOUT' ||
-      message.includes('timeout') ||
-      message.includes('network') ||
-      message.includes('ECONNRESET') ||
-      message.includes('ENOTFOUND') ||
-      message.includes('ECONNREFUSED')
+function assertTrustedGithubReleaseUrl(candidate: string): void {
+  let parsed: URL
+  try {
+    parsed = new URL(candidate)
+  } catch {
+    throw new GithubReleaseDownloadError(
+      `GitHub release asset URL is invalid: ${candidate}`,
     )
   }
 
-  return (
-    message.includes('timeout') ||
-    message.includes('network') ||
-    message.includes('ECONNRESET') ||
-    message.includes('ENOTFOUND') ||
-    message.includes('ECONNREFUSED')
-  )
+  if (
+    parsed.protocol !== 'https:' ||
+    !TRUSTED_GITHUB_RELEASE_HOSTS.has(parsed.hostname)
+  ) {
+    throw new GithubReleaseDownloadError(
+      `GitHub release asset URL is not from a trusted host: ${candidate}`,
+    )
+  }
 }
 
 export async function getLatestVersionFromArtifactory(
@@ -202,22 +182,20 @@ export async function getLatestVersion(
     return getLatestVersionFromArtifactory(npmTag)
   }
 
-  const githubVersion = await getLatestVersionFromGithubRelease(
-    channel,
-    getPlatform(),
-  )
-  if (githubVersion) {
-    return githubVersion
+  const decision = await getPublicReleaseDecision(channel, {
+    currentVersion: MACRO.VERSION,
+    platform: getPlatform(),
+  })
+  if (decision.status === 'eligible' && decision.version) {
+    return decision.version
   }
 
-  if (!isLegacyPublicReleaseFallbackEnabled()) {
-    throw new Error(
-      `No published GitHub Release is available for the ${channel} channel on ${getPlatform()}.`,
-    )
+  if (decision.status === 'held_back') {
+    logForDebugging(`Native installer: ${decision.summary}`)
+    return MACRO.VERSION
   }
 
-  // Fall back to GCS for external users
-  return getLatestVersionFromBinaryRepo(channel, GCS_BUCKET_URL)
+  throw new Error(decision.summary)
 }
 
 async function downloadVersionFromGithubRelease(
@@ -227,10 +205,7 @@ async function downloadVersionFromGithubRelease(
   const platform = getPlatform()
   const release = await getGithubReleaseByVersion(version)
   if (!release) {
-    throw new GithubReleaseDownloadError(
-      `GitHub release ${version} not found`,
-      false,
-    )
+    throw new GithubReleaseDownloadError(`GitHub release ${version} not found`)
   }
 
   const manifestAsset = findGithubReleaseAsset(
@@ -240,12 +215,12 @@ async function downloadVersionFromGithubRelease(
   if (!manifestAsset) {
     throw new GithubReleaseDownloadError(
       `GitHub release ${version} does not include a ${platform} manifest asset`,
-      false,
     )
   }
 
   let manifestResponse
   try {
+    assertTrustedGithubReleaseUrl(manifestAsset.browser_download_url)
     manifestResponse = await axios.get(manifestAsset.browser_download_url, {
       timeout: 10000,
       responseType: 'json',
@@ -253,7 +228,6 @@ async function downloadVersionFromGithubRelease(
   } catch (error) {
     throw new GithubReleaseDownloadError(
       `Failed to fetch GitHub manifest asset for ${version}: ${toError(error).message}`,
-      shouldFallbackFromGithubReleaseError(error),
       { cause: error },
     )
   }
@@ -265,12 +239,24 @@ async function downloadVersionFromGithubRelease(
         checksum?: string
       }
     >
+    signature?: {
+      algorithm?: string
+      keyId?: string
+      value?: string
+    }
+  }
+  const manifestSignature = verifyReleaseManifestSignature({
+    manifest: manifest as Record<string, unknown>,
+  })
+  if (!manifestSignature.valid) {
+    throw new GithubReleaseDownloadError(
+      `GitHub release ${version} manifest signature is invalid (${manifestSignature.reason ?? 'unknown'})`,
+    )
   }
   const platformInfo = manifest.platforms?.[platform]
   if (!platformInfo?.checksum) {
     throw new GithubReleaseDownloadError(
       `GitHub release ${version} manifest is missing checksum for ${platform}`,
-      false,
     )
   }
 
@@ -281,7 +267,6 @@ async function downloadVersionFromGithubRelease(
   if (!binaryAsset) {
     throw new GithubReleaseDownloadError(
       `GitHub release ${version} does not include a ${platform} binary asset`,
-      false,
     )
   }
 
@@ -291,6 +276,7 @@ async function downloadVersionFromGithubRelease(
 
   const binaryPath = join(stagingPath, getBinaryName(platform))
   try {
+    assertTrustedGithubReleaseUrl(binaryAsset.browser_download_url)
     await downloadAndVerifyBinary(
       binaryAsset.browser_download_url,
       platformInfo.checksum,
@@ -299,7 +285,6 @@ async function downloadVersionFromGithubRelease(
   } catch (error) {
     throw new GithubReleaseDownloadError(
       `Failed to fetch GitHub release binary for ${version}: ${toError(error).message}`,
-      shouldFallbackFromGithubReleaseError(error),
       { cause: error },
     )
   }
@@ -673,20 +658,8 @@ export async function downloadVersion(
     await downloadVersionFromGithubRelease(version, stagingPath)
     return 'binary'
   } catch (error) {
-    if (
-      !isLegacyPublicReleaseFallbackEnabled() ||
-      !shouldFallbackFromGithubReleaseError(error)
-    ) {
-      throw error
-    }
-    logForDebugging(
-      `GitHub release download failed for ${version}, falling back to GCS: ${error}`,
-    )
+    throw error
   }
-
-  // Fall back to GCS for external users
-  await downloadVersionFromBinaryRepo(version, stagingPath, GCS_BUCKET_URL)
-  return 'binary'
 }
 
 // Exported for testing

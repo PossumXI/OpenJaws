@@ -1295,6 +1295,10 @@ export function REPL({
     if (sticky) {
       onRepin();
     } else {
+      // Manual transcript scroll exits message-action selection. Keeping an
+      // old selected row alive here lets later rerenders snap the viewport
+      // back to that row, which reads like scroll instantly jumping to top.
+      setCursor(null);
       onScrollAway(handle);
       if (feature('KAIROS')) maybeLoadOlder(handle);
       // Dismiss the companion bubble on scroll — it's absolute-positioned
@@ -1307,7 +1311,7 @@ export function REPL({
         });
       }
     }
-  }, [onRepin, onScrollAway, maybeLoadOlder, setAppState]);
+  }, [onRepin, onScrollAway, maybeLoadOlder, setAppState, setCursor]);
   // Deferred SessionStart hook messages — REPL renders immediately and
   // hook messages are injected when they resolve. awaitPendingHooks()
   // must be called before the first API call so the model sees hook context.

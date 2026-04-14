@@ -3,47 +3,53 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
-  buildGemmaTrainingRouteDispatchEnvelope,
-  buildGemmaTrainingRouteResultEnvelope,
-  buildGemmaTrainingRouteManifest,
-  claimGemmaTrainingRouteQueueEntry,
-  claimNextQueuedGemmaTrainingRoute,
-  finalizeGemmaTrainingRouteQueueCompletion,
-  finalizeGemmaTrainingRouteQueueDispatch,
-  evaluateGemmaTrainingPreflight,
-  getNextGemmaTrainingRoutePendingRemoteResult,
-  getGemmaTrainingRouteQueueEntry,
-  getGemmaTrainingRouteWorker,
-  getLatestGemmaTrainingSnapshot,
-  getNextQueuedGemmaTrainingRoute,
-  isGemmaTrainingRouteQueueClaimExpired,
-  isGemmaTrainingRouteQueuePendingRemoteResult,
-  readGemmaTrainingRouteWorkers,
-  readGemmaTrainingRouteWorkerRuntimeStatuses,
-  readGemmaTrainingRegistry,
-  reapStaleGemmaTrainingRouteQueueClaims,
-  reapStaleGemmaTrainingRouteWorkers,
-  releaseGemmaTrainingRouteQueueClaim,
-  relativizeGemmaTrainingFileIntegrity,
-  removeGemmaTrainingRouteWorkerRuntimeStatus,
-  removeGemmaTrainingRouteWorker,
-  renewGemmaTrainingRouteQueueClaim,
-  resolveGemmaTrainingRoutePath,
-  stageGemmaTrainingRouteFile,
-  updateGemmaTrainingRouteQueueClaim,
-  upsertGemmaTrainingRouteQueueEntry,
-  upsertGemmaTrainingRegistryEntry,
-  upsertGemmaTrainingRouteWorkerRuntimeStatus,
-  upsertGemmaTrainingRouteWorker,
-  verifyGemmaTrainingRouteManifest,
-  verifyGemmaTrainingRouteDispatchEnvelope,
-  verifyGemmaTrainingRouteResultEnvelope,
-  verifyGemmaTrainingRouteManifestIntegrity,
-  writeGemmaTrainingRegistry,
-  computeGemmaTrainingFileIntegrity,
-  buildGemmaTrainingRouteReceipt,
-  getGemmaTrainingRouteQueueStatusSummary,
-} from './gemmaTraining.js'
+  buildQTrainingRouteDispatchEnvelope,
+  buildQTrainingRouteResultEnvelope,
+  buildQTrainingRouteManifest,
+  claimQTrainingRouteQueueEntry,
+  claimNextQueuedQTrainingRoute,
+  finalizeQTrainingRouteQueueCompletion,
+  finalizeQTrainingRouteQueueDispatch,
+  evaluateQTrainingPreflight,
+  getNextQTrainingRoutePendingRemoteResult,
+  getQTrainingRouteQueueEntry,
+  getQTrainingRouteWorker,
+  getOpenJawsTrainingModelDisplay,
+  getOpenJawsTrainingModelLabel,
+  getLatestQTrainingSnapshot,
+  getNextQueuedQTrainingRoute,
+  isQTrainingRouteQueueClaimExpired,
+  isQTrainingRouteQueuePendingRemoteResult,
+  readQTrainingRouteWorkers,
+  readQTrainingRouteWorkerRuntimeStatuses,
+  readQTrainingRegistry,
+  Q_PRO_BASE_MODEL,
+  Q_SMOKE_BASE_MODEL,
+  Q_ULTRA_BASE_MODEL,
+  reapStaleQTrainingRouteQueueClaims,
+  reapStaleQTrainingRouteWorkers,
+  releaseQTrainingRouteQueueClaim,
+  relativizeQTrainingFileIntegrity,
+  removeQTrainingRouteWorkerRuntimeStatus,
+  removeQTrainingRouteWorker,
+  renewQTrainingRouteQueueClaim,
+  resolveQTrainingRoutePath,
+  stageQTrainingRouteFile,
+  updateQTrainingRouteQueueClaim,
+  upsertQTrainingRouteQueueEntry,
+  upsertQTrainingRegistryEntry,
+  upsertQTrainingRouteWorkerRuntimeStatus,
+  upsertQTrainingRouteWorker,
+  verifyQTrainingRouteManifest,
+  verifyQTrainingRouteDispatchEnvelope,
+  verifyQTrainingRouteResultEnvelope,
+  verifyQTrainingRouteManifestIntegrity,
+  writeQTrainingRegistry,
+  computeQTrainingFileIntegrity,
+  buildQTrainingRouteReceipt,
+  DEFAULT_Q_BASE_MODEL,
+  getQTrainingRouteQueueStatusSummary,
+} from './qTraining.js'
 
 const tempDirs: string[] = []
 
@@ -57,25 +63,37 @@ afterEach(() => {
 })
 
 function makeRoot(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'openjaws-gemma-training-'))
+  const dir = mkdtempSync(join(tmpdir(), 'openjaws-q-training-'))
   tempDirs.push(dir)
   return dir
 }
 
-describe('gemmaTraining registry', () => {
+describe('qTraining registry', () => {
+  it('maps upstream Q family checkpoints to Q display labels', () => {
+    expect(getOpenJawsTrainingModelLabel(Q_SMOKE_BASE_MODEL)).toBe(
+      'Q Lite',
+    )
+    expect(getOpenJawsTrainingModelLabel(DEFAULT_Q_BASE_MODEL)).toBe('Q')
+    expect(getOpenJawsTrainingModelLabel(Q_PRO_BASE_MODEL)).toBe('Q Pro')
+    expect(getOpenJawsTrainingModelLabel(Q_ULTRA_BASE_MODEL)).toBe('Q Ultra')
+    expect(getOpenJawsTrainingModelDisplay(DEFAULT_Q_BASE_MODEL)).toBe(
+      `Q · ${DEFAULT_Q_BASE_MODEL}`,
+    )
+  })
+
   it('upserts registry entries by run id', () => {
     const root = makeRoot()
 
-    upsertGemmaTrainingRegistryEntry(
+    upsertQTrainingRegistryEntry(
       {
         runId: 'run-1',
         status: 'launched',
         pid: 123,
         launchedAt: '2026-04-11T00:00:00.000Z',
-        outputDir: join(root, 'artifacts', 'gemma4-runs', 'run-1'),
+        outputDir: join(root, 'artifacts', 'q-runs', 'run-1'),
         trainFile: 'train.jsonl',
         evalFile: 'eval.jsonl',
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         selectedTags: ['coding'],
         selectedLanguages: ['typescript'],
         runName: 'demo',
@@ -88,16 +106,16 @@ describe('gemmaTraining registry', () => {
       root,
     )
 
-    upsertGemmaTrainingRegistryEntry(
+    upsertQTrainingRegistryEntry(
       {
         runId: 'run-1',
         status: 'running',
         pid: 456,
         launchedAt: '2026-04-11T00:00:00.000Z',
-        outputDir: join(root, 'artifacts', 'gemma4-runs', 'run-1'),
+        outputDir: join(root, 'artifacts', 'q-runs', 'run-1'),
         trainFile: 'train.jsonl',
         evalFile: 'eval.jsonl',
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         selectedTags: ['coding'],
         selectedLanguages: ['typescript'],
         runName: 'demo',
@@ -110,7 +128,7 @@ describe('gemmaTraining registry', () => {
       root,
     )
 
-    const entries = readGemmaTrainingRegistry(root)
+    const entries = readQTrainingRegistry(root)
     expect(entries).toHaveLength(1)
     expect(entries[0]?.status).toBe('running')
     expect(entries[0]?.pid).toBe(456)
@@ -118,8 +136,8 @@ describe('gemmaTraining registry', () => {
 
   it('reads the latest run snapshot and optional run-state file', async () => {
     const root = makeRoot()
-    const outputDir = join(root, 'artifacts', 'gemma4-runs', 'run-2')
-    writeGemmaTrainingRegistry(
+    const outputDir = join(root, 'artifacts', 'q-runs', 'run-2')
+    writeQTrainingRegistry(
       [
         {
           runId: 'run-2',
@@ -130,7 +148,7 @@ describe('gemmaTraining registry', () => {
           outputDir,
           trainFile: 'train.jsonl',
           evalFile: 'eval.jsonl',
-          baseModel: 'google/gemma-4-E4B-it',
+          baseModel: DEFAULT_Q_BASE_MODEL,
           selectedTags: ['agentic'],
           selectedLanguages: ['python'],
           runName: null,
@@ -143,21 +161,21 @@ describe('gemmaTraining registry', () => {
             decision: 'remote_required',
             reasonCode: 'insufficient_host_memory',
             summary: 'Local host memory too tight',
-            baseModel: 'google/gemma-4-E4B-it',
+            baseModel: DEFAULT_Q_BASE_MODEL,
             useCpu: true,
           },
           routeRequest: {
             route: 'immaculate',
             requestedAt: '2026-04-11T01:00:01.000Z',
-            target: 'gemma-train',
-            recommendedLayerId: 'ollama-reasoner-gemma4-e4b',
+            target: 'q-train',
+            recommendedLayerId: 'ollama-reasoner-q-e4b',
             manifestPath: join(outputDir, 'route-request.json'),
             controlStatus: 200,
             controlAccepted: true,
             controlSummary: 'accepted',
             harnessSnapshot: {
               harnessUrl: 'http://127.0.0.1:8787',
-              recommendedLayerId: 'ollama-reasoner-gemma4-e4b',
+              recommendedLayerId: 'ollama-reasoner-q-e4b',
               layerCount: 4,
               executionCount: 2,
               workerCount: 1,
@@ -167,7 +185,7 @@ describe('gemmaTraining registry', () => {
                 hostLabel: 'box-a',
                 executionProfile: 'remote',
                 assignedAt: '2026-04-11T01:00:01.000Z',
-                reason: 'remote-capable · layer ollama-reasoner-gemma4-e4b',
+                reason: 'remote-capable · layer ollama-reasoner-q-e4b',
               },
             },
             integrity: {
@@ -190,7 +208,7 @@ describe('gemmaTraining registry', () => {
     )
 
     mkdirSync(outputDir, { recursive: true })
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-2',
         manifestPath: join(outputDir, 'route-request.json'),
@@ -198,14 +216,14 @@ describe('gemmaTraining registry', () => {
         updatedAt: '2026-04-11T01:00:01.000Z',
         status: 'queued',
         assignmentAuthority: 'immaculate',
-        target: 'gemma-train',
-        recommendedLayerId: 'ollama-reasoner-gemma4-e4b',
+        target: 'q-train',
+        recommendedLayerId: 'ollama-reasoner-q-e4b',
         security: {
           algorithm: 'hmac-sha256',
           payloadSha256: 'payload-digest',
           signature: 'signature',
           signedAt: '2026-04-11T01:00:01.000Z',
-          secretSource: '~/.openjaws/gemma-route-secret',
+          secretSource: '~/.openjaws/q-route-secret',
         },
         assignment: {
           workerId: 'worker-remote-a',
@@ -214,7 +232,7 @@ describe('gemmaTraining registry', () => {
           executionProfile: 'remote',
           source: 'immaculate',
           assignedAt: '2026-04-11T01:00:01.000Z',
-          reason: 'remote-capable · layer ollama-reasoner-gemma4-e4b',
+          reason: 'remote-capable · layer ollama-reasoner-q-e4b',
         },
       },
       root,
@@ -226,7 +244,7 @@ describe('gemmaTraining registry', () => {
           status: 'route_requested',
           executionMode: 'immaculate_route_requested',
           pid: null,
-          baseModel: 'google/gemma-4-E4B-it',
+          baseModel: DEFAULT_Q_BASE_MODEL,
           trainFile: 'train.jsonl',
           evalFile: 'eval.jsonl',
           outputDir,
@@ -237,21 +255,21 @@ describe('gemmaTraining registry', () => {
             decision: 'remote_required',
             reasonCode: 'insufficient_host_memory',
             summary: 'Local host memory too tight',
-            baseModel: 'google/gemma-4-E4B-it',
+            baseModel: DEFAULT_Q_BASE_MODEL,
             useCpu: true,
           },
           routeRequest: {
             route: 'immaculate',
             requestedAt: '2026-04-11T01:00:01.000Z',
-            target: 'gemma-train',
-            recommendedLayerId: 'ollama-reasoner-gemma4-e4b',
+            target: 'q-train',
+            recommendedLayerId: 'ollama-reasoner-q-e4b',
             manifestPath: join(outputDir, 'route-request.json'),
             controlStatus: 200,
             controlAccepted: true,
             controlSummary: 'accepted',
             harnessSnapshot: {
               harnessUrl: 'http://127.0.0.1:8787',
-              recommendedLayerId: 'ollama-reasoner-gemma4-e4b',
+              recommendedLayerId: 'ollama-reasoner-q-e4b',
               layerCount: 4,
               executionCount: 2,
               workerCount: 1,
@@ -261,7 +279,7 @@ describe('gemmaTraining registry', () => {
                 hostLabel: 'box-a',
                 executionProfile: 'remote',
                 assignedAt: '2026-04-11T01:00:01.000Z',
-                reason: 'remote-capable · layer ollama-reasoner-gemma4-e4b',
+                reason: 'remote-capable · layer ollama-reasoner-q-e4b',
               },
             },
             integrity: {
@@ -284,7 +302,7 @@ describe('gemmaTraining registry', () => {
       )}\n`,
     )
 
-    const snapshot = getLatestGemmaTrainingSnapshot(root)
+    const snapshot = getLatestQTrainingSnapshot(root)
     expect(snapshot?.registry.runId).toBe('run-2')
     expect(snapshot?.state?.status).toBe('route_requested')
     expect(snapshot?.registry.executionMode).toBe('immaculate_route_requested')
@@ -296,7 +314,7 @@ describe('gemmaTraining registry', () => {
       'worker-remote-a',
     )
     expect(snapshot?.state?.routeRequest?.recommendedLayerId).toBe(
-      'ollama-reasoner-gemma4-e4b',
+      'ollama-reasoner-q-e4b',
     )
     expect(snapshot?.state?.routeRequest?.integrity?.trainFile.sha256).toBe(
       'train-digest',
@@ -306,10 +324,10 @@ describe('gemmaTraining registry', () => {
   })
 })
 
-describe('gemma route queue', () => {
+describe('q route queue', () => {
   it('upserts queue entries and returns the next queued route', () => {
     const root = makeRoot()
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-a',
         manifestPath: join(root, 'run-a', 'route-request.json'),
@@ -321,7 +339,7 @@ describe('gemma route queue', () => {
       },
       root,
     )
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-b',
         manifestPath: join(root, 'run-b', 'route-request.json'),
@@ -334,13 +352,13 @@ describe('gemma route queue', () => {
       root,
     )
 
-    expect(getGemmaTrainingRouteQueueEntry('run-a', root)?.status).toBe('queued')
-    expect(getNextQueuedGemmaTrainingRoute(root)?.runId).toBe('run-a')
+    expect(getQTrainingRouteQueueEntry('run-a', root)?.status).toBe('queued')
+    expect(getNextQueuedQTrainingRoute(root)?.runId).toBe('run-a')
   })
 
   it('claims queued routes exclusively and reclaims stale claims', () => {
     const root = makeRoot()
-    upsertGemmaTrainingRouteWorker(
+    upsertQTrainingRouteWorker(
       {
         workerId: 'worker-a',
         executionProfile: 'local',
@@ -355,7 +373,7 @@ describe('gemma route queue', () => {
       },
       root,
     )
-    upsertGemmaTrainingRouteWorker(
+    upsertQTrainingRouteWorker(
       {
         workerId: 'worker-b',
         executionProfile: 'local',
@@ -370,7 +388,7 @@ describe('gemma route queue', () => {
       },
       root,
     )
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-a',
         manifestPath: join(root, 'run-a', 'route-request.json'),
@@ -380,7 +398,7 @@ describe('gemma route queue', () => {
       },
       root,
     )
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-b',
         manifestPath: join(root, 'run-b', 'route-request.json'),
@@ -391,28 +409,28 @@ describe('gemma route queue', () => {
       root,
     )
 
-    const firstClaim = claimGemmaTrainingRouteQueueEntry({
+    const firstClaim = claimQTrainingRouteQueueEntry({
       runId: 'run-a',
       workerId: 'worker-a',
       root,
       claimedAt: '2026-04-12T12:00:02.000Z',
       claimTtlMs: 50,
     })
-    const secondClaim = claimGemmaTrainingRouteQueueEntry({
+    const secondClaim = claimQTrainingRouteQueueEntry({
       runId: 'run-b',
       workerId: 'worker-a',
       root,
       claimedAt: '2026-04-12T12:00:02.010Z',
       claimTtlMs: 500,
     })
-    const blockedClaim = claimGemmaTrainingRouteQueueEntry({
+    const blockedClaim = claimQTrainingRouteQueueEntry({
       runId: 'run-a',
       workerId: 'worker-c',
       root,
       claimedAt: '2026-04-12T12:00:02.020Z',
       claimTtlMs: 50,
     })
-    const recoveredClaim = claimGemmaTrainingRouteQueueEntry({
+    const recoveredClaim = claimQTrainingRouteQueueEntry({
       runId: 'run-a',
       workerId: 'worker-a',
       root,
@@ -425,7 +443,7 @@ describe('gemma route queue', () => {
     expect(blockedClaim).toBeNull()
     expect(recoveredClaim?.claim?.workerId).toBe('worker-a')
     expect(
-      isGemmaTrainingRouteQueueClaimExpired(
+      isQTrainingRouteQueueClaimExpired(
         recoveredClaim!,
         '2026-04-12T12:00:02.230Z',
       ),
@@ -434,7 +452,7 @@ describe('gemma route queue', () => {
 
   it('updates, releases, and dispatches worker-owned claims', () => {
     const root = makeRoot()
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-a',
         manifestPath: join(root, 'run-a', 'route-request.json'),
@@ -445,7 +463,7 @@ describe('gemma route queue', () => {
       root,
     )
 
-    const claim = claimGemmaTrainingRouteQueueEntry({
+    const claim = claimQTrainingRouteQueueEntry({
       runId: 'run-a',
       workerId: 'worker-a',
       root,
@@ -453,7 +471,7 @@ describe('gemma route queue', () => {
     })
     expect(claim?.status).toBe('claimed')
 
-    const verified = updateGemmaTrainingRouteQueueClaim({
+    const verified = updateQTrainingRouteQueueClaim({
       runId: 'run-a',
       workerId: 'worker-a',
       root,
@@ -465,14 +483,14 @@ describe('gemma route queue', () => {
         decision: 'allow_local',
         reasonCode: 'ok',
         summary: 'ready',
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         useCpu: true,
       },
     })
     expect(verified?.claim?.signatureVerified).toBe(true)
     expect(verified?.claim?.preflightDecision).toBe('allow_local')
 
-    const released = releaseGemmaTrainingRouteQueueClaim({
+    const released = releaseQTrainingRouteQueueClaim({
       runId: 'run-a',
       workerId: 'worker-a',
       root,
@@ -481,13 +499,13 @@ describe('gemma route queue', () => {
     expect(released?.status).toBe('queued')
     expect(released?.claim).toBeNull()
 
-    claimGemmaTrainingRouteQueueEntry({
+    claimQTrainingRouteQueueEntry({
       runId: 'run-a',
       workerId: 'worker-a',
       root,
       claimedAt: '2026-04-12T13:00:04.000Z',
     })
-    const dispatched = finalizeGemmaTrainingRouteQueueDispatch({
+    const dispatched = finalizeQTrainingRouteQueueDispatch({
       runId: 'run-a',
       workerId: 'worker-a',
       root,
@@ -511,7 +529,7 @@ describe('gemma route queue', () => {
     )
     expect(dispatched?.dispatch?.remoteExecutionId).toBe('remote-exec-1')
 
-    const completed = finalizeGemmaTrainingRouteQueueCompletion({
+    const completed = finalizeQTrainingRouteQueueCompletion({
       runId: 'run-a',
       workerId: 'worker-a',
       root,
@@ -527,12 +545,12 @@ describe('gemma route queue', () => {
     expect(completed?.dispatch?.remoteCompletionSummary).toBe(
       'remote execution completed',
     )
-    expect(getGemmaTrainingRouteQueueStatusSummary(completed)).toBe('completed')
+    expect(getQTrainingRouteQueueStatusSummary(completed)).toBe('completed')
   })
 
   it('renews active claims and reaps only stale claims', () => {
     const root = makeRoot()
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-live',
         manifestPath: join(root, 'run-live', 'route-request.json'),
@@ -542,7 +560,7 @@ describe('gemma route queue', () => {
       },
       root,
     )
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-stale',
         manifestPath: join(root, 'run-stale', 'route-request.json'),
@@ -553,14 +571,14 @@ describe('gemma route queue', () => {
       root,
     )
 
-    claimGemmaTrainingRouteQueueEntry({
+    claimQTrainingRouteQueueEntry({
       runId: 'run-live',
       workerId: 'worker-live',
       root,
       claimedAt: '2026-04-12T14:00:10.000Z',
       claimTtlMs: 1_000,
     })
-    claimGemmaTrainingRouteQueueEntry({
+    claimQTrainingRouteQueueEntry({
       runId: 'run-stale',
       workerId: 'worker-stale',
       root,
@@ -568,19 +586,19 @@ describe('gemma route queue', () => {
       claimTtlMs: 100,
     })
 
-    const renewed = renewGemmaTrainingRouteQueueClaim({
+    const renewed = renewQTrainingRouteQueueClaim({
       runId: 'run-live',
       workerId: 'worker-live',
       root,
       renewedAt: '2026-04-12T14:00:10.500Z',
       claimTtlMs: 2_000,
     })
-    const reaped = reapStaleGemmaTrainingRouteQueueClaims({
+    const reaped = reapStaleQTrainingRouteQueueClaims({
       root,
       now: '2026-04-12T14:00:10.700Z',
     })
-    const liveEntry = getGemmaTrainingRouteQueueEntry('run-live', root)
-    const staleEntry = getGemmaTrainingRouteQueueEntry('run-stale', root)
+    const liveEntry = getQTrainingRouteQueueEntry('run-live', root)
+    const staleEntry = getQTrainingRouteQueueEntry('run-stale', root)
 
     expect(renewed?.claim?.heartbeatAt).toBe('2026-04-12T14:00:10.500Z')
     expect(renewed?.claim?.leaseDurationMs).toBe(2_000)
@@ -592,7 +610,7 @@ describe('gemma route queue', () => {
 
   it('selects the oldest dispatched remote result pending for a worker', () => {
     const root = makeRoot()
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-pending-1',
         manifestPath: join(root, 'run-pending-1', 'route-request.json'),
@@ -616,7 +634,7 @@ describe('gemma route queue', () => {
       },
       root,
     )
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-pending-2',
         manifestPath: join(root, 'run-pending-2', 'route-request.json'),
@@ -640,7 +658,7 @@ describe('gemma route queue', () => {
       },
       root,
     )
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-complete',
         manifestPath: join(root, 'run-complete', 'route-request.json'),
@@ -666,12 +684,12 @@ describe('gemma route queue', () => {
       root,
     )
 
-    const next = getNextGemmaTrainingRoutePendingRemoteResult({
+    const next = getNextQTrainingRoutePendingRemoteResult({
       workerId: 'worker-remote-a',
       root,
     })
 
-    expect(isGemmaTrainingRouteQueuePendingRemoteResult(next, 'worker-remote-a')).toBe(
+    expect(isQTrainingRouteQueuePendingRemoteResult(next, 'worker-remote-a')).toBe(
       true,
     )
     expect(next?.runId).toBe('run-pending-1')
@@ -679,7 +697,7 @@ describe('gemma route queue', () => {
 
   it('assigns remote-required routes to the best active worker and enforces that claim', () => {
     const root = makeRoot()
-    upsertGemmaTrainingRouteWorker(
+    upsertQTrainingRouteWorker(
       {
         workerId: 'worker-remote-a',
         executionProfile: 'remote',
@@ -691,12 +709,12 @@ describe('gemma route queue', () => {
         leaseDurationMs: 300_000,
         watch: true,
         allowHostRisk: true,
-        supportedBaseModels: ['google/gemma-4-E4B-it'],
+        supportedBaseModels: [DEFAULT_Q_BASE_MODEL],
         preferredLayerIds: ['router-core'],
       },
       root,
     )
-    upsertGemmaTrainingRouteWorker(
+    upsertQTrainingRouteWorker(
       {
         workerId: 'worker-remote-b',
         executionProfile: 'remote',
@@ -708,13 +726,13 @@ describe('gemma route queue', () => {
         leaseDurationMs: 300_000,
         watch: true,
         allowHostRisk: true,
-        supportedBaseModels: ['google/gemma-4-E4B-it'],
+        supportedBaseModels: [DEFAULT_Q_BASE_MODEL],
         preferredLayerIds: ['other-layer'],
       },
       root,
     )
 
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-assigned',
         manifestPath: join(root, 'run-assigned', 'route-request.json'),
@@ -722,20 +740,20 @@ describe('gemma route queue', () => {
         updatedAt: '2026-04-12T16:00:05.000Z',
         status: 'queued',
         recommendedLayerId: 'router-core',
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         useCpu: true,
         requestedExecutionDecision: 'remote_required',
       },
       root,
     )
 
-    const assigned = getGemmaTrainingRouteQueueEntry('run-assigned', root)
-    const blockedClaim = claimNextQueuedGemmaTrainingRoute({
+    const assigned = getQTrainingRouteQueueEntry('run-assigned', root)
+    const blockedClaim = claimNextQueuedQTrainingRoute({
       workerId: 'worker-remote-b',
       root,
       claimedAt: '2026-04-12T16:00:10.000Z',
     })
-    const acceptedClaim = claimNextQueuedGemmaTrainingRoute({
+    const acceptedClaim = claimNextQueuedQTrainingRoute({
       workerId: 'worker-remote-a',
       root,
       claimedAt: '2026-04-12T16:00:10.100Z',
@@ -750,7 +768,7 @@ describe('gemma route queue', () => {
 
   it('does not assign a model-specific route to a worker with no declared base-model support', () => {
     const root = makeRoot()
-    upsertGemmaTrainingRouteWorker(
+    upsertQTrainingRouteWorker(
       {
         workerId: 'worker-remote-empty',
         executionProfile: 'remote',
@@ -768,7 +786,7 @@ describe('gemma route queue', () => {
       root,
     )
 
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-unmatched-worker',
         manifestPath: join(root, 'run-unmatched-worker', 'route-request.json'),
@@ -776,15 +794,15 @@ describe('gemma route queue', () => {
         updatedAt: '2026-04-12T16:10:05.000Z',
         status: 'queued',
         recommendedLayerId: 'router-core',
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         useCpu: true,
         requestedExecutionDecision: 'remote_required',
       },
       root,
     )
 
-    const entry = getGemmaTrainingRouteQueueEntry('run-unmatched-worker', root)
-    const claim = claimNextQueuedGemmaTrainingRoute({
+    const entry = getQTrainingRouteQueueEntry('run-unmatched-worker', root)
+    const claim = claimNextQueuedQTrainingRoute({
       workerId: 'worker-remote-empty',
       root,
       claimedAt: '2026-04-12T16:10:10.000Z',
@@ -796,7 +814,7 @@ describe('gemma route queue', () => {
 
   it('preserves an immaculate assignment instead of rebalancing it locally', () => {
     const root = makeRoot()
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-immaculate-assigned',
         manifestPath: join(root, 'run-immaculate-assigned', 'route-request.json'),
@@ -804,7 +822,7 @@ describe('gemma route queue', () => {
         updatedAt: '2026-04-12T16:30:00.000Z',
         status: 'queued',
         assignmentAuthority: 'immaculate',
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         requestedExecutionDecision: 'remote_required',
         assignment: {
           workerId: 'worker-harness-a',
@@ -818,7 +836,7 @@ describe('gemma route queue', () => {
       },
       root,
     )
-    upsertGemmaTrainingRouteWorker(
+    upsertQTrainingRouteWorker(
       {
         workerId: 'worker-local-b',
         executionProfile: 'remote',
@@ -830,13 +848,13 @@ describe('gemma route queue', () => {
         leaseDurationMs: 300_000,
         watch: true,
         allowHostRisk: true,
-        supportedBaseModels: ['google/gemma-4-E4B-it'],
+        supportedBaseModels: [DEFAULT_Q_BASE_MODEL],
         preferredLayerIds: ['router-core'],
       },
       root,
     )
 
-    const entry = getGemmaTrainingRouteQueueEntry('run-immaculate-assigned', root)
+    const entry = getQTrainingRouteQueueEntry('run-immaculate-assigned', root)
 
     expect(entry?.assignment?.workerId).toBe('worker-harness-a')
     expect(entry?.assignment?.source).toBe('immaculate')
@@ -845,7 +863,7 @@ describe('gemma route queue', () => {
 
   it('does not let an unassigned immaculate-authority route fall back to local claiming', () => {
     const root = makeRoot()
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-immaculate-unassigned',
         manifestPath: join(root, 'run-immaculate-unassigned', 'route-request.json'),
@@ -853,12 +871,12 @@ describe('gemma route queue', () => {
         updatedAt: '2026-04-12T16:40:00.000Z',
         status: 'queued',
         assignmentAuthority: 'immaculate',
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         requestedExecutionDecision: 'remote_required',
       },
       root,
     )
-    upsertGemmaTrainingRouteWorker(
+    upsertQTrainingRouteWorker(
       {
         workerId: 'worker-local-b',
         executionProfile: 'remote',
@@ -870,18 +888,18 @@ describe('gemma route queue', () => {
         leaseDurationMs: 300_000,
         watch: true,
         allowHostRisk: true,
-        supportedBaseModels: ['google/gemma-4-E4B-it'],
+        supportedBaseModels: [DEFAULT_Q_BASE_MODEL],
         preferredLayerIds: ['router-core'],
       },
       root,
     )
 
-    const claim = claimNextQueuedGemmaTrainingRoute({
+    const claim = claimNextQueuedQTrainingRoute({
       workerId: 'worker-local-b',
       root,
       claimedAt: '2026-04-12T16:40:02.000Z',
     })
-    const entry = getGemmaTrainingRouteQueueEntry('run-immaculate-unassigned', root)
+    const entry = getQTrainingRouteQueueEntry('run-immaculate-unassigned', root)
 
     expect(claim).toBeNull()
     expect(entry?.status).toBe('queued')
@@ -896,7 +914,7 @@ describe('gemma route queue', () => {
       'run-immaculate-manual',
       'route-request.json',
     )
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-immaculate-manual',
         manifestPath,
@@ -904,19 +922,19 @@ describe('gemma route queue', () => {
         updatedAt: '2026-04-12T16:50:00.000Z',
         status: 'queued',
         assignmentAuthority: 'immaculate',
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         requestedExecutionDecision: 'remote_required',
       },
       root,
     )
 
-    const claim = claimGemmaTrainingRouteQueueEntry({
+    const claim = claimQTrainingRouteQueueEntry({
       manifestPath,
       workerId: 'worker-manual',
       root,
       claimedAt: '2026-04-12T16:50:02.000Z',
     })
-    const entry = getGemmaTrainingRouteQueueEntry('run-immaculate-manual', root)
+    const entry = getQTrainingRouteQueueEntry('run-immaculate-manual', root)
 
     expect(claim?.runId).toBe('run-immaculate-manual')
     expect(claim?.claim?.workerId).toBe('worker-manual')
@@ -927,7 +945,7 @@ describe('gemma route queue', () => {
 
   it('summarizes an unassigned immaculate-authority route as pending assignment', () => {
     const root = makeRoot()
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-immaculate-summary',
         manifestPath: join(root, 'run-immaculate-summary', 'route-request.json'),
@@ -940,15 +958,15 @@ describe('gemma route queue', () => {
       root,
     )
 
-    const entry = getGemmaTrainingRouteQueueEntry('run-immaculate-summary', root)
+    const entry = getQTrainingRouteQueueEntry('run-immaculate-summary', root)
 
-    expect(getGemmaTrainingRouteQueueStatusSummary(entry)).toBe('pending assignment')
+    expect(getQTrainingRouteQueueStatusSummary(entry)).toBe('pending assignment')
   })
 
   it('builds a compact pending-assignment receipt from the latest routed snapshot', async () => {
     const root = makeRoot()
-    const outputDir = join(root, 'artifacts', 'gemma4-runs', 'run-route-receipt')
-    writeGemmaTrainingRegistry(
+    const outputDir = join(root, 'artifacts', 'q-runs', 'run-route-receipt')
+    writeQTrainingRegistry(
       [
         {
           runId: 'run-route-receipt',
@@ -959,7 +977,7 @@ describe('gemma route queue', () => {
           outputDir,
           trainFile: 'train.jsonl',
           evalFile: 'eval.jsonl',
-          baseModel: 'google/gemma-4-E4B-it',
+          baseModel: DEFAULT_Q_BASE_MODEL,
           selectedTags: ['agentic'],
           selectedLanguages: ['python'],
           runName: 'receipt-demo',
@@ -971,7 +989,7 @@ describe('gemma route queue', () => {
           routeRequest: {
             route: 'immaculate',
             requestedAt: '2026-04-11T01:00:01.000Z',
-            target: 'gemma-train',
+            target: 'q-train',
             recommendedLayerId: 'router-core',
             manifestPath: join(outputDir, 'route-request.json'),
             controlStatus: 200,
@@ -993,7 +1011,7 @@ describe('gemma route queue', () => {
       ],
       root,
     )
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-route-receipt',
         manifestPath: join(outputDir, 'route-request.json'),
@@ -1013,7 +1031,7 @@ describe('gemma route queue', () => {
           status: 'route_requested',
           executionMode: 'immaculate_route_requested',
           pid: null,
-          baseModel: 'google/gemma-4-E4B-it',
+          baseModel: DEFAULT_Q_BASE_MODEL,
           trainFile: 'train.jsonl',
           evalFile: 'eval.jsonl',
           outputDir,
@@ -1023,7 +1041,7 @@ describe('gemma route queue', () => {
           routeRequest: {
             route: 'immaculate',
             requestedAt: '2026-04-11T01:00:01.000Z',
-            target: 'gemma-train',
+            target: 'q-train',
             recommendedLayerId: 'router-core',
             manifestPath: join(outputDir, 'route-request.json'),
             controlStatus: 200,
@@ -1059,23 +1077,23 @@ describe('gemma route queue', () => {
       )}\n`,
     )
 
-    const receipt = buildGemmaTrainingRouteReceipt({
-      snapshot: getLatestGemmaTrainingSnapshot(root),
+    const receipt = buildQTrainingRouteReceipt({
+      snapshot: getLatestQTrainingSnapshot(root),
       compact: true,
     })
 
     expect(receipt).toEqual({
       displayStatus: 'pending_assignment',
-      text: 'gemma pending · router-core · 2w · 0h · 1s · 1f',
+      text: 'Q pending · router-core · 2w · 0h · 1s · 1f',
       tone: 'warning',
     })
   })
 })
 
-describe('gemma route workers', () => {
+describe('q route workers', () => {
   it('upserts and removes worker runtime sync statuses', () => {
     const root = makeRoot()
-    upsertGemmaTrainingRouteWorkerRuntimeStatus(
+    upsertQTrainingRouteWorkerRuntimeStatus(
       {
         workerId: 'worker-runtime-a',
         workerLabel: 'gpu-a',
@@ -1086,13 +1104,13 @@ describe('gemma route workers', () => {
         summary: 'Immaculate worker registration failed.',
         detail: 'ECONNREFUSED',
         harnessUrl: 'http://127.0.0.1:1',
-        supportedBaseModels: ['google/gemma-4-E4B-it'],
+        supportedBaseModels: [DEFAULT_Q_BASE_MODEL],
         preferredLayerIds: ['router-core'],
       },
       root,
     )
 
-    upsertGemmaTrainingRouteWorkerRuntimeStatus(
+    upsertQTrainingRouteWorkerRuntimeStatus(
       {
         workerId: 'worker-runtime-a',
         workerLabel: 'gpu-a',
@@ -1103,14 +1121,14 @@ describe('gemma route workers', () => {
         summary: 'Immaculate worker heartbeat synchronized.',
         detail: null,
         harnessUrl: 'http://127.0.0.1:8787',
-        supportedBaseModels: ['google/gemma-4-E4B-it'],
+        supportedBaseModels: [DEFAULT_Q_BASE_MODEL],
         preferredLayerIds: ['router-core'],
       },
       root,
     )
 
-    const statuses = readGemmaTrainingRouteWorkerRuntimeStatuses(root)
-    const removed = removeGemmaTrainingRouteWorkerRuntimeStatus(
+    const statuses = readQTrainingRouteWorkerRuntimeStatuses(root)
+    const removed = removeQTrainingRouteWorkerRuntimeStatus(
       'worker-runtime-a',
       root,
     )
@@ -1119,12 +1137,12 @@ describe('gemma route workers', () => {
     expect(statuses[0]?.status).toBe('ready')
     expect(statuses[0]?.harnessUrl).toBe('http://127.0.0.1:8787')
     expect(removed?.workerId).toBe('worker-runtime-a')
-    expect(readGemmaTrainingRouteWorkerRuntimeStatuses(root)).toHaveLength(0)
+    expect(readQTrainingRouteWorkerRuntimeStatuses(root)).toHaveLength(0)
   })
 
   it('registers workers, reaps stale workers, and clears orphaned assignments', () => {
     const root = makeRoot()
-    upsertGemmaTrainingRouteWorker(
+    upsertQTrainingRouteWorker(
       {
         workerId: 'worker-remote-a',
         executionProfile: 'remote',
@@ -1136,12 +1154,12 @@ describe('gemma route workers', () => {
         leaseDurationMs: 10_000,
         watch: true,
         allowHostRisk: false,
-        supportedBaseModels: ['google/gemma-4-E4B-it'],
+        supportedBaseModels: [DEFAULT_Q_BASE_MODEL],
         preferredLayerIds: ['router-core'],
       },
       root,
     )
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'run-worker-assignment',
         manifestPath: join(root, 'run-worker-assignment', 'route-request.json'),
@@ -1149,28 +1167,28 @@ describe('gemma route workers', () => {
         updatedAt: '2026-04-12T17:00:01.000Z',
         status: 'queued',
         recommendedLayerId: 'router-core',
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         requestedExecutionDecision: 'remote_required',
       },
       root,
     )
 
-    const beforeReap = getGemmaTrainingRouteQueueEntry(
+    const beforeReap = getQTrainingRouteQueueEntry(
       'run-worker-assignment',
       root,
     )
-    const registeredWorker = getGemmaTrainingRouteWorker('worker-remote-a', root)
-    const reaped = reapStaleGemmaTrainingRouteWorkers({
+    const registeredWorker = getQTrainingRouteWorker('worker-remote-a', root)
+    const reaped = reapStaleQTrainingRouteWorkers({
       root,
       now: '2099-04-12T17:00:11.000Z',
     })
-    const afterReap = getGemmaTrainingRouteQueueEntry(
+    const afterReap = getQTrainingRouteQueueEntry(
       'run-worker-assignment',
       root,
     )
 
     expect(registeredWorker?.workerLabel).toBe('gpu-a')
-    expect(readGemmaTrainingRouteWorkers(root)).toHaveLength(0)
+    expect(readQTrainingRouteWorkers(root)).toHaveLength(0)
     expect(beforeReap?.assignment?.workerId).toBe('worker-remote-a')
     expect(reaped).toHaveLength(0)
     expect(afterReap?.assignment).toBeNull()
@@ -1178,7 +1196,7 @@ describe('gemma route workers', () => {
 
   it('removes a worker explicitly from the registry', () => {
     const root = makeRoot()
-    upsertGemmaTrainingRouteWorker(
+    upsertQTrainingRouteWorker(
       {
         workerId: 'worker-local-a',
         executionProfile: 'local',
@@ -1194,18 +1212,18 @@ describe('gemma route workers', () => {
       root,
     )
 
-    const removed = removeGemmaTrainingRouteWorker('worker-local-a', root)
+    const removed = removeQTrainingRouteWorker('worker-local-a', root)
 
     expect(removed?.workerId).toBe('worker-local-a')
-    expect(readGemmaTrainingRouteWorkers(root)).toHaveLength(0)
+    expect(readQTrainingRouteWorkers(root)).toHaveLength(0)
   })
 })
 
-describe('evaluateGemmaTrainingPreflight', () => {
+describe('evaluateQTrainingPreflight', () => {
   it('blocks when the train split is missing', () => {
     const root = makeRoot()
-    const preflight = evaluateGemmaTrainingPreflight({
-      baseModel: 'google/gemma-4-E4B-it',
+    const preflight = evaluateQTrainingPreflight({
+      baseModel: DEFAULT_Q_BASE_MODEL,
       trainFile: join(root, 'missing-train.jsonl'),
       useCpu: true,
     })
@@ -1219,8 +1237,8 @@ describe('evaluateGemmaTrainingPreflight', () => {
     const trainFile = join(root, 'train.jsonl')
     writeFileSync(trainFile, '{"messages":[]}\n', 'utf8')
 
-    const preflight = evaluateGemmaTrainingPreflight({
-      baseModel: 'google/gemma-4-E4B-it',
+    const preflight = evaluateQTrainingPreflight({
+      baseModel: DEFAULT_Q_BASE_MODEL,
       trainFile,
       useCpu: true,
       modelBytes: 16 * 1024 ** 3,
@@ -1238,8 +1256,8 @@ describe('evaluateGemmaTrainingPreflight', () => {
     const trainFile = join(root, 'train.jsonl')
     writeFileSync(trainFile, '{"messages":[]}\n', 'utf8')
 
-    const preflight = evaluateGemmaTrainingPreflight({
-      baseModel: 'google/gemma-4-E2B-it',
+    const preflight = evaluateQTrainingPreflight({
+      baseModel: Q_SMOKE_BASE_MODEL,
       trainFile,
       useCpu: true,
       modelBytes: 10 * 1024 ** 3,
@@ -1250,12 +1268,31 @@ describe('evaluateGemmaTrainingPreflight', () => {
     expect(preflight.decision).toBe('allow_local')
     expect(preflight.reasonCode).toBe('ok')
   })
+
+  it('does not reject PATH-based python commands before host preflight runs', () => {
+    const root = makeRoot()
+    const trainFile = join(root, 'train.jsonl')
+    writeFileSync(trainFile, '{"messages":[]}\n', 'utf8')
+
+    const preflight = evaluateQTrainingPreflight({
+      baseModel: DEFAULT_Q_BASE_MODEL,
+      trainFile,
+      pythonPath: 'python',
+      useCpu: true,
+      modelBytes: 16 * 1024 ** 3,
+      availableMemoryBytes: 8 * 1024 ** 3,
+      totalMemoryBytes: 16 * 1024 ** 3,
+    })
+
+    expect(preflight.decision).toBe('remote_required')
+    expect(preflight.reasonCode).toBe('insufficient_host_memory')
+  })
 })
 
-describe('gemma route manifest security', () => {
+describe('q route manifest security', () => {
   it('signs and verifies a staged route manifest', () => {
     const root = makeRoot()
-    const manifestDir = join(root, 'artifacts', 'gemma4-runs', 'run-route')
+    const manifestDir = join(root, 'artifacts', 'q-runs', 'run-route')
     mkdirSync(manifestDir, { recursive: true })
 
     const trainSource = join(root, 'train-source.jsonl')
@@ -1263,23 +1300,23 @@ describe('gemma route manifest security', () => {
     writeFileSync(trainSource, '{"messages":[{"role":"user","content":"hi"}]}\n')
     writeFileSync(evalSource, '{"messages":[{"role":"assistant","content":"ok"}]}\n')
 
-    const stagedTrain = stageGemmaTrainingRouteFile({
+    const stagedTrain = stageQTrainingRouteFile({
       sourcePath: trainSource,
       manifestDir,
       relativePath: join('bundle', 'train.jsonl'),
     })
-    const stagedEval = stageGemmaTrainingRouteFile({
+    const stagedEval = stageQTrainingRouteFile({
       sourcePath: evalSource,
       manifestDir,
       relativePath: join('bundle', 'eval.jsonl'),
     })
 
-    const manifest = buildGemmaTrainingRouteManifest({
+    const manifest = buildQTrainingRouteManifest({
       runId: 'run-route',
       routeRequest: {
         route: 'immaculate',
         requestedAt: '2026-04-12T12:00:00.000Z',
-        target: 'gemma-train',
+        target: 'q-train',
         manifestPath: join(manifestDir, 'route-request.json'),
         controlStatus: 200,
         controlAccepted: true,
@@ -1306,7 +1343,7 @@ describe('gemma route manifest security', () => {
         },
       },
       training: {
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         runName: 'route-demo',
         trainFile: stagedTrain.path,
         evalFile: stagedEval.path,
@@ -1321,18 +1358,18 @@ describe('gemma route manifest security', () => {
         decision: 'remote_required',
         reasonCode: 'insufficient_host_memory',
         summary: 'remote box required',
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         useCpu: true,
       },
       env: {
-        OPENJAWS_GEMMA_ROUTE_SECRET: 'test-route-secret',
+        OPENJAWS_Q_ROUTE_SECRET: 'test-route-secret',
       } as NodeJS.ProcessEnv,
     })
 
-    const signature = verifyGemmaTrainingRouteManifest(manifest, {
+    const signature = verifyQTrainingRouteManifest(manifest, {
       secret: 'test-route-secret',
     })
-    const integrity = verifyGemmaTrainingRouteManifestIntegrity(
+    const integrity = verifyQTrainingRouteManifestIntegrity(
       manifest,
       manifestDir,
     )
@@ -1346,24 +1383,24 @@ describe('gemma route manifest security', () => {
 
   it('detects manifest tampering after signing', () => {
     const root = makeRoot()
-    const manifestDir = join(root, 'artifacts', 'gemma4-runs', 'run-route-tamper')
+    const manifestDir = join(root, 'artifacts', 'q-runs', 'run-route-tamper')
     mkdirSync(manifestDir, { recursive: true })
 
     const trainSource = join(root, 'train-source.jsonl')
     writeFileSync(trainSource, '{"messages":[{"role":"user","content":"hi"}]}\n')
 
-    const stagedTrain = stageGemmaTrainingRouteFile({
+    const stagedTrain = stageQTrainingRouteFile({
       sourcePath: trainSource,
       manifestDir,
       relativePath: join('bundle', 'train.jsonl'),
     })
 
-    const manifest = buildGemmaTrainingRouteManifest({
+    const manifest = buildQTrainingRouteManifest({
       runId: 'run-route-tamper',
       routeRequest: {
         route: 'immaculate',
         requestedAt: '2026-04-12T12:05:00.000Z',
-        target: 'gemma-train',
+        target: 'q-train',
         manifestPath: join(manifestDir, 'route-request.json'),
         integrity: {
           algorithm: 'sha256',
@@ -1372,7 +1409,7 @@ describe('gemma route manifest security', () => {
         },
       },
       training: {
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         runName: null,
         trainFile: stagedTrain.path,
         evalFile: null,
@@ -1385,16 +1422,16 @@ describe('gemma route manifest security', () => {
         decision: 'remote_required',
         reasonCode: 'insufficient_host_memory',
         summary: 'remote box required',
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         useCpu: true,
       },
       env: {
-        OPENJAWS_GEMMA_ROUTE_SECRET: 'test-route-secret',
+        OPENJAWS_Q_ROUTE_SECRET: 'test-route-secret',
       } as NodeJS.ProcessEnv,
     })
 
     manifest.training.selectedTags.push('security')
-    const signature = verifyGemmaTrainingRouteManifest(manifest, {
+    const signature = verifyQTrainingRouteManifest(manifest, {
       secret: 'test-route-secret',
     })
 
@@ -1407,7 +1444,7 @@ describe('gemma route manifest security', () => {
     const manifestDir = join(
       root,
       'artifacts',
-      'gemma4-runs',
+      'q-runs',
       'run-route-dispatch',
     )
     mkdirSync(manifestDir, { recursive: true })
@@ -1417,23 +1454,23 @@ describe('gemma route manifest security', () => {
     writeFileSync(trainSource, '{"messages":[{"role":"user","content":"hi"}]}\n')
     writeFileSync(evalSource, '{"messages":[{"role":"assistant","content":"ok"}]}\n')
 
-    const stagedTrain = stageGemmaTrainingRouteFile({
+    const stagedTrain = stageQTrainingRouteFile({
       sourcePath: trainSource,
       manifestDir,
       relativePath: join('bundle', 'train.jsonl'),
     })
-    const stagedEval = stageGemmaTrainingRouteFile({
+    const stagedEval = stageQTrainingRouteFile({
       sourcePath: evalSource,
       manifestDir,
       relativePath: join('bundle', 'eval.jsonl'),
     })
 
-    const manifest = buildGemmaTrainingRouteManifest({
+    const manifest = buildQTrainingRouteManifest({
       runId: 'run-route-dispatch',
       routeRequest: {
         route: 'immaculate',
         requestedAt: '2026-04-12T12:10:00.000Z',
-        target: 'gemma-train',
+        target: 'q-train',
         manifestPath: join(manifestDir, 'route-request.json'),
         controlStatus: 200,
         controlAccepted: true,
@@ -1445,7 +1482,7 @@ describe('gemma route manifest security', () => {
         },
       },
       training: {
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         runName: 'route-dispatch-demo',
         trainFile: stagedTrain.path,
         evalFile: stagedEval.path,
@@ -1460,15 +1497,15 @@ describe('gemma route manifest security', () => {
         decision: 'remote_required',
         reasonCode: 'insufficient_host_memory',
         summary: 'remote box required',
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         useCpu: true,
       },
       env: {
-        OPENJAWS_GEMMA_ROUTE_SECRET: 'test-route-secret',
+        OPENJAWS_Q_ROUTE_SECRET: 'test-route-secret',
       } as NodeJS.ProcessEnv,
     })
 
-    const envelope = buildGemmaTrainingRouteDispatchEnvelope({
+    const envelope = buildQTrainingRouteDispatchEnvelope({
       manifest,
       manifestPath: join(manifestDir, 'route-request.json'),
       manifestDir,
@@ -1476,11 +1513,11 @@ describe('gemma route manifest security', () => {
       executionMode: 'immaculate_routed',
       dispatchedAt: '2026-04-12T12:11:00.000Z',
       env: {
-        OPENJAWS_GEMMA_ROUTE_SECRET: 'test-route-secret',
+        OPENJAWS_Q_ROUTE_SECRET: 'test-route-secret',
       } as NodeJS.ProcessEnv,
     })
 
-    const verification = verifyGemmaTrainingRouteDispatchEnvelope(envelope, {
+    const verification = verifyQTrainingRouteDispatchEnvelope(envelope, {
       secret: 'test-route-secret',
     })
 
@@ -1497,7 +1534,7 @@ describe('gemma route manifest security', () => {
     const manifestDir = join(
       root,
       'artifacts',
-      'gemma4-runs',
+      'q-runs',
       'run-route-dispatch-tamper',
     )
     mkdirSync(manifestDir, { recursive: true })
@@ -1505,18 +1542,18 @@ describe('gemma route manifest security', () => {
     const trainSource = join(root, 'train-source.jsonl')
     writeFileSync(trainSource, '{"messages":[{"role":"user","content":"hi"}]}\n')
 
-    const stagedTrain = stageGemmaTrainingRouteFile({
+    const stagedTrain = stageQTrainingRouteFile({
       sourcePath: trainSource,
       manifestDir,
       relativePath: join('bundle', 'train.jsonl'),
     })
 
-    const manifest = buildGemmaTrainingRouteManifest({
+    const manifest = buildQTrainingRouteManifest({
       runId: 'run-route-dispatch-tamper',
       routeRequest: {
         route: 'immaculate',
         requestedAt: '2026-04-12T12:15:00.000Z',
-        target: 'gemma-train',
+        target: 'q-train',
         manifestPath: join(manifestDir, 'route-request.json'),
         integrity: {
           algorithm: 'sha256',
@@ -1525,7 +1562,7 @@ describe('gemma route manifest security', () => {
         },
       },
       training: {
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         runName: null,
         trainFile: stagedTrain.path,
         evalFile: null,
@@ -1538,15 +1575,15 @@ describe('gemma route manifest security', () => {
         decision: 'remote_required',
         reasonCode: 'insufficient_host_memory',
         summary: 'remote box required',
-        baseModel: 'google/gemma-4-E4B-it',
+        baseModel: DEFAULT_Q_BASE_MODEL,
         useCpu: true,
       },
       env: {
-        OPENJAWS_GEMMA_ROUTE_SECRET: 'test-route-secret',
+        OPENJAWS_Q_ROUTE_SECRET: 'test-route-secret',
       } as NodeJS.ProcessEnv,
     })
 
-    const envelope = buildGemmaTrainingRouteDispatchEnvelope({
+    const envelope = buildQTrainingRouteDispatchEnvelope({
       manifest,
       manifestPath: join(manifestDir, 'route-request.json'),
       manifestDir,
@@ -1554,7 +1591,7 @@ describe('gemma route manifest security', () => {
       executionMode: 'immaculate_routed',
       dispatchedAt: '2026-04-12T12:16:00.000Z',
       env: {
-        OPENJAWS_GEMMA_ROUTE_SECRET: 'test-route-secret',
+        OPENJAWS_Q_ROUTE_SECRET: 'test-route-secret',
       } as NodeJS.ProcessEnv,
     })
 
@@ -1563,7 +1600,7 @@ describe('gemma route manifest security', () => {
       'utf8',
     ).toString('base64')
 
-    const verification = verifyGemmaTrainingRouteDispatchEnvelope(envelope, {
+    const verification = verifyQTrainingRouteDispatchEnvelope(envelope, {
       secret: 'test-route-secret',
     })
 
@@ -1572,7 +1609,7 @@ describe('gemma route manifest security', () => {
   })
 
   it('builds and verifies a signed remote result envelope', () => {
-    const envelope = buildGemmaTrainingRouteResultEnvelope({
+    const envelope = buildQTrainingRouteResultEnvelope({
       runId: 'run-route-result',
       manifestPath: 'route-request.json',
       workerId: 'worker-remote-a',
@@ -1591,7 +1628,7 @@ describe('gemma route manifest security', () => {
         evalLoss: 0.98,
       },
       runSummary: {
-        base_model: 'google/gemma-4-E4B-it',
+        base_model: DEFAULT_Q_BASE_MODEL,
         run_name: 'remote-result-demo',
       },
       metricsSummary: {
@@ -1603,11 +1640,11 @@ describe('gemma route manifest security', () => {
         },
       },
       env: {
-        OPENJAWS_GEMMA_ROUTE_SECRET: 'test-route-secret',
+        OPENJAWS_Q_ROUTE_SECRET: 'test-route-secret',
       } as NodeJS.ProcessEnv,
     })
 
-    const verification = verifyGemmaTrainingRouteResultEnvelope(envelope, {
+    const verification = verifyQTrainingRouteResultEnvelope(envelope, {
       secret: 'test-route-secret',
     })
 
@@ -1618,7 +1655,7 @@ describe('gemma route manifest security', () => {
   })
 
   it('detects tampering in a signed remote result envelope', () => {
-    const envelope = buildGemmaTrainingRouteResultEnvelope({
+    const envelope = buildQTrainingRouteResultEnvelope({
       runId: 'run-route-result-tamper',
       manifestPath: 'route-request.json',
       workerId: 'worker-remote-a',
@@ -1635,13 +1672,13 @@ describe('gemma route manifest security', () => {
       runSummary: null,
       metricsSummary: null,
       env: {
-        OPENJAWS_GEMMA_ROUTE_SECRET: 'test-route-secret',
+        OPENJAWS_Q_ROUTE_SECRET: 'test-route-secret',
       } as NodeJS.ProcessEnv,
     })
 
     envelope.payload.summary = 'tampered'
 
-    const verification = verifyGemmaTrainingRouteResultEnvelope(envelope, {
+    const verification = verifyQTrainingRouteResultEnvelope(envelope, {
       secret: 'test-route-secret',
     })
 

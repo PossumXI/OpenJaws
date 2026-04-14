@@ -3,14 +3,14 @@ import { execa } from 'execa'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
-  claimGemmaTrainingRouteQueueEntry,
-  getGemmaTrainingRouteQueueEntry,
-  reapStaleGemmaTrainingRouteQueueClaims,
-  upsertGemmaTrainingRouteQueueEntry,
-} from '../src/utils/gemmaTraining.js'
+  claimQTrainingRouteQueueEntry,
+  getQTrainingRouteQueueEntry,
+  reapStaleQTrainingRouteQueueClaims,
+  upsertQTrainingRouteQueueEntry,
+} from '../src/utils/qTraining.js'
 
 function makeRoot(): string {
-  return mkdtempSync(join(tmpdir(), 'openjaws-gemma-route-lease-'))
+  return mkdtempSync(join(tmpdir(), 'openjaws-q-route-lease-'))
 }
 
 function toMillis(timestamp: string | null | undefined): number | null {
@@ -25,7 +25,7 @@ async function main() {
   const launch = await execa(
     'bun',
     [
-      'scripts/launch-gemma4-train.ts',
+      'scripts/launch-q-train.ts',
       '--bundle-dir',
       'data\\sft\\audited-v2',
       '--run-name',
@@ -56,7 +56,7 @@ async function main() {
   const worker = await execa(
     'bun',
     [
-      'scripts/process-gemma4-routes.ts',
+      'scripts/process-q-routes.ts',
       '--manifest',
       manifestPath,
       '--allow-host-risk',
@@ -112,7 +112,7 @@ async function main() {
 
   const leaseRoot = makeRoot()
   try {
-    upsertGemmaTrainingRouteQueueEntry(
+    upsertQTrainingRouteQueueEntry(
       {
         runId: 'stale-run',
         manifestPath: join(leaseRoot, 'stale-run', 'route-request.json'),
@@ -122,18 +122,18 @@ async function main() {
       },
       leaseRoot,
     )
-    claimGemmaTrainingRouteQueueEntry({
+    claimQTrainingRouteQueueEntry({
       runId: 'stale-run',
       workerId: 'route-worker:stale',
       root: leaseRoot,
       claimedAt: '2026-04-12T15:00:10.000Z',
       claimTtlMs: 100,
     })
-    reapStaleGemmaTrainingRouteQueueClaims({
+    reapStaleQTrainingRouteQueueClaims({
       root: leaseRoot,
       now: '2026-04-12T15:00:10.300Z',
     })
-    const staleEntry = getGemmaTrainingRouteQueueEntry('stale-run', leaseRoot)
+    const staleEntry = getQTrainingRouteQueueEntry('stale-run', leaseRoot)
 
     const claimedAt = toMillis(
       workerJson.queueEntry?.claim?.claimedAt ?? runState.routeQueue?.claim?.claimedAt,

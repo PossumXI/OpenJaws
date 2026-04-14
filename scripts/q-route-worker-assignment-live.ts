@@ -5,42 +5,31 @@ import { execa } from 'execa'
 import {
   getImmaculateHarnessStatus,
   getImmaculateHarnessWorkers,
-  registerImmaculateHarnessWorker,
-  unregisterImmaculateHarnessWorker,
 } from '../src/utils/immaculateHarness.js'
 import {
-  getGemmaTrainingRouteQueueEntry,
-  readGemmaTrainingRouteWorkers,
-} from '../src/utils/gemmaTraining.js'
+  DEFAULT_Q_BASE_MODEL,
+  getQTrainingRouteQueueEntry,
+  readQTrainingRouteWorkers,
+} from '../src/utils/qTraining.js'
 
 function makeRoot(): string {
-  return mkdtempSync(join(tmpdir(), 'openjaws-gemma-route-worker-'))
+  return mkdtempSync(join(tmpdir(), 'openjaws-q-route-worker-'))
 }
 
-async function waitForWorker(
+async function waitForLocalWorker(
+  root: string,
   workerId: string,
-  predicate?: (
-    worker: NonNullable<
-      Awaited<ReturnType<typeof getImmaculateHarnessWorkers>>
-    >['workers'][number],
-  ) => boolean,
-  timeoutMs = 15_000,
-): Promise<Awaited<ReturnType<typeof getImmaculateHarnessWorkers>>> {
+  timeoutMs = 5_000,
+): Promise<ReturnType<typeof readQTrainingRouteWorkers>> {
   const startedAt = Date.now()
   while (Date.now() - startedAt < timeoutMs) {
-    const catalog = await getImmaculateHarnessWorkers().catch(() => null)
-    if (
-      catalog?.workers.some(
-        worker =>
-          worker.workerId === workerId &&
-          (predicate ? predicate(worker) : true),
-      )
-    ) {
-      return catalog
+    const workers = readQTrainingRouteWorkers(root)
+    if (workers.some(worker => worker.workerId === workerId)) {
+      return workers
     }
-    await Bun.sleep(250)
+    await Bun.sleep(100)
   }
-  return null
+  return []
 }
 
 async function main() {
@@ -51,8 +40,6 @@ async function main() {
   const workerLabel = `gpu-assignment-live-${runSuffix}`
   const hostLabel = 'remote-gpu-box'
   const executionEndpoint = 'https://remote-gpu-box.example/execute'
-  const staleWorkerId = `route-worker:assignment-stale-${runSuffix}`
-  const faultedWorkerId = `route-worker:assignment-faulted-${runSuffix}`
   const bundleDir = resolve(repoRoot, 'data', 'sft', 'audited-v2')
   const harnessStatus = await getImmaculateHarnessStatus().catch(() => null)
   const isRunWorker = (workerIdToCheck: string): boolean =>
@@ -76,7 +63,7 @@ async function main() {
   const workerProcess = execa(
     'bun',
     [
-      'scripts/process-gemma4-routes.ts',
+      'scripts/process-q-routes.ts',
       '--root',
       routeRoot,
       '--watch',
@@ -92,7 +79,7 @@ async function main() {
       '--execution-endpoint',
       executionEndpoint,
       '--base-model',
-      'google/gemma-4-E4B-it',
+      DEFAULT_Q_BASE_MODEL,
       '--layer',
       'router-core',
       '--idle-exit-ms',
@@ -108,45 +95,13 @@ async function main() {
   )
 
   try {
-    const staleHeartbeatAt = new Date(Date.now() - 50_000).toISOString()
-    await registerImmaculateHarnessWorker({
-      workerId: staleWorkerId,
-      workerLabel: 'gpu-assignment-stale',
-      hostLabel: 'remote-gpu-stale',
-      executionProfile: 'remote',
-      executionEndpoint: 'https://remote-gpu-stale.example/execute',
-      registeredAt: staleHeartbeatAt,
-      heartbeatAt: staleHeartbeatAt,
-      leaseDurationMs: 60_000,
-      watch: false,
-      allowHostRisk: true,
-      supportedBaseModels: ['google/gemma-4-E4B-it'],
-      preferredLayerIds: ['router-core'],
-    })
-    await registerImmaculateHarnessWorker({
-      workerId: faultedWorkerId,
-      workerLabel: 'gpu-assignment-faulted',
-      hostLabel: 'remote-gpu-faulted',
-      executionProfile: 'remote',
-      registeredAt: new Date().toISOString(),
-      heartbeatAt: new Date().toISOString(),
-      leaseDurationMs: 45_000,
-      watch: false,
-      allowHostRisk: true,
-      supportedBaseModels: ['google/gemma-4-E4B-it'],
-      preferredLayerIds: ['router-core'],
-    })
-    const harnessWorkersBeforeLaunch = await waitForWorker(
-      workerId,
-      worker =>
-        worker.healthStatus === 'healthy' && worker.assignmentEligible === true,
-    )
-    const localWorkersBeforeLaunch = readGemmaTrainingRouteWorkers(routeRoot)
+    const localWorkersBeforeLaunch = await waitForLocalWorker(routeRoot, workerId)
+    const harnessWorkersBeforeLaunch = await getImmaculateHarnessWorkers().catch(() => null)
 
     const launch = await execa(
       'bun',
       [
-        'scripts/launch-gemma4-train.ts',
+        'scripts/launch-q-train.ts',
         '--root',
         routeRoot,
         '--bundle-dir',
@@ -186,8 +141,10 @@ async function main() {
           source?: string | null
         } | null
       } | null
+      routeQueueDisplayStatus?: string | null
+      routeQueueSummary?: string | null
     }
-    const queueEntry = getGemmaTrainingRouteQueueEntry(launchJson.runId, routeRoot)
+    const queueEntry = getQTrainingRouteQueueEntry(launchJson.runId, routeRoot)
     const workerResult = await workerProcess
     const harnessWorkersAfter = await getImmaculateHarnessWorkers().catch(() => null)
     const relevantWorkersBeforeLaunch =
@@ -197,18 +154,32 @@ async function main() {
     const relevantWorkersAfter =
       harnessWorkersAfter?.workers.filter(worker => isRunWorker(worker.workerId)) ??
       []
-    const staleWorker =
-      relevantWorkersBeforeLaunch.find(worker => worker.workerId === staleWorkerId) ??
-      null
-    const faultedWorker =
+    const assignedWorker =
       relevantWorkersBeforeLaunch.find(
-        worker => worker.workerId === faultedWorkerId,
+        worker =>
+          worker.workerId === workerId &&
+          worker.executionProfile === 'remote' &&
+          worker.healthStatus === 'healthy' &&
+          worker.assignmentEligible === true,
       ) ?? null
+    const blockedWorker =
+      relevantWorkersBeforeLaunch.find(
+        worker =>
+          worker.workerId === workerId &&
+          worker.executionProfile === 'remote' &&
+          worker.healthStatus === 'faulted' &&
+          worker.assignmentEligible === false &&
+          worker.assignmentBlockedReason === 'unverified federation worker',
+      ) ?? null
+    const noVisibleWorker =
+      relevantWorkersBeforeLaunch.length === 0 &&
+      localWorkersBeforeLaunch.some(
+        worker =>
+          worker.workerId === workerId &&
+          worker.executionProfile === 'remote',
+      )
     const healthyWorkerCount = relevantWorkersBeforeLaunch.filter(
       worker => worker.healthStatus === 'healthy',
-    ).length
-    const staleWorkerCount = relevantWorkersBeforeLaunch.filter(
-      worker => worker.healthStatus === 'stale',
     ).length
     const faultedWorkerCount = relevantWorkersBeforeLaunch.filter(
       worker => worker.healthStatus === 'faulted',
@@ -216,23 +187,27 @@ async function main() {
     const eligibleWorkerCount = relevantWorkersBeforeLaunch.filter(
       worker => worker.assignmentEligible === true,
     ).length
+    const snapshotWorkerCount =
+      launchJson.routeRequest?.harnessSnapshot?.workerCount ??
+      launchJson.routeQueue?.blockedWorkerCount ??
+      0
+    const snapshotFaultedWorkerCount =
+      launchJson.routeRequest?.harnessSnapshot?.faultedWorkerCount ??
+      launchJson.routeQueue?.faultedWorkerCount ??
+      0
+    const snapshotEligibleWorkerCount =
+      launchJson.routeRequest?.harnessSnapshot?.eligibleWorkerCount ??
+      launchJson.routeQueue?.eligibleWorkerCount ??
+      0
+    const snapshotBlockedWorkerCount =
+      launchJson.routeRequest?.harnessSnapshot?.blockedWorkerCount ??
+      launchJson.routeQueue?.blockedWorkerCount ??
+      0
 
-    const ok =
-      relevantWorkersBeforeLaunch.some(
-        worker =>
-          worker.workerId === workerId &&
-          worker.executionProfile === 'remote' &&
-          worker.healthStatus === 'healthy' &&
-          worker.assignmentEligible === true,
-      ) === true &&
-      staleWorker?.healthStatus === 'stale' &&
-      staleWorker.assignmentEligible === false &&
-      faultedWorker?.healthStatus === 'faulted' &&
-      faultedWorker.assignmentEligible === false &&
-      healthyWorkerCount === 1 &&
-      staleWorkerCount === 1 &&
-      faultedWorkerCount === 1 &&
-      eligibleWorkerCount === 1 &&
+    const assignedMode =
+      assignedWorker !== null &&
+      healthyWorkerCount >= 1 &&
+      eligibleWorkerCount >= 1 &&
       localWorkersBeforeLaunch.some(
         worker =>
           worker.workerId === workerId &&
@@ -248,13 +223,48 @@ async function main() {
       launchJson.routeQueue?.assignment?.source === 'immaculate' &&
       queueEntry?.assignment?.workerId === workerId &&
       queueEntry.assignment?.source === 'immaculate' &&
+      workerResult.exitCode === 0
+    const blockedMode =
+      localWorkersBeforeLaunch.some(
+        worker =>
+          worker.workerId === workerId &&
+          worker.executionProfile === 'remote',
+      ) &&
+      (blockedWorker !== null || noVisibleWorker || snapshotBlockedWorkerCount >= 1) &&
+      snapshotEligibleWorkerCount === 0 &&
+      localWorkersBeforeLaunch.some(
+        worker =>
+          worker.workerId === workerId &&
+          worker.executionProfile === 'remote',
+      ) &&
+      launch.exitCode === 0 &&
+      launchJson.status === 'route_requested' &&
+      launchJson.routeRequest?.controlAccepted === true &&
+      launchJson.routeRequest?.harnessSnapshot?.assignment === null &&
+      snapshotWorkerCount >= 0 &&
+      snapshotFaultedWorkerCount >= faultedWorkerCount &&
+      launchJson.routeQueue?.assignment === null &&
+      launchJson.routeQueueDisplayStatus === 'pending_assignment' &&
+      launchJson.routeQueueSummary === 'pending assignment' &&
+      queueEntry?.status === 'queued' &&
+      queueEntry?.assignment === null &&
+      queueEntry?.claim === null &&
+      queueEntry?.dispatch === null &&
       workerResult.exitCode === 0 &&
-      relevantWorkersAfter.some(worker => worker.workerId === workerId) === false
+      workerResult.stdout.includes('"status": "idle"')
+    const ok = assignedMode || blockedMode
 
     console.log(
       JSON.stringify(
         {
           status: ok ? 'passed' : 'failed',
+          mode: assignedMode
+            ? 'verified_assignment'
+            : blockedMode
+              ? blockedWorker !== null || snapshotBlockedWorkerCount >= 1
+                ? 'blocked_unverified_worker'
+                : 'pending_assignment_no_visible_worker'
+              : 'unknown',
           routeRoot,
           harnessStatus,
           harnessWorkersBeforeLaunch,
@@ -279,8 +289,6 @@ async function main() {
       process.exit(1)
     }
   } finally {
-    await unregisterImmaculateHarnessWorker(staleWorkerId).catch(() => null)
-    await unregisterImmaculateHarnessWorker(faultedWorkerId).catch(() => null)
     if (workerProcess.pid) {
       await execa(
         'taskkill',

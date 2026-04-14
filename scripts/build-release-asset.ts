@@ -6,6 +6,7 @@ import {
   getGithubReleaseManifestAssetName,
   getPublicGithubReleaseRepo,
 } from '../src/utils/publicReleaseSource.js'
+import { signReleaseManifestPayload } from '../src/utils/releaseManifestSignature.js'
 import { getOpenJawsReleaseVersion } from './releaseVersion.ts'
 
 type Args = {
@@ -88,6 +89,9 @@ const sourceBinaryPath = resolve(args.binary)
 const outDir = resolve(args.outDir)
 const assetName = getGithubReleaseBinaryAssetName(platform)
 const manifestName = getGithubReleaseManifestAssetName(platform)
+const signingPrivateKey = process.env.OPENJAWS_RELEASE_SIGNING_PRIVATE_KEY?.trim() || null
+const requireReleaseSignature =
+  process.env.OPENJAWS_REQUIRE_RELEASE_SIGNATURE === '1'
 
 await mkdir(outDir, { recursive: true })
 
@@ -97,7 +101,7 @@ const stats = await stat(sourceBinaryPath)
 
 await cp(sourceBinaryPath, join(outDir, assetName), { force: true })
 
-const manifest = {
+const unsignedManifest = {
   version,
   releasedAt: new Date().toISOString(),
   source: 'github_release',
@@ -111,6 +115,22 @@ const manifest = {
     },
   },
 }
+
+if (requireReleaseSignature && !signingPrivateKey) {
+  throw new Error(
+    'OPENJAWS_RELEASE_SIGNING_PRIVATE_KEY is required when OPENJAWS_REQUIRE_RELEASE_SIGNATURE=1',
+  )
+}
+
+const manifest = signingPrivateKey
+  ? {
+      ...unsignedManifest,
+      signature: signReleaseManifestPayload({
+        manifest: unsignedManifest,
+        privateKeyPem: signingPrivateKey,
+      }),
+    }
+  : unsignedManifest
 
 await Bun.write(
   join(outDir, manifestName),

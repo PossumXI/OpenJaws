@@ -15,11 +15,12 @@ import {
 export const BUILTIN_PROVIDER_DEFAULT_MODELS: Partial<
   Record<ExternalModelProvider, string>
 > = {
+  oci: 'Q',
   openai: 'gpt-5.4',
   gemini: 'gemini-3-flash-preview',
   codex: 'gpt-5.4',
   minimax: 'MiniMax-M2.7',
-  ollama: 'gemma4:e4b',
+  ollama: 'q',
 }
 
 export type AppStateUpdater = (updater: (prev: AppState) => AppState) => void
@@ -28,6 +29,9 @@ export function normalizeExternalProvider(
   input: string,
 ): ExternalModelProvider | null {
   const provider = input.trim().toLowerCase()
+  if (provider === 'q') {
+    return 'oci'
+  }
   return isExternalModelProvider(provider) ? provider : null
 }
 

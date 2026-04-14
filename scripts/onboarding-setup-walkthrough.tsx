@@ -52,7 +52,7 @@ async function startHarnessServer(): Promise<{
 
     if (req.url === '/api/intelligence') {
       writeJson(200, {
-        layers: [{ id: 'router-core' }, { id: 'ollama-mid-gemma4-e4b' }],
+        layers: [{ id: 'router-core' }, { id: 'ollama-mid-q-e4b' }],
         executions: [{ id: 'startup-check' }],
         recommendedLayerId: 'router-core',
       })
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
   const harness = await startHarnessServer()
 
   process.env.CLAUDE_CONFIG_DIR = tempConfigDir
-  process.env.ANTHROPIC_MODEL = 'openai:gpt-5.4'
+  process.env.ANTHROPIC_MODEL = 'oci:Q'
   process.env.IMMACULATE_HARNESS_URL = harness.url
 
   try {
@@ -159,7 +159,7 @@ async function main(): Promise<void> {
       readFrame,
       frame =>
         frame.includes('Choose your runtime path') &&
-        frame.includes('OpenAI'),
+        (frame.includes('OCI') || frame.includes('OpenAI')),
       WALKTHROUGH_TIMEOUT_MS,
       'Onboarding walkthrough did not reach the runtime setup step',
     )
@@ -168,7 +168,9 @@ async function main(): Promise<void> {
 
     const modelFrame = await waitForFrame(
       readFrame,
-      frame => frame.includes('OpenAI model'),
+      frame =>
+        (frame.includes('OCI model') || frame.includes('OpenAI model')) &&
+        frame.includes('Enter to continue with this model.'),
       WALKTHROUGH_TIMEOUT_MS,
       'Onboarding walkthrough did not reach the provider model step',
     )
@@ -178,14 +180,14 @@ async function main(): Promise<void> {
     const keyOrImmaculateFrame = await waitForFrame(
       readFrame,
       frame =>
-        frame.includes('OpenAI API key') ||
+        frame.includes('API key') ||
         (frame.includes('Immaculate reachability') &&
           frame.includes('immaculate online')),
       WALKTHROUGH_TIMEOUT_MS,
       'Onboarding walkthrough did not advance from model selection',
     )
 
-    if (keyOrImmaculateFrame.includes('OpenAI API key')) {
+    if (keyOrImmaculateFrame.includes('API key')) {
       recordStep('provider-key', keyOrImmaculateFrame)
       stdin.write('sk-openjaws-onboarding-test')
       stdin.write('\r')

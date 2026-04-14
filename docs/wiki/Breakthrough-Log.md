@@ -3,10 +3,12 @@
 ## Current Notable Working Areas
 
 - Flight-deck TUI with stronger branding and operator visibility
+- FIGlet-style ASCII banner and ocean-deck shark branding in the TUI, repo root, and wiki home
 - OpenCheek deferred launch queue, inspectable crew summaries, and burst budgeting
 - Immaculate as default orchestration context, not a bolt-on
-- Signed Gemma route manifests, queue state, worker capability assignment, remote dispatch, and signed terminal results
+- Signed `Q` route manifests, queue state, worker capability assignment, remote dispatch, and signed terminal results
 - Live system harness verification covering dispatch, completion, settings walkthrough, and queue safety
+- Public release/update policy with fail-closed GitHub Releases, staged rollout, and first-run provider/Immaculate setup
 
 ## Why These Matter
 

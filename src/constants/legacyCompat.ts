@@ -1,4 +1,17 @@
 export const LEGACY_CLI_NAME = ['cl', 'aude'].join('',) as 'claude'
+export const LEGACY_DESKTOP_PROTOCOL = LEGACY_CLI_NAME
+export const LEGACY_DESKTOP_DEV_PROTOCOL = [
+  LEGACY_CLI_NAME,
+  '-dev',
+].join('') as 'claude-dev'
+export const LEGACY_DESKTOP_MAC_APP_NAME = ['Cl', 'aude.app'].join(
+  '',
+) as 'Claude.app'
+export const LEGACY_DESKTOP_LINUX_SCHEME_HANDLER = [
+  'x-scheme-handler/',
+  LEGACY_DESKTOP_PROTOCOL,
+].join('') as 'x-scheme-handler/claude'
+export const LEGACY_DESKTOP_WINDOWS_PROTOCOL_CLASS = LEGACY_DESKTOP_PROTOCOL
 
 export const LEGACY_SUBSCRIPTION_LOGIN_METHOD = ['cl', 'audeai'].join(
   '',
