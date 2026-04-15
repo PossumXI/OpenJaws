@@ -56,8 +56,22 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 - audited bundles now emit pack-ready `bundle-manifest.json` data for `all`, `coding`, `agentic`, `security`, and `general`
 - `bun run q:bridgebench` runs eval-only local pack checks and writes Rewardkit-style `reward.json` receipts
 - `bun run q:curriculum` runs bounded specialization passes and benchmarks those adapters back against the audited packs
+- `bun run q:hybrid` coordinates one bounded local lane and one Immaculate-routed lane under one receipt
+- `bun run q:terminalbench` adds a Harbor / Terminal-Bench adapter lane for external terminal-task evaluation
+- `Q` training and benchmark receipts now record W&B readiness so live logging state is visible instead of guessed
+- the Windows OCI bridge now stages larger payloads through temp files so `q:terminalbench --dry-run` can prove Harbor, Docker, and the local OCI-backed OpenJaws lane are actually ready instead of dying on argv length
+- the repo now carries a scheduled `Q Benchmark Soak` GitHub workflow that emits sample benchmark, hybrid, and Terminal-Bench dry-run receipts as artifacts
 
 This is useful for tuning and honest before/after comparison. It is not a replacement for the public Immaculate benchmark source or a fake Harbor / Terminal-Bench leaderboard claim.
+
+This pass also tightens the public `Q` runtime story:
+
+- OCI-backed `Q` one-shot surfaces now share a single OCI bridge path for both bearer-key and internal IAM auth
+- `/provider test oci Q` now targets the OCI responses lane instead of pretending OCI is a generic `/models` endpoint
+- the docs now separate downloaded public installs, internal IAM operator surfaces, and any future hosted paid-`Q` service boundary more explicitly
+- the repo now includes a Netlify-ready Next.js `website/` surface for public Q signup, plans, Stripe checkout, API keys, credits, and usage UI
+- that website lane can exercise a local filesystem-backed hosted-Q demo flow during development while still failing closed in production when no real backend is attached
+- `https://qline.site` is now the canonical public hosted-Q domain and serves valid HTTPS, with Stripe webhook traffic intended for `/api/webhooks/stripe`
 
 ## What Is Planned Next
 

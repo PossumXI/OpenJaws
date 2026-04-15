@@ -23,11 +23,24 @@ OCEAN-BLUE SHELL // OPENCHEEK CREW // ROUTED TOOLS
 
 GitHub renders the banner monochrome. The live TUI renders the same banner with a six-stop gold-to-deep-ocean truecolor gradient, darker deck trim, and shark-stage shading.
 
+```text
+   ___  
+  / _ \ 
+ | (_) |
+  \__\_\
+
+Q // OPENCHEEK COMMAND MARK
+```
+
+The Q mark above is sourced from `src/components/LogoV2/qMarkData.ts` and can be re-exported with `bun run qmark:export`.
+
 ## Start Here
 
 - [Wiki Home](docs/wiki/Home.md)
 - [Install and Updates](docs/wiki/Install-and-Updates.md)
 - [Q and OCI Setup](docs/wiki/Q-and-OCI-Setup.md)
+- [Q Access and Limits](docs/wiki/Q-Access-and-Limits.md)
+- [website/README.md](website/README.md)
 - [Release and Update Policy](docs/wiki/Release-and-Update-Policy.md)
 - [Features and Capabilities](docs/wiki/Features-and-Capabilities.md)
 - [Immaculate Integration](docs/wiki/Immaculate-Integration.md)
@@ -169,11 +182,12 @@ Fresh installs also get a first-run setup flow inside the TUI. It helps you pick
 Recommended first-run checklist:
 
 1. Start OpenJaws.
-2. If you are staying on the public default runtime, store your `OCI` key with `/provider key oci <api-key>` or set `Q_API_KEY`, `OCI_API_KEY`, or `OCI_GENAI_API_KEY`.
-3. Run `/provider test oci Q` to confirm the selected `OCI:Q` path is reachable.
-4. Run `/provider` if you want to switch away from `OCI:Q`, rotate keys, or override the base URL.
-5. Run `/status` and confirm runtime, sandbox, route queue, voice state, provider wiring, and the latest reachability receipt.
-6. Run `/immaculate status` if you want to inspect orchestration state before heavy work.
+2. If you are staying on the public default runtime, bring your own `OCI` Generative AI key with `/provider key oci <api-key>` or set `Q_API_KEY`, `OCI_API_KEY`, or `OCI_GENAI_API_KEY`.
+3. If you are running an internal operator surface, you can also use OCI IAM by setting `OCI_CONFIG_FILE`, `OCI_PROFILE`, `OCI_COMPARTMENT_ID`, `OCI_GENAI_PROJECT_ID`, and an upstream `Q_MODEL`.
+4. Run `/provider test oci Q` to confirm the selected `OCI:Q` path is reachable.
+5. Run `/provider` if you want to switch away from `OCI:Q`, rotate keys, or override the base URL.
+6. Run `/status` and confirm runtime, sandbox, route queue, voice state, provider wiring, and the latest reachability receipt.
+7. Run `/immaculate status` if you want to inspect orchestration state before heavy work.
 
 ## Provider Switching
 
@@ -193,6 +207,13 @@ Common OCI/Q controls:
 - `/provider key oci <api-key>`
 - `/provider test oci Q`
 - `/provider base-url oci <url>`
+
+Practical auth split:
+
+- public installed users should generate and use their own `OCI` / `Q` key
+- internal operator surfaces can use OCI IAM plus a local project/profile
+- OpenJaws should not silently borrow a shared internal Discord entitlement for downloaded public installs
+- if you run a hosted `Q` service later, credits, billing, and hard rate limits still belong in that service layer
 
 When switching execution strategy, use the matching controls:
 
@@ -266,6 +287,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - Tool execution across local shells, PowerShell, files, web fetch, MCP, skills, and remote workers.
 - `Q` local and routed training harness with signed manifests, queue state, remote dispatch, and completion reconciliation.
 - Native `Q` benchmark and curriculum lanes over audited packs so coding, agentic, and security slices can be compared in-repo.
+- A Netlify-ready Next.js landing site for public `Q` access, plans, Stripe checkout, API keys, credits, and usage under `website/`.
 - Voice surfaces for speech input/output wiring, including ElevenLabs summary playback configuration.
 - Firecrawl dataset skill for crawl/search -> structured dataset pipelines.
 - Remote Control, environment validation, startup harness receipts, and fail-closed configuration checks.
@@ -316,15 +338,34 @@ OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
 
 - `bun run q:bridgebench` runs eval-only pack checks over audited `Q` bundles
 - `bun run q:curriculum` trains bounded specialization adapters and benchmarks them back against those same packs
+- `bun run q:hybrid` coordinates one bounded local `Q` lane plus one Immaculate-routed lane under a shared receipt
+- `bun run q:terminalbench` wraps Harbor / Terminal-Bench for external terminal-task evaluation when Harbor and Docker are available
 - benchmark artifacts now write `bridgebench-report.json` plus `reward.json` and `reward-details.json` in a Rewardkit-style shape so the results are easy to inspect or reuse
+- training and benchmark receipts also record whether W&B logging was enabled, incomplete, or disabled, including the resolved project URL when that lane is actually configured
 
 Important boundary:
 
 - these local `Q` receipts are for comparing training and evaluation runs inside OpenJaws
 - they do not replace the public Immaculate benchmark record
-- OpenJaws is not yet claiming to be a full Harbor or Terminal-Bench agent adapter
+- the Harbor / Terminal-Bench path is an in-repo adapter lane, not a public leaderboard claim by itself
+
+Public hosted-Q website target:
+
+- `https://qline.site` is the public shell for signup, checkout, hosted key issuance, and usage receipts once the operator backend and billing secrets are configured
+- `https://qline.site` now serves valid HTTPS on the live Netlify surface and should be treated as the canonical public signup and checkout domain
+- Stripe webhook target for that hosted lane is `https://qline.site/api/webhooks/stripe`
+- `https://aura-genesis.org` stays the company path, not the hosted-Q checkout surface
 
 See [Benchmark Status](docs/wiki/Benchmark-Status.md) for the detailed record and why those numbers matter to OpenJaws.
+
+For public access policy, usage limits, and the Discord exception boundary, see [Q Access and Limits](docs/wiki/Q-Access-and-Limits.md).
+
+The `website/` lane now supports two honest modes:
+
+- local filesystem demo mode for signup, checkout, key issuance, and usage receipts during development
+- proxy mode for a real hosted-Q operator backend in production
+
+That means the repo can exercise the hosted-Q flow end to end without pretending the demo ledger is a production billing service.
 
 ## Security and Release Hygiene
 

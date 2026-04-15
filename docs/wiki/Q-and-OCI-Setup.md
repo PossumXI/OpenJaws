@@ -8,7 +8,7 @@ Fresh public installs start on `OCI:Q`.
 
 - provider: `oci`
 - model: `Q`
-- typical base URL: `https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1`
+- typical base URL: `https://inference.generativeai.<region>.oci.oraclecloud.com/openai/v1`
 
 OpenJaws keeps provider, model, base URL, and Immaculate reachability visible so installs do not drift silently.
 OpenJaws now also has a first-class live provider probe, so `configured` and `reachable` are no longer treated as the same thing.
@@ -24,6 +24,7 @@ In plain terms: OpenJaws does not just save your settings and hope for the best.
    - `Q_API_KEY`
    - `OCI_API_KEY`
    - `OCI_GENAI_API_KEY`
+   If the hosted public Q issuing lane is active, that key can come from `https://qline.site`, which is now the canonical HTTPS public shell.
 5. Let the first-run flow finish its live provider check, or run `/provider test oci Q` yourself.
 6. If your OCI endpoint differs, set it with `/provider base-url oci <url>`.
 7. Run `/status` and confirm:
@@ -32,6 +33,28 @@ In plain terms: OpenJaws does not just save your settings and hope for the best.
    - the base URL is the one you intend
    - the latest provider reachability receipt matches the active model
    - Immaculate is reachable if you expect routed execution
+
+## IAM Option For Internal Operator Surfaces
+
+If you are running an internal surface such as a private Discord bot or an internal command station, you can use OCI IAM instead of a bearer key:
+
+- `OCI_CONFIG_FILE`
+- `OCI_PROFILE`
+- `OCI_COMPARTMENT_ID`
+- `OCI_GENAI_PROJECT_ID`
+- `Q_MODEL` or `OCI_MODEL`
+- `Q_BASE_URL` or `OCI_BASE_URL` when you are not using the default region endpoint
+
+Downloaded public installs should bring their own `OCI` / `Q` key. Internal operator automation can use the tenancy profile and project you control locally.
+
+## Public Key And Usage Boundary
+
+- downloaded public installs should generate and use their own `Q` / `OCI` key
+- internal operator surfaces can use local `OCI` IAM instead
+- a free internal Discord surface does not automatically grant unlimited hosted `Q` access to downloaded installs
+- if you later issue hosted `Q` keys yourself, credits, monthly free usage, billing, and real rate limits must live in that issuing service
+
+See [Q Access and Limits](Q-Access-and-Limits.md) for the operator policy boundary.
 
 ## Common Operator Commands
 
@@ -65,5 +88,6 @@ If Immaculate is unreachable, OpenJaws should tell you that directly instead of 
 ## Security Notes
 
 - Keep provider keys in local config or secure storage, never in the repository.
+- Keep OCI IAM config files and private keys local. Do not commit `~/.oci`, Discord bot env files, or internal project IDs that are not meant for public use.
 - Use the official tagged release lane for installed-user updates.
 - Public updates now rely on GitHub Releases, `release-policy.json`, and signed per-platform manifest data.

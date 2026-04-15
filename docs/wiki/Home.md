@@ -23,12 +23,24 @@ OCEAN-BLUE SHELL // OPENCHEEK CREW // ROUTED TOOLS
 
 GitHub and the repo wiki render the banner as monochrome FIGlet art. The live OpenJaws TUI renders the same banner with a six-stop gold-to-deep-ocean truecolor gradient and darker deck trim.
 
+```text
+   ___  
+  / _ \ 
+ | (_) |
+  \__\_\
+
+Q // OPENCHEEK COMMAND MARK
+```
+
+The Q mark above is sourced from `src/components/LogoV2/qMarkData.ts` and can be re-exported with `bun run qmark:export`.
+
 OpenJaws is meant to feel like a real control deck, not a blind text box. You can see what is running, what is queued, what provider is active, and whether the orchestration layer is healthy before you trust the result.
 
 ## Start Here
 
 - [Install and Updates](Install-and-Updates.md)
 - [Q and OCI Setup](Q-and-OCI-Setup.md)
+- [Q Access and Limits](Q-Access-and-Limits.md)
 - [Release and Update Policy](Release-and-Update-Policy.md)
 - [Features and Capabilities](Features-and-Capabilities.md)
 - [Immaculate Integration](Immaculate-Integration.md)
@@ -73,6 +85,13 @@ Honest boundary:
 - the public benchmark source of truth still lives in Immaculate
 - OpenJaws is not yet pretending to be a full Harbor / Terminal-Bench agent adapter
 
+For who should bring their own key, what can stay free, and where credits/rate limits actually belong, see [Q Access and Limits](Q-Access-and-Limits.md).
+
+OpenJaws now also carries a Netlify-ready Next.js surface for public `Q` access under [`website/`](../../website/README.md). It can run a local filesystem demo lane for signup, Stripe checkout, API key issuance, and usage receipts during development, while still failing closed in production unless you attach a real hosted-Q backend.
+
+The intended public hosted-Q surface is `https://qline.site`. `https://aura-genesis.org` remains the broader company path.
+`https://qline.site` now resolves over valid HTTPS and is the canonical public shell for hosted-Q signup and checkout.
+
 ## Public Release Notes
 
 - OpenJaws is public and MIT licensed, but it is still changing quickly.
@@ -81,6 +100,7 @@ Honest boundary:
 - Use `/status` when you want the plain truth about what is active: provider, runtime, sandbox, routed work, and worker health.
 - Use `/provider` and `/remote-env` on purpose. OpenJaws is built to show setup changes, not hide them.
 - Fresh installs start on `OCI:Q`; use `/provider` when you want to rotate keys, change the base URL, or switch providers.
+- Public installs should bring their own `OCI` / `Q` key. Internal operator surfaces can use OCI IAM with a local project/profile when that is the intended trust boundary.
 
 ## Install Paths
 
