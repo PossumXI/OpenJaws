@@ -212,6 +212,7 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
         teamName: finalTeamName,
         teamFilePath,
         leadAgentId,
+        leadTerminalContextId: leadTerminalContext.terminalContextId,
         teammates: {
           [leadAgentId]: {
             name: TEAM_LEAD_NAME,

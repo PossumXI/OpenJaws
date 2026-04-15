@@ -10,7 +10,32 @@ import type { AppState } from '../../state/AppState.js'
 import { logForDebugging } from '../debug.js'
 import { logError } from '../log.js'
 import { getDynamicTeamContext } from '../teammate.js'
-import { getTeamFilePath, readTeamFile } from './teamHelpers.js'
+import {
+  getTeamFilePath,
+  readTeamFile,
+  type TeamFile,
+} from './teamHelpers.js'
+
+export function buildTeamContextTeammates(
+  teamFile: TeamFile,
+): NonNullable<AppState['teamContext']>['teammates'] {
+  return Object.fromEntries(
+    teamFile.members.map(member => [
+      member.agentId,
+      {
+        name: member.name,
+        agentType: member.agentType,
+        color: member.color,
+        tmuxSessionName: '',
+        tmuxPaneId: member.tmuxPaneId,
+        cwd: member.cwd,
+        worktreePath: member.worktreePath,
+        terminalContextId: member.terminalContextId,
+        spawnedAt: member.joinedAt,
+      },
+    ]),
+  )
+}
 
 /**
  * Computes the initial teamContext for AppState.
@@ -49,6 +74,13 @@ export function computeInitialTeamContext():
   const teamFilePath = getTeamFilePath(teamName)
 
   const isLeader = !agentId
+  const teammates = buildTeamContextTeammates(teamFile)
+  const selfMember = isLeader
+    ? teamFile.members.find(member => member.agentId === teamFile.leadAgentId)
+    : teamFile.members.find(
+        member =>
+          (agentId && member.agentId === agentId) || member.name === agentName,
+      )
 
   logForDebugging(
     `[Reconnection] Computed initial team context for ${isLeader ? 'leader' : `teammate ${agentName}`} in team ${teamName}`,
@@ -58,10 +90,12 @@ export function computeInitialTeamContext():
     teamName,
     teamFilePath,
     leadAgentId: teamFile.leadAgentId,
+    leadTerminalContextId: teamFile.leadTerminalContextId,
     selfAgentId: agentId,
     selfAgentName: agentName,
     isLeader,
-    teammates: {},
+    selfAgentColor: selfMember?.color,
+    teammates,
   }
 }
 
@@ -98,6 +132,7 @@ export function initializeTeammateContextFromSession(
   const agentId = member?.agentId
 
   const teamFilePath = getTeamFilePath(teamName)
+  const teammates = buildTeamContextTeammates(teamFile)
 
   // Set teamContext in AppState
   setAppState(prev => ({
@@ -106,10 +141,12 @@ export function initializeTeammateContextFromSession(
       teamName,
       teamFilePath,
       leadAgentId: teamFile.leadAgentId,
+      leadTerminalContextId: teamFile.leadTerminalContextId,
       selfAgentId: agentId,
       selfAgentName: agentName,
       isLeader: false,
-      teammates: {},
+      selfAgentColor: member?.color,
+      teammates,
     },
   }))
 

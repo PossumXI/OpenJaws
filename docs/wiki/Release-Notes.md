@@ -24,6 +24,8 @@ This page summarizes the current public OpenJaws surface that is already working
 - team files now keep a shared terminal registry so sibling agents can reuse known workspace, model, routed-Q, and Immaculate facts across related projects on the same machine
 - spawned teammates now inherit OCI `Q` and Immaculate env wiring explicitly instead of rediscovering provider state in a fresh shell
 - in-process teammates now honor their requested working directory too, so cross-project help stays aligned with the actual project being worked
+- the team dialog and `/status` now surface the shared co-work registry, so operators can inspect terminal IDs, project roots, and registry receipts without opening raw config files
+- resumed teammate sessions now rehydrate their saved terminal context IDs, which keeps co-work handoffs intact after reconnects or reloads
 - the shared registry is designed for same-owner co-work and path/runtime facts only; it is not a secret dump and does not write credentials into team memory
 
 ## Immaculate Integration

@@ -204,7 +204,10 @@ export function upsertTeamTerminalContext(
   return teamFile
 }
 
-function getTeamTerminalMemoryPath(teamName: string): string {
+export function getTeamTerminalRegistryPath(teamName: string): string | null {
+  if (!isTeamMemoryEnabled()) {
+    return null
+  }
   return join(getTeamMemPath(), `${sanitizeName(teamName)}-TERMINALS.md`)
 }
 
@@ -263,7 +266,10 @@ function syncTeamTerminalMemory(teamName: string, teamFile: TeamFile): void {
   if (!isTeamMemoryEnabled()) {
     return
   }
-  const path = getTeamTerminalMemoryPath(teamName)
+  const path = getTeamTerminalRegistryPath(teamName)
+  if (!path) {
+    return
+  }
   mkdirSync(getTeamMemPath(), { recursive: true })
   writeFileSync(path, `${buildTeamTerminalMemoryMarkdown(teamFile)}\n`, 'utf8')
 }

@@ -1,15 +1,20 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import {
   buildTeamTerminalMemoryMarkdown,
   createTeamTerminalContext,
+  getTeamFilePath,
+  removeMemberByAgentId,
+  removeMemberFromTeam,
+  removeTeammateFromTeamFile,
   type TeamFile,
 } from './teamHelpers.js'
 
 describe('teamHelpers agent co-work', () => {
   afterEach(() => {
+    delete process.env.CLAUDE_CONFIG_DIR
     delete process.env.OCI_CONFIG_FILE
     delete process.env.OCI_PROFILE
     delete process.env.OCI_COMPARTMENT_ID
@@ -124,5 +129,165 @@ describe('teamHelpers agent co-work', () => {
     expect(markdown).toContain('terminal_context_id: `term-active01`')
     expect(markdown).toContain('q_base_url: `https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1`')
     expect(markdown).not.toContain('term-stale99')
+  })
+
+  it('removes pane-backed terminal contexts when a teammate is removed by pane id', () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'openjaws-agent-cowork-team-'))
+    process.env.CLAUDE_CONFIG_DIR = configDir
+
+    const teamFilePath = getTeamFilePath('bridge-crew')
+    mkdirSync(dirname(teamFilePath), { recursive: true })
+    writeFileSync(
+      teamFilePath,
+      JSON.stringify(
+        {
+          name: 'bridge-crew',
+          createdAt: 1,
+          leadAgentId: 'team-lead@bridge-crew',
+          members: [
+            {
+              agentId: 'team-lead@bridge-crew',
+              name: 'team-lead',
+              joinedAt: 1,
+              tmuxPaneId: '',
+              cwd: 'D:\\openjaws\\OpenJaws',
+              subscriptions: [],
+            },
+            {
+              agentId: 'scout@bridge-crew',
+              name: 'scout',
+              joinedAt: 2,
+              tmuxPaneId: '%2',
+              cwd: 'D:\\openjaws\\OpenJaws',
+              terminalContextId: 'term-scout02',
+              subscriptions: [],
+            },
+            {
+              agentId: 'helper@bridge-crew',
+              name: 'helper',
+              joinedAt: 3,
+              tmuxPaneId: '%3',
+              cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
+              terminalContextId: 'term-helper03',
+              subscriptions: [],
+            },
+          ],
+          terminalContexts: [
+            {
+              terminalContextId: 'term-scout02',
+              agentId: 'scout@bridge-crew',
+              agentName: 'scout',
+              cwd: 'D:\\openjaws\\OpenJaws',
+              projectRoot: 'D:\\openjaws\\OpenJaws',
+              tmuxPaneId: '%2',
+              createdAt: 2,
+              updatedAt: 2,
+            },
+            {
+              terminalContextId: 'term-helper03',
+              agentId: 'helper@bridge-crew',
+              agentName: 'helper',
+              cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
+              projectRoot: 'C:\\Users\\Knight\\Desktop\\cheeks',
+              tmuxPaneId: '%3',
+              createdAt: 3,
+              updatedAt: 3,
+            },
+          ],
+        } satisfies TeamFile,
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    expect(removeMemberFromTeam('bridge-crew', '%3')).toBe(true)
+
+    const updated = JSON.parse(readFileSync(teamFilePath, 'utf8')) as TeamFile
+    expect(updated.members.map(member => member.name)).toEqual([
+      'team-lead',
+      'scout',
+    ])
+    expect(
+      updated.terminalContexts?.map(context => context.terminalContextId),
+    ).toEqual(['term-scout02'])
+  })
+
+  it('removes agent-backed terminal contexts for in-process and named removals', () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'openjaws-agent-cowork-team-'))
+    process.env.CLAUDE_CONFIG_DIR = configDir
+
+    const teamFilePath = getTeamFilePath('bridge-crew')
+    mkdirSync(dirname(teamFilePath), { recursive: true })
+    writeFileSync(
+      teamFilePath,
+      JSON.stringify(
+        {
+          name: 'bridge-crew',
+          createdAt: 1,
+          leadAgentId: 'team-lead@bridge-crew',
+          members: [
+            {
+              agentId: 'team-lead@bridge-crew',
+              name: 'team-lead',
+              joinedAt: 1,
+              tmuxPaneId: '',
+              cwd: 'D:\\openjaws\\OpenJaws',
+              subscriptions: [],
+            },
+            {
+              agentId: 'scout@bridge-crew',
+              name: 'scout',
+              joinedAt: 2,
+              tmuxPaneId: 'in-process',
+              cwd: 'D:\\openjaws\\OpenJaws',
+              terminalContextId: 'term-scout02',
+              subscriptions: [],
+            },
+            {
+              agentId: 'helper@bridge-crew',
+              name: 'helper',
+              joinedAt: 3,
+              tmuxPaneId: 'in-process',
+              cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
+              terminalContextId: 'term-helper03',
+              subscriptions: [],
+            },
+          ],
+          terminalContexts: [
+            {
+              terminalContextId: 'term-scout02',
+              agentId: 'scout@bridge-crew',
+              agentName: 'scout',
+              cwd: 'D:\\openjaws\\OpenJaws',
+              projectRoot: 'D:\\openjaws\\OpenJaws',
+              createdAt: 2,
+              updatedAt: 2,
+            },
+            {
+              terminalContextId: 'term-helper03',
+              agentId: 'helper@bridge-crew',
+              agentName: 'helper',
+              cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
+              projectRoot: 'C:\\Users\\Knight\\Desktop\\cheeks',
+              createdAt: 3,
+              updatedAt: 3,
+            },
+          ],
+        } satisfies TeamFile,
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    expect(removeMemberByAgentId('bridge-crew', 'scout@bridge-crew')).toBe(true)
+    expect(removeTeammateFromTeamFile('bridge-crew', { name: 'helper' })).toBe(
+      true,
+    )
+
+    const updated = JSON.parse(readFileSync(teamFilePath, 'utf8')) as TeamFile
+    expect(updated.members.map(member => member.name)).toEqual(['team-lead'])
+    expect(updated.terminalContexts ?? []).toEqual([])
   })
 })

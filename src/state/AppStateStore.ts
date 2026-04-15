@@ -340,6 +340,7 @@ export type AppState = DeepImmutable<{
     teamName: string
     teamFilePath: string
     leadAgentId: string
+    leadTerminalContextId?: string
     // Self-identity for swarm members (separate processes in tmux panes)
     // Note: This is different from toolUseContext.agentId which is for in-process subagents
     selfAgentId?: string // Swarm member's own ID (same as leadAgentId for leaders)

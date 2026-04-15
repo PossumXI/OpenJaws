@@ -72,6 +72,8 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 - multiple agents can work in parallel while the operator stays in the loop
 - terminal context IDs keep sibling project work tied to the same machine-owner trust boundary
 - OCI `Q`, Immaculate, workspace roots, and active project paths stay reusable without dumping secrets into shared notes
+- the crew dialog and `/status` now show the live co-work map instead of hiding it in team files
+- resumed teammate sessions keep their saved terminal context IDs so handoffs stay intact after reloads
 
 ## Live Benchmark Record
 

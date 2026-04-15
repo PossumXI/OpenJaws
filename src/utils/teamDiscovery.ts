@@ -6,7 +6,10 @@
  */
 
 import { isPaneBackend, type PaneBackendType } from './swarm/backends/types.js'
-import { readTeamFile } from './swarm/teamHelpers.js'
+import {
+  getTeamTerminalRegistryPath,
+  readTeamFile,
+} from './swarm/teamHelpers.js'
 
 export type TeamSummary = {
   name: string
@@ -30,6 +33,38 @@ export type TeammateStatus = {
   isHidden?: boolean // Whether the pane is currently hidden from the swarm view
   backendType?: PaneBackendType // The backend type used for this teammate
   mode?: string // Current permission mode for this teammate
+  terminalContextId?: string
+  projectRoot?: string
+  provider?: string
+  qBaseUrl?: string | null
+  immaculateHarnessUrl?: string | null
+  teamMemoryPath?: string | null
+  teamRegistryPath?: string | null
+}
+
+function getLatestTerminalContextForMember(
+  teamFile: NonNullable<ReturnType<typeof readTeamFile>>,
+  agentId: string,
+  terminalContextId?: string,
+) {
+  if (!teamFile.terminalContexts || teamFile.terminalContexts.length === 0) {
+    return null
+  }
+
+  if (terminalContextId) {
+    const exactMatch = teamFile.terminalContexts.find(
+      context => context.terminalContextId === terminalContextId,
+    )
+    if (exactMatch) {
+      return exactMatch
+    }
+  }
+
+  const matchingContexts = teamFile.terminalContexts
+    .filter(context => context.agentId === agentId)
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+
+  return matchingContexts[0] ?? null
 }
 
 /**
@@ -43,6 +78,7 @@ export function getTeammateStatuses(teamName: string): TeammateStatus[] {
   }
 
   const hiddenPaneIds = new Set(teamFile.hiddenPaneIds ?? [])
+  const teamRegistryPath = getTeamTerminalRegistryPath(teamName)
   const statuses: TeammateStatus[] = []
 
   for (const member of teamFile.members) {
@@ -54,6 +90,11 @@ export function getTeammateStatuses(teamName: string): TeammateStatus[] {
     // Read isActive from config, defaulting to true (active) if undefined
     const isActive = member.isActive !== false
     const status: 'running' | 'idle' = isActive ? 'running' : 'idle'
+    const terminalContext = getLatestTerminalContextForMember(
+      teamFile,
+      member.agentId,
+      member.terminalContextId,
+    )
 
     statuses.push({
       name: member.name,
@@ -72,6 +113,14 @@ export function getTeammateStatuses(teamName: string): TeammateStatus[] {
           ? member.backendType
           : undefined,
       mode: member.mode,
+      terminalContextId:
+        member.terminalContextId ?? terminalContext?.terminalContextId,
+      projectRoot: terminalContext?.projectRoot,
+      provider: terminalContext?.provider,
+      qBaseUrl: terminalContext?.qBaseUrl ?? null,
+      immaculateHarnessUrl: terminalContext?.immaculateHarnessUrl ?? null,
+      teamMemoryPath: terminalContext?.teamMemoryPath ?? null,
+      teamRegistryPath,
     })
   }
 

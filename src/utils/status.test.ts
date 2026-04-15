@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
+  buildAgentCoworkProperties,
   buildDiscordQAgentProperties,
   buildImmaculateGuidanceProperties,
   buildProviderProbeProperties,
@@ -429,6 +430,83 @@ describe('buildDiscordQAgentProperties', () => {
       {
         label: 'Q operator',
         value: ['PossumX', 'start-openjaws', 'pid 4.2k', 'D:\\repo'],
+      },
+    ])
+  })
+})
+
+describe('buildAgentCoworkProperties', () => {
+  test('surfaces the shared terminal registry for the active team', () => {
+    expect(
+      buildAgentCoworkProperties(
+        {
+          teamName: 'bridge-crew',
+        },
+        {
+          name: 'bridge-crew',
+          createdAt: 1,
+          leadAgentId: 'team-lead@bridge-crew',
+          leadTerminalContextId: 'term-lead01',
+          members: [
+            {
+              agentId: 'team-lead@bridge-crew',
+              name: 'team-lead',
+              joinedAt: 1,
+              tmuxPaneId: '',
+              cwd: 'D:\\openjaws\\OpenJaws',
+              subscriptions: [],
+            },
+            {
+              agentId: 'scout@bridge-crew',
+              name: 'scout',
+              joinedAt: 2,
+              tmuxPaneId: '%2',
+              cwd: 'D:\\openjaws\\OpenJaws',
+              terminalContextId: 'term-scout02',
+              subscriptions: [],
+            },
+          ],
+          terminalContexts: [
+            {
+              terminalContextId: 'term-lead01',
+              agentId: 'team-lead@bridge-crew',
+              agentName: 'team-lead',
+              cwd: 'D:\\openjaws\\OpenJaws',
+              projectRoot: 'D:\\openjaws\\OpenJaws',
+              createdAt: 1,
+              updatedAt: 1,
+            },
+            {
+              terminalContextId: 'term-scout02',
+              agentId: 'scout@bridge-crew',
+              agentName: 'scout',
+              cwd: 'D:\\openjaws\\OpenJaws',
+              projectRoot: 'D:\\openjaws\\OpenJaws',
+              provider: 'oci',
+              createdAt: 2,
+              updatedAt: 3,
+            },
+          ],
+        },
+        'C:\\Users\\Knight\\.openjaws\\team-mem\\bridge-crew-TERMINALS.md',
+      ),
+    ).toEqual([
+      {
+        label: 'Agent Co-Work',
+        value: [
+          'bridge-crew',
+          '2 terminals',
+          '1 teammate',
+          'lead term-lead01',
+        ],
+      },
+      {
+        label: 'Agent Co-Work registry',
+        value: [
+          'C:\\Users\\Knight\\.openjaws\\team-mem\\bridge-crew-TERMINALS.md',
+          'team-lead term-lead01 D:\\openjaws\\OpenJaws',
+          'scout term-scout02 oci D:\\openjaws\\OpenJaws',
+        ],
       },
     ])
   })

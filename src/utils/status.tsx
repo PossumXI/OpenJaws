@@ -56,6 +56,10 @@ import { getElevenLabsConfig } from '../services/voiceOutput.js';
 import type { ExternalProviderProbeResult } from './externalProviderProbe.js';
 import { readDiscordQAgentReceipt, type DiscordQAgentReceipt } from './discordQAgentRuntime.js';
 import {
+  getTeamTerminalRegistryPath,
+  readTeamFile,
+} from './swarm/teamHelpers.js';
+import {
   getLatestQTrainingHybridSession,
   getQTrainingImmaculateLane,
   getQTrainingRouteQueueStatusSummary,
@@ -522,6 +526,67 @@ export function buildDiscordQAgentProperties(
     ]
   })
   return properties
+}
+type AgentCoworkContext = {
+  teamName: string
+} | null | undefined
+export function buildAgentCoworkProperties(
+  teamContext: AgentCoworkContext,
+  teamFile = teamContext?.teamName ? readTeamFile(teamContext.teamName) : null,
+  registryPath = teamContext?.teamName
+    ? getTeamTerminalRegistryPath(teamContext.teamName)
+    : null,
+): Property[] {
+  if (!teamContext?.teamName) {
+    return []
+  }
+  if (!teamFile) {
+    return [
+      {
+        label: 'Agent Co-Work',
+        value: [teamContext.teamName, 'team file missing'],
+      },
+    ]
+  }
+
+  const activeAgentIds = new Set(teamFile.members.map(member => member.agentId))
+  const activeContexts = (teamFile.terminalContexts ?? []).filter(context =>
+    activeAgentIds.has(context.agentId),
+  )
+  const teammateCount = teamFile.members.filter(
+    member => member.name !== 'team-lead',
+  ).length
+  const preview = activeContexts
+    .slice(0, 3)
+    .map(context => {
+      const location = context.projectRoot || context.cwd
+      const provider = context.provider ? ` ${context.provider}` : ''
+      return `${context.agentName} ${context.terminalContextId}${provider} ${location}`
+    })
+
+  return [
+    {
+      label: 'Agent Co-Work',
+      value: [
+        teamFile.name,
+        `${formatNumber(activeContexts.length)} terminal${activeContexts.length === 1 ? '' : 's'}`,
+        `${formatNumber(teammateCount)} teammate${teammateCount === 1 ? '' : 's'}`,
+        teamFile.leadTerminalContextId
+          ? `lead ${teamFile.leadTerminalContextId}`
+          : 'lead context missing',
+      ],
+    },
+    {
+      label: 'Agent Co-Work registry',
+      value: [
+        registryPath ?? 'Team memory disabled',
+        ...preview,
+        ...(activeContexts.length > preview.length
+          ? [`+${formatNumber(activeContexts.length - preview.length)} more`]
+          : []),
+      ],
+    },
+  ]
 }
 export function buildQTrainingProperties(
   immaculateWorkers: ImmaculateHarnessWorkerCatalog | null = null,
