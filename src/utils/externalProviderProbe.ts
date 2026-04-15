@@ -4,6 +4,13 @@ import {
   normalizeExternalProvider,
 } from './externalProviderSetup.js'
 import {
+  queryOciQViaPython,
+  resolveOciBridgeModel,
+  type OciQBridgeResponse,
+  type OciQBridgeRuntimeOverride,
+} from './ociQBridge.js'
+import { resolveEffectiveOciBaseUrl, resolveOciQRuntime } from './ociQRuntime.js'
+import {
   getExternalProviderDefaults,
   resolveExternalModelConfig,
   resolveExternalModelRef,
@@ -34,7 +41,7 @@ export type ExternalProviderProbeResult = {
   apiKeySource: string | null
   endpoint: string
   endpointLabel: string
-  method: 'GET'
+  method: 'GET' | 'POST'
   checkedAt: number
   httpStatus?: number
   modelCount?: number | null
@@ -51,9 +58,18 @@ type ProbeFetch = (
   json(): Promise<unknown>
 }>
 
+type ProbeOci = (args: {
+  prompt: string
+  systemPrompt?: string
+  maxOutputTokens?: number
+  timeoutMs?: number
+  runtimeOverride?: OciQBridgeRuntimeOverride
+}) => Promise<OciQBridgeResponse>
+
 type ProbeOptions = {
   timeoutMs?: number
   fetchFn?: ProbeFetch
+  ociQueryFn?: ProbeOci
 }
 
 const DEFAULT_TIMEOUT_MS = 5_000
@@ -62,18 +78,30 @@ function buildModelsUrl(baseURL: string): string {
   return baseURL.endsWith('/models') ? baseURL : `${baseURL}/models`
 }
 
+function buildResponsesUrl(baseURL: string): string {
+  return baseURL.endsWith('/responses') ? baseURL : `${baseURL}/responses`
+}
+
 function buildOllamaTagsUrl(baseURL: string): string {
   return baseURL.endsWith('/api/tags') ? baseURL : `${baseURL}/api/tags`
 }
 
 function buildProbeTarget(
   config: ResolvedExternalModelConfig,
-): { endpoint: string; endpointLabel: string; method: 'GET' } {
+): { endpoint: string; endpointLabel: string; method: 'GET' | 'POST' } {
   if (config.provider === 'ollama') {
     return {
       endpoint: buildOllamaTagsUrl(config.baseURL),
       endpointLabel: '/api/tags',
       method: 'GET',
+    }
+  }
+
+  if (config.provider === 'oci') {
+    return {
+      endpoint: buildResponsesUrl(config.baseURL),
+      endpointLabel: '/responses',
+      method: 'POST',
     }
   }
 
@@ -147,7 +175,7 @@ function parseModelCount(
 
 function buildStaticProbeResult(
   config: ResolvedExternalModelConfig,
-  target: { endpoint: string; endpointLabel: string; method: 'GET' },
+  target: { endpoint: string; endpointLabel: string; method: 'GET' | 'POST' },
   code: ExternalProviderProbeCode,
   detail?: string,
   httpStatus?: number,
@@ -179,6 +207,74 @@ function buildStaticProbeResult(
       modelCount,
     ),
   }
+}
+
+function buildOciProbeRuntimeOverride(
+  config: ResolvedExternalModelConfig,
+): {
+  runtimeOverride: OciQBridgeRuntimeOverride | null
+  authSource: string | null
+  missingDetail: string | null
+} {
+  const runtime = resolveOciQRuntime()
+  const model = resolveOciBridgeModel(config.model)
+
+  if (config.apiKey) {
+    return {
+      runtimeOverride: {
+        authMode: 'bearer',
+        apiKey: config.apiKey,
+        baseURL: config.baseURL,
+        model,
+        projectId: runtime.projectId,
+        compartmentId: runtime.compartmentId,
+      },
+      authSource: config.apiKeySource,
+      missingDetail: null,
+    }
+  }
+
+  if (runtime.authMode === 'iam' && runtime.ready) {
+    return {
+      runtimeOverride: {
+        authMode: 'iam',
+        configFile: runtime.configFile!,
+        profile: runtime.profile,
+        baseURL: config.baseURL,
+        projectId: runtime.projectId!,
+        compartmentId: runtime.compartmentId!,
+        model,
+      },
+      authSource: 'OCI IAM',
+      missingDetail: null,
+    }
+  }
+
+  return {
+    runtimeOverride: null,
+    authSource: null,
+    missingDetail:
+      'Configure Q_API_KEY / OCI_API_KEY / OCI_GENAI_API_KEY for public installs, or OCI_CONFIG_FILE / OCI_PROFILE / OCI_COMPARTMENT_ID / OCI_GENAI_PROJECT_ID for internal IAM auth.',
+  }
+}
+
+function classifyOciProbeFailure(message: string): ExternalProviderProbeCode {
+  const normalized = message.toLowerCase()
+  if (
+    normalized.includes('401') ||
+    normalized.includes('403') ||
+    normalized.includes('unauthor') ||
+    normalized.includes('auth')
+  ) {
+    return 'auth_failed'
+  }
+  if (normalized.includes('timeout') || normalized.includes('timed out')) {
+    return 'timeout'
+  }
+  if (normalized.includes('404') || normalized.includes('not found')) {
+    return 'endpoint_unavailable'
+  }
+  return 'network_error'
 }
 
 export function resolveProviderProbeModelRef(
@@ -218,24 +314,84 @@ export async function probeResolvedExternalProvider(
   config: ResolvedExternalModelConfig,
   options: ProbeOptions = {},
 ): Promise<ExternalProviderProbeResult> {
-  const target = buildProbeTarget(config)
+  const effectiveConfig =
+    config.provider === 'oci'
+      ? {
+          ...config,
+          baseURL: resolveEffectiveOciBaseUrl({
+            baseURL: config.baseURL,
+            baseURLSource: config.baseURLSource,
+          }),
+        }
+      : config
+  const target = buildProbeTarget(effectiveConfig)
   try {
     new URL(target.endpoint)
   } catch {
     return buildStaticProbeResult(
-      config,
+      effectiveConfig,
       target,
       'invalid_base_url',
-      `Configured base URL is not a valid URL: ${config.baseURL}`,
+      `Configured base URL is not a valid URL: ${effectiveConfig.baseURL}`,
     )
   }
 
-  if (config.provider !== 'ollama' && !config.apiKey) {
+  if (effectiveConfig.provider === 'oci') {
+    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    const ociProbe = options.ociQueryFn ?? queryOciQViaPython
+    const { runtimeOverride, authSource, missingDetail } =
+      buildOciProbeRuntimeOverride(effectiveConfig)
+
+    if (!runtimeOverride) {
+      return buildStaticProbeResult(
+        effectiveConfig,
+        target,
+        'missing_key',
+        missingDetail ?? 'OCI auth is not configured.',
+      )
+    }
+
+    try {
+      await ociProbe({
+        prompt: 'Reply with the single word OK.',
+        systemPrompt: 'Reply briefly and operationally.',
+        maxOutputTokens: 16,
+        timeoutMs,
+        runtimeOverride,
+      })
+
+      return buildStaticProbeResult(
+        {
+          ...effectiveConfig,
+          apiKeySource: authSource,
+        },
+        target,
+        'ok',
+        undefined,
+        200,
+        null,
+      )
+    } catch (error) {
+      const detail =
+        error instanceof Error ? error.message : 'Unknown OCI probe error.'
+      return buildStaticProbeResult(
+        {
+          ...effectiveConfig,
+          apiKeySource: authSource,
+        },
+        target,
+        classifyOciProbeFailure(detail),
+        detail,
+      )
+    }
+  }
+
+  if (effectiveConfig.provider !== 'ollama' && !effectiveConfig.apiKey) {
     return buildStaticProbeResult(
-      config,
+      effectiveConfig,
       target,
       'missing_key',
-      `Configure ${config.provider} auth before probing reachability.`,
+      `Configure ${effectiveConfig.provider} auth before probing reachability.`,
     )
   }
 
@@ -249,10 +405,10 @@ export async function probeResolvedExternalProvider(
       method: target.method,
       headers: {
         Accept: 'application/json',
-        ...(config.apiKey
-          ? { Authorization: `Bearer ${config.apiKey}` }
+        ...(effectiveConfig.apiKey
+          ? { Authorization: `Bearer ${effectiveConfig.apiKey}` }
           : {}),
-        ...config.headers,
+        ...effectiveConfig.headers,
       },
       signal: controller.signal,
     })
@@ -265,9 +421,9 @@ export async function probeResolvedExternalProvider(
     }
 
     if (response.ok) {
-      const modelCount = parseModelCount(config.provider, body)
+      const modelCount = parseModelCount(effectiveConfig.provider, body)
       return buildStaticProbeResult(
-        config,
+        effectiveConfig,
         target,
         'ok',
         undefined,
@@ -278,7 +434,7 @@ export async function probeResolvedExternalProvider(
 
     if (response.status === 401 || response.status === 403) {
       return buildStaticProbeResult(
-        config,
+        effectiveConfig,
         target,
         'auth_failed',
         'The provider rejected the configured key or auth headers.',
@@ -288,7 +444,7 @@ export async function probeResolvedExternalProvider(
 
     if (response.status === 404) {
       return buildStaticProbeResult(
-        config,
+        effectiveConfig,
         target,
         'endpoint_unavailable',
         `${target.endpointLabel} did not resolve at the configured base URL.`,
@@ -297,7 +453,7 @@ export async function probeResolvedExternalProvider(
     }
 
     return buildStaticProbeResult(
-      config,
+      effectiveConfig,
       target,
       'http_error',
       'The provider returned a non-success response.',
@@ -306,7 +462,7 @@ export async function probeResolvedExternalProvider(
   } catch (error) {
     if (controller.signal.aborted) {
       return buildStaticProbeResult(
-        config,
+        effectiveConfig,
         target,
         'timeout',
         `Timed out after ${timeoutMs}ms.`,
@@ -316,7 +472,7 @@ export async function probeResolvedExternalProvider(
     const detail =
       error instanceof Error ? error.message : 'Unknown network error.'
     return buildStaticProbeResult(
-      config,
+      effectiveConfig,
       target,
       'network_error',
       detail,
@@ -346,9 +502,19 @@ export async function probeExternalProviderModel(
       baseURL: defaults.baseURL,
       baseURLSource: null,
       apiKeySource: null,
-      endpoint: buildModelsUrl(defaults.baseURL),
-      endpointLabel: fallbackProvider === 'ollama' ? '/api/tags' : '/models',
-      method: 'GET',
+      endpoint:
+        fallbackProvider === 'ollama'
+          ? buildOllamaTagsUrl(defaults.baseURL)
+          : fallbackProvider === 'oci'
+            ? buildResponsesUrl(defaults.baseURL)
+            : buildModelsUrl(defaults.baseURL),
+      endpointLabel:
+        fallbackProvider === 'ollama'
+          ? '/api/tags'
+          : fallbackProvider === 'oci'
+            ? '/responses'
+            : '/models',
+      method: fallbackProvider === 'oci' ? 'POST' : 'GET',
       checkedAt: Date.now(),
       detail: 'Configure a provider model before probing connectivity.',
       summary: `Provider probe failed · configure a provider model before probing connectivity.`,

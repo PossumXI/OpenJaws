@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   probeResolvedExternalProvider,
   resolveProviderProbeModelRef,
@@ -23,8 +23,42 @@ function makeConfig(
   }
 }
 
+const OCI_ENV_VARS = [
+  'OCI_CONFIG_FILE',
+  'OCI_PROFILE',
+  'OCI_COMPARTMENT_ID',
+  'OCI_GENAI_PROJECT_ID',
+  'OCI_REGION',
+  'Q_MODEL',
+  'OCI_MODEL',
+  'Q_API_KEY',
+  'OCI_API_KEY',
+  'OCI_GENAI_API_KEY',
+] as const
+
+const originalEnv = new Map<string, string | undefined>()
+
+beforeEach(() => {
+  for (const name of OCI_ENV_VARS) {
+    originalEnv.set(name, process.env[name])
+    delete process.env[name]
+  }
+})
+
+afterEach(() => {
+  for (const name of OCI_ENV_VARS) {
+    const value = originalEnv.get(name)
+    if (value === undefined) {
+      delete process.env[name]
+    } else {
+      process.env[name] = value
+    }
+  }
+  originalEnv.clear()
+})
+
 describe('externalProviderProbe', () => {
-  test('blocks probes that need a key when auth is missing', async () => {
+  test('blocks OCI probes when neither a key nor IAM auth is configured', async () => {
     const result = await probeResolvedExternalProvider(
       makeConfig({
         apiKey: null,
@@ -35,11 +69,65 @@ describe('externalProviderProbe', () => {
     expect(result.ok).toBe(false)
     expect(result.code).toBe('missing_key')
     expect(result.summary).toContain('key missing')
+    expect(result.endpointLabel).toBe('/responses')
+  })
+
+  test('probes OCI through the responses bridge', async () => {
+    const seen: Array<{
+      prompt: string
+      systemPrompt?: string
+      maxOutputTokens?: number
+      authMode: string
+      model: string
+    }> = []
+    const result = await probeResolvedExternalProvider(makeConfig(), {
+      ociQueryFn: async args => {
+        seen.push({
+          prompt: args.prompt,
+          systemPrompt: args.systemPrompt,
+          maxOutputTokens: args.maxOutputTokens,
+          authMode: args.runtimeOverride?.authMode ?? 'unknown',
+          model: args.runtimeOverride?.model ?? 'unknown',
+        })
+        return {
+          ok: true,
+          text: 'OK',
+          model: 'openai.gpt-oss-120b',
+          base_url: 'https://example.com/openai/v1',
+          auth_mode: 'bearer',
+          project_id: null,
+          compartment_id: null,
+          profile: null,
+          config_file: null,
+        }
+      },
+    })
+
+    expect(seen).toEqual([
+      {
+        prompt: 'Reply with the single word OK.',
+        systemPrompt: 'Reply briefly and operationally.',
+        maxOutputTokens: 16,
+        authMode: 'bearer',
+        model: 'openai.gpt-oss-120b',
+      },
+    ])
+    expect(result.ok).toBe(true)
+    expect(result.modelCount).toBeNull()
+    expect(result.endpointLabel).toBe('/responses')
+    expect(result.method).toBe('POST')
   })
 
   test('probes OpenAI-compatible providers through /models', async () => {
     const seen: Array<{ input: string; auth: string | null }> = []
-    const result = await probeResolvedExternalProvider(makeConfig(), {
+    const result = await probeResolvedExternalProvider(
+      makeConfig({
+        rawModel: 'openai:gpt-5.4',
+        provider: 'openai',
+        model: 'gpt-5.4',
+        label: 'OpenAI',
+      }),
+      {
       fetchFn: async (input, init) => {
         seen.push({
           input,
@@ -58,7 +146,8 @@ describe('externalProviderProbe', () => {
           }),
         }
       },
-    })
+      },
+    )
 
     expect(seen).toEqual([
       {
@@ -105,16 +194,14 @@ describe('externalProviderProbe', () => {
 
   test('surfaces auth failures cleanly', async () => {
     const result = await probeResolvedExternalProvider(makeConfig(), {
-      fetchFn: async () => ({
-        ok: false,
-        status: 401,
-        json: async () => ({ message: 'Unauthorized' }),
-      }),
+      ociQueryFn: async () => {
+        throw new Error('401 Unauthorized')
+      },
     })
 
     expect(result.ok).toBe(false)
     expect(result.code).toBe('auth_failed')
-    expect(result.httpStatus).toBe(401)
+    expect(result.endpointLabel).toBe('/responses')
   })
 })
 
