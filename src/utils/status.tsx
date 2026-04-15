@@ -635,6 +635,8 @@ export function buildQTrainingProperties(
           hybridSession.status,
           `local ${hybridSession.localLane.status}`,
           `immaculate ${hybridImmaculateLane.status}`,
+          ...(hybridSession.lineageId ? [hybridSession.lineageId] : []),
+          ...(hybridSession.phaseId ? [`phase ${hybridSession.phaseId}`] : []),
           ...(hybridImmaculateLane.routeQueueSummary
             ? [hybridImmaculateLane.routeQueueSummary]
             : []),
@@ -671,6 +673,8 @@ export function buildQTrainingProperties(
           hybridSession.status,
           `local ${hybridSession.localLane.status}`,
           `immaculate ${hybridImmaculateLane?.status ?? 'unknown'}`,
+          ...(hybridSession.lineageId ? [hybridSession.lineageId] : []),
+          ...(hybridSession.phaseId ? [`phase ${hybridSession.phaseId}`] : []),
           ...(hybridImmaculateLane?.routeQueueSummary
             ? [hybridImmaculateLane.routeQueueSummary]
             : []),
@@ -684,6 +688,16 @@ export function buildQTrainingProperties(
   const trainingStatus = state?.status ?? snapshot.registry.status
   const executionMode =
     state?.executionMode ?? snapshot.registry.executionMode ?? 'local'
+  const lineageId =
+    state?.lineageId ??
+    snapshot.registry.lineageId ??
+    hybridSession?.lineageId ??
+    null
+  const phaseId =
+    state?.phaseId ??
+    snapshot.registry.phaseId ??
+    hybridSession?.phaseId ??
+    null
   const preflight = state?.preflight ?? snapshot.registry.preflight ?? null
   const routeRequest = state?.routeRequest ?? snapshot.registry.routeRequest ?? null
   const routeFailure = state?.routeFailure ?? snapshot.registry.routeFailure ?? null
@@ -707,6 +721,15 @@ export function buildQTrainingProperties(
     label: 'Q training',
     value: progressParts
   }]
+  if (lineageId || phaseId) {
+    properties.push({
+      label: 'Training lineage',
+      value: [
+        ...(lineageId ? [lineageId] : []),
+        ...(phaseId ? [`phase ${phaseId}`] : []),
+      ],
+    })
+  }
   if (preflight) {
     properties.push({
       label: 'Training preflight',
@@ -954,6 +977,8 @@ export function buildQTrainingProperties(
         hybridSession.status,
         `local ${hybridSession.localLane.status}`,
         `immaculate ${hybridImmaculateLane?.status ?? 'unknown'}`,
+        ...(hybridSession.lineageId ? [hybridSession.lineageId] : []),
+        ...(hybridSession.phaseId ? [`phase ${hybridSession.phaseId}`] : []),
         ...(hybridImmaculateLane?.routeQueueSummary
           ? [hybridImmaculateLane.routeQueueSummary]
           : []),

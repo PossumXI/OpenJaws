@@ -1,5 +1,9 @@
 import type { AppState } from '../state/AppState.js'
-import { recordMailboxPhaseMemory } from './swarm/teamHelpers.js'
+import {
+  getTeamPhaseReceiptById,
+  readTeamFileAsync,
+  recordMailboxPhaseMemory,
+} from './swarm/teamHelpers.js'
 
 /**
  * Parse `@agent-name message` syntax for direct team member messaging.
@@ -7,25 +11,27 @@ import { recordMailboxPhaseMemory } from './swarm/teamHelpers.js'
 export function parseDirectMemberMessage(input: string): {
   recipientName: string
   message: string
+  phaseId?: string
 } | null {
-  const match = input.match(/^@([\w-]+)\s+(.+)$/s)
+  const match = input.match(/^@([\w-]+)(?:\s+\[phase:(phase-[\w-]+)\])?\s+(.+)$/s)
   if (!match) return null
 
-  const [, recipientName, message] = match
+  const [, recipientName, phaseId, message] = match
   if (!recipientName || !message) return null
 
   const trimmedMessage = message.trim()
   if (!trimmedMessage) return null
 
-  return { recipientName, message: trimmedMessage }
+  return { recipientName, message: trimmedMessage, phaseId }
 }
 
 export type DirectMessageResult =
   | { success: true; recipientName: string }
   | {
       success: false
-      error: 'no_team_context' | 'unknown_recipient'
+      error: 'no_team_context' | 'unknown_recipient' | 'unknown_phase'
       recipientName?: string
+      phaseId?: string
     }
 
 type WriteToMailboxFn = (
@@ -41,6 +47,7 @@ export async function sendDirectMemberMessage(
   recipientName: string,
   message: string,
   teamContext: AppState['teamContext'],
+  phaseId: string | undefined,
   writeToMailbox?: WriteToMailboxFn,
 ): Promise<DirectMessageResult> {
   if (!teamContext || !writeToMailbox) {
@@ -54,6 +61,17 @@ export async function sendDirectMemberMessage(
 
   if (!member) {
     return { success: false, error: 'unknown_recipient', recipientName }
+  }
+  if (phaseId) {
+    const teamFile = await readTeamFileAsync(teamContext.teamName)
+    if (!teamFile || !getTeamPhaseReceiptById(teamFile, phaseId)) {
+      return {
+        success: false,
+        error: 'unknown_phase',
+        recipientName,
+        phaseId,
+      }
+    }
   }
 
   await writeToMailbox(
@@ -69,6 +87,7 @@ export async function sendDirectMemberMessage(
   await recordMailboxPhaseMemory(teamContext.teamName, {
     fromName: 'user',
     toNames: [recipientName],
+    phaseId,
     summary: message,
     text: message,
   })

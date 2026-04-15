@@ -8,7 +8,11 @@ import {
   getTaskCompletedHookMessage,
 } from '../../utils/hooks.js'
 import { lazySchema } from '../../utils/lazySchema.js'
-import { recordMailboxPhaseMemory } from '../../utils/swarm/teamHelpers.js'
+import {
+  getTeamPhaseReceiptById,
+  readTeamFileAsync,
+  recordMailboxPhaseMemory,
+} from '../../utils/swarm/teamHelpers.js'
 import {
   blockTask,
   deleteTask,
@@ -57,6 +61,12 @@ const inputSchema = lazySchema(() => {
       .optional()
       .describe('Task IDs that block this task'),
     owner: z.string().optional().describe('New owner for the task'),
+    phase_id: z
+      .string()
+      .optional()
+      .describe(
+        'Optional Agent Co-Work phase ID to continue explicitly when reassigning this task.',
+      ),
     metadata: z
       .record(z.string(), z.unknown())
       .optional()
@@ -278,6 +288,19 @@ export const TaskUpdateTool = buildTool({
     if (updates.owner && isAgentSwarmsEnabled()) {
       const senderName = getAgentName() || 'team-lead'
       const senderColor = getTeammateColor()
+      if (input.phase_id) {
+        const teamFile = await readTeamFileAsync(taskListId)
+        if (!teamFile || !getTeamPhaseReceiptById(teamFile, input.phase_id)) {
+          return {
+            data: {
+              success: false,
+              taskId,
+              updatedFields,
+              error: `Phase "${input.phase_id}" does not exist in team "${taskListId}".`,
+            },
+          }
+        }
+      }
       const assignmentMessage = JSON.stringify({
         type: 'task_assignment',
         taskId,
@@ -299,6 +322,7 @@ export const TaskUpdateTool = buildTool({
       await recordMailboxPhaseMemory(taskListId, {
         fromName: senderName,
         toNames: [updates.owner],
+        phaseId: input.phase_id,
         summary: existingTask.subject,
         text: existingTask.description,
       })

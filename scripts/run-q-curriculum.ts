@@ -12,12 +12,15 @@ import {
   DEFAULT_Q_BASE_MODEL,
   resolveQTrainingPythonCommand,
 } from '../src/utils/qTraining.js'
+import { resolveWandbConfig } from '../src/utils/wandb.js'
 
 type CliOptions = {
   root: string | null
   bundleDir: string
   outputDir: string | null
   baseModel: string
+  lineageId: string | null
+  phaseId: string | null
   python: string
   profiles: QBridgeBenchPack[]
   benchmarkPacks: QBridgeBenchPack[]
@@ -39,6 +42,7 @@ type CurriculumProfileResult = {
   status: 'trained' | 'skipped' | 'failed'
   summary: string
   trainOutputDir: string
+  wandbSummary?: string | null
   benchmarkReportPath?: string | null
   trainCommand?: string
   trainExitCode?: number | null
@@ -76,6 +80,8 @@ function parseArgs(argv: string[]): CliOptions {
     bundleDir: resolve(process.cwd(), 'data', 'sft', 'audited-v2'),
     outputDir: null,
     baseModel: DEFAULT_Q_BASE_MODEL,
+    lineageId: null,
+    phaseId: null,
     python: resolveQTrainingPythonCommand(process.cwd()),
     profiles: [],
     benchmarkPacks: [],
@@ -108,6 +114,14 @@ function parseArgs(argv: string[]): CliOptions {
     }
     if (arg === '--base-model' && argv[i + 1]) {
       options.baseModel = argv[++i]!
+      continue
+    }
+    if (arg === '--lineage-id' && argv[i + 1]) {
+      options.lineageId = argv[++i]!
+      continue
+    }
+    if (arg === '--phase-id' && argv[i + 1]) {
+      options.phaseId = argv[++i]!
       continue
     }
     if (arg === '--python' && argv[i + 1]) {
@@ -205,6 +219,8 @@ function printHelpAndExit(): never {
       '  --bundle-dir <path>          Audited bundle directory',
       '  --out-dir <path>             Output directory for curriculum artifacts',
       '  --base-model <id>            Base Q model family label or upstream checkpoint',
+      '  --lineage-id <id>            Optional lineage ID shared across the curriculum lanes',
+      '  --phase-id <id>              Optional Agent Co-Work phase ID tied to this curriculum',
       '  --python <path>              Python runtime to use',
       '  --profile <name>             Training profile: coding, agentic, security, general',
       '  --benchmark-pack <name>      Pack to benchmark after each training run',
@@ -254,7 +270,10 @@ function buildTrainArgs(args: {
   evalFile: string | null
   profile: QBridgeBenchPack
   outputDir: string
+  lineageId: string | null
+  phaseId: string | null
   options: CliOptions
+  wandb: ReturnType<typeof resolveWandbConfig>
 }): string[] {
   const pythonArgs = [
     resolve(process.cwd(), 'training', 'q', 'train_lora.py'),
@@ -271,6 +290,12 @@ function buildTrainArgs(args: {
     '--max-seq-length',
     String(args.options.maxSeqLength),
   ]
+  if (args.lineageId) {
+    pythonArgs.push('--lineage-id', args.lineageId)
+  }
+  if (args.phaseId) {
+    pythonArgs.push('--phase-id', args.phaseId)
+  }
 
   if (args.evalFile) {
     pythonArgs.push('--eval-file', args.evalFile)
@@ -291,11 +316,11 @@ function buildTrainArgs(args: {
     pythonArgs.push('--max-eval-samples', String(args.options.maxEvalSamples))
   }
   pythonArgs.push('--tag', args.profile)
-  if (args.options.wandbProject) {
-    pythonArgs.push('--wandb-project', args.options.wandbProject)
+  if (args.wandb.project) {
+    pythonArgs.push('--wandb-project', args.wandb.project)
   }
-  if (args.options.wandbEntity) {
-    pythonArgs.push('--wandb-entity', args.options.wandbEntity)
+  if (args.wandb.entity) {
+    pythonArgs.push('--wandb-entity', args.wandb.entity)
   }
 
   return pythonArgs
@@ -305,9 +330,14 @@ async function main() {
   const options = parseArgs(process.argv.slice(2))
   const root = options.root ?? process.cwd()
   const curriculumId = makeCurriculumId()
+  const lineageId = options.lineageId ?? curriculumId
   const outputDir =
     options.outputDir ?? resolve(root, 'artifacts', 'q-curriculum', curriculumId)
   mkdirSync(outputDir, { recursive: true })
+  const wandb = resolveWandbConfig({
+    project: options.wandbProject,
+    entity: options.wandbEntity,
+  })
 
   const manifest = loadQBridgeBenchBundleManifest(options.bundleDir)
   const results: CurriculumProfileResult[] = []
@@ -331,6 +361,7 @@ async function main() {
         status: 'skipped',
         summary: `${pack.label} curriculum run skipped because it has no train samples.`,
         trainOutputDir,
+        wandbSummary: wandb.summary,
       })
       continue
     }
@@ -340,7 +371,10 @@ async function main() {
       evalFile: pack.splitCounts.eval > 0 ? pack.evalFile : null,
       profile,
       outputDir: trainOutputDir,
+      lineageId,
+      phaseId: options.phaseId,
       options,
+      wandb,
     })
     const trainResult = await execa(options.python, trainArgs, {
       cwd: root,
@@ -355,6 +389,7 @@ async function main() {
         status: 'failed',
         summary: `${pack.label} curriculum training failed.`,
         trainOutputDir,
+        wandbSummary: wandb.summary,
         trainCommand: [options.python, ...trainArgs].join(' '),
         trainExitCode: trainResult.exitCode,
         stdoutTail: tailText(trainResult.stdout),
@@ -378,6 +413,8 @@ async function main() {
         benchmarkOutDir,
         '--base-model',
         options.baseModel,
+        '--lineage-id',
+        lineageId,
         '--adapter-dir',
         trainOutputDir,
         '--python',
@@ -387,6 +424,9 @@ async function main() {
         '--timeout-ms',
         String(options.benchmarkTimeoutMs),
       ]
+      if (options.phaseId) {
+        benchmarkArgs.push('--phase-id', options.phaseId)
+      }
       if (options.maxTrainSamples !== null) {
         benchmarkArgs.push('--max-train-samples', String(options.maxTrainSamples))
       }
@@ -396,11 +436,11 @@ async function main() {
       for (const packName of options.benchmarkPacks) {
         benchmarkArgs.push('--pack', packName)
       }
-      if (options.wandbProject) {
-        benchmarkArgs.push('--wandb-project', options.wandbProject)
+      if (wandb.project) {
+        benchmarkArgs.push('--wandb-project', wandb.project)
       }
-      if (options.wandbEntity) {
-        benchmarkArgs.push('--wandb-entity', options.wandbEntity)
+      if (wandb.entity) {
+        benchmarkArgs.push('--wandb-entity', wandb.entity)
       }
 
       const benchmarkResult = await execa('bun', benchmarkArgs, {
@@ -438,6 +478,7 @@ async function main() {
       status: 'trained',
       summary: `${pack.label} curriculum run completed.`,
       trainOutputDir,
+      wandbSummary: wandb.summary,
       benchmarkReportPath,
       trainCommand: [options.python, ...trainArgs].join(' '),
       trainExitCode: trainResult.exitCode,
@@ -455,6 +496,8 @@ async function main() {
     bundleDir: options.bundleDir,
     outputDir,
     baseModel: options.baseModel,
+    lineageId,
+    phaseId: options.phaseId,
     python: options.python,
     profiles: options.profiles,
     benchmarkPacks: options.benchmarkPacks,
@@ -463,6 +506,7 @@ async function main() {
     maxSeqLength: options.maxSeqLength,
     maxTrainSamples: options.maxTrainSamples,
     maxEvalSamples: options.maxEvalSamples,
+    wandb,
     results,
     honestyBoundary:
       'These curriculum runs compare audited OpenJaws packs locally. They are useful for specialization direction, but they are not a public benchmark claim on their own.',

@@ -158,6 +158,8 @@ function buildBaseRunState(args: {
     evalFile,
     outputDir: args.manifestDir,
     runName: args.current?.runName ?? args.manifest.training.runName,
+    lineageId: args.current?.lineageId ?? args.manifest.training.lineageId ?? null,
+    phaseId: args.current?.phaseId ?? args.manifest.training.phaseId ?? null,
     selectedTags:
       args.current?.selectedTags ?? args.manifest.training.selectedTags,
     selectedLanguages:
@@ -391,6 +393,10 @@ export async function reconcileQTrainingRouteResult(
         existingRegistry?.selectedLanguages ??
         manifest.training.selectedLanguages,
       runName: existingRegistry?.runName ?? manifest.training.runName,
+      lineageId:
+        existingRegistry?.lineageId ?? manifest.training.lineageId ?? null,
+      phaseId:
+        existingRegistry?.phaseId ?? manifest.training.phaseId ?? null,
       logFiles:
         existingRegistry?.logFiles ?? {
           stdout: join(manifestDir, 'route-dispatch.stdout.log'),

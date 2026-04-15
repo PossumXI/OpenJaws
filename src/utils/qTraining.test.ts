@@ -145,6 +145,8 @@ describe('qTraining registry', () => {
         generatedAt: '2026-04-14T19:00:00.000Z',
         outputDir: join(root, 'artifacts', 'q-hybrid-sessions', 'session-1'),
         bundleDir: join(root, 'data', 'sft', 'audited'),
+        lineageId: 'lineage-agentic-1',
+        phaseId: 'phase-agentic-1',
         localBaseModel: 'q-lite',
         immaculateBaseModel: 'q',
         tags: ['agentic'],
@@ -182,6 +184,8 @@ describe('qTraining registry', () => {
         generatedAt: '2026-04-14T19:05:00.000Z',
         outputDir: join(root, 'artifacts', 'q-hybrid-sessions', 'session-1'),
         bundleDir: join(root, 'data', 'sft', 'audited'),
+        lineageId: 'lineage-agentic-1',
+        phaseId: 'phase-agentic-1',
         localBaseModel: 'q-lite',
         immaculateBaseModel: 'q',
         tags: ['agentic'],
@@ -215,6 +219,8 @@ describe('qTraining registry', () => {
 
     const latest = getLatestQTrainingHybridSession(root)
     expect(latest?.status).toBe('degraded')
+    expect(latest?.lineageId).toBe('lineage-agentic-1')
+    expect(latest?.phaseId).toBe('phase-agentic-1')
     expect(latest?.immaculateLane.routeQueueSummary).toBe('queued')
     expect(latest?.cloudLane?.lane).toBe('cloud')
   })
@@ -237,6 +243,8 @@ describe('qTraining registry', () => {
           selectedTags: ['agentic'],
           selectedLanguages: ['python'],
           runName: null,
+          lineageId: 'lineage-route-1',
+          phaseId: 'phase-route-1',
           logFiles: {
             stdout: 'stdout.log',
             stderr: 'stderr.log',
@@ -336,6 +344,8 @@ describe('qTraining registry', () => {
           runName: null,
           selectedTags: ['agentic'],
           selectedLanguages: ['python'],
+          lineageId: 'lineage-route-1',
+          phaseId: 'phase-route-1',
           preflight: {
             decision: 'remote_required',
             reasonCode: 'insufficient_host_memory',
@@ -404,6 +414,10 @@ describe('qTraining registry', () => {
     expect(snapshot?.state?.routeRequest?.integrity?.trainFile.sha256).toBe(
       'train-digest',
     )
+    expect(snapshot?.registry.lineageId).toBe('lineage-route-1')
+    expect(snapshot?.registry.phaseId).toBe('phase-route-1')
+    expect(snapshot?.state?.lineageId).toBe('lineage-route-1')
+    expect(snapshot?.state?.phaseId).toBe('phase-route-1')
     expect(snapshot?.routeQueue?.status).toBe('queued')
     expect(snapshot?.routeQueue?.assignment?.source).toBe('immaculate')
   })

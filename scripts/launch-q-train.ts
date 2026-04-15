@@ -34,6 +34,8 @@ type CliOptions = {
   outputDir: string | null
   baseModel: string
   runName: string | null
+  lineageId: string | null
+  phaseId: string | null
   python: string
   tags: string[]
   languages: string[]
@@ -51,6 +53,8 @@ function parseArgs(argv: string[]): CliOptions {
     outputDir: null,
     baseModel: DEFAULT_Q_BASE_MODEL,
     runName: null,
+    lineageId: null,
+    phaseId: null,
     python: resolveQTrainingPythonCommand(process.cwd()),
     tags: [],
     languages: [],
@@ -81,6 +85,14 @@ function parseArgs(argv: string[]): CliOptions {
     }
     if (arg === '--run-name' && argv[i + 1]) {
       options.runName = argv[++i]!
+      continue
+    }
+    if (arg === '--lineage-id' && argv[i + 1]) {
+      options.lineageId = argv[++i]!
+      continue
+    }
+    if (arg === '--phase-id' && argv[i + 1]) {
+      options.phaseId = argv[++i]!
       continue
     }
     if (arg === '--python' && argv[i + 1]) {
@@ -145,6 +157,8 @@ function printHelpAndExit(): never {
       '  --output-dir <path>        Output run directory',
       '  --base-model <model>       Base Hugging Face model',
       '  --run-name <name>          Optional run name',
+      '  --lineage-id <id>          Optional lineage ID shared across related Q runs',
+      '  --phase-id <id>            Optional Agent Co-Work phase ID tied to this run',
       '  --python <exe>             Python executable to use',
       '  --tag <tag>                Repeatable dataset tag filter',
       '  --language <lang>          Repeatable dataset language filter',
@@ -232,6 +246,8 @@ async function requestImmaculateQRoute(args: {
   outputDir: string
   baseModel: string
   runName: string | null
+  lineageId: string | null
+  phaseId: string | null
   selectedTags: string[]
   selectedLanguages: string[]
   trainFile: string
@@ -418,6 +434,8 @@ async function requestImmaculateQRoute(args: {
         selectedLanguages: args.selectedLanguages,
         outputDir: '.',
         useCpu: args.useCpu,
+        lineageId: args.lineageId,
+        phaseId: args.phaseId,
         maxSteps: args.maxSteps,
         numTrainEpochs: args.numTrainEpochs,
       },
@@ -501,6 +519,8 @@ function writeQLaunchState(args: {
   runName: string | null
   selectedTags: string[]
   selectedLanguages: string[]
+  lineageId: string | null
+  phaseId: string | null
   maxSteps: number | null
   stdoutLog: string
   stderrLog: string
@@ -527,6 +547,8 @@ function writeQLaunchState(args: {
         runName: args.runName,
         selectedTags: args.selectedTags,
         selectedLanguages: args.selectedLanguages,
+        lineageId: args.lineageId,
+        phaseId: args.phaseId,
         maxSteps: args.maxSteps,
         preflight: args.preflight,
         routeRequest: args.routeRequest,
@@ -557,6 +579,8 @@ function writeQLaunchState(args: {
     selectedTags: args.selectedTags,
     selectedLanguages: args.selectedLanguages,
     runName: args.runName,
+    lineageId: args.lineageId,
+    phaseId: args.phaseId,
     logFiles: {
       stdout: args.stdoutLog,
       stderr: args.stderrLog,
@@ -574,6 +598,8 @@ function buildPythonTrainArgs(args: {
   baseModel: string
   outputDir: string
   runName: string | null
+  lineageId?: string | null
+  phaseId?: string | null
   useCpu: boolean
   maxSteps: number | null
   numTrainEpochs: number | null
@@ -597,6 +623,12 @@ function buildPythonTrainArgs(args: {
   }
   if (args.runName) {
     pythonArgs.push('--run-name', args.runName)
+  }
+  if (args.lineageId) {
+    pythonArgs.push('--lineage-id', args.lineageId)
+  }
+  if (args.phaseId) {
+    pythonArgs.push('--phase-id', args.phaseId)
   }
   if (args.useCpu) {
     pythonArgs.push('--use-cpu')
@@ -662,6 +694,8 @@ async function main() {
         outputDir,
         baseModel: options.baseModel,
         runName: options.runName,
+        lineageId: options.lineageId,
+        phaseId: options.phaseId,
         selectedTags: options.tags,
         selectedLanguages: options.languages,
         trainFile,
@@ -697,6 +731,8 @@ async function main() {
       runName: options.runName,
       selectedTags: options.tags,
       selectedLanguages: options.languages,
+      lineageId: options.lineageId,
+      phaseId: options.phaseId,
       maxSteps: options.maxSteps,
       stdoutLog,
       stderrLog,
@@ -723,6 +759,8 @@ async function main() {
           root,
           selectedTags: options.tags,
           selectedLanguages: options.languages,
+          lineageId: options.lineageId,
+          phaseId: options.phaseId,
           preflight,
           routeRequest,
           routeFailure: null,
@@ -768,6 +806,8 @@ async function main() {
       runName: options.runName,
       selectedTags: options.tags,
       selectedLanguages: options.languages,
+      lineageId: options.lineageId,
+      phaseId: options.phaseId,
       maxSteps: options.maxSteps,
       stdoutLog,
       stderrLog,
@@ -793,6 +833,8 @@ async function main() {
           root,
           selectedTags: options.tags,
           selectedLanguages: options.languages,
+          lineageId: options.lineageId,
+          phaseId: options.phaseId,
           preflight,
           routeRequest: null,
           routeFailure,
@@ -813,6 +855,8 @@ async function main() {
     baseModel: options.baseModel,
     outputDir,
     runName: options.runName,
+    lineageId: options.lineageId,
+    phaseId: options.phaseId,
     useCpu: options.useCpu,
     maxSteps: options.maxSteps,
     numTrainEpochs: options.numTrainEpochs,
@@ -852,6 +896,8 @@ async function main() {
     selectedTags: options.tags,
     selectedLanguages: options.languages,
     runName: options.runName,
+    lineageId: options.lineageId,
+    phaseId: options.phaseId,
     maxSteps: options.maxSteps,
     stdoutLog,
     stderrLog,
@@ -879,6 +925,8 @@ async function main() {
         root,
         selectedTags: options.tags,
         selectedLanguages: options.languages,
+        lineageId: options.lineageId,
+        phaseId: options.phaseId,
         preflight,
         routeRequest: null,
         routeFailure: null,

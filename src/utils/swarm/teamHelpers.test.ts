@@ -13,6 +13,7 @@ import {
   removeTeammateFromTeamFile,
   recordTeamPhaseDelivery,
   recordTeamPhaseRequest,
+  reuseTeamPhaseReceipt,
   type TeamFile,
 } from './teamHelpers.js'
 
@@ -223,6 +224,110 @@ describe('teamHelpers agent co-work', () => {
     expect(markdown).toContain(
       'deliverable · scout -> team-lead · Found the OCI path drift and patched the shared bridge config.',
     )
+  })
+
+  it('reuses an explicit phase across a new teammate terminal instead of creating a new receipt', () => {
+    const teamFile: TeamFile = {
+      name: 'bridge-crew',
+      createdAt: 1,
+      leadAgentId: 'team-lead@bridge-crew',
+      leadTerminalContextId: 'term-lead01',
+      members: [
+        {
+          agentId: 'team-lead@bridge-crew',
+          name: 'team-lead',
+          joinedAt: 1,
+          tmuxPaneId: '',
+          cwd: 'D:\\openjaws\\OpenJaws',
+          terminalContextId: 'term-lead01',
+          subscriptions: [],
+        },
+        {
+          agentId: 'scout@bridge-crew',
+          name: 'scout',
+          joinedAt: 2,
+          tmuxPaneId: '%2',
+          cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          terminalContextId: 'term-scout02',
+          subscriptions: [],
+        },
+        {
+          agentId: 'bridge@bridge-crew',
+          name: 'bridge',
+          joinedAt: 3,
+          tmuxPaneId: '%3',
+          cwd: 'D:\\howard_client_job_1',
+          terminalContextId: 'term-bridge03',
+          subscriptions: [],
+        },
+      ],
+      terminalContexts: [
+        {
+          terminalContextId: 'term-lead01',
+          agentId: 'team-lead@bridge-crew',
+          agentName: 'team-lead',
+          cwd: 'D:\\openjaws\\OpenJaws',
+          projectRoot: 'D:\\openjaws\\OpenJaws',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          terminalContextId: 'term-scout02',
+          agentId: 'scout@bridge-crew',
+          agentName: 'scout',
+          cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          projectRoot: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          createdAt: 2,
+          updatedAt: 2,
+        },
+        {
+          terminalContextId: 'term-bridge03',
+          agentId: 'bridge@bridge-crew',
+          agentName: 'bridge',
+          cwd: 'D:\\howard_client_job_1',
+          projectRoot: 'D:\\howard_client_job_1',
+          createdAt: 3,
+          updatedAt: 3,
+        },
+      ],
+    }
+
+    const receipt = recordTeamPhaseRequest(teamFile, {
+      sourceAgentId: 'team-lead@bridge-crew',
+      sourceTerminalContextId: 'term-lead01',
+      targetAgentIds: ['scout@bridge-crew'],
+      targetTerminalContextIds: ['term-scout02'],
+      requestSummary: 'Trace the OCI bridge drift and prep a patch.',
+      label: 'bridge drift phase',
+    })
+
+    const reused = reuseTeamPhaseReceipt(teamFile, {
+      phaseId: receipt.phaseId,
+      fromAgentId: 'team-lead@bridge-crew',
+      toAgentIds: ['bridge@bridge-crew'],
+      summary: 'Join the same drift phase from the Howard project side.',
+      kind: 'request',
+      sourceTerminalContextId: 'term-lead01',
+      targetTerminalContextIds: ['term-bridge03'],
+      projectRoots: ['D:\\howard_client_job_1'],
+    })
+
+    expect(reused?.phaseId).toBe(receipt.phaseId)
+    expect(teamFile.phaseReceipts).toHaveLength(1)
+    expect(reused?.targetAgentIds).toEqual([
+      'scout@bridge-crew',
+      'bridge@bridge-crew',
+    ])
+    expect(reused?.targetTerminalContextIds).toEqual([
+      'term-scout02',
+      'term-bridge03',
+    ])
+    expect(reused?.projectRoots).toEqual([
+      'D:\\openjaws\\OpenJaws',
+      'C:\\Users\\Knight\\Desktop\\cheeks',
+      'D:\\howard_client_job_1',
+    ])
+    expect(reused?.deliveries).toHaveLength(2)
   })
 
   it('removes pane-backed terminal contexts when a teammate is removed by pane id', () => {

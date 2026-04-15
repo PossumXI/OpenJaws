@@ -15,6 +15,7 @@ import {
   DEFAULT_Q_BASE_MODEL,
   resolveQTrainingPythonCommand,
 } from '../src/utils/qTraining.js'
+import { resolveWandbConfig } from '../src/utils/wandb.js'
 
 type CliOptions = {
   root: string | null
@@ -22,6 +23,8 @@ type CliOptions = {
   outputDir: string | null
   baseModel: string
   adapterDir: string | null
+  lineageId: string | null
+  phaseId: string | null
   python: string
   packs: QBridgeBenchPack[]
   useCpu: boolean
@@ -32,9 +35,10 @@ type CliOptions = {
   runNamePrefix: string | null
   wandbProject: string | null
   wandbEntity: string | null
+  dryRun: boolean
 }
 
-type PackStatus = 'evaluated' | 'skipped' | 'failed'
+type PackStatus = 'evaluated' | 'skipped' | 'failed' | 'dry_run'
 
 type PackResult = {
   pack: QBridgeBenchPack
@@ -73,6 +77,8 @@ function parseArgs(argv: string[]): CliOptions {
     outputDir: null,
     baseModel: DEFAULT_Q_BASE_MODEL,
     adapterDir: null,
+    lineageId: null,
+    phaseId: null,
     python: resolveQTrainingPythonCommand(process.cwd()),
     packs: [],
     useCpu: true,
@@ -83,6 +89,7 @@ function parseArgs(argv: string[]): CliOptions {
     runNamePrefix: 'q-bridgebench',
     wandbProject: null,
     wandbEntity: null,
+    dryRun: false,
   }
 
   for (let i = 0; i < argv.length; i++) {
@@ -105,6 +112,14 @@ function parseArgs(argv: string[]): CliOptions {
     }
     if (arg === '--adapter-dir' && argv[i + 1]) {
       options.adapterDir = resolve(argv[++i]!)
+      continue
+    }
+    if (arg === '--lineage-id' && argv[i + 1]) {
+      options.lineageId = argv[++i]!
+      continue
+    }
+    if (arg === '--phase-id' && argv[i + 1]) {
+      options.phaseId = argv[++i]!
       continue
     }
     if (arg === '--python' && argv[i + 1]) {
@@ -156,6 +171,10 @@ function parseArgs(argv: string[]): CliOptions {
       options.wandbEntity = argv[++i]!
       continue
     }
+    if (arg === '--dry-run') {
+      options.dryRun = true
+      continue
+    }
     if (arg === '--help' || arg === '-h') {
       printHelpAndExit()
     }
@@ -178,6 +197,8 @@ function printHelpAndExit(): never {
       '  --out-dir <path>           Output directory for benchmark artifacts',
       '  --base-model <id>          Base Q model family label or upstream checkpoint',
       '  --adapter-dir <path>       Optional adapter directory to benchmark instead of the base model alone',
+      '  --lineage-id <id>          Optional lineage ID shared with related training receipts',
+      '  --phase-id <id>            Optional Agent Co-Work phase ID tied to this benchmark',
       '  --python <path>            Python runtime to use',
       '  --pack <name>              Benchmark pack: all, coding, agentic, security, general',
       '  --max-seq-length <n>       Sequence length cap passed to the trainer (default 512)',
@@ -187,6 +208,7 @@ function printHelpAndExit(): never {
       '  --run-name-prefix <text>   Optional run-name prefix written into each eval receipt',
       '  --wandb-project <name>     Optional W&B project for live benchmark receipts',
       '  --wandb-entity <name>      Optional W&B entity for live benchmark receipts',
+      '  --dry-run                  Resolve packs and emit commands without launching Python',
       '  -h, --help                 Show this help',
     ].join('\n'),
   )
@@ -214,7 +236,10 @@ function readJsonIfExists(path: string): Record<string, unknown> | null {
 function buildPythonArgs(args: {
   pack: ReturnType<typeof resolveQBridgeBenchPack>
   outputDir: string
+  lineageId: string | null
+  phaseId: string | null
   options: CliOptions
+  wandb: ReturnType<typeof resolveWandbConfig>
 }): string[] {
   const pythonArgs = [
     resolve(process.cwd(), 'training', 'q', 'train_lora.py'),
@@ -232,6 +257,12 @@ function buildPythonArgs(args: {
     '--max-seq-length',
     String(args.options.maxSeqLength),
   ]
+  if (args.lineageId) {
+    pythonArgs.push('--lineage-id', args.lineageId)
+  }
+  if (args.phaseId) {
+    pythonArgs.push('--phase-id', args.phaseId)
+  }
 
   if (args.options.adapterDir) {
     pythonArgs.push('--adapter-dir', args.options.adapterDir)
@@ -248,11 +279,11 @@ function buildPythonArgs(args: {
   if (args.options.runNamePrefix) {
     pythonArgs.push('--run-name', `${args.options.runNamePrefix}-${args.pack.pack}`)
   }
-  if (args.options.wandbProject) {
-    pythonArgs.push('--wandb-project', args.options.wandbProject)
+  if (args.wandb.project) {
+    pythonArgs.push('--wandb-project', args.wandb.project)
   }
-  if (args.options.wandbEntity) {
-    pythonArgs.push('--wandb-entity', args.options.wandbEntity)
+  if (args.wandb.entity) {
+    pythonArgs.push('--wandb-entity', args.wandb.entity)
   }
 
   return pythonArgs
@@ -269,9 +300,14 @@ async function main() {
   const options = parseArgs(process.argv.slice(2))
   const root = options.root ?? process.cwd()
   const benchmarkId = makeBenchmarkId()
+  const lineageId = options.lineageId ?? benchmarkId
   const outputDir =
     options.outputDir ?? resolve(root, 'artifacts', 'bridgebench', benchmarkId)
   mkdirSync(outputDir, { recursive: true })
+  const wandb = resolveWandbConfig({
+    project: options.wandbProject,
+    entity: options.wandbEntity,
+  })
 
   const manifest = loadQBridgeBenchBundleManifest(options.bundleDir)
   const packResults: PackResult[] = []
@@ -302,8 +338,26 @@ async function main() {
     const pythonArgs = buildPythonArgs({
       pack,
       outputDir: packOutputDir,
+      lineageId,
+      phaseId: options.phaseId,
       options,
+      wandb,
     })
+    const command = [options.python, ...pythonArgs].join(' ')
+    if (options.dryRun) {
+      packResults.push({
+        pack: pack.pack,
+        status: 'dry_run',
+        summary: `${pack.label} pack dry run ready · ${pack.splitCounts.eval} eval sample${pack.splitCounts.eval === 1 ? '' : 's'}.`,
+        outputDir: packOutputDir,
+        evalSampleCount: pack.splitCounts.eval,
+        trainSampleCount: pack.splitCounts.train,
+        command,
+        score: null,
+        metrics: null,
+      })
+      continue
+    }
     const result = await execa(options.python, pythonArgs, {
       cwd: root,
       reject: false,
@@ -319,7 +373,7 @@ async function main() {
         outputDir: packOutputDir,
         evalSampleCount: pack.splitCounts.eval,
         trainSampleCount: pack.splitCounts.train,
-        command: [options.python, ...pythonArgs].join(' '),
+        command,
         exitCode: result.exitCode,
         score: null,
         metrics: null,
@@ -355,10 +409,13 @@ async function main() {
             metrics,
             score,
           }),
+          lineageId,
+          phaseId: options.phaseId,
           scorePercent: score,
           evalSampleCount: pack.splitCounts.eval,
           trainSampleCount: pack.splitCounts.train,
           metrics,
+          wandb,
           runSummary,
           runState,
         },
@@ -379,7 +436,7 @@ async function main() {
       outputDir: packOutputDir,
       evalSampleCount: pack.splitCounts.eval,
       trainSampleCount: pack.splitCounts.train,
-      command: [options.python, ...pythonArgs].join(' '),
+      command,
       exitCode: result.exitCode,
       score,
       metrics,
@@ -406,12 +463,16 @@ async function main() {
     outputDir,
     baseModel: options.baseModel,
     adapterDir: options.adapterDir,
+    lineageId,
+    phaseId: options.phaseId,
     python: options.python,
     packs: options.packs,
     maxSeqLength: options.maxSeqLength,
     maxTrainSamples: options.maxTrainSamples,
     maxEvalSamples: options.maxEvalSamples,
     runNamePrefix: options.runNamePrefix,
+    dryRun: options.dryRun,
+    wandb,
     scoreMetric: 'eval_mean_token_accuracy_percent',
     results: packResults,
     bestResult: bestResult
@@ -452,6 +513,7 @@ async function main() {
       {
         benchmarkId,
         scoreMetric: 'eval_mean_token_accuracy',
+        wandb,
         results: packResults.map(result => ({
           pack: result.pack,
           status: result.status,
@@ -472,10 +534,14 @@ async function main() {
       {
         status: 'ok',
         benchmarkId,
+        lineageId,
+        phaseId: options.phaseId,
         reportPath,
-        summary: bestResult
-          ? `Q BridgeBench completed. Best pack: ${bestResult.pack} (${bestResult.score?.toFixed(2) ?? 'n/a'}).`
-          : 'Q BridgeBench completed without an evaluated pack result.',
+        summary: options.dryRun
+          ? 'Q BridgeBench dry run completed.'
+          : bestResult
+            ? `Q BridgeBench completed. Best pack: ${bestResult.pack} (${bestResult.score?.toFixed(2) ?? 'n/a'}).`
+            : 'Q BridgeBench completed without an evaluated pack result.',
         results: packResults.map(result => ({
           pack: result.pack,
           status: result.status,

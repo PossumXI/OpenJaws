@@ -64,8 +64,10 @@ import {
 import { buildInheritedEnvVars } from '../../utils/swarm/spawnUtils.js'
 import {
   createTeamTerminalContext,
+  getTeamPhaseReceiptById,
   recordTeamPhaseRequest,
   readTeamFileAsync,
+  reuseTeamPhaseReceipt,
   sanitizeAgentName,
   sanitizeName,
   upsertTeamTerminalContext,
@@ -130,6 +132,7 @@ export type SpawnOutput = {
   teammate_id: string
   agent_id: string
   terminal_context_id?: string
+  phase_id?: string
   agent_type?: string
   model?: string
   name: string
@@ -152,6 +155,7 @@ export type SpawnTeammateConfig = {
   name: string
   prompt: string
   team_name?: string
+  phase_id?: string
   cwd?: string
   use_splitpane?: boolean
   plan_mode_required?: boolean
@@ -169,6 +173,7 @@ type SpawnInput = {
   name: string
   prompt: string
   team_name?: string
+  phase_id?: string
   cwd?: string
   use_splitpane?: boolean
   plan_mode_required?: boolean
@@ -302,6 +307,19 @@ async function maybeApplyImmaculateCrewLaunchPacing(
       waveState: null,
       burstBudget: null,
     }
+  }
+}
+
+function assertSpawnPhaseSelection(
+  teamFile: Awaited<ReturnType<typeof readTeamFileAsync>>,
+  teamName: string,
+  phaseId?: string,
+): void {
+  if (!teamFile || !phaseId) {
+    return
+  }
+  if (!getTeamPhaseReceiptById(teamFile, phaseId)) {
+    throw new Error(`Phase "${phaseId}" does not exist in team "${teamName}".`)
   }
 }
 
@@ -495,6 +513,7 @@ async function handleSpawnSplitPane(
       `Team "${teamName}" does not exist. Call spawnTeam first to create the team.`,
     )
   }
+  assertSpawnPhaseSelection(existingTeamFile, teamName, input.phase_id)
   const {
     waveState: immaculateCrewWave,
     burstBudget: immaculateCrewBurstBudget,
@@ -692,15 +711,28 @@ async function handleSpawnSplitPane(
     backendType: detectionResult.backend.type,
   })
   upsertTeamTerminalContext(teamFile, terminalContext)
-  recordTeamPhaseRequest(teamFile, {
-    sourceAgentId: teamFile.leadAgentId,
-    sourceTerminalContextId: teamFile.leadTerminalContextId,
-    targetAgentIds: [teammateId],
-    targetTerminalContextIds: [terminalContext.terminalContextId],
-    requestSummary: prompt,
-    label: `${sanitizedName} initial assignment`,
-    projectRoots: [terminalContext.projectRoot],
-  })
+  if (input.phase_id) {
+    reuseTeamPhaseReceipt(teamFile, {
+      phaseId: input.phase_id,
+      fromAgentId: teamFile.leadAgentId,
+      toAgentIds: [teammateId],
+      summary: prompt,
+      kind: 'request',
+      sourceTerminalContextId: teamFile.leadTerminalContextId,
+      targetTerminalContextIds: [terminalContext.terminalContextId],
+      projectRoots: [terminalContext.projectRoot],
+    })
+  } else {
+    recordTeamPhaseRequest(teamFile, {
+      sourceAgentId: teamFile.leadAgentId,
+      sourceTerminalContextId: teamFile.leadTerminalContextId,
+      targetAgentIds: [teammateId],
+      targetTerminalContextIds: [terminalContext.terminalContextId],
+      requestSummary: prompt,
+      label: `${sanitizedName} initial assignment`,
+      projectRoots: [terminalContext.projectRoot],
+    })
+  }
   await writeTeamFileAsync(teamName, teamFile)
 
   // Send initial instructions to teammate via mailbox
@@ -729,6 +761,7 @@ async function handleSpawnSplitPane(
       teammate_id: teammateId,
       agent_id: teammateId,
       terminal_context_id: terminalContext.terminalContextId,
+      phase_id: input.phase_id,
       agent_type,
       model,
       name: sanitizedName,
@@ -790,6 +823,7 @@ async function handleSpawnSeparateWindow(
       `Team "${teamName}" does not exist. Call spawnTeam first to create the team.`,
     )
   }
+  assertSpawnPhaseSelection(existingTeamFile, teamName, input.phase_id)
   const {
     waveState: immaculateCrewWave,
     burstBudget: immaculateCrewBurstBudget,
@@ -962,15 +996,28 @@ async function handleSpawnSeparateWindow(
     backendType: 'tmux', // This handler always uses tmux directly
   })
   upsertTeamTerminalContext(teamFile, terminalContext)
-  recordTeamPhaseRequest(teamFile, {
-    sourceAgentId: teamFile.leadAgentId,
-    sourceTerminalContextId: teamFile.leadTerminalContextId,
-    targetAgentIds: [teammateId],
-    targetTerminalContextIds: [terminalContext.terminalContextId],
-    requestSummary: prompt,
-    label: `${sanitizedName} initial assignment`,
-    projectRoots: [terminalContext.projectRoot],
-  })
+  if (input.phase_id) {
+    reuseTeamPhaseReceipt(teamFile, {
+      phaseId: input.phase_id,
+      fromAgentId: teamFile.leadAgentId,
+      toAgentIds: [teammateId],
+      summary: prompt,
+      kind: 'request',
+      sourceTerminalContextId: teamFile.leadTerminalContextId,
+      targetTerminalContextIds: [terminalContext.terminalContextId],
+      projectRoots: [terminalContext.projectRoot],
+    })
+  } else {
+    recordTeamPhaseRequest(teamFile, {
+      sourceAgentId: teamFile.leadAgentId,
+      sourceTerminalContextId: teamFile.leadTerminalContextId,
+      targetAgentIds: [teammateId],
+      targetTerminalContextIds: [terminalContext.terminalContextId],
+      requestSummary: prompt,
+      label: `${sanitizedName} initial assignment`,
+      projectRoots: [terminalContext.projectRoot],
+    })
+  }
   await writeTeamFileAsync(teamName, teamFile)
 
   // Send initial instructions to teammate via mailbox
@@ -999,6 +1046,7 @@ async function handleSpawnSeparateWindow(
       teammate_id: teammateId,
       agent_id: teammateId,
       terminal_context_id: terminalContext.terminalContextId,
+      phase_id: input.phase_id,
       agent_type,
       model,
       name: sanitizedName,
@@ -1141,6 +1189,7 @@ async function handleSpawnInProcess(
       `Team "${teamName}" does not exist. Call spawnTeam first to create the team.`,
     )
   }
+  assertSpawnPhaseSelection(existingTeamFile, teamName, input.phase_id)
   const {
     waveState: immaculateCrewWave,
     burstBudget: immaculateCrewBurstBudget,
@@ -1347,6 +1396,28 @@ async function handleSpawnInProcess(
     backendType: 'in-process',
   })
   upsertTeamTerminalContext(teamFile, terminalContext)
+  if (input.phase_id) {
+    reuseTeamPhaseReceipt(teamFile, {
+      phaseId: input.phase_id,
+      fromAgentId: teamFile.leadAgentId,
+      toAgentIds: [teammateId],
+      summary: prompt,
+      kind: 'request',
+      sourceTerminalContextId: teamFile.leadTerminalContextId,
+      targetTerminalContextIds: [terminalContext.terminalContextId],
+      projectRoots: [terminalContext.projectRoot],
+    })
+  } else {
+    recordTeamPhaseRequest(teamFile, {
+      sourceAgentId: teamFile.leadAgentId,
+      sourceTerminalContextId: teamFile.leadTerminalContextId,
+      targetAgentIds: [teammateId],
+      targetTerminalContextIds: [terminalContext.terminalContextId],
+      requestSummary: prompt,
+      label: `${sanitizedName} initial assignment`,
+      projectRoots: [terminalContext.projectRoot],
+    })
+  }
   await writeTeamFileAsync(teamName, teamFile)
 
   // Note: Do NOT send the prompt via mailbox for in-process teammates.
@@ -1368,6 +1439,7 @@ async function handleSpawnInProcess(
       teammate_id: teammateId,
       agent_id: teammateId,
       terminal_context_id: terminalContext.terminalContextId,
+      phase_id: input.phase_id,
       agent_type,
       model,
       name: sanitizedName,

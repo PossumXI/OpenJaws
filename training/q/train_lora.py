@@ -131,6 +131,16 @@ def parse_args() -> argparse.Namespace:
         help="Optional benchmark pack label written into run metadata",
     )
     parser.add_argument(
+        "--lineage-id",
+        default=None,
+        help="Optional lineage ID used to bind related training and benchmark receipts together",
+    )
+    parser.add_argument(
+        "--phase-id",
+        default=None,
+        help="Optional Agent Co-Work phase ID associated with this training run",
+    )
+    parser.add_argument(
         "--max-train-samples",
         type=int,
         default=None,
@@ -171,11 +181,71 @@ def resolve_lora_target_modules(model: AutoModelForCausalLM) -> list[str]:
 
 
 def resolve_report_to(args: argparse.Namespace) -> list[str]:
-    if args.wandb_project and args.wandb_entity:
-        os.environ.setdefault("WANDB_PROJECT", args.wandb_project)
-        os.environ.setdefault("WANDB_ENTITY", args.wandb_entity)
+    wandb_project = args.wandb_project or os.getenv("WANDB_PROJECT")
+    wandb_entity = args.wandb_entity or os.getenv("WANDB_ENTITY")
+    if wandb_project and wandb_entity:
+        os.environ.setdefault("WANDB_PROJECT", wandb_project)
+        os.environ.setdefault("WANDB_ENTITY", wandb_entity)
         return ["wandb"]
     return []
+
+
+def normalize_optional_env(value: str | None) -> str | None:
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed if trimmed else None
+
+
+def resolve_wandb_metadata(args: argparse.Namespace) -> dict:
+    cli_project = normalize_optional_env(args.wandb_project)
+    cli_entity = normalize_optional_env(args.wandb_entity)
+    env_project = normalize_optional_env(os.getenv("WANDB_PROJECT"))
+    env_entity = normalize_optional_env(os.getenv("WANDB_ENTITY"))
+    project = cli_project or env_project
+    entity = cli_entity or env_entity
+    missing: list[str] = []
+    if project and not entity:
+        missing.append("entity")
+    if entity and not project:
+        missing.append("project")
+    source = (
+        "mixed"
+        if (cli_project or cli_entity) and (env_project or env_entity)
+        else "cli"
+        if cli_project or cli_entity
+        else "env"
+        if env_project or env_entity
+        else "none"
+    )
+    url = f"https://wandb.ai/{entity}/{project}" if project and entity else None
+    status = (
+        "enabled"
+        if project and entity
+        else "incomplete"
+        if missing
+        else "disabled"
+    )
+    summary = (
+        f"enabled via {source} for {entity}/{project} ({url})"
+        if status == "enabled" and url
+        else f"enabled via {source} for {entity}/{project}"
+        if status == "enabled"
+        else f"incomplete via {source}; missing {', '.join(missing)}"
+        if status == "incomplete"
+        else "disabled"
+    )
+    return {
+        "project": project,
+        "entity": entity,
+        "enabled": bool(project and entity),
+        "status": status,
+        "source": source,
+        "missing": missing,
+        "api_key_present": bool(os.getenv("WANDB_API_KEY")),
+        "url": url,
+        "summary": summary,
+    }
 
 
 def build_metrics_summary(
@@ -324,6 +394,8 @@ def main() -> None:
             "runName": args.run_name,
             "selectedTags": sorted(selected_tags),
             "selectedLanguages": sorted(selected_languages),
+            "lineageId": args.lineage_id,
+            "phaseId": args.phase_id,
             "evalOnly": args.eval_only,
             "adapterDir": args.adapter_dir,
             "curriculumProfile": args.curriculum_profile,
@@ -426,11 +498,13 @@ def main() -> None:
     )
     if args.eval_only and (eval_dataset is None or len(eval_dataset) == 0):
         raise RuntimeError("Evaluation-only runs require at least one eval sample.")
+    wandb_metadata = resolve_wandb_metadata(args)
     report_to = resolve_report_to(args)
     run_state_writer.update(
         status="building_trainer",
         preparedTrainSampleCount=len(train_dataset),
         preparedEvalSampleCount=len(eval_dataset) if eval_dataset is not None else 0,
+        wandb=wandb_metadata,
     )
 
     training_args = SFTConfig(
@@ -489,6 +563,10 @@ def main() -> None:
             explicit_train_metrics=explicit_train_metrics,
             explicit_eval_metrics=explicit_eval_metrics,
         )
+        metrics_summary["lineage"] = {
+            "lineage_id": args.lineage_id,
+            "phase_id": args.phase_id,
+        }
 
         summary = {
             "base_model": args.base_model,
@@ -497,6 +575,8 @@ def main() -> None:
             "output_dir": args.output_dir,
             "selected_tags": sorted(selected_tags),
             "selected_languages": sorted(selected_languages),
+            "lineage_id": args.lineage_id,
+            "phase_id": args.phase_id,
             "eval_only": args.eval_only,
             "adapter_dir": args.adapter_dir,
             "curriculum_profile": args.curriculum_profile,
@@ -508,6 +588,7 @@ def main() -> None:
             "target_module_count": len(target_modules),
             "report_to": report_to,
             "run_name": args.run_name,
+            "wandb": wandb_metadata,
         }
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         Path(args.output_dir, "run-summary.json").write_text(

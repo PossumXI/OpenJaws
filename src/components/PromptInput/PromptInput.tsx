@@ -1062,11 +1062,11 @@ function PromptInput({
     if (isAgentSwarmsEnabled()) {
       const directMessage = parseDirectMemberMessage(inputParam);
       if (directMessage) {
-        const result = await sendDirectMemberMessage(directMessage.recipientName, directMessage.message, teamContext, writeToMailbox);
+        const result = await sendDirectMemberMessage(directMessage.recipientName, directMessage.message, teamContext, directMessage.phaseId, writeToMailbox);
         if (result.success) {
           addNotification({
             key: 'direct-message-sent',
-            text: `Sent to @${result.recipientName}`,
+            text: directMessage.phaseId ? `Sent to @${result.recipientName} on ${directMessage.phaseId}` : `Sent to @${result.recipientName}`,
             priority: 'immediate',
             timeoutMs: 3000
           });
@@ -1077,6 +1077,14 @@ function PromptInput({
           return;
         } else if (result.error === 'no_team_context') {
           // No team context - fall through to normal prompt submission
+        } else if (result.error === 'unknown_phase') {
+          addNotification({
+            key: 'direct-message-phase-missing',
+            text: `Phase ${result.phaseId} was not found for @${result.recipientName}`,
+            priority: 'immediate',
+            timeoutMs: 4000
+          });
+          return;
         } else {
           // Unknown recipient - fall through to normal prompt submission
           // This allows e.g. "@utils explain this code" to be sent as a prompt

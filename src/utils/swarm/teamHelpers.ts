@@ -452,6 +452,108 @@ export function recordTeamPhaseRequest(
   return receipt
 }
 
+export function getTeamPhaseReceiptById(
+  teamFile: TeamFile,
+  phaseId: string,
+): TeamPhaseReceipt | null {
+  return (
+    teamFile.phaseReceipts?.find(receipt => receipt.phaseId === phaseId) ?? null
+  )
+}
+
+export function reuseTeamPhaseReceipt(
+  teamFile: TeamFile,
+  args: {
+    phaseId: string
+    fromAgentId: string
+    toAgentIds: string[]
+    summary: string
+    kind: TeamPhaseDeliveryKind
+    sourceTerminalContextId?: string
+    targetTerminalContextIds?: string[]
+    projectRoots?: string[]
+  },
+): TeamPhaseReceipt | null {
+  const receipt = getTeamPhaseReceiptById(teamFile, args.phaseId)
+  if (!receipt) {
+    return null
+  }
+
+  const timestamp = Date.now()
+  const fromMember = getMemberByAgentId(teamFile, args.fromAgentId)
+  const fromContext = getLatestTerminalContextForAgent(
+    teamFile,
+    args.fromAgentId,
+    args.sourceTerminalContextId,
+  )
+  const toMembers = args.toAgentIds
+    .map(agentId => getMemberByAgentId(teamFile, agentId))
+    .filter(Boolean)
+  const toContexts = args.toAgentIds
+    .map(agentId =>
+      getLatestTerminalContextForAgent(
+        teamFile,
+        agentId,
+        args.targetTerminalContextIds?.find(contextId =>
+          teamFile.terminalContexts?.some(
+            context =>
+              context.agentId === agentId &&
+              context.terminalContextId === contextId,
+          ),
+        ),
+      ),
+    )
+    .filter(Boolean)
+  const summary = summarizeTeamPhaseText(args.summary)
+
+  receipt.updatedAt = timestamp
+  receipt.status = args.kind === 'deliverable' ? 'delivered' : 'active'
+  receipt.sourceTerminalContextId ??=
+    args.sourceTerminalContextId ?? fromContext?.terminalContextId
+  receipt.targetAgentIds = uniqStrings([...receipt.targetAgentIds, ...args.toAgentIds])
+  receipt.targetAgentNames = uniqStrings([
+    ...receipt.targetAgentNames,
+    ...toMembers.map(member => member!.name),
+  ])
+  receipt.targetTerminalContextIds = uniqStrings([
+    ...receipt.targetTerminalContextIds,
+    ...(args.targetTerminalContextIds ?? []),
+    ...toContexts.map(context => context?.terminalContextId),
+  ])
+  receipt.collaboratorAgentIds = uniqStrings([
+    ...receipt.collaboratorAgentIds,
+    args.fromAgentId,
+    ...args.toAgentIds,
+  ]).filter(agentId => agentId !== receipt.sourceAgentId)
+  receipt.projectRoots = uniqStrings([
+    ...receipt.projectRoots,
+    ...(args.projectRoots ?? []),
+    fromContext?.projectRoot,
+    ...toContexts.map(context => context?.projectRoot),
+  ])
+  receipt.deliveries.push(
+    createPhaseDelivery({
+      kind: args.kind,
+      fromAgentId: args.fromAgentId,
+      fromAgentName: fromMember?.name ?? args.fromAgentId,
+      toAgentIds: args.toAgentIds,
+      toAgentNames:
+        toMembers.length > 0
+          ? toMembers.map(member => member!.name)
+          : [...args.toAgentIds],
+      summary,
+      timestamp: new Date(timestamp).toISOString(),
+    }),
+  )
+
+  if (args.kind === 'deliverable') {
+    receipt.lastDeliverableSummary = summary
+    receipt.lastDeliveredAt = timestamp
+  }
+
+  return receipt
+}
+
 function findPhaseReceiptForAgent(
   teamFile: TeamFile,
   fromAgentId: string,
@@ -573,6 +675,7 @@ export async function recordMailboxPhaseMemory(
   args: {
     fromName: string
     toNames: string[]
+    phaseId?: string
     summary?: string
     text: string
   },
@@ -593,7 +696,19 @@ export async function recordMailboxPhaseMemory(
   }
 
   const summary = summarizeTeamPhaseText(args.summary ?? args.text)
-  if (sourceMember.agentId === teamFile.leadAgentId) {
+  if (args.phaseId) {
+    reuseTeamPhaseReceipt(teamFile, {
+      phaseId: args.phaseId,
+      fromAgentId: sourceMember.agentId,
+      toAgentIds: targetMembers.map(member => member!.agentId),
+      summary,
+      kind: targetMembers.some(member => member!.agentId === teamFile.leadAgentId)
+        ? 'deliverable'
+        : sourceMember.agentId === teamFile.leadAgentId
+          ? 'request'
+          : 'handoff',
+    })
+  } else if (sourceMember.agentId === teamFile.leadAgentId) {
     recordTeamPhaseRequest(teamFile, {
       sourceAgentId: sourceMember.agentId,
       targetAgentIds: targetMembers.map(member => member!.agentId),

@@ -98,6 +98,7 @@ const fullInputSchema = lazySchema(() => {
   const multiAgentInputSchema = z.object({
     name: z.string().optional().describe('Name for the spawned agent. Makes it addressable via SendMessage({to: name}) while running.'),
     team_name: z.string().optional().describe('Team name for spawning. Uses current team context if omitted.'),
+    phase_id: z.string().optional().describe('Optional Agent Co-Work phase ID to continue explicitly when spawning this teammate.'),
     mode: permissionModeSchema().optional().describe('Permission mode for spawned teammate (e.g., "plan" to require plan approval).')
   });
   return baseInputSchema().merge(multiAgentInputSchema).extend({
@@ -137,6 +138,7 @@ type InputSchema = ReturnType<typeof inputSchema>;
 type AgentToolInput = z.infer<ReturnType<typeof baseInputSchema>> & {
   name?: string;
   team_name?: string;
+  phase_id?: string;
   mode?: z.infer<ReturnType<typeof permissionModeSchema>>;
   isolation?: 'worktree' | 'remote';
   cwd?: string;
@@ -178,6 +180,7 @@ type TeammateSpawnedOutput = {
   team_name?: string;
   is_splitpane?: boolean;
   plan_mode_required?: boolean;
+  phase_id?: string;
   wave_label?: 'clear' | 'hold' | 'reroute';
   wave_delay_ms?: number;
   wave_detail?: string;
@@ -269,6 +272,7 @@ export const AgentTool = buildTool({
     run_in_background,
     name,
     team_name,
+    phase_id,
     mode: spawnMode,
     isolation,
     cwd
@@ -332,6 +336,7 @@ export const AgentTool = buildTool({
             prompt,
             description,
             team_name: teamName,
+            phase_id,
             use_splitpane: true,
             plan_mode_required: spawnMode === 'plan',
             model: model ?? agentDef?.model,
@@ -362,6 +367,7 @@ export const AgentTool = buildTool({
         prompt,
         description,
         team_name: teamName,
+        phase_id,
         use_splitpane: true,
         plan_mode_required: spawnMode === 'plan',
         model: model ?? agentDef?.model,
@@ -1384,6 +1390,7 @@ export const AgentTool = buildTool({
 agent_id: ${spawnData.teammate_id}
 name: ${spawnData.name}
 team_name: ${spawnData.team_name}
+${spawnData.phase_id ? `phase_id: ${spawnData.phase_id}\n` : ''}
 ${waveInfo}
 ${burstInfo}
 The agent is now running and will receive instructions via mailbox.`

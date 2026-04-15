@@ -24,6 +24,7 @@ import { jsonStringify } from '../../utils/slowOperations.js'
 import type { BackendType } from '../../utils/swarm/backends/types.js'
 import { TEAM_LEAD_NAME } from '../../utils/swarm/constants.js'
 import {
+  getTeamPhaseReceiptById,
   readTeamFileAsync,
   recordMailboxPhaseMemory,
 } from '../../utils/swarm/teamHelpers.js'
@@ -81,6 +82,12 @@ const inputSchema = lazySchema(() =>
       .optional()
       .describe(
         'A 5-10 word summary shown as a preview in the UI (required when message is a string)',
+      ),
+    phase_id: z
+      .string()
+      .optional()
+      .describe(
+        'Optional Agent Co-Work phase ID to continue explicitly instead of falling back to the latest matching receipt.',
       ),
     message: z.union([
       z.string().describe('Plain text message content'),
@@ -153,6 +160,7 @@ async function handleMessage(
   recipientName: string,
   content: string,
   summary: string | undefined,
+  phaseId: string | undefined,
   context: ToolUseContext,
 ): Promise<{ data: MessageOutput }> {
   const appState = context.getAppState()
@@ -160,6 +168,12 @@ async function handleMessage(
   const senderName =
     getAgentName() || (isTeammate() ? 'teammate' : TEAM_LEAD_NAME)
   const senderColor = getTeammateColor()
+  if (teamName && phaseId) {
+    const teamFile = await readTeamFileAsync(teamName)
+    if (!teamFile || !getTeamPhaseReceiptById(teamFile, phaseId)) {
+      throw new Error(`Phase "${phaseId}" does not exist in team "${teamName}".`)
+    }
+  }
 
   await writeToMailbox(
     recipientName,
@@ -176,6 +190,7 @@ async function handleMessage(
     await recordMailboxPhaseMemory(teamName, {
       fromName: senderName,
       toNames: [recipientName],
+      phaseId,
       summary,
       text: content,
     })
@@ -202,6 +217,7 @@ async function handleMessage(
 async function handleBroadcast(
   content: string,
   summary: string | undefined,
+  phaseId: string | undefined,
   context: ToolUseContext,
 ): Promise<{ data: BroadcastOutput }> {
   const appState = context.getAppState()
@@ -216,6 +232,9 @@ async function handleBroadcast(
   const teamFile = await readTeamFileAsync(teamName)
   if (!teamFile) {
     throw new Error(`Team "${teamName}" does not exist`)
+  }
+  if (phaseId && !getTeamPhaseReceiptById(teamFile, phaseId)) {
+    throw new Error(`Phase "${phaseId}" does not exist in team "${teamName}".`)
   }
 
   const senderName =
@@ -262,6 +281,7 @@ async function handleBroadcast(
   await recordMailboxPhaseMemory(teamName, {
     fromName: senderName,
     toNames: recipients,
+    phaseId,
     summary,
     text: content,
   })
@@ -892,9 +912,20 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
 
       if (typeof input.message === 'string') {
         if (input.to === '*') {
-          return handleBroadcast(input.message, input.summary, context)
+          return handleBroadcast(
+            input.message,
+            input.summary,
+            input.phase_id,
+            context,
+          )
         }
-        return handleMessage(input.to, input.message, input.summary, context)
+        return handleMessage(
+          input.to,
+          input.message,
+          input.summary,
+          input.phase_id,
+          context,
+        )
       }
 
       if (input.to === '*') {

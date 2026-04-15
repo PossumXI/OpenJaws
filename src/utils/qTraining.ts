@@ -204,6 +204,8 @@ export type QTrainingRouteManifestTraining = {
   selectedLanguages: string[]
   outputDir: string
   useCpu: boolean
+  lineageId?: string | null
+  phaseId?: string | null
   maxSteps?: number | null
   numTrainEpochs?: number | null
 }
@@ -354,6 +356,8 @@ export type QTrainingRegistryEntry = {
   selectedTags: string[]
   selectedLanguages: string[]
   runName: string | null
+  lineageId?: string | null
+  phaseId?: string | null
   logFiles: {
     stdout: string
     stderr: string
@@ -380,6 +384,8 @@ export type QRunState = {
   runName: string | null
   selectedTags: string[]
   selectedLanguages: string[]
+  lineageId?: string | null
+  phaseId?: string | null
   evalOnly?: boolean | null
   adapterDir?: string | null
   curriculumProfile?: string | null
@@ -412,6 +418,8 @@ export type QTrainingHybridLaneReceipt = {
   baseModel: string
   outputDir: string
   runStatePath: string | null
+  lineageId?: string | null
+  phaseId?: string | null
   status: QTrainingStatus | 'failed'
   executionMode?: QTrainingExecutionMode | null
   routeQueueDisplayStatus?: QTrainingRouteQueueDisplayStatus | null
@@ -430,6 +438,8 @@ export type QTrainingHybridSessionReceipt = {
   generatedAt: string
   outputDir: string
   bundleDir: string
+  lineageId?: string | null
+  phaseId?: string | null
   localBaseModel: string
   immaculateBaseModel: string
   tags: string[]
@@ -914,6 +924,8 @@ function buildQTrainingRouteUnsignedPayload(args: {
       selectedLanguages: [...args.training.selectedLanguages],
       outputDir: args.training.outputDir,
       useCpu: args.training.useCpu,
+      lineageId: args.training.lineageId ?? null,
+      phaseId: args.training.phaseId ?? null,
       maxSteps: args.training.maxSteps ?? null,
       numTrainEpochs: args.training.numTrainEpochs ?? null,
     },
