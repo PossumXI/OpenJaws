@@ -76,12 +76,24 @@ describe('ociQRuntime', () => {
   })
 
   it('reports missing IAM requirements clearly', () => {
-    process.env.OCI_PROFILE = 'DEFAULT'
+    const tempDir = mkdtempSync(join(tmpdir(), 'openjaws-oci-runtime-missing-'))
+    try {
+      const configPath = join(tempDir, 'config')
+      writeFileSync(
+        configPath,
+        ['[DEFAULT]', 'region=us-ashburn-1', ''].join('\n'),
+        'utf8',
+      )
+      process.env.OCI_CONFIG_FILE = configPath
+      process.env.OCI_PROFILE = 'DEFAULT'
 
-    const runtime = resolveOciQRuntime()
-    expect(runtime.ready).toBe(false)
-    expect(runtime.authMode).toBe('iam')
-    expect(runtime.missing).toContain('OCI_COMPARTMENT_ID')
-    expect(runtime.missing).toContain('OCI_GENAI_PROJECT_ID')
+      const runtime = resolveOciQRuntime()
+      expect(runtime.ready).toBe(false)
+      expect(runtime.authMode).toBe('iam')
+      expect(runtime.missing).toContain('OCI_COMPARTMENT_ID')
+      expect(runtime.missing).toContain('OCI_GENAI_PROJECT_ID')
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true })
+    }
   })
 })
