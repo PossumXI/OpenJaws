@@ -366,6 +366,27 @@ describe('buildDiscordQAgentProperties', () => {
             recommendedLayerId: 'layer-1',
           },
         },
+        knowledge: {
+          enabled: true,
+          ready: true,
+          rootLabel: 'Asgard',
+          generatedAt: '2026-04-15T09:54:00.000Z',
+          fileCount: 412,
+          chunkCount: 412,
+          lastQueryAt: '2026-04-15T09:56:00.000Z',
+          lastQuerySummary: 'queried 4 ranked snippets',
+          lastError: null,
+        },
+        operator: {
+          operatorLabel: 'PossumX',
+          lastAction: 'start-openjaws',
+          lastCompletedAt: '2026-04-15T09:57:00.000Z',
+          lastSummary: 'OpenJaws launched in D:\\repo',
+          lastError: null,
+          activeProcessPid: 4242,
+          activeProcessCwd: 'D:\\repo',
+          activeProcessStartedAt: '2026-04-15T09:57:00.000Z',
+        },
         events: [],
       }),
     ).toEqual([
@@ -400,6 +421,14 @@ describe('buildDiscordQAgentProperties', () => {
           'eleven_flash_v2_5',
           'last q-command-station',
         ],
+      },
+      {
+        label: 'Q knowledge',
+        value: ['enabled', 'ready', 'Asgard', '412 files', 'queried 4 ranked snippets'],
+      },
+      {
+        label: 'Q operator',
+        value: ['PossumX', 'start-openjaws', 'pid 4.2k', 'D:\\repo'],
       },
     ])
   })

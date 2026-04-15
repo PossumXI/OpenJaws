@@ -494,6 +494,33 @@ export function buildDiscordQAgentProperties(
       ...(receipt.voice.lastError ? [receipt.voice.lastError] : []),
     ]
   })
+  properties.push({
+    label: 'Q knowledge',
+    value: [
+      receipt.knowledge.enabled ? 'enabled' : 'disabled',
+      receipt.knowledge.ready ? 'ready' : 'not ready',
+      receipt.knowledge.rootLabel ?? 'root missing',
+      `${formatNumber(receipt.knowledge.fileCount)} files`,
+      ...(receipt.knowledge.lastQuerySummary
+        ? [receipt.knowledge.lastQuerySummary]
+        : []),
+      ...(receipt.knowledge.lastError ? [receipt.knowledge.lastError] : []),
+    ]
+  })
+  properties.push({
+    label: 'Q operator',
+    value: [
+      receipt.operator.operatorLabel ?? 'operator unset',
+      receipt.operator.lastAction ?? 'no operator action yet',
+      ...(receipt.operator.activeProcessPid
+        ? [`pid ${formatNumber(receipt.operator.activeProcessPid)}`]
+        : []),
+      ...(receipt.operator.activeProcessCwd
+        ? [receipt.operator.activeProcessCwd]
+        : []),
+      ...(receipt.operator.lastError ? [receipt.operator.lastError] : []),
+    ]
+  })
   return properties
 }
 export function buildQTrainingProperties(

@@ -343,7 +343,7 @@ OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
 - `bun run q:terminalbench` wraps Harbor / Terminal-Bench for external terminal-task evaluation when Harbor and Docker are available
 - benchmark artifacts now write `bridgebench-report.json` plus `reward.json` and `reward-details.json` in a Rewardkit-style shape so the results are easy to inspect or reuse
 - training and benchmark receipts also record whether W&B logging was enabled, incomplete, or disabled, including the resolved project URL when that lane is actually configured
-- the local Discord `Q_agent` lane now writes a shared receipt file that `/status` can read, so patrol cadence, routing decisions, and Discord voice readiness stay visible to operators
+- the local Discord `Q_agent` lane now writes a shared receipt file that `/status` can read, so patrol cadence, routing decisions, Discord voice readiness, local knowledge readiness, and the last operator action stay visible to operators
 
 Important boundary:
 
@@ -351,6 +351,7 @@ Important boundary:
 - they do not replace the public Immaculate benchmark record
 - the Harbor / Terminal-Bench path is an in-repo adapter lane, not a public leaderboard claim by itself
 - the Discord station currently speaks through text-channel `.wav` attachments, not live voice-channel participation
+- the private Discord station now supports secret-safe local corpus retrieval and explicit operator-only OpenJaws workflows, not an unrestricted remote shell
 
 Public hosted-Q website target:
 

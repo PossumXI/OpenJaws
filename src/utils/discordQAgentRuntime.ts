@@ -37,6 +37,29 @@ export type DiscordQAgentPatrolSnapshot = {
   recommendedLayerId?: string | null
 }
 
+export type DiscordQAgentKnowledgeState = {
+  enabled: boolean
+  ready: boolean
+  rootLabel?: string | null
+  generatedAt?: string | null
+  fileCount: number
+  chunkCount: number
+  lastQueryAt?: string | null
+  lastQuerySummary?: string | null
+  lastError?: string | null
+}
+
+export type DiscordQAgentOperatorState = {
+  operatorLabel?: string | null
+  lastAction?: string | null
+  lastCompletedAt?: string | null
+  lastSummary?: string | null
+  lastError?: string | null
+  activeProcessPid?: number | null
+  activeProcessCwd?: string | null
+  activeProcessStartedAt?: string | null
+}
+
 export type DiscordQAgentReceipt = {
   version: 1
   updatedAt: string
@@ -91,6 +114,8 @@ export type DiscordQAgentReceipt = {
     lastError?: string | null
     snapshot?: DiscordQAgentPatrolSnapshot | null
   }
+  knowledge: DiscordQAgentKnowledgeState
+  operator: DiscordQAgentOperatorState
   events: DiscordQAgentEvent[]
 }
 
@@ -188,6 +213,27 @@ export function createDiscordQAgentReceipt(args: {
       lastSummary: null,
       lastError: null,
       snapshot: null,
+    },
+    knowledge: {
+      enabled: false,
+      ready: false,
+      rootLabel: null,
+      generatedAt: null,
+      fileCount: 0,
+      chunkCount: 0,
+      lastQueryAt: null,
+      lastQuerySummary: null,
+      lastError: null,
+    },
+    operator: {
+      operatorLabel: null,
+      lastAction: null,
+      lastCompletedAt: null,
+      lastSummary: null,
+      lastError: null,
+      activeProcessPid: null,
+      activeProcessCwd: null,
+      activeProcessStartedAt: null,
     },
     events: [],
   }
