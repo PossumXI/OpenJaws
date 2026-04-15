@@ -355,6 +355,7 @@ export type AppState = DeepImmutable<{
         tmuxPaneId: string
         cwd: string
         worktreePath?: string
+        terminalContextId?: string
         spawnedAt: number
       }
     }

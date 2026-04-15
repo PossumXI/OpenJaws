@@ -61,6 +61,7 @@ import {
   createAssistantAPIErrorMessage,
   createUserMessage,
 } from '../../utils/messages.js'
+import { runWithCwdOverride } from '../cwd.js'
 import { evictTaskOutput } from '../../utils/task/diskOutput.js'
 import { evictTerminalTask } from '../../utils/task/framework.js'
 import { tokenCountWithEstimation } from '../../utils/tokens.js'
@@ -484,6 +485,8 @@ export type InProcessRunnerConfig = {
   abortController: AbortController
   /** Optional model override for this teammate */
   model?: string
+  /** Optional working directory override for this teammate */
+  cwd?: string
   /** Optional system prompt override for this teammate */
   systemPrompt?: string
   /** How to apply the system prompt: 'replace' or 'append' to default */
@@ -879,7 +882,7 @@ async function waitForNextPromptOrShutdown(
  * @param config - Runner configuration
  * @returns Result with messages and success status
  */
-export async function runInProcessTeammate(
+async function runInProcessTeammateInner(
   config: InProcessRunnerConfig,
 ): Promise<InProcessRunnerResult> {
   const {
@@ -1530,6 +1533,17 @@ export async function runInProcessTeammate(
       messages: allMessages,
     }
   }
+}
+
+export async function runInProcessTeammate(
+  config: InProcessRunnerConfig,
+): Promise<InProcessRunnerResult> {
+  if (config.cwd) {
+    return runWithCwdOverride(config.cwd, () =>
+      runInProcessTeammateInner(config),
+    )
+  }
+  return runInProcessTeammateInner(config)
 }
 
 /**

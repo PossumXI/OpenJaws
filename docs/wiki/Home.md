@@ -65,6 +65,14 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 - safer public update and release verification
 - clearer status for everyday installed users
 
+## Agent Co-Work
+
+`Agent Co-Work` turns OpenJaws into a shared workbench where multiple helper agents can stay coordinated across active projects without repeating the same setup work. The crew now keeps a shared terminal registry with unique context IDs so related terminals can reuse known workspace, runtime, and orchestration facts instead of guessing again.
+
+- multiple agents can work in parallel while the operator stays in the loop
+- terminal context IDs keep sibling project work tied to the same machine-owner trust boundary
+- OCI `Q`, Immaculate, workspace roots, and active project paths stay reusable without dumping secrets into shared notes
+
 ## Live Benchmark Record
 
 Immaculate is not just a future idea in this project. The current benchmark story is backed by live W&B runs and a repo-documented benchmark snapshot:

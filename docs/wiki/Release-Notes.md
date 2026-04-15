@@ -18,6 +18,14 @@ This page summarizes the current public OpenJaws surface that is already working
 - coordinator, footer, and background-task surfaces now share one pressure vocabulary
 - queued launches, retry pressure, approval pressure, and routed work are visible before they fail
 
+## Agent Co-Work
+
+- each active crew terminal now gets a unique `terminal_context_id`
+- team files now keep a shared terminal registry so sibling agents can reuse known workspace, model, routed-Q, and Immaculate facts across related projects on the same machine
+- spawned teammates now inherit OCI `Q` and Immaculate env wiring explicitly instead of rediscovering provider state in a fresh shell
+- in-process teammates now honor their requested working directory too, so cross-project help stays aligned with the actual project being worked
+- the shared registry is designed for same-owner co-work and path/runtime facts only; it is not a secret dump and does not write credentials into team memory
+
 ## Immaculate Integration
 
 - Immaculate is now part of the default OpenJaws runtime context

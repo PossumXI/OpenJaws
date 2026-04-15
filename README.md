@@ -284,6 +284,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 
 - Flight-deck TUI with compact receipts, task inspection, and crew-pressure summaries.
 - OpenCheek agent orchestration with deferred launch queueing, burst budgets, and Immaculate pacing.
+- Agent Co-Work terminal registry so active crew terminals can reuse workspace, runtime, and routed-Q context across sibling projects on the same machine.
 - Tool execution across local shells, PowerShell, files, web fetch, MCP, skills, and remote workers.
 - `Q` local and routed training harness with signed manifests, queue state, remote dispatch, and completion reconciliation.
 - Native `Q` benchmark and curriculum lanes over audited packs so coding, agentic, and security slices can be compared in-repo.
@@ -292,6 +293,14 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - A local Discord `Q_agent` station can now run scheduled Immaculate-driven patrol receipts, controlled channel routing, and first-phase ElevenLabs speech attachments when operators wire their own private secrets.
 - Firecrawl dataset skill for crawl/search -> structured dataset pipelines.
 - Remote Control, environment validation, startup harness receipts, and fail-closed configuration checks.
+
+## Agent Co-Work
+
+`Agent Co-Work` turns an OpenJaws crew into a shared workbench instead of a pile of isolated helper sessions. Each active teammate terminal now gets its own `terminal_context_id`, and the team keeps one shared registry so sibling agents can reuse known workspace, runtime, and orchestration facts instead of rediscovering them from scratch.
+
+- active crew terminals keep unique IDs linked to a shared registry for same-owner, same-machine handoffs
+- OCI `Q`, Immaculate, workspace roots, and active project paths stay visible for related terminals without copying secrets into memory files
+- in-process teammates now honor their requested working directory too, so cross-project co-work stays aligned with the actual project they were asked to touch
 
 ## Immaculate Integration
 

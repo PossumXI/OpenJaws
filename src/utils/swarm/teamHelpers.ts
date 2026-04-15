@@ -1,14 +1,18 @@
+import { randomUUID } from 'crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { mkdir, readFile, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { z } from 'zod/v4'
-import { getSessionCreatedTeams } from '../../bootstrap/state.js'
+import { getProjectRoot, getSessionCreatedTeams } from '../../bootstrap/state.js'
+import { getTeamMemPath, isTeamMemoryEnabled } from '../../memdir/teamMemPaths.js'
 import { logForDebugging } from '../debug.js'
 import { getTeamsDir } from '../envUtils.js'
 import { errorMessage, getErrnoCode } from '../errors.js'
 import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
 import { gitExe } from '../git.js'
+import { getImmaculateHarnessConfig } from '../immaculateHarness.js'
 import { lazySchema } from '../lazySchema.js'
+import { resolveOciQRuntime } from '../ociQRuntime.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { jsonParse, jsonStringify } from '../slowOperations.js'
 import { getTasksDir, notifyTasksUpdated } from '../tasks.js'
@@ -61,14 +65,35 @@ export type TeamAllowedPath = {
   addedAt: number // Timestamp when added
 }
 
+export type TeamTerminalContext = {
+  terminalContextId: string
+  agentId: string
+  agentName: string
+  sessionId?: string
+  parentSessionId?: string
+  cwd: string
+  projectRoot: string
+  model?: string
+  provider?: string
+  backendType?: BackendType | 'leader'
+  tmuxPaneId?: string
+  qBaseUrl?: string | null
+  immaculateHarnessUrl?: string | null
+  teamMemoryPath?: string | null
+  createdAt: number
+  updatedAt: number
+}
+
 export type TeamFile = {
   name: string
   description?: string
   createdAt: number
   leadAgentId: string
   leadSessionId?: string // Actual session UUID of the leader (for discovery)
+  leadTerminalContextId?: string
   hiddenPaneIds?: string[] // Pane IDs that are currently hidden from the UI
   teamAllowedPaths?: TeamAllowedPath[] // Paths all teammates can edit without asking
+  terminalContexts?: TeamTerminalContext[]
   members: Array<{
     agentId: string
     name: string
@@ -82,11 +107,190 @@ export type TeamFile = {
     cwd: string
     worktreePath?: string
     sessionId?: string
+    terminalContextId?: string
     subscriptions: string[]
     backendType?: BackendType
     isActive?: boolean // false when idle, undefined/true when active
     mode?: PermissionMode // Current permission mode for this teammate
   }>
+}
+
+function inferTerminalProvider(model?: string): string | undefined {
+  const normalized = model?.trim().toLowerCase()
+  if (!normalized) {
+    return resolveOciQRuntime().ready ? 'oci' : undefined
+  }
+  if (normalized.startsWith('oci:')) {
+    return 'oci'
+  }
+  if (normalized.startsWith('ollama:')) {
+    return 'ollama'
+  }
+  if (normalized.startsWith('openai:')) {
+    return 'openai'
+  }
+  if (normalized.startsWith('groq:')) {
+    return 'groq'
+  }
+  if (normalized.startsWith('gemini:')) {
+    return 'gemini'
+  }
+  if (normalized === 'q' && resolveOciQRuntime().ready) {
+    return 'oci'
+  }
+  return undefined
+}
+
+export function createTeamTerminalContext(args: {
+  agentId: string
+  agentName: string
+  sessionId?: string
+  parentSessionId?: string
+  cwd: string
+  projectRoot?: string
+  model?: string
+  provider?: string
+  backendType?: BackendType | 'leader'
+  tmuxPaneId?: string
+}): TeamTerminalContext {
+  const runtime = resolveOciQRuntime()
+  const immaculate = getImmaculateHarnessConfig()
+  const provider = args.provider ?? inferTerminalProvider(args.model)
+  const createdAt = Date.now()
+  return {
+    terminalContextId: `term-${randomUUID().slice(0, 8)}`,
+    agentId: args.agentId,
+    agentName: args.agentName,
+    sessionId: args.sessionId,
+    parentSessionId: args.parentSessionId,
+    cwd: args.cwd,
+    projectRoot: args.projectRoot ?? getProjectRoot(),
+    model: args.model,
+    provider,
+    backendType: args.backendType,
+    tmuxPaneId: args.tmuxPaneId,
+    qBaseUrl: provider === 'oci' && runtime.ready ? runtime.baseURL : null,
+    immaculateHarnessUrl: immaculate.enabled ? immaculate.harnessUrl : null,
+    teamMemoryPath: isTeamMemoryEnabled() ? getTeamMemPath() : null,
+    createdAt,
+    updatedAt: createdAt,
+  }
+}
+
+export function upsertTeamTerminalContext(
+  teamFile: TeamFile,
+  entry: TeamTerminalContext,
+): TeamFile {
+  const entries = [...(teamFile.terminalContexts ?? [])]
+  const existingIndex = entries.findIndex(
+    context =>
+      context.terminalContextId === entry.terminalContextId ||
+      (context.agentId === entry.agentId &&
+        (context.tmuxPaneId ?? '') === (entry.tmuxPaneId ?? '') &&
+        context.cwd === entry.cwd),
+  )
+  if (existingIndex >= 0) {
+    entries[existingIndex] = {
+      ...entries[existingIndex],
+      ...entry,
+      terminalContextId: entries[existingIndex]!.terminalContextId,
+      createdAt: entries[existingIndex]!.createdAt,
+      updatedAt: Date.now(),
+    }
+  } else {
+    entries.push(entry)
+  }
+  teamFile.terminalContexts = entries
+  return teamFile
+}
+
+function getTeamTerminalMemoryPath(teamName: string): string {
+  return join(getTeamMemPath(), `${sanitizeName(teamName)}-TERMINALS.md`)
+}
+
+export function buildTeamTerminalMemoryMarkdown(teamFile: TeamFile): string {
+  const activeAgentIds = new Set(teamFile.members.map(member => member.agentId))
+  const contexts = (teamFile.terminalContexts ?? []).filter(context =>
+    activeAgentIds.has(context.agentId),
+  )
+  const lines = [
+    `# Agent Co-Work Terminal Registry: ${teamFile.name}`,
+    '',
+    'This shared registry links active OpenJaws terminals for the current team so agents can reuse context instead of rediscovering the same runtime, cloud paths, and workspace relationships.',
+    '',
+    '- Treat these terminal context IDs as the handoff map for related project work on the same machine and under the same owner.',
+    '- Reuse existing OCI, Immaculate, workspace, and model context when a sibling terminal already has it.',
+    '- Never write secrets into this file. Reference paths and runtime facts only.',
+    '',
+    `Updated: ${new Date().toISOString()}`,
+  ]
+
+  if (contexts.length === 0) {
+    lines.push('', 'No active terminal contexts are registered yet.')
+    return lines.join('\n')
+  }
+
+  for (const context of contexts) {
+    lines.push(
+      '',
+      `## ${context.agentName}`,
+      `- terminal_context_id: \`${context.terminalContextId}\``,
+      `- agent_id: \`${context.agentId}\``,
+      ...(context.sessionId ? [`- session_id: \`${context.sessionId}\``] : []),
+      ...(context.parentSessionId
+        ? [`- parent_session_id: \`${context.parentSessionId}\``]
+        : []),
+      `- cwd: \`${context.cwd}\``,
+      `- project_root: \`${context.projectRoot}\``,
+      ...(context.model ? [`- model: \`${context.model}\``] : []),
+      ...(context.provider ? [`- provider: \`${context.provider}\``] : []),
+      ...(context.backendType ? [`- backend: \`${context.backendType}\``] : []),
+      ...(context.tmuxPaneId ? [`- pane: \`${context.tmuxPaneId}\``] : []),
+      ...(context.qBaseUrl ? [`- q_base_url: \`${context.qBaseUrl}\``] : []),
+      ...(context.immaculateHarnessUrl
+        ? [`- immaculate_harness_url: \`${context.immaculateHarnessUrl}\``]
+        : []),
+      ...(context.teamMemoryPath
+        ? [`- team_memory_path: \`${context.teamMemoryPath}\``]
+        : []),
+    )
+  }
+
+  return lines.join('\n')
+}
+
+function syncTeamTerminalMemory(teamName: string, teamFile: TeamFile): void {
+  if (!isTeamMemoryEnabled()) {
+    return
+  }
+  const path = getTeamTerminalMemoryPath(teamName)
+  mkdirSync(getTeamMemPath(), { recursive: true })
+  writeFileSync(path, `${buildTeamTerminalMemoryMarkdown(teamFile)}\n`, 'utf8')
+}
+
+function removeTerminalContextsForMember(
+  teamFile: TeamFile,
+  identifier: { agentId?: string; tmuxPaneId?: string; name?: string },
+): void {
+  if (!teamFile.terminalContexts || teamFile.terminalContexts.length === 0) {
+    return
+  }
+  teamFile.terminalContexts = teamFile.terminalContexts.filter(context => {
+    if (identifier.agentId && context.agentId === identifier.agentId) {
+      return false
+    }
+    if (
+      identifier.tmuxPaneId &&
+      context.tmuxPaneId &&
+      context.tmuxPaneId === identifier.tmuxPaneId
+    ) {
+      return false
+    }
+    if (identifier.name && context.agentName === identifier.name) {
+      return false
+    }
+    return true
+  })
 }
 
 export type Input = z.infer<ReturnType<typeof inputSchema>>
@@ -167,6 +371,7 @@ function writeTeamFile(teamName: string, teamFile: TeamFile): void {
   const teamDir = getTeamDir(teamName)
   mkdirSync(teamDir, { recursive: true })
   writeFileSync(getTeamFilePath(teamName), jsonStringify(teamFile, null, 2))
+  syncTeamTerminalMemory(teamName, teamFile)
 }
 
 /**
@@ -179,6 +384,7 @@ export async function writeTeamFileAsync(
   const teamDir = getTeamDir(teamName)
   await mkdir(teamDir, { recursive: true })
   await writeFile(getTeamFilePath(teamName), jsonStringify(teamFile, null, 2))
+  syncTeamTerminalMemory(teamName, teamFile)
 }
 
 /**
@@ -219,6 +425,7 @@ export function removeTeammateFromTeamFile(
     return false
   }
 
+  removeTerminalContextsForMember(teamFile, identifier)
   writeTeamFile(teamName, teamFile)
   logForDebugging(
     `[TeammateTool] Removed teammate from team file: ${identifierStr}`,
@@ -298,6 +505,8 @@ export function removeMemberFromTeam(
     return false
   }
 
+  const removedMember = teamFile.members[memberIndex]
+
   // Remove from members array
   teamFile.members.splice(memberIndex, 1)
 
@@ -309,6 +518,11 @@ export function removeMemberFromTeam(
     }
   }
 
+  removeTerminalContextsForMember(teamFile, {
+    agentId: removedMember?.agentId,
+    tmuxPaneId,
+    name: removedMember?.name,
+  })
   writeTeamFile(teamName, teamFile)
   logForDebugging(
     `[TeammateTool] Removed member with pane ${tmuxPaneId} from team ${teamName}`,
@@ -337,9 +551,16 @@ export function removeMemberByAgentId(
     return false
   }
 
+  const removedMember = teamFile.members[memberIndex]
+
   // Remove from members array
   teamFile.members.splice(memberIndex, 1)
 
+  removeTerminalContextsForMember(teamFile, {
+    agentId,
+    tmuxPaneId: removedMember?.tmuxPaneId,
+    name: removedMember?.name,
+  })
   writeTeamFile(teamName, teamFile)
   logForDebugging(
     `[TeammateTool] Removed member ${agentId} from team ${teamName}`,

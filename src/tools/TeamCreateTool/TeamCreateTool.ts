@@ -17,10 +17,12 @@ import { getResolvedTeammateMode } from '../../utils/swarm/backends/registry.js'
 import { TEAM_LEAD_NAME } from '../../utils/swarm/constants.js'
 import type { TeamFile } from '../../utils/swarm/teamHelpers.js'
 import {
+  createTeamTerminalContext,
   getTeamFilePath,
   readTeamFile,
   registerTeamForSessionCleanup,
   sanitizeName,
+  upsertTeamTerminalContext,
   writeTeamFileAsync,
 } from '../../utils/swarm/teamHelpers.js'
 import { assignTeammateColor } from '../../utils/swarm/teammateLayoutManager.js'
@@ -153,6 +155,14 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
     )
 
     const teamFilePath = getTeamFilePath(finalTeamName)
+    const leadTerminalContext = createTeamTerminalContext({
+      agentId: leadAgentId,
+      agentName: TEAM_LEAD_NAME,
+      sessionId: getSessionId(),
+      cwd: getCwd(),
+      model: leadModel,
+      backendType: 'leader',
+    })
 
     const teamFile: TeamFile = {
       name: finalTeamName,
@@ -160,6 +170,8 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
       createdAt: Date.now(),
       leadAgentId,
       leadSessionId: getSessionId(), // Store actual session ID for team discovery
+      leadTerminalContextId: leadTerminalContext.terminalContextId,
+      terminalContexts: [leadTerminalContext],
       members: [
         {
           agentId: leadAgentId,
@@ -169,10 +181,13 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
           joinedAt: Date.now(),
           tmuxPaneId: '',
           cwd: getCwd(),
+          sessionId: getSessionId(),
+          terminalContextId: leadTerminalContext.terminalContextId,
           subscriptions: [],
         },
       ],
     }
+    upsertTeamTerminalContext(teamFile, leadTerminalContext)
 
     await writeTeamFileAsync(finalTeamName, teamFile)
     // Track for session-end cleanup — teams were left on disk forever
@@ -205,6 +220,7 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
             tmuxSessionName: '',
             tmuxPaneId: '',
             cwd: getCwd(),
+            terminalContextId: leadTerminalContext.terminalContextId,
             spawnedAt: Date.now(),
           },
         },

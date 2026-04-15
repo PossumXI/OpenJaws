@@ -99,6 +99,23 @@ const TEAMMATE_ENV_VARS = [
   'OPENJAWS_USE_BEDROCK',
   'OPENJAWS_USE_VERTEX',
   'OPENJAWS_USE_FOUNDRY',
+  // OCI / Q runtime so sibling agents inherit the same routed Q lane
+  'Q_API_KEY',
+  'OCI_API_KEY',
+  'OCI_GENAI_API_KEY',
+  'Q_BASE_URL',
+  'OCI_BASE_URL',
+  'Q_MODEL',
+  'OCI_MODEL',
+  'OCI_CONFIG_FILE',
+  'OCI_PROFILE',
+  'OCI_REGION',
+  'OCI_COMPARTMENT_ID',
+  'OCI_GENAI_PROJECT_ID',
+  // Immaculate orchestration lane so co-work agents share the same harness
+  'IMMACULATE_HARNESS_URL',
+  'IMMACULATE_API_KEY',
+  'IMMACULATE_ACTOR',
   // Custom API endpoint
   'ANTHROPIC_BASE_URL',
   // Config directory override

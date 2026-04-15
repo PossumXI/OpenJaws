@@ -63,9 +63,11 @@ import {
 } from '../../utils/swarm/spawnInProcess.js'
 import { buildInheritedEnvVars } from '../../utils/swarm/spawnUtils.js'
 import {
+  createTeamTerminalContext,
   readTeamFileAsync,
   sanitizeAgentName,
   sanitizeName,
+  upsertTeamTerminalContext,
   writeTeamFileAsync,
 } from '../../utils/swarm/teamHelpers.js'
 import {
@@ -126,6 +128,7 @@ function getActiveLeaderModelSetting(appState: AppState): string | null {
 export type SpawnOutput = {
   teammate_id: string
   agent_id: string
+  terminal_context_id?: string
   agent_type?: string
   model?: string
   name: string
@@ -616,6 +619,15 @@ async function handleSpawnSplitPane(
   // Determine session/window names for output
   const sessionName = insideTmux ? 'current' : OPENJAWS_SWARM_SESSION_NAME
   const windowName = insideTmux ? 'current' : 'swarm-view'
+  const terminalContext = createTeamTerminalContext({
+    agentId: teammateId,
+    agentName: sanitizedName,
+    parentSessionId: getSessionId(),
+    cwd: workingDir,
+    model,
+    backendType: detectionResult.backend.type,
+    tmuxPaneId: paneId,
+  })
 
   // Track the teammate in AppState's teamContext with color
   // If spawning without spawnTeam, set up the leader as team lead
@@ -635,6 +647,7 @@ async function handleSpawnSplitPane(
           tmuxSessionName: sessionName,
           tmuxPaneId: paneId,
           cwd: workingDir,
+          terminalContextId: terminalContext.terminalContextId,
           spawnedAt: Date.now(),
         },
       },
@@ -673,9 +686,11 @@ async function handleSpawnSplitPane(
     joinedAt: Date.now(),
     tmuxPaneId: paneId,
     cwd: workingDir,
+    terminalContextId: terminalContext.terminalContextId,
     subscriptions: [],
     backendType: detectionResult.backend.type,
   })
+  upsertTeamTerminalContext(teamFile, terminalContext)
   await writeTeamFileAsync(teamName, teamFile)
 
   // Send initial instructions to teammate via mailbox
@@ -703,6 +718,7 @@ async function handleSpawnSplitPane(
     data: {
       teammate_id: teammateId,
       agent_id: teammateId,
+      terminal_context_id: terminalContext.terminalContextId,
       agent_type,
       model,
       name: sanitizedName,
@@ -864,6 +880,16 @@ async function handleSpawnSeparateWindow(
     )
   }
 
+  const terminalContext = createTeamTerminalContext({
+    agentId: teammateId,
+    agentName: sanitizedName,
+    parentSessionId: getSessionId(),
+    cwd: workingDir,
+    model,
+    backendType: 'tmux',
+    tmuxPaneId: paneId,
+  })
+
   // Track the teammate in AppState's teamContext
   setAppState(prev => ({
     ...prev,
@@ -881,6 +907,7 @@ async function handleSpawnSeparateWindow(
           tmuxSessionName: OPENJAWS_SWARM_SESSION_NAME,
           tmuxPaneId: paneId,
           cwd: workingDir,
+          terminalContextId: terminalContext.terminalContextId,
           spawnedAt: Date.now(),
         },
       },
@@ -920,9 +947,11 @@ async function handleSpawnSeparateWindow(
     joinedAt: Date.now(),
     tmuxPaneId: paneId,
     cwd: workingDir,
+    terminalContextId: terminalContext.terminalContextId,
     subscriptions: [],
     backendType: 'tmux', // This handler always uses tmux directly
   })
+  upsertTeamTerminalContext(teamFile, terminalContext)
   await writeTeamFileAsync(teamName, teamFile)
 
   // Send initial instructions to teammate via mailbox
@@ -950,6 +979,7 @@ async function handleSpawnSeparateWindow(
     data: {
       teammate_id: teammateId,
       agent_id: teammateId,
+      terminal_context_id: terminalContext.terminalContextId,
       agent_type,
       model,
       name: sanitizedName,
@@ -1105,6 +1135,7 @@ async function handleSpawnInProcess(
 
   // Generate deterministic agent ID from name and team
   const teammateId = formatAgentId(sanitizedName, teamName)
+  const workingDir = input.cwd || getCwd()
 
   // Assign a unique color to this teammate
   const teammateColor = assignTeammateColor(teammateId)
@@ -1158,6 +1189,7 @@ async function handleSpawnInProcess(
       prompt,
       description: input.description,
       model,
+      cwd: workingDir,
       agentDefinition,
       teammateContext: result.teammateContext,
       // Strip messages: the teammate never reads toolUseContext.messages
@@ -1172,6 +1204,30 @@ async function handleSpawnInProcess(
       `[handleSpawnInProcess] Started agent execution for ${teammateId}`,
     )
   }
+
+  const terminalContext = createTeamTerminalContext({
+    agentId: teammateId,
+    agentName: sanitizedName,
+    parentSessionId: getSessionId(),
+    cwd: workingDir,
+    model,
+    backendType: 'in-process',
+    tmuxPaneId: 'in-process',
+  })
+  const leaderTerminalContext =
+    existingTeamFile.leadTerminalContextId || existingTeamFile.leadAgentId === ''
+      ? null
+      : createTeamTerminalContext({
+          agentId: existingTeamFile.leadAgentId,
+          agentName: TEAM_LEAD_NAME,
+          sessionId: getSessionId(),
+          cwd: getCwd(),
+          model:
+            existingTeamFile.members.find(
+              member => member.agentId === existingTeamFile.leadAgentId,
+            )?.model ?? getActiveLeaderModelSetting(getAppState()),
+          backendType: 'leader',
+        })
 
   // Track the teammate in AppState's teamContext
   // Auto-register leader if spawning without prior spawnTeam call
@@ -1192,6 +1248,10 @@ async function handleSpawnInProcess(
             tmuxSessionName: 'in-process',
             tmuxPaneId: 'leader',
             cwd: getCwd(),
+            terminalContextId:
+              prev.teamContext?.teammates?.[leadAgentId]?.terminalContextId ??
+              existingTeamFile.leadTerminalContextId ??
+              leaderTerminalContext?.terminalContextId,
             spawnedAt: Date.now(),
           },
         }
@@ -1213,7 +1273,8 @@ async function handleSpawnInProcess(
             color: teammateColor,
             tmuxSessionName: 'in-process',
             tmuxPaneId: 'in-process',
-            cwd: getCwd(),
+            cwd: workingDir,
+            terminalContextId: terminalContext.terminalContextId,
             spawnedAt: Date.now(),
           },
         },
@@ -1228,6 +1289,29 @@ async function handleSpawnInProcess(
       `Team "${teamName}" does not exist. Call spawnTeam first to create the team.`,
     )
   }
+  if (!teamFile.leadTerminalContextId) {
+    const leadTerminalContext =
+      leaderTerminalContext ??
+      createTeamTerminalContext({
+        agentId: teamFile.leadAgentId,
+        agentName: TEAM_LEAD_NAME,
+        sessionId: getSessionId(),
+        cwd: getCwd(),
+        model:
+          teamFile.members.find(member => member.agentId === teamFile.leadAgentId)
+            ?.model ?? getActiveLeaderModelSetting(getAppState()),
+        backendType: 'leader',
+      })
+    teamFile.leadTerminalContextId = leadTerminalContext.terminalContextId
+    const leadMember = teamFile.members.find(
+      member => member.agentId === teamFile.leadAgentId,
+    )
+    if (leadMember) {
+      leadMember.terminalContextId = leadTerminalContext.terminalContextId
+      leadMember.sessionId ??= getSessionId()
+    }
+    upsertTeamTerminalContext(teamFile, leadTerminalContext)
+  }
   teamFile.members.push({
     agentId: teammateId,
     name: sanitizedName,
@@ -1238,10 +1322,12 @@ async function handleSpawnInProcess(
     planModeRequired: plan_mode_required,
     joinedAt: Date.now(),
     tmuxPaneId: 'in-process',
-    cwd: getCwd(),
+    cwd: workingDir,
+    terminalContextId: terminalContext.terminalContextId,
     subscriptions: [],
     backendType: 'in-process',
   })
+  upsertTeamTerminalContext(teamFile, terminalContext)
   await writeTeamFileAsync(teamName, teamFile)
 
   // Note: Do NOT send the prompt via mailbox for in-process teammates.
@@ -1262,6 +1348,7 @@ async function handleSpawnInProcess(
     data: {
       teammate_id: teammateId,
       agent_id: teammateId,
+      terminal_context_id: terminalContext.terminalContextId,
       agent_type,
       model,
       name: sanitizedName,
