@@ -303,6 +303,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - in-process teammates now honor their requested working directory too, so cross-project co-work stays aligned with the actual project they were asked to touch
 - the team dialog and `/status` now surface the co-work registry directly, including `terminal_context_id`, project roots, and the shared registry receipt path
 - resumed teammate sessions now rehydrate their saved terminal context IDs instead of coming back as context-blind shells
+- co-work now also keeps a phase ledger so the team can preserve what was asked, what got handed off, and what was delivered across sibling terminals and project roots
 
 ## Immaculate Integration
 

@@ -56,6 +56,7 @@ import { getElevenLabsConfig } from '../services/voiceOutput.js';
 import type { ExternalProviderProbeResult } from './externalProviderProbe.js';
 import { readDiscordQAgentReceipt, type DiscordQAgentReceipt } from './discordQAgentRuntime.js';
 import {
+  getTeamPhaseRegistryPath,
   getTeamTerminalRegistryPath,
   readTeamFile,
 } from './swarm/teamHelpers.js';
@@ -536,6 +537,9 @@ export function buildAgentCoworkProperties(
   registryPath = teamContext?.teamName
     ? getTeamTerminalRegistryPath(teamContext.teamName)
     : null,
+  phaseRegistryPath = teamContext?.teamName
+    ? getTeamPhaseRegistryPath(teamContext.teamName)
+    : null,
 ): Property[] {
   if (!teamContext?.teamName) {
     return []
@@ -563,6 +567,16 @@ export function buildAgentCoworkProperties(
       const provider = context.provider ? ` ${context.provider}` : ''
       return `${context.agentName} ${context.terminalContextId}${provider} ${location}`
     })
+  const phaseReceipts = [...(teamFile.phaseReceipts ?? [])].sort(
+    (left, right) => right.updatedAt - left.updatedAt,
+  )
+  const deliveredCount = phaseReceipts.filter(
+    receipt => receipt.status === 'delivered',
+  ).length
+  const phasePreview = phaseReceipts.slice(0, 3).map(receipt => {
+    const headline = receipt.lastDeliverableSummary ?? receipt.requestSummary
+    return `${receipt.label} ${headline}`
+  })
 
   return [
     {
@@ -583,6 +597,18 @@ export function buildAgentCoworkProperties(
         ...preview,
         ...(activeContexts.length > preview.length
           ? [`+${formatNumber(activeContexts.length - preview.length)} more`]
+          : []),
+      ],
+    },
+    {
+      label: 'Agent Co-Work memory',
+      value: [
+        phaseRegistryPath ?? 'Team memory disabled',
+        `${formatNumber(phaseReceipts.length)} phase${phaseReceipts.length === 1 ? '' : 's'}`,
+        `${formatNumber(deliveredCount)} delivered`,
+        ...phasePreview,
+        ...(phaseReceipts.length > phasePreview.length
+          ? [`+${formatNumber(phaseReceipts.length - phasePreview.length)} more`]
           : []),
       ],
     },

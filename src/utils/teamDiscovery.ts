@@ -7,6 +7,8 @@
 
 import { isPaneBackend, type PaneBackendType } from './swarm/backends/types.js'
 import {
+  getLatestPhaseReceiptForAgent,
+  getTeamPhaseRegistryPath,
   getTeamTerminalRegistryPath,
   readTeamFile,
 } from './swarm/teamHelpers.js'
@@ -40,6 +42,11 @@ export type TeammateStatus = {
   immaculateHarnessUrl?: string | null
   teamMemoryPath?: string | null
   teamRegistryPath?: string | null
+  phaseId?: string
+  phaseLabel?: string
+  phaseRequestSummary?: string
+  phaseDeliverableSummary?: string
+  phaseRegistryPath?: string | null
 }
 
 function getLatestTerminalContextForMember(
@@ -79,6 +86,7 @@ export function getTeammateStatuses(teamName: string): TeammateStatus[] {
 
   const hiddenPaneIds = new Set(teamFile.hiddenPaneIds ?? [])
   const teamRegistryPath = getTeamTerminalRegistryPath(teamName)
+  const phaseRegistryPath = getTeamPhaseRegistryPath(teamName)
   const statuses: TeammateStatus[] = []
 
   for (const member of teamFile.members) {
@@ -95,6 +103,7 @@ export function getTeammateStatuses(teamName: string): TeammateStatus[] {
       member.agentId,
       member.terminalContextId,
     )
+    const phaseReceipt = getLatestPhaseReceiptForAgent(teamFile, member.agentId)
 
     statuses.push({
       name: member.name,
@@ -121,6 +130,11 @@ export function getTeammateStatuses(teamName: string): TeammateStatus[] {
       immaculateHarnessUrl: terminalContext?.immaculateHarnessUrl ?? null,
       teamMemoryPath: terminalContext?.teamMemoryPath ?? null,
       teamRegistryPath,
+      phaseId: phaseReceipt?.phaseId,
+      phaseLabel: phaseReceipt?.label,
+      phaseRequestSummary: phaseReceipt?.requestSummary,
+      phaseDeliverableSummary: phaseReceipt?.lastDeliverableSummary,
+      phaseRegistryPath,
     })
   }
 

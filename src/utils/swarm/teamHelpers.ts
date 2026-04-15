@@ -84,6 +84,38 @@ export type TeamTerminalContext = {
   updatedAt: number
 }
 
+export type TeamPhaseDeliveryKind = 'request' | 'handoff' | 'deliverable'
+
+export type TeamPhaseDelivery = {
+  kind: TeamPhaseDeliveryKind
+  timestamp: string
+  fromAgentId: string
+  fromAgentName: string
+  toAgentIds: string[]
+  toAgentNames: string[]
+  summary: string
+}
+
+export type TeamPhaseReceipt = {
+  phaseId: string
+  label: string
+  status: 'active' | 'delivered'
+  createdAt: number
+  updatedAt: number
+  sourceAgentId: string
+  sourceAgentName: string
+  sourceTerminalContextId?: string
+  targetAgentIds: string[]
+  targetAgentNames: string[]
+  targetTerminalContextIds: string[]
+  collaboratorAgentIds: string[]
+  projectRoots: string[]
+  requestSummary: string
+  lastDeliverableSummary?: string
+  lastDeliveredAt?: number
+  deliveries: TeamPhaseDelivery[]
+}
+
 export type TeamFile = {
   name: string
   description?: string
@@ -94,6 +126,7 @@ export type TeamFile = {
   hiddenPaneIds?: string[] // Pane IDs that are currently hidden from the UI
   teamAllowedPaths?: TeamAllowedPath[] // Paths all teammates can edit without asking
   terminalContexts?: TeamTerminalContext[]
+  phaseReceipts?: TeamPhaseReceipt[]
   members: Array<{
     agentId: string
     name: string
@@ -211,6 +244,78 @@ export function getTeamTerminalRegistryPath(teamName: string): string | null {
   return join(getTeamMemPath(), `${sanitizeName(teamName)}-TERMINALS.md`)
 }
 
+export function getTeamPhaseRegistryPath(teamName: string): string | null {
+  if (!isTeamMemoryEnabled()) {
+    return null
+  }
+  return join(getTeamMemPath(), `${sanitizeName(teamName)}-PHASES.md`)
+}
+
+function summarizeTeamPhaseText(text: string, maxLength = 160): string {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= maxLength) {
+    return normalized
+  }
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`
+}
+
+function uniqStrings(values: Array<string | null | undefined>): string[] {
+  return [...new Set(values.map(value => value?.trim()).filter(Boolean) as string[])]
+}
+
+function getMemberByAgentId(teamFile: TeamFile, agentId: string) {
+  return teamFile.members.find(member => member.agentId === agentId)
+}
+
+function getMemberByName(teamFile: TeamFile, name: string) {
+  return teamFile.members.find(member => member.name === name)
+}
+
+function getLatestTerminalContextForAgent(
+  teamFile: TeamFile,
+  agentId: string,
+  terminalContextId?: string,
+): TeamTerminalContext | null {
+  if (!teamFile.terminalContexts || teamFile.terminalContexts.length === 0) {
+    return null
+  }
+
+  if (terminalContextId) {
+    const exactMatch = teamFile.terminalContexts.find(
+      context => context.terminalContextId === terminalContextId,
+    )
+    if (exactMatch) {
+      return exactMatch
+    }
+  }
+
+  const matchingContexts = teamFile.terminalContexts
+    .filter(context => context.agentId === agentId)
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+
+  return matchingContexts[0] ?? null
+}
+
+function createPhaseDelivery(args: {
+  kind: TeamPhaseDeliveryKind
+  fromAgentId: string
+  fromAgentName: string
+  toAgentIds: string[]
+  toAgentNames: string[]
+  summary: string
+  timestamp?: string
+}): TeamPhaseDelivery {
+  return {
+    kind: args.kind,
+    timestamp: args.timestamp ?? new Date().toISOString(),
+    fromAgentId: args.fromAgentId,
+    fromAgentName: args.fromAgentName,
+    toAgentIds: [...args.toAgentIds],
+    toAgentNames: [...args.toAgentNames],
+    summary: summarizeTeamPhaseText(args.summary),
+  }
+}
+
 export function buildTeamTerminalMemoryMarkdown(teamFile: TeamFile): string {
   const activeAgentIds = new Set(teamFile.members.map(member => member.agentId))
   const contexts = (teamFile.terminalContexts ?? []).filter(context =>
@@ -262,6 +367,308 @@ export function buildTeamTerminalMemoryMarkdown(teamFile: TeamFile): string {
   return lines.join('\n')
 }
 
+export function recordTeamPhaseRequest(
+  teamFile: TeamFile,
+  args: {
+    sourceAgentId: string
+    targetAgentIds: string[]
+    requestSummary: string
+    label?: string
+    sourceTerminalContextId?: string
+    targetTerminalContextIds?: string[]
+    projectRoots?: string[]
+  },
+): TeamPhaseReceipt {
+  const createdAt = Date.now()
+  const sourceMember = getMemberByAgentId(teamFile, args.sourceAgentId)
+  const sourceContext = getLatestTerminalContextForAgent(
+    teamFile,
+    args.sourceAgentId,
+    args.sourceTerminalContextId,
+  )
+  const targetMembers = args.targetAgentIds
+    .map(agentId => getMemberByAgentId(teamFile, agentId))
+    .filter(Boolean)
+  const targetContexts = args.targetAgentIds
+    .map(agentId =>
+      getLatestTerminalContextForAgent(
+        teamFile,
+        agentId,
+        args.targetTerminalContextIds?.find(contextId =>
+          teamFile.terminalContexts?.some(
+            context =>
+              context.agentId === agentId &&
+              context.terminalContextId === contextId,
+          ),
+        ),
+      ),
+    )
+    .filter(Boolean)
+
+  const sourceAgentName = sourceMember?.name ?? args.sourceAgentId
+  const targetAgentNames =
+    targetMembers.length > 0
+      ? targetMembers.map(member => member!.name)
+      : [...args.targetAgentIds]
+  const requestSummary = summarizeTeamPhaseText(args.requestSummary)
+
+  const receipt: TeamPhaseReceipt = {
+    phaseId: `phase-${randomUUID().slice(0, 8)}`,
+    label: args.label ?? `${sourceAgentName} -> ${targetAgentNames.join(', ')}`,
+    status: 'active',
+    createdAt,
+    updatedAt: createdAt,
+    sourceAgentId: args.sourceAgentId,
+    sourceAgentName,
+    sourceTerminalContextId:
+      args.sourceTerminalContextId ?? sourceContext?.terminalContextId,
+    targetAgentIds: [...args.targetAgentIds],
+    targetAgentNames,
+    targetTerminalContextIds: uniqStrings([
+      ...(args.targetTerminalContextIds ?? []),
+      ...targetContexts.map(context => context?.terminalContextId),
+    ]),
+    collaboratorAgentIds: [],
+    projectRoots: uniqStrings([
+      ...(args.projectRoots ?? []),
+      sourceContext?.projectRoot,
+      ...targetContexts.map(context => context?.projectRoot),
+    ]),
+    requestSummary,
+    deliveries: [
+      createPhaseDelivery({
+        kind: 'request',
+        fromAgentId: args.sourceAgentId,
+        fromAgentName: sourceAgentName,
+        toAgentIds: args.targetAgentIds,
+        toAgentNames: targetAgentNames,
+        summary: requestSummary,
+        timestamp: new Date(createdAt).toISOString(),
+      }),
+    ],
+  }
+
+  teamFile.phaseReceipts = [...(teamFile.phaseReceipts ?? []), receipt]
+  return receipt
+}
+
+function findPhaseReceiptForAgent(
+  teamFile: TeamFile,
+  fromAgentId: string,
+  toAgentIds: string[],
+): TeamPhaseReceipt | null {
+  const receipts = [...(teamFile.phaseReceipts ?? [])].sort(
+    (left, right) => right.updatedAt - left.updatedAt,
+  )
+
+  for (const receipt of receipts) {
+    if (receipt.targetAgentIds.includes(fromAgentId)) {
+      if (
+        toAgentIds.length === 0 ||
+        toAgentIds.includes(receipt.sourceAgentId) ||
+        toAgentIds.some(agentId => receipt.targetAgentIds.includes(agentId))
+      ) {
+        return receipt
+      }
+    }
+  }
+
+  for (const receipt of receipts) {
+    if (
+      receipt.sourceAgentId === fromAgentId &&
+      toAgentIds.some(agentId => receipt.targetAgentIds.includes(agentId))
+    ) {
+      return receipt
+    }
+  }
+
+  return null
+}
+
+export function recordTeamPhaseDelivery(
+  teamFile: TeamFile,
+  args: {
+    fromAgentId: string
+    toAgentIds: string[]
+    summary: string
+    kind: TeamPhaseDeliveryKind
+  },
+): TeamPhaseReceipt | null {
+  const receipt = findPhaseReceiptForAgent(
+    teamFile,
+    args.fromAgentId,
+    args.toAgentIds,
+  )
+  if (!receipt) {
+    return null
+  }
+
+  const timestamp = Date.now()
+  const fromMember = getMemberByAgentId(teamFile, args.fromAgentId)
+  const fromContext = getLatestTerminalContextForAgent(teamFile, args.fromAgentId)
+  const toMembers = args.toAgentIds
+    .map(agentId => getMemberByAgentId(teamFile, agentId))
+    .filter(Boolean)
+  const toContexts = args.toAgentIds
+    .map(agentId => getLatestTerminalContextForAgent(teamFile, agentId))
+    .filter(Boolean)
+  const summary = summarizeTeamPhaseText(args.summary)
+
+  receipt.updatedAt = timestamp
+  receipt.collaboratorAgentIds = uniqStrings([
+    ...receipt.collaboratorAgentIds,
+    args.fromAgentId,
+    ...args.toAgentIds,
+  ]).filter(agentId => agentId !== receipt.sourceAgentId)
+  receipt.projectRoots = uniqStrings([
+    ...receipt.projectRoots,
+    fromContext?.projectRoot,
+    ...toContexts.map(context => context?.projectRoot),
+  ])
+  receipt.deliveries.push(
+    createPhaseDelivery({
+      kind: args.kind,
+      fromAgentId: args.fromAgentId,
+      fromAgentName: fromMember?.name ?? args.fromAgentId,
+      toAgentIds: args.toAgentIds,
+      toAgentNames:
+        toMembers.length > 0
+          ? toMembers.map(member => member!.name)
+          : [...args.toAgentIds],
+      summary,
+      timestamp: new Date(timestamp).toISOString(),
+    }),
+  )
+
+  if (args.kind === 'deliverable') {
+    receipt.lastDeliverableSummary = summary
+    receipt.lastDeliveredAt = timestamp
+    if (args.toAgentIds.includes(receipt.sourceAgentId)) {
+      receipt.status = 'delivered'
+    }
+  }
+
+  return receipt
+}
+
+export function getLatestPhaseReceiptForAgent(
+  teamFile: TeamFile,
+  agentId: string,
+): TeamPhaseReceipt | null {
+  const receipts = (teamFile.phaseReceipts ?? []).filter(
+    receipt =>
+      receipt.sourceAgentId === agentId ||
+      receipt.targetAgentIds.includes(agentId) ||
+      receipt.collaboratorAgentIds.includes(agentId),
+  )
+  if (receipts.length === 0) {
+    return null
+  }
+  receipts.sort((left, right) => right.updatedAt - left.updatedAt)
+  return receipts[0] ?? null
+}
+
+export async function recordMailboxPhaseMemory(
+  teamName: string,
+  args: {
+    fromName: string
+    toNames: string[]
+    summary?: string
+    text: string
+  },
+): Promise<void> {
+  const normalizedFromName =
+    args.fromName === 'user' ? TEAM_LEAD_NAME : args.fromName
+  const teamFile = await readTeamFileAsync(teamName)
+  if (!teamFile) {
+    return
+  }
+
+  const sourceMember = getMemberByName(teamFile, normalizedFromName)
+  const targetMembers = args.toNames
+    .map(name => getMemberByName(teamFile, name))
+    .filter(Boolean)
+  if (!sourceMember || targetMembers.length === 0) {
+    return
+  }
+
+  const summary = summarizeTeamPhaseText(args.summary ?? args.text)
+  if (sourceMember.agentId === teamFile.leadAgentId) {
+    recordTeamPhaseRequest(teamFile, {
+      sourceAgentId: sourceMember.agentId,
+      targetAgentIds: targetMembers.map(member => member!.agentId),
+      requestSummary: summary,
+      label:
+        targetMembers.length === 1
+          ? `${targetMembers[0]!.name} assignment`
+          : `Team handoff (${targetMembers.length})`,
+    })
+  } else {
+    recordTeamPhaseDelivery(teamFile, {
+      fromAgentId: sourceMember.agentId,
+      toAgentIds: targetMembers.map(member => member!.agentId),
+      summary,
+      kind: targetMembers.some(member => member!.agentId === teamFile.leadAgentId)
+        ? 'deliverable'
+        : 'handoff',
+    })
+  }
+
+  await writeTeamFileAsync(teamName, teamFile)
+}
+
+export function buildTeamPhaseMemoryMarkdown(teamFile: TeamFile): string {
+  const receipts = [...(teamFile.phaseReceipts ?? [])].sort(
+    (left, right) => right.updatedAt - left.updatedAt,
+  )
+  const lines = [
+    `# Agent Co-Work Phase Memory: ${teamFile.name}`,
+    '',
+    'This shared ledger preserves high-signal work phases so teammates can reuse what was asked, what was handed off, and what was delivered across active terminals and related projects.',
+    '',
+    '- Each phase starts with a request or assignment.',
+    '- Deliverables and teammate handoffs append to that phase instead of starting from scratch.',
+    '- Keep summaries concise and secret-free.',
+    '',
+    `Updated: ${new Date().toISOString()}`,
+  ]
+
+  if (receipts.length === 0) {
+    lines.push('', 'No co-work phase receipts are registered yet.')
+    return lines.join('\n')
+  }
+
+  for (const receipt of receipts.slice(0, 12)) {
+    lines.push(
+      '',
+      `## ${receipt.label}`,
+      `- phase_id: \`${receipt.phaseId}\``,
+      `- status: \`${receipt.status}\``,
+      `- request: ${receipt.requestSummary}`,
+      ...(receipt.lastDeliverableSummary
+        ? [`- last_deliverable: ${receipt.lastDeliverableSummary}`]
+        : []),
+      `- source: \`${receipt.sourceAgentName}\`${receipt.sourceTerminalContextId ? ` via \`${receipt.sourceTerminalContextId}\`` : ''}`,
+      `- targets: ${receipt.targetAgentNames.map(name => `\`${name}\``).join(', ')}`,
+      ...(receipt.projectRoots.length > 0
+        ? [`- project_roots: ${receipt.projectRoots.map(path => `\`${path}\``).join(', ')}`]
+        : []),
+      ...(receipt.collaboratorAgentIds.length > 0
+        ? [`- collaborators: ${receipt.collaboratorAgentIds.map(agentId => `\`${agentId}\``).join(', ')}`]
+        : []),
+      '- deliveries:',
+      ...receipt.deliveries
+        .slice(-4)
+        .map(
+          delivery =>
+            `  - ${delivery.kind} · ${delivery.fromAgentName} -> ${delivery.toAgentNames.join(', ')} · ${delivery.summary}`,
+        ),
+    )
+  }
+
+  return lines.join('\n')
+}
+
 function syncTeamTerminalMemory(teamName: string, teamFile: TeamFile): void {
   if (!isTeamMemoryEnabled()) {
     return
@@ -272,6 +679,18 @@ function syncTeamTerminalMemory(teamName: string, teamFile: TeamFile): void {
   }
   mkdirSync(getTeamMemPath(), { recursive: true })
   writeFileSync(path, `${buildTeamTerminalMemoryMarkdown(teamFile)}\n`, 'utf8')
+}
+
+function syncTeamPhaseMemory(teamName: string, teamFile: TeamFile): void {
+  if (!isTeamMemoryEnabled()) {
+    return
+  }
+  const path = getTeamPhaseRegistryPath(teamName)
+  if (!path) {
+    return
+  }
+  mkdirSync(getTeamMemPath(), { recursive: true })
+  writeFileSync(path, `${buildTeamPhaseMemoryMarkdown(teamFile)}\n`, 'utf8')
 }
 
 function removeTerminalContextsForMember(
@@ -378,6 +797,7 @@ function writeTeamFile(teamName: string, teamFile: TeamFile): void {
   mkdirSync(teamDir, { recursive: true })
   writeFileSync(getTeamFilePath(teamName), jsonStringify(teamFile, null, 2))
   syncTeamTerminalMemory(teamName, teamFile)
+  syncTeamPhaseMemory(teamName, teamFile)
 }
 
 /**
@@ -391,6 +811,7 @@ export async function writeTeamFileAsync(
   await mkdir(teamDir, { recursive: true })
   await writeFile(getTeamFilePath(teamName), jsonStringify(teamFile, null, 2))
   syncTeamTerminalMemory(teamName, teamFile)
+  syncTeamPhaseMemory(teamName, teamFile)
 }
 
 /**

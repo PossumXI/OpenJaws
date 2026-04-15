@@ -8,6 +8,7 @@ import {
   getTaskCompletedHookMessage,
 } from '../../utils/hooks.js'
 import { lazySchema } from '../../utils/lazySchema.js'
+import { recordMailboxPhaseMemory } from '../../utils/swarm/teamHelpers.js'
 import {
   blockTask,
   deleteTask,
@@ -295,6 +296,12 @@ export const TaskUpdateTool = buildTool({
         },
         taskListId,
       )
+      await recordMailboxPhaseMemory(taskListId, {
+        fromName: senderName,
+        toNames: [updates.owner],
+        summary: existingTask.subject,
+        text: existingTask.description,
+      })
     }
 
     // Add blocks if provided and not already present

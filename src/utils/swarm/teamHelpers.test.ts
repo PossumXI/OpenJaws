@@ -3,12 +3,16 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join } from 'path'
 import {
+  buildTeamPhaseMemoryMarkdown,
   buildTeamTerminalMemoryMarkdown,
   createTeamTerminalContext,
+  getLatestPhaseReceiptForAgent,
   getTeamFilePath,
   removeMemberByAgentId,
   removeMemberFromTeam,
   removeTeammateFromTeamFile,
+  recordTeamPhaseDelivery,
+  recordTeamPhaseRequest,
   type TeamFile,
 } from './teamHelpers.js'
 
@@ -129,6 +133,96 @@ describe('teamHelpers agent co-work', () => {
     expect(markdown).toContain('terminal_context_id: `term-active01`')
     expect(markdown).toContain('q_base_url: `https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1`')
     expect(markdown).not.toContain('term-stale99')
+  })
+
+  it('records phase requests and delivered summaries for co-work memory', () => {
+    const teamFile: TeamFile = {
+      name: 'bridge-crew',
+      createdAt: 1,
+      leadAgentId: 'team-lead@bridge-crew',
+      leadTerminalContextId: 'term-lead01',
+      members: [
+        {
+          agentId: 'team-lead@bridge-crew',
+          name: 'team-lead',
+          joinedAt: 1,
+          tmuxPaneId: '',
+          cwd: 'D:\\openjaws\\OpenJaws',
+          terminalContextId: 'term-lead01',
+          subscriptions: [],
+        },
+        {
+          agentId: 'scout@bridge-crew',
+          name: 'scout',
+          joinedAt: 2,
+          tmuxPaneId: '%2',
+          cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          terminalContextId: 'term-scout02',
+          subscriptions: [],
+        },
+      ],
+      terminalContexts: [
+        {
+          terminalContextId: 'term-lead01',
+          agentId: 'team-lead@bridge-crew',
+          agentName: 'team-lead',
+          cwd: 'D:\\openjaws\\OpenJaws',
+          projectRoot: 'D:\\openjaws\\OpenJaws',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          terminalContextId: 'term-scout02',
+          agentId: 'scout@bridge-crew',
+          agentName: 'scout',
+          cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          projectRoot: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          provider: 'oci',
+          createdAt: 2,
+          updatedAt: 2,
+        },
+      ],
+    }
+
+    const receipt = recordTeamPhaseRequest(teamFile, {
+      sourceAgentId: 'team-lead@bridge-crew',
+      sourceTerminalContextId: 'term-lead01',
+      targetAgentIds: ['scout@bridge-crew'],
+      targetTerminalContextIds: ['term-scout02'],
+      requestSummary: 'Compare the OpenJaws and cheeks OCI wiring before patching the bridge.',
+      label: 'scout initial assignment',
+    })
+
+    expect(receipt.requestSummary).toBe(
+      'Compare the OpenJaws and cheeks OCI wiring before patching the bridge.',
+    )
+    expect(receipt.targetTerminalContextIds).toEqual(['term-scout02'])
+
+    const delivered = recordTeamPhaseDelivery(teamFile, {
+      fromAgentId: 'scout@bridge-crew',
+      toAgentIds: ['team-lead@bridge-crew'],
+      summary: 'Found the OCI path drift and patched the shared bridge config.',
+      kind: 'deliverable',
+    })
+
+    expect(delivered?.phaseId).toBe(receipt.phaseId)
+    expect(delivered?.status).toBe('delivered')
+    expect(delivered?.lastDeliverableSummary).toBe(
+      'Found the OCI path drift and patched the shared bridge config.',
+    )
+    expect(getLatestPhaseReceiptForAgent(teamFile, 'scout@bridge-crew')?.phaseId).toBe(
+      receipt.phaseId,
+    )
+
+    const markdown = buildTeamPhaseMemoryMarkdown(teamFile)
+    expect(markdown).toContain('# Agent Co-Work Phase Memory: bridge-crew')
+    expect(markdown).toContain('phase_id: `')
+    expect(markdown).toContain(
+      'last_deliverable: Found the OCI path drift and patched the shared bridge config.',
+    )
+    expect(markdown).toContain(
+      'deliverable · scout -> team-lead · Found the OCI path drift and patched the shared bridge config.',
+    )
   })
 
   it('removes pane-backed terminal contexts when a teammate is removed by pane id', () => {

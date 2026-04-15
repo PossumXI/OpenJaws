@@ -487,8 +487,50 @@ describe('buildAgentCoworkProperties', () => {
               updatedAt: 3,
             },
           ],
+          phaseReceipts: [
+            {
+              phaseId: 'phase-scout01',
+              label: 'scout initial assignment',
+              status: 'delivered',
+              createdAt: 2,
+              updatedAt: 4,
+              sourceAgentId: 'team-lead@bridge-crew',
+              sourceAgentName: 'team-lead',
+              sourceTerminalContextId: 'term-lead01',
+              targetAgentIds: ['scout@bridge-crew'],
+              targetAgentNames: ['scout'],
+              targetTerminalContextIds: ['term-scout02'],
+              collaboratorAgentIds: ['scout@bridge-crew'],
+              projectRoots: ['D:\\openjaws\\OpenJaws'],
+              requestSummary: 'Compare the OCI path and patch the shared bridge.',
+              lastDeliverableSummary:
+                'Patched the shared bridge and aligned the OCI route.',
+              lastDeliveredAt: 4,
+              deliveries: [
+                {
+                  kind: 'request',
+                  timestamp: '2026-04-15T10:00:00.000Z',
+                  fromAgentId: 'team-lead@bridge-crew',
+                  fromAgentName: 'team-lead',
+                  toAgentIds: ['scout@bridge-crew'],
+                  toAgentNames: ['scout'],
+                  summary: 'Compare the OCI path and patch the shared bridge.',
+                },
+                {
+                  kind: 'deliverable',
+                  timestamp: '2026-04-15T10:05:00.000Z',
+                  fromAgentId: 'scout@bridge-crew',
+                  fromAgentName: 'scout',
+                  toAgentIds: ['team-lead@bridge-crew'],
+                  toAgentNames: ['team-lead'],
+                  summary: 'Patched the shared bridge and aligned the OCI route.',
+                },
+              ],
+            },
+          ],
         },
         'C:\\Users\\Knight\\.openjaws\\team-mem\\bridge-crew-TERMINALS.md',
+        'C:\\Users\\Knight\\.openjaws\\team-mem\\bridge-crew-PHASES.md',
       ),
     ).toEqual([
       {
@@ -506,6 +548,15 @@ describe('buildAgentCoworkProperties', () => {
           'C:\\Users\\Knight\\.openjaws\\team-mem\\bridge-crew-TERMINALS.md',
           'team-lead term-lead01 D:\\openjaws\\OpenJaws',
           'scout term-scout02 oci D:\\openjaws\\OpenJaws',
+        ],
+      },
+      {
+        label: 'Agent Co-Work memory',
+        value: [
+          'C:\\Users\\Knight\\.openjaws\\team-mem\\bridge-crew-PHASES.md',
+          '1 phase',
+          '1 delivered',
+          'scout initial assignment Patched the shared bridge and aligned the OCI route.',
         ],
       },
     ])

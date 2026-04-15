@@ -308,6 +308,7 @@ function TeammateListItem(t0) {
   const lineColor = isSelected ? "suggestion" : undefined;
   const pointer = isSelected ? `${figures.pointer} ` : "  ";
   const coworkSummary = [teammate.terminalContextId, teammate.provider, teammate.projectRoot ?? teammate.worktreePath ?? teammate.cwd].filter(Boolean).join(" · ");
+  const phaseSummary = teammate.phaseDeliverableSummary ?? teammate.phaseRequestSummary;
   return <Box flexDirection="column">
       <Text color={lineColor} dimColor={shouldDim}>
         {pointer}
@@ -318,6 +319,7 @@ function TeammateListItem(t0) {
         {teammate.model ? <Text dimColor={true}> ({teammate.model})</Text> : null}
       </Text>
       {coworkSummary ? <Text dimColor={true}>  {truncateToWidth(coworkSummary, 88)}</Text> : null}
+      {phaseSummary ? <Text dimColor={true}>  {truncateToWidth(phaseSummary, 88)}</Text> : null}
     </Box>;
 }
 type TeammateDetailViewProps = {
@@ -392,6 +394,21 @@ function TeammateDetailView(t0) {
   }, {
     label: "team_registry",
     value: teammate.teamRegistryPath ?? teammate.teamMemoryPath
+  }, {
+    label: "phase_id",
+    value: teammate.phaseId
+  }, {
+    label: "phase_label",
+    value: teammate.phaseLabel
+  }, {
+    label: "phase_request",
+    value: teammate.phaseRequestSummary
+  }, {
+    label: "phase_deliverable",
+    value: teammate.phaseDeliverableSummary
+  }, {
+    label: "phase_registry",
+    value: teammate.phaseRegistryPath
   }].filter(detail => Boolean(detail.value));
   return <>
       <Dialog title={title} subtitle={subtitle} onCancel={onCancel} color="background" hideInputGuide={true}>

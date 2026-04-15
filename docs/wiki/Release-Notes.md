@@ -26,6 +26,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - in-process teammates now honor their requested working directory too, so cross-project help stays aligned with the actual project being worked
 - the team dialog and `/status` now surface the shared co-work registry, so operators can inspect terminal IDs, project roots, and registry receipts without opening raw config files
 - resumed teammate sessions now rehydrate their saved terminal context IDs, which keeps co-work handoffs intact after reconnects or reloads
+- co-work now writes a phase ledger too, so request summaries, teammate handoffs, and delivered outputs stay attached to the same work phase instead of disappearing between turns
 - the shared registry is designed for same-owner co-work and path/runtime facts only; it is not a secret dump and does not write credentials into team memory
 
 ## Immaculate Integration

@@ -64,6 +64,7 @@ import {
 import { buildInheritedEnvVars } from '../../utils/swarm/spawnUtils.js'
 import {
   createTeamTerminalContext,
+  recordTeamPhaseRequest,
   readTeamFileAsync,
   sanitizeAgentName,
   sanitizeName,
@@ -691,6 +692,15 @@ async function handleSpawnSplitPane(
     backendType: detectionResult.backend.type,
   })
   upsertTeamTerminalContext(teamFile, terminalContext)
+  recordTeamPhaseRequest(teamFile, {
+    sourceAgentId: teamFile.leadAgentId,
+    sourceTerminalContextId: teamFile.leadTerminalContextId,
+    targetAgentIds: [teammateId],
+    targetTerminalContextIds: [terminalContext.terminalContextId],
+    requestSummary: prompt,
+    label: `${sanitizedName} initial assignment`,
+    projectRoots: [terminalContext.projectRoot],
+  })
   await writeTeamFileAsync(teamName, teamFile)
 
   // Send initial instructions to teammate via mailbox
@@ -952,6 +962,15 @@ async function handleSpawnSeparateWindow(
     backendType: 'tmux', // This handler always uses tmux directly
   })
   upsertTeamTerminalContext(teamFile, terminalContext)
+  recordTeamPhaseRequest(teamFile, {
+    sourceAgentId: teamFile.leadAgentId,
+    sourceTerminalContextId: teamFile.leadTerminalContextId,
+    targetAgentIds: [teammateId],
+    targetTerminalContextIds: [terminalContext.terminalContextId],
+    requestSummary: prompt,
+    label: `${sanitizedName} initial assignment`,
+    projectRoots: [terminalContext.projectRoot],
+  })
   await writeTeamFileAsync(teamName, teamFile)
 
   // Send initial instructions to teammate via mailbox

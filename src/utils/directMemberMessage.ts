@@ -1,4 +1,5 @@
 import type { AppState } from '../state/AppState.js'
+import { recordMailboxPhaseMemory } from './swarm/teamHelpers.js'
 
 /**
  * Parse `@agent-name message` syntax for direct team member messaging.
@@ -29,7 +30,7 @@ export type DirectMessageResult =
 
 type WriteToMailboxFn = (
   recipientName: string,
-  message: { from: string; text: string; timestamp: string },
+  message: { from: string; text: string; timestamp: string; summary?: string },
   teamName: string,
 ) => Promise<void>
 
@@ -61,9 +62,16 @@ export async function sendDirectMemberMessage(
       from: 'user',
       text: message,
       timestamp: new Date().toISOString(),
+      summary: message,
     },
     teamContext.teamName,
   )
+  await recordMailboxPhaseMemory(teamContext.teamName, {
+    fromName: 'user',
+    toNames: [recipientName],
+    summary: message,
+    text: message,
+  })
 
   return { success: true, recipientName }
 }

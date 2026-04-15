@@ -23,7 +23,10 @@ import { semanticBoolean } from '../../utils/semanticBoolean.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import type { BackendType } from '../../utils/swarm/backends/types.js'
 import { TEAM_LEAD_NAME } from '../../utils/swarm/constants.js'
-import { readTeamFileAsync } from '../../utils/swarm/teamHelpers.js'
+import {
+  readTeamFileAsync,
+  recordMailboxPhaseMemory,
+} from '../../utils/swarm/teamHelpers.js'
 import {
   getAgentId,
   getAgentName,
@@ -169,6 +172,14 @@ async function handleMessage(
     },
     teamName,
   )
+  if (teamName) {
+    await recordMailboxPhaseMemory(teamName, {
+      fromName: senderName,
+      toNames: [recipientName],
+      summary,
+      text: content,
+    })
+  }
 
   const recipientColor = findTeammateColor(appState, recipientName)
 
@@ -248,6 +259,12 @@ async function handleBroadcast(
       teamName,
     )
   }
+  await recordMailboxPhaseMemory(teamName, {
+    fromName: senderName,
+    toNames: recipients,
+    summary,
+    text: content,
+  })
 
   return {
     data: {

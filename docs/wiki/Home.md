@@ -74,6 +74,7 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 - OCI `Q`, Immaculate, workspace roots, and active project paths stay reusable without dumping secrets into shared notes
 - the crew dialog and `/status` now show the live co-work map instead of hiding it in team files
 - resumed teammate sessions keep their saved terminal context IDs so handoffs stay intact after reloads
+- co-work now keeps a shared phase memory too, so the crew can reopen the request/deliverable thread for a project phase instead of restating the same work every time
 
 ## Live Benchmark Record
 
