@@ -36,6 +36,7 @@ import {
   resolveExternalModelConfig,
   type ResolvedExternalModelConfig,
 } from './model/externalProviders.js';
+import { resolveEffectiveOciBaseUrl, resolveOciQRuntime } from './ociQRuntime.js';
 import { getOpenJawsDefaultModelDescription, modelDisplayString } from './model/model.js';
 import { getAPIProvider } from './model/providers.js';
 import { getMTLSConfig } from './mtls.js';
@@ -53,7 +54,10 @@ import { getGitBashStatus } from './windowsPaths.js';
 import { evaluateStartupHarness, summarizeStartupHarness } from './startupHarness.js';
 import { getElevenLabsConfig } from '../services/voiceOutput.js';
 import type { ExternalProviderProbeResult } from './externalProviderProbe.js';
+import { readDiscordQAgentReceipt, type DiscordQAgentReceipt } from './discordQAgentRuntime.js';
 import {
+  getLatestQTrainingHybridSession,
+  getQTrainingImmaculateLane,
   getQTrainingRouteQueueStatusSummary,
   getLatestQTrainingSnapshot,
   getOpenJawsTrainingModelDisplay,
@@ -152,17 +156,33 @@ export function buildExecutionProperties(
     value: summarizeStartupHarness(startupHarness)
   });
   if (externalModel) {
+    const ociRuntime =
+      externalModel.provider === 'oci' ? resolveOciQRuntime() : null
     properties.push({
       label: 'Model provider',
       value: externalModel.label
     });
     properties.push({
       label: 'Provider base URL',
-      value: externalModel.baseURL
+      value:
+        externalModel.provider === 'oci'
+          ? resolveEffectiveOciBaseUrl({
+              baseURL: externalModel.baseURL,
+              baseURLSource: externalModel.baseURLSource,
+            })
+          : externalModel.baseURL
     });
     properties.push({
       label: 'Provider auth',
-      value: externalModel.apiKeySource ?? (externalModel.provider === 'ollama' ? 'Not required' : 'Not configured')
+      value:
+        externalModel.apiKeySource ??
+        (externalModel.provider === 'ollama'
+          ? 'Not required'
+          : externalModel.provider === 'oci' &&
+              ociRuntime?.authMode === 'iam' &&
+              ociRuntime.ready
+            ? `OCI IAM (${ociRuntime.profile})`
+            : 'Not configured')
     });
   }
   return properties;
@@ -302,6 +322,25 @@ export function buildProviderGuidanceProperties(
     })
     return properties
   }
+  if (externalModel.provider === 'oci') {
+    const ociRuntime = resolveOciQRuntime()
+    if (!externalModel.apiKeySource) {
+      properties.push({
+        label: `${externalModel.label} setup`,
+          value: [
+            '/provider key oci <api-key>',
+            '/provider test oci <model>',
+            '/provider base-url oci <url>',
+            'env Q_API_KEY / OCI_API_KEY / OCI_GENAI_API_KEY',
+            'OCI IAM: OCI_CONFIG_FILE / OCI_PROFILE / OCI_COMPARTMENT_ID / OCI_GENAI_PROJECT_ID',
+            ...(ociRuntime.authMode === 'iam' && ociRuntime.ready
+              ? [`current auth OCI IAM (${ociRuntime.profile})`]
+              : []),
+        ],
+      })
+      return properties
+    }
+  }
   if (!externalModel.apiKeySource) {
     properties.push({
       label: `${externalModel.label} setup`,
@@ -402,15 +441,87 @@ export function buildVoiceProperties(): Property[] {
     ]
   }]
 }
+export function buildDiscordQAgentProperties(
+  receipt: DiscordQAgentReceipt | null = readDiscordQAgentReceipt(),
+): Property[] {
+  if (!receipt) {
+    return []
+  }
+  const properties: Property[] = [{
+    label: 'Q_agent',
+    value: [
+      receipt.status,
+      receipt.backend,
+      receipt.gateway.connected ? 'gateway online' : 'gateway offline',
+      `${formatNumber(receipt.guilds.length)} guild${receipt.guilds.length === 1 ? '' : 's'}`,
+    ]
+  }]
+  properties.push({
+    label: 'Q patrol',
+    value: [
+      receipt.schedule.enabled
+        ? `every ${formatDuration(receipt.schedule.intervalMs, {
+            mostSignificantOnly: true,
+          })}`
+        : 'disabled',
+      receipt.patrol.lastSummary ?? 'no patrol cycle yet',
+      ...(receipt.schedule.nextRunAt
+        ? [`next ${receipt.schedule.nextRunAt}`]
+        : []),
+    ]
+  })
+  properties.push({
+    label: 'Q routing',
+    value: [
+      receipt.routing.lastDecision ?? 'no routing decision yet',
+      ...receipt.routing.channels.slice(0, 3).map(route =>
+        route.lastPostedAt
+          ? `${route.label} ${route.lastPostedAt}`
+          : `${route.label} idle`,
+      ),
+    ]
+  })
+  properties.push({
+    label: 'Q voice',
+    value: [
+      receipt.voice.enabled ? 'enabled' : 'disabled',
+      receipt.voice.ready ? 'ready' : 'not ready',
+      receipt.voice.voiceId ?? 'voice missing',
+      receipt.voice.modelId ?? 'model missing',
+      ...(receipt.voice.lastChannelName
+        ? [`last ${receipt.voice.lastChannelName}`]
+        : []),
+      ...(receipt.voice.lastError ? [receipt.voice.lastError] : []),
+    ]
+  })
+  return properties
+}
 export function buildQTrainingProperties(
   immaculateWorkers: ImmaculateHarnessWorkerCatalog | null = null,
 ): Property[] {
   const snapshot = getLatestQTrainingSnapshot()
+  const hybridSession = getLatestQTrainingHybridSession()
+  const hybridImmaculateLane = hybridSession
+    ? getQTrainingImmaculateLane(hybridSession)
+    : null
   const workers = readQTrainingRouteWorkers()
   const workerRuntime = readQTrainingRouteWorkerRuntimeStatuses()
   if (!snapshot) {
     if (workers.length === 0 && workerRuntime.length === 0) {
-      return []
+      if (!hybridSession || !hybridImmaculateLane) {
+        return []
+      }
+      return [{
+        label: 'Hybrid session',
+        value: [
+          hybridSession.status,
+          `local ${hybridSession.localLane.status}`,
+          `immaculate ${hybridImmaculateLane.status}`,
+          ...(hybridImmaculateLane.routeQueueSummary
+            ? [hybridImmaculateLane.routeQueueSummary]
+            : []),
+        ]
+      }]
     }
     const remoteWorkers = workers.filter(worker => worker.executionProfile === 'remote')
     const properties: Property[] = [{
@@ -432,6 +543,19 @@ export function buildQTrainingProperties(
           `${formatNumber(workerRuntime.length)} tracked`,
           `${formatNumber(failing.length)} failed`,
           ...preview,
+        ]
+      })
+    }
+    if (hybridSession) {
+      properties.push({
+        label: 'Hybrid session',
+        value: [
+          hybridSession.status,
+          `local ${hybridSession.localLane.status}`,
+          `immaculate ${hybridImmaculateLane?.status ?? 'unknown'}`,
+          ...(hybridImmaculateLane?.routeQueueSummary
+            ? [hybridImmaculateLane.routeQueueSummary]
+            : []),
         ]
       })
     }
@@ -702,6 +826,19 @@ export function buildQTrainingProperties(
         `${formatNumber(workerRuntime.length)} tracked`,
         `${formatNumber(failing.length)} failed`,
         ...preview,
+      ]
+    })
+  }
+  if (hybridSession) {
+    properties.push({
+      label: 'Hybrid session',
+      value: [
+        hybridSession.status,
+        `local ${hybridSession.localLane.status}`,
+        `immaculate ${hybridImmaculateLane?.status ?? 'unknown'}`,
+        ...(hybridImmaculateLane?.routeQueueSummary
+          ? [hybridImmaculateLane.routeQueueSummary]
+          : []),
       ]
     })
   }

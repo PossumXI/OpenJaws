@@ -78,12 +78,14 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 - `bun run q:bridgebench` evaluates audited packs like `all`, `coding`, `agentic`, and `security`
 - `bun run q:curriculum` runs bounded specialization passes and benchmarks the resulting adapters back against those packs
 - the local lane writes `reward.json` and `reward-details.json` so the results are easy to compare with Rewardkit-style tooling
+- the local Discord `Q_agent` lane now writes patrol/routing/voice receipts that `/status` can read from the same machine
 
 Honest boundary:
 
 - the local `Q` lane is for in-repo evaluation and tuning
 - the public benchmark source of truth still lives in Immaculate
 - OpenJaws is not yet pretending to be a full Harbor / Terminal-Bench agent adapter
+- the Discord station currently uses scheduled text-channel patrols and optional speech attachments, not full voice-channel presence
 
 For who should bring their own key, what can stay free, and where credits/rate limits actually belong, see [Q Access and Limits](Q-Access-and-Limits.md).
 

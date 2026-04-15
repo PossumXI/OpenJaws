@@ -289,6 +289,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - Native `Q` benchmark and curriculum lanes over audited packs so coding, agentic, and security slices can be compared in-repo.
 - A Netlify-ready Next.js landing site for public `Q` access, plans, Stripe checkout, API keys, credits, and usage under `website/`.
 - Voice surfaces for speech input/output wiring, including ElevenLabs summary playback configuration.
+- A local Discord `Q_agent` station can now run scheduled Immaculate-driven patrol receipts, controlled channel routing, and first-phase ElevenLabs speech attachments when operators wire their own private secrets.
 - Firecrawl dataset skill for crawl/search -> structured dataset pipelines.
 - Remote Control, environment validation, startup harness receipts, and fail-closed configuration checks.
 
@@ -342,12 +343,14 @@ OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
 - `bun run q:terminalbench` wraps Harbor / Terminal-Bench for external terminal-task evaluation when Harbor and Docker are available
 - benchmark artifacts now write `bridgebench-report.json` plus `reward.json` and `reward-details.json` in a Rewardkit-style shape so the results are easy to inspect or reuse
 - training and benchmark receipts also record whether W&B logging was enabled, incomplete, or disabled, including the resolved project URL when that lane is actually configured
+- the local Discord `Q_agent` lane now writes a shared receipt file that `/status` can read, so patrol cadence, routing decisions, and Discord voice readiness stay visible to operators
 
 Important boundary:
 
 - these local `Q` receipts are for comparing training and evaluation runs inside OpenJaws
 - they do not replace the public Immaculate benchmark record
 - the Harbor / Terminal-Bench path is an in-repo adapter lane, not a public leaderboard claim by itself
+- the Discord station currently speaks through text-channel `.wav` attachments, not live voice-channel participation
 
 Public hosted-Q website target:
 

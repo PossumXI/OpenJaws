@@ -1,9 +1,44 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
+  buildDiscordQAgentProperties,
   buildImmaculateGuidanceProperties,
   buildProviderProbeProperties,
   buildProviderGuidanceProperties,
 } from './status.js'
+
+const OCI_ENV_VARS = [
+  'OCI_CONFIG_FILE',
+  'OCI_PROFILE',
+  'OCI_COMPARTMENT_ID',
+  'OCI_GENAI_PROJECT_ID',
+  'OCI_REGION',
+  'Q_MODEL',
+  'OCI_MODEL',
+  'Q_API_KEY',
+  'OCI_API_KEY',
+  'OCI_GENAI_API_KEY',
+] as const
+
+const originalEnv = new Map<string, string | undefined>()
+
+beforeEach(() => {
+  for (const name of OCI_ENV_VARS) {
+    originalEnv.set(name, process.env[name])
+    delete process.env[name]
+  }
+})
+
+afterEach(() => {
+  for (const name of OCI_ENV_VARS) {
+    const value = originalEnv.get(name)
+    if (value === undefined) {
+      delete process.env[name]
+    } else {
+      process.env[name] = value
+    }
+  }
+  originalEnv.clear()
+})
 
 describe('buildProviderGuidanceProperties', () => {
   test('always includes provider switching guidance', () => {
@@ -74,7 +109,7 @@ describe('buildProviderGuidanceProperties', () => {
           '/provider test oci <model>',
           '/provider base-url oci <url>',
           'env Q_API_KEY / OCI_API_KEY / OCI_GENAI_API_KEY',
-          'settings.llmProviders.oci.apiKey',
+          'OCI IAM: OCI_CONFIG_FILE / OCI_PROFILE / OCI_COMPARTMENT_ID / OCI_GENAI_PROJECT_ID',
         ],
       },
     ])
@@ -173,9 +208,9 @@ describe('buildProviderProbeProperties', () => {
           baseURL: 'https://example.com/openai/v1',
           baseURLSource: null,
           apiKeySource: 'settings.llmProviders.oci.apiKey',
-          endpoint: 'https://example.com/openai/v1/models',
-          endpointLabel: '/models',
-          method: 'GET',
+          endpoint: 'https://example.com/openai/v1/responses',
+          endpointLabel: '/responses',
+          method: 'POST',
           checkedAt: 1,
           httpStatus: 401,
           detail: 'The provider rejected the configured key or auth headers.',
@@ -187,7 +222,7 @@ describe('buildProviderProbeProperties', () => {
         label: 'OCI reachability',
         value: [
           'failed',
-          '/models',
+          '/responses',
           'HTTP 401',
           'settings.llmProviders.oci.apiKey',
         ],
@@ -232,6 +267,138 @@ describe('buildImmaculateGuidanceProperties', () => {
           'start harness or update URL',
           'https://immaculate.example.com',
           'configure immaculate.apiKeyEnv or immaculate.apiKey',
+        ],
+      },
+    ])
+  })
+})
+
+describe('buildDiscordQAgentProperties', () => {
+  test('surfaces patrol, routing, and voice receipts from the shared Q_agent state file', () => {
+    expect(
+      buildDiscordQAgentProperties({
+        version: 1,
+        updatedAt: '2026-04-15T10:00:00.000Z',
+        startedAt: '2026-04-15T09:00:00.000Z',
+        status: 'ready',
+        backend: 'Q backend: oci:Q via OCI bearer auth',
+        guilds: [{ id: 'guild-1', name: 'Arobi' }],
+        gateway: {
+          connected: true,
+          readyAt: '2026-04-15T09:00:10.000Z',
+          lastHeartbeatAt: '2026-04-15T10:00:00.000Z',
+          lastSequence: 42,
+          guildCount: 1,
+          lastMessageAt: '2026-04-15T09:59:00.000Z',
+          lastReplyAt: '2026-04-15T09:59:01.000Z',
+        },
+        schedule: {
+          enabled: true,
+          intervalMs: 900_000,
+          cycleCount: 5,
+          lastStartedAt: '2026-04-15T09:55:00.000Z',
+          lastCompletedAt: '2026-04-15T09:55:02.000Z',
+          nextRunAt: '2026-04-15T10:10:00.000Z',
+          lastSummary: '1 patrol post sent',
+          lastError: null,
+        },
+        routing: {
+          lastDecision: 'posted patrol digest -> #q-command-station',
+          lastPostedChannelName: 'q-command-station',
+          lastPostedReason: 'patrol digest after state change',
+          channels: [
+            {
+              id: 'command_station',
+              label: 'Q command station',
+              channelNames: ['q-command-station'],
+              purpose: 'operator patrols',
+              cooldownMs: 1_800_000,
+              voiceEnabled: true,
+              lastPostedAt: '2026-04-15T09:55:02.000Z',
+              lastVoicePostedAt: '2026-04-15T09:55:02.000Z',
+              lastReason: 'patrol digest after state change',
+              lastSummary: 'Blackbeak checking in',
+            },
+            {
+              id: 'updates',
+              label: 'OpenJaws updates',
+              channelNames: ['openjaws-updates'],
+              purpose: 'updates',
+              cooldownMs: 1_200_000,
+              voiceEnabled: false,
+            },
+            {
+              id: 'training',
+              label: 'Q training lab',
+              channelNames: ['q-training-lab'],
+              purpose: 'training',
+              cooldownMs: 600_000,
+              voiceEnabled: false,
+            },
+          ],
+        },
+        voice: {
+          enabled: true,
+          provider: 'elevenlabs',
+          ready: true,
+          voiceId: 'voice-1',
+          voiceIdSource: 'ELEVENLABS_VOICE_ID',
+          modelId: 'eleven_flash_v2_5',
+          lastRenderedAt: '2026-04-15T09:55:02.000Z',
+          lastSpokenText: 'Blackbeak checking in',
+          lastChannelName: 'q-command-station',
+          lastError: null,
+        },
+        patrol: {
+          lastStartedAt: '2026-04-15T09:55:00.000Z',
+          lastCompletedAt: '2026-04-15T09:55:02.000Z',
+          lastSummary: '1 patrol post sent',
+          lastError: null,
+          snapshot: {
+            harnessReachable: true,
+            harnessSummary: 'Immaculate online',
+            deckSummary: 'cycle 12 · 6 nodes',
+            workerSummary: '2 workers · 2 healthy',
+            trainingSummary: 'run-1 · running · hybrid',
+            hybridSummary: 'session-1 · running',
+            routeQueueSummary: 'queued',
+            queueLength: 1,
+            recommendedLayerId: 'layer-1',
+          },
+        },
+        events: [],
+      }),
+    ).toEqual([
+      {
+        label: 'Q_agent',
+        value: [
+          'ready',
+          'Q backend: oci:Q via OCI bearer auth',
+          'gateway online',
+          '1 guild',
+        ],
+      },
+      {
+        label: 'Q patrol',
+        value: ['every 15m', '1 patrol post sent', 'next 2026-04-15T10:10:00.000Z'],
+      },
+      {
+        label: 'Q routing',
+        value: [
+          'posted patrol digest -> #q-command-station',
+          'Q command station 2026-04-15T09:55:02.000Z',
+          'OpenJaws updates idle',
+          'Q training lab idle',
+        ],
+      },
+      {
+        label: 'Q voice',
+        value: [
+          'enabled',
+          'ready',
+          'voice-1',
+          'eleven_flash_v2_5',
+          'last q-command-station',
         ],
       },
     ])

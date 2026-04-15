@@ -140,7 +140,12 @@ function playAudioFile(audioPath: string): void {
   child.unref()
 }
 
-export async function speakWithElevenLabs(text: string): Promise<{
+export async function renderSpeechWithElevenLabs(
+  text: string,
+  options?: {
+    playback?: boolean
+  },
+): Promise<{
   audioPath: string
   spokenText: string
 }> {
@@ -180,6 +185,15 @@ export async function speakWithElevenLabs(text: string): Promise<{
 
   const wavData = buildWavFromPcm(Buffer.from(response.data))
   const audioPath = await writeSpeechFile(wavData)
-  playAudioFile(audioPath)
+  if (options?.playback !== false) {
+    playAudioFile(audioPath)
+  }
   return { audioPath, spokenText }
+}
+
+export async function speakWithElevenLabs(text: string): Promise<{
+  audioPath: string
+  spokenText: string
+}> {
+  return renderSpeechWithElevenLabs(text, { playback: true })
 }
