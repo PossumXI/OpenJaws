@@ -458,6 +458,8 @@ async function requestImmaculateQRoute(args: {
       blockedWorkerCount: assignmentResult?.blockedWorkerCount ?? null,
       baseModel: args.baseModel,
       useCpu: args.useCpu,
+      lineageId: args.lineageId,
+      phaseId: args.phaseId,
       requestedExecutionDecision: args.preflight.decision,
       security: manifest.security,
       assignment: harnessAssignment

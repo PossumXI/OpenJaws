@@ -557,6 +557,7 @@ export function buildAgentCoworkProperties(
   const activeContexts = (teamFile.terminalContexts ?? []).filter(context =>
     activeAgentIds.has(context.agentId),
   )
+  const pinnedContexts = activeContexts.filter(context => Boolean(context.activePhaseId))
   const teammateCount = teamFile.members.filter(
     member => member.name !== 'team-lead',
   ).length
@@ -565,7 +566,8 @@ export function buildAgentCoworkProperties(
     .map(context => {
       const location = context.projectRoot || context.cwd
       const provider = context.provider ? ` ${context.provider}` : ''
-      return `${context.agentName} ${context.terminalContextId}${provider} ${location}`
+      const phase = context.activePhaseId ? ` ${context.activePhaseId}` : ''
+      return `${context.agentName} ${context.terminalContextId}${provider}${phase} ${location}`
     })
   const phaseReceipts = [...(teamFile.phaseReceipts ?? [])].sort(
     (left, right) => right.updatedAt - left.updatedAt,
@@ -606,6 +608,7 @@ export function buildAgentCoworkProperties(
         phaseRegistryPath ?? 'Team memory disabled',
         `${formatNumber(phaseReceipts.length)} phase${phaseReceipts.length === 1 ? '' : 's'}`,
         `${formatNumber(deliveredCount)} delivered`,
+        `${formatNumber(pinnedContexts.length)} pinned`,
         ...phasePreview,
         ...(phaseReceipts.length > phasePreview.length
           ? [`+${formatNumber(phaseReceipts.length - phasePreview.length)} more`]
@@ -891,6 +894,8 @@ export function buildQTrainingProperties(
         ...(routeQueue.assignment?.source
           ? [`source ${routeQueue.assignment.source}`]
           : []),
+        ...(routeQueue.lineageId ? [routeQueue.lineageId] : []),
+        ...(routeQueue.phaseId ? [`phase ${routeQueue.phaseId}`] : []),
         ...(pendingAssignment
           ? ['awaiting immaculate worker assignment']
           : []),

@@ -24,6 +24,7 @@ import { jsonStringify } from '../../utils/slowOperations.js'
 import type { BackendType } from '../../utils/swarm/backends/types.js'
 import { TEAM_LEAD_NAME } from '../../utils/swarm/constants.js'
 import {
+  getActiveTeamPhaseId,
   getTeamPhaseReceiptById,
   readTeamFileAsync,
   recordMailboxPhaseMemory,
@@ -156,6 +157,55 @@ function findTeammateColor(
   return undefined
 }
 
+async function resolveMailboxPhaseSelection(args: {
+  teamName: string | undefined
+  explicitPhaseId: string | undefined
+  appState: ToolUseContext['getAppState'] extends () => infer T ? T : never
+}): Promise<{
+  teamFile: Awaited<ReturnType<typeof readTeamFileAsync>>
+  phaseId: string | undefined
+  sourceTerminalContextId: string | null
+}> {
+  const teamContext = args.appState.teamContext
+  const sourceTerminalContextFromState = teamContext?.selfAgentId
+    ? teamContext.teammates?.[teamContext.selfAgentId]?.terminalContextId ?? null
+    : teamContext?.leadTerminalContextId ?? null
+  if (!args.teamName) {
+    return {
+      teamFile: null,
+      phaseId: args.explicitPhaseId,
+      sourceTerminalContextId: sourceTerminalContextFromState,
+    }
+  }
+  const teamFile = await readTeamFileAsync(args.teamName)
+  if (!teamFile) {
+    return {
+      teamFile,
+      phaseId: args.explicitPhaseId,
+      sourceTerminalContextId: sourceTerminalContextFromState,
+    }
+  }
+  if (args.explicitPhaseId && !getTeamPhaseReceiptById(teamFile, args.explicitPhaseId)) {
+    throw new Error(
+      `Phase "${args.explicitPhaseId}" does not exist in team "${args.teamName}".`,
+    )
+  }
+  const senderAgentId = getAgentId() ?? teamFile.leadAgentId
+  const sourceTerminalContextId =
+    teamContext?.teammates?.[senderAgentId]?.terminalContextId ??
+    (senderAgentId === teamFile.leadAgentId
+      ? teamContext?.leadTerminalContextId ?? null
+      : sourceTerminalContextFromState)
+  return {
+    teamFile,
+    phaseId:
+      args.explicitPhaseId ??
+      getActiveTeamPhaseId(teamFile, senderAgentId, sourceTerminalContextId) ??
+      undefined,
+    sourceTerminalContextId,
+  }
+}
+
 async function handleMessage(
   recipientName: string,
   content: string,
@@ -168,12 +218,11 @@ async function handleMessage(
   const senderName =
     getAgentName() || (isTeammate() ? 'teammate' : TEAM_LEAD_NAME)
   const senderColor = getTeammateColor()
-  if (teamName && phaseId) {
-    const teamFile = await readTeamFileAsync(teamName)
-    if (!teamFile || !getTeamPhaseReceiptById(teamFile, phaseId)) {
-      throw new Error(`Phase "${phaseId}" does not exist in team "${teamName}".`)
-    }
-  }
+  const phaseSelection = await resolveMailboxPhaseSelection({
+    teamName,
+    explicitPhaseId: phaseId,
+    appState,
+  })
 
   await writeToMailbox(
     recipientName,
@@ -190,9 +239,10 @@ async function handleMessage(
     await recordMailboxPhaseMemory(teamName, {
       fromName: senderName,
       toNames: [recipientName],
-      phaseId,
+      phaseId: phaseSelection.phaseId,
       summary,
       text: content,
+      sourceTerminalContextId: phaseSelection.sourceTerminalContextId,
     })
   }
 
@@ -229,12 +279,14 @@ async function handleBroadcast(
     )
   }
 
-  const teamFile = await readTeamFileAsync(teamName)
+  const phaseSelection = await resolveMailboxPhaseSelection({
+    teamName,
+    explicitPhaseId: phaseId,
+    appState,
+  })
+  const teamFile = phaseSelection.teamFile
   if (!teamFile) {
     throw new Error(`Team "${teamName}" does not exist`)
-  }
-  if (phaseId && !getTeamPhaseReceiptById(teamFile, phaseId)) {
-    throw new Error(`Phase "${phaseId}" does not exist in team "${teamName}".`)
   }
 
   const senderName =
@@ -281,9 +333,10 @@ async function handleBroadcast(
   await recordMailboxPhaseMemory(teamName, {
     fromName: senderName,
     toNames: recipients,
-    phaseId,
+    phaseId: phaseSelection.phaseId,
     summary,
     text: content,
+    sourceTerminalContextId: phaseSelection.sourceTerminalContextId,
   })
 
   return {

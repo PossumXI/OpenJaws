@@ -311,6 +311,8 @@ describe('qTraining registry', () => {
         assignmentAuthority: 'immaculate',
         target: 'q-train',
         recommendedLayerId: 'ollama-reasoner-q-e4b',
+        lineageId: 'lineage-route-1',
+        phaseId: 'phase-route-1',
         security: {
           algorithm: 'hmac-sha256',
           payloadSha256: 'payload-digest',
@@ -420,6 +422,8 @@ describe('qTraining registry', () => {
     expect(snapshot?.state?.phaseId).toBe('phase-route-1')
     expect(snapshot?.routeQueue?.status).toBe('queued')
     expect(snapshot?.routeQueue?.assignment?.source).toBe('immaculate')
+    expect(snapshot?.routeQueue?.lineageId).toBe('lineage-route-1')
+    expect(snapshot?.routeQueue?.phaseId).toBe('phase-route-1')
   })
 })
 
@@ -1166,6 +1170,8 @@ describe('q route queue', () => {
             status: 'queued',
             assignmentAuthority: 'immaculate',
             recommendedLayerId: 'router-core',
+            lineageId: 'lineage-route-receipt',
+            phaseId: 'phase-route-receipt',
             assignment: null,
             claim: null,
             dispatch: null,
@@ -1183,8 +1189,10 @@ describe('q route queue', () => {
 
     expect(receipt).toEqual({
       displayStatus: 'pending_assignment',
-      text: 'Q pending · router-core · 2w · 0h · 1s · 1f',
+      text: 'Q pending · router-core · phase-route-receipt · 2w · 0h · 1s · 1f',
       tone: 'warning',
+      lineageId: 'lineage-route-receipt',
+      phaseId: 'phase-route-receipt',
     })
   })
 })

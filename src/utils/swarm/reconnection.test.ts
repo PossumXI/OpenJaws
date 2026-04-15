@@ -30,6 +30,38 @@ describe('reconnection agent co-work hydration', () => {
           subscriptions: [],
         },
       ],
+      terminalContexts: [
+        {
+          terminalContextId: 'term-lead01',
+          agentId: 'team-lead@bridge-crew',
+          agentName: 'team-lead',
+          cwd: 'D:\\openjaws\\OpenJaws',
+          projectRoot: 'D:\\openjaws\\OpenJaws',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          terminalContextId: 'term-scout02',
+          agentId: 'scout@bridge-crew',
+          agentName: 'scout',
+          cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          projectRoot: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          activePhaseId: 'phase-scout02',
+          createdAt: 2,
+          updatedAt: 2,
+        },
+      ],
+      phaseReceipts: [
+        {
+          phaseId: 'phase-scout02',
+          requestSummary: 'Audit shared OCI config',
+          deliverableSummary: 'Pinned scout context is ready',
+          participants: ['scout'],
+          createdAt: 2,
+          updatedAt: 2,
+          status: 'delivered',
+        },
+      ],
     }
 
     const teammates = buildTeamContextTeammates(teamFile)
@@ -43,6 +75,7 @@ describe('reconnection agent co-work hydration', () => {
       cwd: 'D:\\openjaws\\OpenJaws',
       worktreePath: undefined,
       terminalContextId: 'term-lead01',
+      activePhaseId: undefined,
       spawnedAt: 1,
     })
     expect(teammates['scout@bridge-crew']).toEqual({
@@ -54,6 +87,7 @@ describe('reconnection agent co-work hydration', () => {
       cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
       worktreePath: 'C:\\Users\\Knight\\Desktop\\cheeks',
       terminalContextId: 'term-scout02',
+      activePhaseId: 'phase-scout02',
       spawnedAt: 2,
     })
   })

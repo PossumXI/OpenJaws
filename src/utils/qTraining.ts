@@ -234,6 +234,8 @@ export type QTrainingRouteReceipt = {
   displayStatus: QTrainingRouteQueueDisplayStatus
   text: string
   tone?: 'suggestion' | 'warning' | 'error' | 'success'
+  lineageId?: string | null
+  phaseId?: string | null
 }
 
 export type QTrainingRouteQueueClaim = {
@@ -335,6 +337,8 @@ export type QTrainingRouteQueueEntry = {
   blockedWorkerCount?: number | null
   baseModel?: string | null
   useCpu?: boolean | null
+  lineageId?: string | null
+  phaseId?: string | null
   requestedExecutionDecision?: QTrainingPreflightDecision | null
   security?: QTrainingRouteSecurity | null
   assignment?: QTrainingRouteQueueAssignment | null
@@ -1836,6 +1840,16 @@ export function buildQTrainingRouteReceipt(args?: {
   if (!routeQueue && !routeRequest) {
     return null
   }
+  const lineageId =
+    routeQueue?.lineageId ??
+    state?.lineageId ??
+    snapshot.registry.lineageId ??
+    null
+  const phaseId =
+    routeQueue?.phaseId ??
+    state?.phaseId ??
+    snapshot.registry.phaseId ??
+    null
 
   const displayStatus =
     getQTrainingRouteQueueDisplayStatus(routeQueue) ?? 'queued'
@@ -1872,10 +1886,20 @@ export function buildQTrainingRouteReceipt(args?: {
     }
   }
 
+  const pushCorrelation = (parts: string[]) => {
+    if (phaseId) {
+      parts.push(compact ? phaseId : `phase ${phaseId}`)
+    }
+    if (lineageId && !compact) {
+      parts.push(lineageId)
+    }
+  }
+
   switch (displayStatus) {
     case 'pending_assignment': {
       const parts = [compact ? 'Q pending' : 'Q pending assignment']
       pushLayer(parts)
+      pushCorrelation(parts)
       pushWorkers(parts)
       if (typeof healthyWorkerCount === 'number') {
         parts.push(compact ? `${healthyWorkerCount}h` : `${healthyWorkerCount} healthy`)
@@ -1890,6 +1914,8 @@ export function buildQTrainingRouteReceipt(args?: {
         displayStatus,
         text: parts.join(' · '),
         tone: 'warning',
+        lineageId,
+        phaseId,
       }
     }
     case 'claimed': {
@@ -1898,10 +1924,13 @@ export function buildQTrainingRouteReceipt(args?: {
         parts.push(assignedWorker)
       }
       pushLayer(parts)
+      pushCorrelation(parts)
       return {
         displayStatus,
         text: parts.join(' · '),
         tone: 'suggestion',
+        lineageId,
+        phaseId,
       }
     }
     case 'dispatched': {
@@ -1909,6 +1938,7 @@ export function buildQTrainingRouteReceipt(args?: {
       if (assignedWorker) {
         parts.push(assignedWorker)
       }
+      pushCorrelation(parts)
       if (routeQueue?.dispatch?.transport === 'remote_http') {
         parts.push(compact ? 'remote' : 'remote ack')
       }
@@ -1916,6 +1946,8 @@ export function buildQTrainingRouteReceipt(args?: {
         displayStatus,
         text: parts.join(' · '),
         tone: 'success',
+        lineageId,
+        phaseId,
       }
     }
     case 'completed': {
@@ -1923,6 +1955,7 @@ export function buildQTrainingRouteReceipt(args?: {
       if (assignedWorker) {
         parts.push(assignedWorker)
       }
+      pushCorrelation(parts)
       if (routeQueue?.dispatch?.remoteCompletionSummary) {
         parts.push(routeQueue.dispatch.remoteCompletionSummary)
       }
@@ -1930,6 +1963,8 @@ export function buildQTrainingRouteReceipt(args?: {
         displayStatus,
         text: parts.join(' · '),
         tone: 'success',
+        lineageId,
+        phaseId,
       }
     }
     case 'failed': {
@@ -1937,6 +1972,7 @@ export function buildQTrainingRouteReceipt(args?: {
       if (assignedWorker) {
         parts.push(assignedWorker)
       }
+      pushCorrelation(parts)
       if (routeQueue?.dispatch?.remoteCompletionSummary) {
         parts.push(routeQueue.dispatch.remoteCompletionSummary)
       }
@@ -1944,21 +1980,32 @@ export function buildQTrainingRouteReceipt(args?: {
         displayStatus,
         text: parts.join(' · '),
         tone: 'error',
+        lineageId,
+        phaseId,
       }
     }
     case 'rejected':
       return {
         displayStatus,
-        text: compact ? 'Q rejected' : 'Q route rejected',
+        text: [
+          compact ? 'Q rejected' : 'Q route rejected',
+          ...(phaseId ? [compact ? phaseId : `phase ${phaseId}`] : []),
+          ...(!compact && lineageId ? [lineageId] : []),
+        ].join(' · '),
         tone: 'error',
+        lineageId,
+        phaseId,
       }
     case 'queued': {
       const parts = [compact ? 'Q queued' : 'Q route queued']
       pushLayer(parts)
+      pushCorrelation(parts)
       return {
         displayStatus,
         text: parts.join(' · '),
         tone: 'suggestion',
+        lineageId,
+        phaseId,
       }
     }
     default:

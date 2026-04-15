@@ -11,6 +11,7 @@ import { logForDebugging } from '../debug.js'
 import { logError } from '../log.js'
 import { getDynamicTeamContext } from '../teammate.js'
 import {
+  getActiveTeamPhaseId,
   getTeamFilePath,
   readTeamFile,
   type TeamFile,
@@ -31,6 +32,12 @@ export function buildTeamContextTeammates(
         cwd: member.cwd,
         worktreePath: member.worktreePath,
         terminalContextId: member.terminalContextId,
+        activePhaseId:
+          getActiveTeamPhaseId(
+            teamFile,
+            member.agentId,
+            member.terminalContextId,
+          ) ?? undefined,
         spawnedAt: member.joinedAt,
       },
     ]),

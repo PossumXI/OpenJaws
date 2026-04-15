@@ -7,6 +7,8 @@
 
 import { isPaneBackend, type PaneBackendType } from './swarm/backends/types.js'
 import {
+  getActiveTeamPhaseId,
+  getActiveTeamPhaseReceiptForAgent,
   getLatestPhaseReceiptForAgent,
   getTeamPhaseRegistryPath,
   getTeamTerminalRegistryPath,
@@ -42,6 +44,10 @@ export type TeammateStatus = {
   immaculateHarnessUrl?: string | null
   teamMemoryPath?: string | null
   teamRegistryPath?: string | null
+  activePhaseId?: string
+  activePhaseLabel?: string
+  activePhaseRequestSummary?: string
+  activePhaseDeliverableSummary?: string
   phaseId?: string
   phaseLabel?: string
   phaseRequestSummary?: string
@@ -103,6 +109,16 @@ export function getTeammateStatuses(teamName: string): TeammateStatus[] {
       member.agentId,
       member.terminalContextId,
     )
+    const activePhaseId = getActiveTeamPhaseId(
+      teamFile,
+      member.agentId,
+      member.terminalContextId,
+    )
+    const activePhaseReceipt = getActiveTeamPhaseReceiptForAgent(
+      teamFile,
+      member.agentId,
+      member.terminalContextId,
+    )
     const phaseReceipt = getLatestPhaseReceiptForAgent(teamFile, member.agentId)
 
     statuses.push({
@@ -130,6 +146,10 @@ export function getTeammateStatuses(teamName: string): TeammateStatus[] {
       immaculateHarnessUrl: terminalContext?.immaculateHarnessUrl ?? null,
       teamMemoryPath: terminalContext?.teamMemoryPath ?? null,
       teamRegistryPath,
+      activePhaseId,
+      activePhaseLabel: activePhaseReceipt?.label,
+      activePhaseRequestSummary: activePhaseReceipt?.requestSummary,
+      activePhaseDeliverableSummary: activePhaseReceipt?.lastDeliverableSummary,
       phaseId: phaseReceipt?.phaseId,
       phaseLabel: phaseReceipt?.label,
       phaseRequestSummary: phaseReceipt?.requestSummary,

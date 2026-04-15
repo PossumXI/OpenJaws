@@ -308,7 +308,9 @@ function TeammateListItem(t0) {
   const lineColor = isSelected ? "suggestion" : undefined;
   const pointer = isSelected ? `${figures.pointer} ` : "  ";
   const coworkSummary = [teammate.terminalContextId, teammate.provider, teammate.projectRoot ?? teammate.worktreePath ?? teammate.cwd].filter(Boolean).join(" · ");
+  const pinnedPhaseSummary = teammate.activePhaseDeliverableSummary ?? teammate.activePhaseRequestSummary ?? teammate.activePhaseLabel ?? teammate.activePhaseId;
   const phaseSummary = teammate.phaseDeliverableSummary ?? teammate.phaseRequestSummary;
+  const historicalPhaseSummary = phaseSummary && phaseSummary !== pinnedPhaseSummary ? phaseSummary : null;
   return <Box flexDirection="column">
       <Text color={lineColor} dimColor={shouldDim}>
         {pointer}
@@ -319,7 +321,8 @@ function TeammateListItem(t0) {
         {teammate.model ? <Text dimColor={true}> ({teammate.model})</Text> : null}
       </Text>
       {coworkSummary ? <Text dimColor={true}>  {truncateToWidth(coworkSummary, 88)}</Text> : null}
-      {phaseSummary ? <Text dimColor={true}>  {truncateToWidth(phaseSummary, 88)}</Text> : null}
+      {pinnedPhaseSummary ? <Text dimColor={true}>  {truncateToWidth(`Pinned · ${pinnedPhaseSummary}`, 88)}</Text> : null}
+      {historicalPhaseSummary ? <Text dimColor={true}>  {truncateToWidth(historicalPhaseSummary, 88)}</Text> : null}
     </Box>;
 }
 type TeammateDetailViewProps = {
@@ -394,6 +397,18 @@ function TeammateDetailView(t0) {
   }, {
     label: "team_registry",
     value: teammate.teamRegistryPath ?? teammate.teamMemoryPath
+  }, {
+    label: "pinned_phase_id",
+    value: teammate.activePhaseId
+  }, {
+    label: "pinned_phase_label",
+    value: teammate.activePhaseLabel
+  }, {
+    label: "pinned_phase_request",
+    value: teammate.activePhaseRequestSummary
+  }, {
+    label: "pinned_phase_deliverable",
+    value: teammate.activePhaseDeliverableSummary
   }, {
     label: "phase_id",
     value: teammate.phaseId

@@ -6,6 +6,8 @@ import {
   buildTeamPhaseMemoryMarkdown,
   buildTeamTerminalMemoryMarkdown,
   createTeamTerminalContext,
+  getActiveTeamPhaseId,
+  getActiveTeamPhaseReceiptForAgent,
   getLatestPhaseReceiptForAgent,
   getTeamFilePath,
   removeMemberByAgentId,
@@ -14,6 +16,7 @@ import {
   recordTeamPhaseDelivery,
   recordTeamPhaseRequest,
   reuseTeamPhaseReceipt,
+  setActiveTeamPhaseId,
   type TeamFile,
 } from './teamHelpers.js'
 
@@ -113,6 +116,7 @@ describe('teamHelpers agent co-work', () => {
             'https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1',
           immaculateHarnessUrl: 'http://127.0.0.1:8787',
           teamMemoryPath: null,
+          activePhaseId: 'phase-active01',
           createdAt: 1,
           updatedAt: 2,
         },
@@ -133,6 +137,7 @@ describe('teamHelpers agent co-work', () => {
     expect(markdown).toContain('# Agent Co-Work Terminal Registry: bridge-crew')
     expect(markdown).toContain('terminal_context_id: `term-active01`')
     expect(markdown).toContain('q_base_url: `https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1`')
+    expect(markdown).toContain('active_phase_id: `phase-active01`')
     expect(markdown).not.toContain('term-stale99')
   })
 
@@ -224,6 +229,81 @@ describe('teamHelpers agent co-work', () => {
     expect(markdown).toContain(
       'deliverable · scout -> team-lead · Found the OCI path drift and patched the shared bridge config.',
     )
+  })
+
+  it('pins an active phase to a terminal context and resolves it back', () => {
+    const teamFile: TeamFile = {
+      name: 'bridge-crew',
+      createdAt: 1,
+      leadAgentId: 'team-lead@bridge-crew',
+      leadTerminalContextId: 'term-lead01',
+      members: [
+        {
+          agentId: 'team-lead@bridge-crew',
+          name: 'team-lead',
+          joinedAt: 1,
+          tmuxPaneId: '',
+          cwd: 'D:\\openjaws\\OpenJaws',
+          terminalContextId: 'term-lead01',
+          subscriptions: [],
+        },
+        {
+          agentId: 'scout@bridge-crew',
+          name: 'scout',
+          joinedAt: 2,
+          tmuxPaneId: '%2',
+          cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          terminalContextId: 'term-scout02',
+          subscriptions: [],
+        },
+      ],
+      terminalContexts: [
+        {
+          terminalContextId: 'term-lead01',
+          agentId: 'team-lead@bridge-crew',
+          agentName: 'team-lead',
+          cwd: 'D:\\openjaws\\OpenJaws',
+          projectRoot: 'D:\\openjaws\\OpenJaws',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          terminalContextId: 'term-scout02',
+          agentId: 'scout@bridge-crew',
+          agentName: 'scout',
+          cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          projectRoot: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          createdAt: 2,
+          updatedAt: 2,
+        },
+      ],
+    }
+
+    const receipt = recordTeamPhaseRequest(teamFile, {
+      sourceAgentId: 'team-lead@bridge-crew',
+      sourceTerminalContextId: 'term-lead01',
+      targetAgentIds: ['scout@bridge-crew'],
+      targetTerminalContextIds: ['term-scout02'],
+      requestSummary: 'Keep the bridge and cheeks OCI logic aligned.',
+      label: 'bridge phase',
+    })
+
+    setActiveTeamPhaseId(teamFile, {
+      agentId: 'scout@bridge-crew',
+      terminalContextId: 'term-scout02',
+      phaseId: receipt.phaseId,
+    })
+
+    expect(
+      getActiveTeamPhaseId(teamFile, 'scout@bridge-crew', 'term-scout02'),
+    ).toBe(receipt.phaseId)
+    expect(
+      getActiveTeamPhaseReceiptForAgent(
+        teamFile,
+        'scout@bridge-crew',
+        'term-scout02',
+      )?.label,
+    ).toBe('bridge phase')
   })
 
   it('reuses an explicit phase across a new teammate terminal instead of creating a new receipt', () => {

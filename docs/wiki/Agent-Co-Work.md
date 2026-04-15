@@ -25,6 +25,8 @@ Tool-driven teammate messages can do the same thing through `phase_id`:
 
 When `phase_id` is supplied, OpenJaws now fails closed if that exact phase does not exist. It does not silently fall back to the latest matching receipt.
 
+If you do not supply `phase_id`, OpenJaws now checks whether the sender terminal is already pinned to an active phase and reuses that exact phase first. That lets a crew stay on the same work thread by default once the phase has been established.
+
 ## Cross-Terminal Phase Reuse
 
 Phase receipts can now span multiple teammate terminals deliberately:
@@ -32,6 +34,7 @@ Phase receipts can now span multiple teammate terminals deliberately:
 - one agent can open the phase
 - a second agent can reuse that same phase from another project root
 - the shared ledger records the new terminal context, request, handoff, and deliverable under the same phase
+- teammate UI and `/status` now surface the pinned `active_phase_id` directly so the crew can see which phase a terminal is actually attached to
 
 That keeps the request thread, project roots, and delivered output attached to the same work phase even when the work moves between terminals.
 

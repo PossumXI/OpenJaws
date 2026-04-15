@@ -1,5 +1,6 @@
 import type { AppState } from '../state/AppState.js'
 import {
+  getActiveTeamPhaseId,
   getTeamPhaseReceiptById,
   readTeamFileAsync,
   recordMailboxPhaseMemory,
@@ -40,6 +41,15 @@ type WriteToMailboxFn = (
   teamName: string,
 ) => Promise<void>
 
+function getSourceTerminalContextId(
+  teamContext: NonNullable<AppState['teamContext']>,
+): string | null {
+  if (teamContext.selfAgentId) {
+    return teamContext.teammates?.[teamContext.selfAgentId]?.terminalContextId ?? null
+  }
+  return teamContext.leadTerminalContextId ?? null
+}
+
 /**
  * Send a direct message to a team member, bypassing the model.
  */
@@ -54,6 +64,11 @@ export async function sendDirectMemberMessage(
     return { success: false, error: 'no_team_context' }
   }
 
+  const teamFile = await readTeamFileAsync(teamContext.teamName)
+  if (!teamFile) {
+    return { success: false, error: 'no_team_context' }
+  }
+
   // Find team member by name
   const member = Object.values(teamContext.teammates ?? {}).find(
     t => t.name === recipientName,
@@ -63,8 +78,7 @@ export async function sendDirectMemberMessage(
     return { success: false, error: 'unknown_recipient', recipientName }
   }
   if (phaseId) {
-    const teamFile = await readTeamFileAsync(teamContext.teamName)
-    if (!teamFile || !getTeamPhaseReceiptById(teamFile, phaseId)) {
+    if (!getTeamPhaseReceiptById(teamFile, phaseId)) {
       return {
         success: false,
         error: 'unknown_phase',
@@ -73,6 +87,11 @@ export async function sendDirectMemberMessage(
       }
     }
   }
+  const sourceAgentId = teamContext.selfAgentId ?? teamContext.leadAgentId
+  const sourceTerminalContextId = getSourceTerminalContextId(teamContext)
+  const effectivePhaseId =
+    phaseId ??
+    getActiveTeamPhaseId(teamFile, sourceAgentId, sourceTerminalContextId)
 
   await writeToMailbox(
     recipientName,
@@ -87,9 +106,10 @@ export async function sendDirectMemberMessage(
   await recordMailboxPhaseMemory(teamContext.teamName, {
     fromName: 'user',
     toNames: [recipientName],
-    phaseId,
+    phaseId: effectivePhaseId ?? undefined,
     summary: message,
     text: message,
+    sourceTerminalContextId,
   })
 
   return { success: true, recipientName }

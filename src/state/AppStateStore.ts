@@ -357,6 +357,7 @@ export type AppState = DeepImmutable<{
         cwd: string
         worktreePath?: string
         terminalContextId?: string
+        activePhaseId?: string
         spawnedAt: number
       }
     }

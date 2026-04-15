@@ -483,6 +483,7 @@ describe('buildAgentCoworkProperties', () => {
               cwd: 'D:\\openjaws\\OpenJaws',
               projectRoot: 'D:\\openjaws\\OpenJaws',
               provider: 'oci',
+              activePhaseId: 'phase-scout01',
               createdAt: 2,
               updatedAt: 3,
             },
@@ -547,7 +548,7 @@ describe('buildAgentCoworkProperties', () => {
         value: [
           'C:\\Users\\Knight\\.openjaws\\team-mem\\bridge-crew-TERMINALS.md',
           'team-lead term-lead01 D:\\openjaws\\OpenJaws',
-          'scout term-scout02 oci D:\\openjaws\\OpenJaws',
+          'scout term-scout02 oci phase-scout01 D:\\openjaws\\OpenJaws',
         ],
       },
       {
@@ -556,6 +557,7 @@ describe('buildAgentCoworkProperties', () => {
           'C:\\Users\\Knight\\.openjaws\\team-mem\\bridge-crew-PHASES.md',
           '1 phase',
           '1 delivered',
+          '1 pinned',
           'scout initial assignment Patched the shared bridge and aligned the OCI route.',
         ],
       },

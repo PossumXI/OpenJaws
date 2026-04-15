@@ -64,12 +64,14 @@ import {
 import { buildInheritedEnvVars } from '../../utils/swarm/spawnUtils.js'
 import {
   createTeamTerminalContext,
+  getActiveTeamPhaseId,
   getTeamPhaseReceiptById,
   recordTeamPhaseRequest,
   readTeamFileAsync,
   reuseTeamPhaseReceipt,
   sanitizeAgentName,
   sanitizeName,
+  setActiveTeamPhaseId,
   upsertTeamTerminalContext,
   writeTeamFileAsync,
 } from '../../utils/swarm/teamHelpers.js'
@@ -321,6 +323,59 @@ function assertSpawnPhaseSelection(
   if (!getTeamPhaseReceiptById(teamFile, phaseId)) {
     throw new Error(`Phase "${phaseId}" does not exist in team "${teamName}".`)
   }
+}
+
+function attachSpawnToTeamPhase(args: {
+  teamFile: NonNullable<Awaited<ReturnType<typeof readTeamFileAsync>>>
+  requestedPhaseId?: string
+  prompt: string
+  teammateId: string
+  teammateName: string
+  terminalContextId: string
+  projectRoot: string
+}): string | undefined {
+  const effectiveRequestedPhaseId =
+    args.requestedPhaseId ??
+    getActiveTeamPhaseId(
+      args.teamFile,
+      args.teamFile.leadAgentId,
+      args.teamFile.leadTerminalContextId,
+    ) ??
+    undefined
+  const receipt = effectiveRequestedPhaseId
+    ? reuseTeamPhaseReceipt(args.teamFile, {
+        phaseId: effectiveRequestedPhaseId,
+        fromAgentId: args.teamFile.leadAgentId,
+        toAgentIds: [args.teammateId],
+        summary: args.prompt,
+        kind: 'request',
+        sourceTerminalContextId: args.teamFile.leadTerminalContextId,
+        targetTerminalContextIds: [args.terminalContextId],
+        projectRoots: [args.projectRoot],
+      })
+    : recordTeamPhaseRequest(args.teamFile, {
+        sourceAgentId: args.teamFile.leadAgentId,
+        sourceTerminalContextId: args.teamFile.leadTerminalContextId,
+        targetAgentIds: [args.teammateId],
+        targetTerminalContextIds: [args.terminalContextId],
+        requestSummary: args.prompt,
+        label: `${args.teammateName} initial assignment`,
+        projectRoots: [args.projectRoot],
+      })
+  if (!receipt) {
+    return effectiveRequestedPhaseId
+  }
+  setActiveTeamPhaseId(args.teamFile, {
+    agentId: args.teamFile.leadAgentId,
+    terminalContextId: args.teamFile.leadTerminalContextId,
+    phaseId: receipt.phaseId,
+  })
+  setActiveTeamPhaseId(args.teamFile, {
+    agentId: args.teammateId,
+    terminalContextId: args.terminalContextId,
+    phaseId: receipt.phaseId,
+  })
+  return receipt.phaseId
 }
 
 // ============================================================================
@@ -648,6 +703,14 @@ async function handleSpawnSplitPane(
     backendType: detectionResult.backend.type,
     tmuxPaneId: paneId,
   })
+  const effectivePhaseId =
+    input.phase_id ??
+    getActiveTeamPhaseId(
+      existingTeamFile,
+      existingTeamFile.leadAgentId,
+      existingTeamFile.leadTerminalContextId,
+    ) ??
+    undefined
 
   // Track the teammate in AppState's teamContext with color
   // If spawning without spawnTeam, set up the leader as team lead
@@ -668,6 +731,7 @@ async function handleSpawnSplitPane(
           tmuxPaneId: paneId,
           cwd: workingDir,
           terminalContextId: terminalContext.terminalContextId,
+          activePhaseId: effectivePhaseId,
           spawnedAt: Date.now(),
         },
       },
@@ -711,28 +775,15 @@ async function handleSpawnSplitPane(
     backendType: detectionResult.backend.type,
   })
   upsertTeamTerminalContext(teamFile, terminalContext)
-  if (input.phase_id) {
-    reuseTeamPhaseReceipt(teamFile, {
-      phaseId: input.phase_id,
-      fromAgentId: teamFile.leadAgentId,
-      toAgentIds: [teammateId],
-      summary: prompt,
-      kind: 'request',
-      sourceTerminalContextId: teamFile.leadTerminalContextId,
-      targetTerminalContextIds: [terminalContext.terminalContextId],
-      projectRoots: [terminalContext.projectRoot],
-    })
-  } else {
-    recordTeamPhaseRequest(teamFile, {
-      sourceAgentId: teamFile.leadAgentId,
-      sourceTerminalContextId: teamFile.leadTerminalContextId,
-      targetAgentIds: [teammateId],
-      targetTerminalContextIds: [terminalContext.terminalContextId],
-      requestSummary: prompt,
-      label: `${sanitizedName} initial assignment`,
-      projectRoots: [terminalContext.projectRoot],
-    })
-  }
+  const phaseId = attachSpawnToTeamPhase({
+    teamFile,
+    requestedPhaseId: effectivePhaseId,
+    prompt,
+    teammateId,
+    teammateName: sanitizedName,
+    terminalContextId: terminalContext.terminalContextId,
+    projectRoot: terminalContext.projectRoot,
+  })
   await writeTeamFileAsync(teamName, teamFile)
 
   // Send initial instructions to teammate via mailbox
@@ -761,7 +812,7 @@ async function handleSpawnSplitPane(
       teammate_id: teammateId,
       agent_id: teammateId,
       terminal_context_id: terminalContext.terminalContextId,
-      phase_id: input.phase_id,
+      phase_id: phaseId,
       agent_type,
       model,
       name: sanitizedName,
@@ -933,6 +984,14 @@ async function handleSpawnSeparateWindow(
     backendType: 'tmux',
     tmuxPaneId: paneId,
   })
+  const effectivePhaseId =
+    input.phase_id ??
+    getActiveTeamPhaseId(
+      existingTeamFile,
+      existingTeamFile.leadAgentId,
+      existingTeamFile.leadTerminalContextId,
+    ) ??
+    undefined
 
   // Track the teammate in AppState's teamContext
   setAppState(prev => ({
@@ -952,6 +1011,7 @@ async function handleSpawnSeparateWindow(
           tmuxPaneId: paneId,
           cwd: workingDir,
           terminalContextId: terminalContext.terminalContextId,
+          activePhaseId: effectivePhaseId,
           spawnedAt: Date.now(),
         },
       },
@@ -996,28 +1056,15 @@ async function handleSpawnSeparateWindow(
     backendType: 'tmux', // This handler always uses tmux directly
   })
   upsertTeamTerminalContext(teamFile, terminalContext)
-  if (input.phase_id) {
-    reuseTeamPhaseReceipt(teamFile, {
-      phaseId: input.phase_id,
-      fromAgentId: teamFile.leadAgentId,
-      toAgentIds: [teammateId],
-      summary: prompt,
-      kind: 'request',
-      sourceTerminalContextId: teamFile.leadTerminalContextId,
-      targetTerminalContextIds: [terminalContext.terminalContextId],
-      projectRoots: [terminalContext.projectRoot],
-    })
-  } else {
-    recordTeamPhaseRequest(teamFile, {
-      sourceAgentId: teamFile.leadAgentId,
-      sourceTerminalContextId: teamFile.leadTerminalContextId,
-      targetAgentIds: [teammateId],
-      targetTerminalContextIds: [terminalContext.terminalContextId],
-      requestSummary: prompt,
-      label: `${sanitizedName} initial assignment`,
-      projectRoots: [terminalContext.projectRoot],
-    })
-  }
+  const phaseId = attachSpawnToTeamPhase({
+    teamFile,
+    requestedPhaseId: effectivePhaseId,
+    prompt,
+    teammateId,
+    teammateName: sanitizedName,
+    terminalContextId: terminalContext.terminalContextId,
+    projectRoot: terminalContext.projectRoot,
+  })
   await writeTeamFileAsync(teamName, teamFile)
 
   // Send initial instructions to teammate via mailbox
@@ -1046,7 +1093,7 @@ async function handleSpawnSeparateWindow(
       teammate_id: teammateId,
       agent_id: teammateId,
       terminal_context_id: terminalContext.terminalContextId,
-      phase_id: input.phase_id,
+      phase_id: phaseId,
       agent_type,
       model,
       name: sanitizedName,
@@ -1282,6 +1329,14 @@ async function handleSpawnInProcess(
     backendType: 'in-process',
     tmuxPaneId: 'in-process',
   })
+  const effectivePhaseId =
+    input.phase_id ??
+    getActiveTeamPhaseId(
+      existingTeamFile,
+      existingTeamFile.leadAgentId,
+      existingTeamFile.leadTerminalContextId,
+    ) ??
+    undefined
   const leaderTerminalContext =
     existingTeamFile.leadTerminalContextId || existingTeamFile.leadAgentId === ''
       ? null
@@ -1343,6 +1398,7 @@ async function handleSpawnInProcess(
             tmuxPaneId: 'in-process',
             cwd: workingDir,
             terminalContextId: terminalContext.terminalContextId,
+            activePhaseId: effectivePhaseId,
             spawnedAt: Date.now(),
           },
         },
@@ -1396,28 +1452,15 @@ async function handleSpawnInProcess(
     backendType: 'in-process',
   })
   upsertTeamTerminalContext(teamFile, terminalContext)
-  if (input.phase_id) {
-    reuseTeamPhaseReceipt(teamFile, {
-      phaseId: input.phase_id,
-      fromAgentId: teamFile.leadAgentId,
-      toAgentIds: [teammateId],
-      summary: prompt,
-      kind: 'request',
-      sourceTerminalContextId: teamFile.leadTerminalContextId,
-      targetTerminalContextIds: [terminalContext.terminalContextId],
-      projectRoots: [terminalContext.projectRoot],
-    })
-  } else {
-    recordTeamPhaseRequest(teamFile, {
-      sourceAgentId: teamFile.leadAgentId,
-      sourceTerminalContextId: teamFile.leadTerminalContextId,
-      targetAgentIds: [teammateId],
-      targetTerminalContextIds: [terminalContext.terminalContextId],
-      requestSummary: prompt,
-      label: `${sanitizedName} initial assignment`,
-      projectRoots: [terminalContext.projectRoot],
-    })
-  }
+  const phaseId = attachSpawnToTeamPhase({
+    teamFile,
+    requestedPhaseId: effectivePhaseId,
+    prompt,
+    teammateId,
+    teammateName: sanitizedName,
+    terminalContextId: terminalContext.terminalContextId,
+    projectRoot: terminalContext.projectRoot,
+  })
   await writeTeamFileAsync(teamName, teamFile)
 
   // Note: Do NOT send the prompt via mailbox for in-process teammates.
@@ -1439,7 +1482,7 @@ async function handleSpawnInProcess(
       teammate_id: teammateId,
       agent_id: teammateId,
       terminal_context_id: terminalContext.terminalContextId,
-      phase_id: input.phase_id,
+      phase_id: phaseId,
       agent_type,
       model,
       name: sanitizedName,

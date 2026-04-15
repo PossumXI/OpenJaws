@@ -9,6 +9,7 @@ import {
 } from '../../utils/hooks.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import {
+  getActiveTeamPhaseId,
   getTeamPhaseReceiptById,
   readTeamFileAsync,
   recordMailboxPhaseMemory,
@@ -141,6 +142,7 @@ export const TaskUpdateTool = buildTool({
       owner,
       addBlocks,
       addBlockedBy,
+      phase_id,
       metadata,
     },
     context,
@@ -288,19 +290,32 @@ export const TaskUpdateTool = buildTool({
     if (updates.owner && isAgentSwarmsEnabled()) {
       const senderName = getAgentName() || 'team-lead'
       const senderColor = getTeammateColor()
-      if (input.phase_id) {
-        const teamFile = await readTeamFileAsync(taskListId)
-        if (!teamFile || !getTeamPhaseReceiptById(teamFile, input.phase_id)) {
-          return {
-            data: {
-              success: false,
-              taskId,
-              updatedFields,
-              error: `Phase "${input.phase_id}" does not exist in team "${taskListId}".`,
-            },
-          }
+      const teamFile = await readTeamFileAsync(taskListId)
+      if (phase_id && (!teamFile || !getTeamPhaseReceiptById(teamFile, phase_id))) {
+        return {
+          data: {
+            success: false,
+            taskId,
+            updatedFields,
+            error: `Phase "${phase_id}" does not exist in team "${taskListId}".`,
+          },
         }
       }
+      const teamContext = context.getAppState().teamContext
+      const senderAgentId =
+        getAgentId() ?? teamFile?.leadAgentId ?? teamContext?.leadAgentId ?? null
+      const sourceTerminalContextId = senderAgentId
+        ? teamContext?.teammates?.[senderAgentId]?.terminalContextId ??
+          (senderAgentId === teamFile?.leadAgentId
+            ? teamContext?.leadTerminalContextId ?? null
+            : null)
+        : null
+      const effectivePhaseId =
+        phase_id ??
+        (senderAgentId && teamFile
+          ? getActiveTeamPhaseId(teamFile, senderAgentId, sourceTerminalContextId)
+          : null) ??
+        undefined
       const assignmentMessage = JSON.stringify({
         type: 'task_assignment',
         taskId,
@@ -322,9 +337,10 @@ export const TaskUpdateTool = buildTool({
       await recordMailboxPhaseMemory(taskListId, {
         fromName: senderName,
         toNames: [updates.owner],
-        phaseId: input.phase_id,
+        phaseId: effectivePhaseId,
         summary: existingTask.subject,
         text: existingTask.description,
+        sourceTerminalContextId,
       })
     }
 

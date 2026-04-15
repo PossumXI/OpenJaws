@@ -80,6 +80,7 @@ export type TeamTerminalContext = {
   qBaseUrl?: string | null
   immaculateHarnessUrl?: string | null
   teamMemoryPath?: string | null
+  activePhaseId?: string
   createdAt: number
   updatedAt: number
 }
@@ -296,6 +297,84 @@ function getLatestTerminalContextForAgent(
   return matchingContexts[0] ?? null
 }
 
+export function getActiveTeamPhaseId(
+  teamFile: TeamFile,
+  agentId: string,
+  terminalContextId?: string | null,
+): string | null {
+  const context = getLatestTerminalContextForAgent(
+    teamFile,
+    agentId,
+    terminalContextId ?? undefined,
+  )
+  if (!context?.activePhaseId) {
+    return null
+  }
+  if (!getTeamPhaseReceiptById(teamFile, context.activePhaseId)) {
+    delete context.activePhaseId
+    return null
+  }
+  return context.activePhaseId
+}
+
+export function getActiveTeamPhaseReceiptForAgent(
+  teamFile: TeamFile,
+  agentId: string,
+  terminalContextId?: string | null,
+): TeamPhaseReceipt | null {
+  const phaseId = getActiveTeamPhaseId(teamFile, agentId, terminalContextId)
+  if (!phaseId) {
+    return null
+  }
+  return getTeamPhaseReceiptById(teamFile, phaseId)
+}
+
+export function setActiveTeamPhaseId(
+  teamFile: TeamFile,
+  args: {
+    agentId: string
+    terminalContextId?: string | null
+    phaseId?: string | null
+  },
+): TeamTerminalContext | null {
+  const context = getLatestTerminalContextForAgent(
+    teamFile,
+    args.agentId,
+    args.terminalContextId ?? undefined,
+  )
+  if (!context) {
+    return null
+  }
+  if (args.phaseId) {
+    const receipt = getTeamPhaseReceiptById(teamFile, args.phaseId)
+    if (!receipt) {
+      return null
+    }
+    context.activePhaseId = receipt.phaseId
+  } else {
+    delete context.activePhaseId
+  }
+  context.updatedAt = Date.now()
+  return context
+}
+
+function pinTeamPhaseForAgents(
+  teamFile: TeamFile,
+  phaseId: string,
+  participants: Array<{
+    agentId: string
+    terminalContextId?: string | null
+  }>,
+): void {
+  for (const participant of participants) {
+    setActiveTeamPhaseId(teamFile, {
+      agentId: participant.agentId,
+      terminalContextId: participant.terminalContextId,
+      phaseId,
+    })
+  }
+}
+
 function createPhaseDelivery(args: {
   kind: TeamPhaseDeliveryKind
   fromAgentId: string
@@ -360,6 +439,9 @@ export function buildTeamTerminalMemoryMarkdown(teamFile: TeamFile): string {
         : []),
       ...(context.teamMemoryPath
         ? [`- team_memory_path: \`${context.teamMemoryPath}\``]
+        : []),
+      ...(context.activePhaseId
+        ? [`- active_phase_id: \`${context.activePhaseId}\``]
         : []),
     )
   }
@@ -678,6 +760,7 @@ export async function recordMailboxPhaseMemory(
     phaseId?: string
     summary?: string
     text: string
+    sourceTerminalContextId?: string | null
   },
 ): Promise<void> {
   const normalizedFromName =
@@ -696,9 +779,20 @@ export async function recordMailboxPhaseMemory(
   }
 
   const summary = summarizeTeamPhaseText(args.summary ?? args.text)
-  if (args.phaseId) {
-    reuseTeamPhaseReceipt(teamFile, {
-      phaseId: args.phaseId,
+  const sourceTerminalContextId =
+    args.sourceTerminalContextId ?? sourceMember.terminalContextId ?? null
+  const effectivePhaseId =
+    args.phaseId ??
+    getActiveTeamPhaseId(
+      teamFile,
+      sourceMember.agentId,
+      sourceTerminalContextId,
+    )
+  let receipt: TeamPhaseReceipt | null = null
+
+  if (effectivePhaseId) {
+    receipt = reuseTeamPhaseReceipt(teamFile, {
+      phaseId: effectivePhaseId,
       fromAgentId: sourceMember.agentId,
       toAgentIds: targetMembers.map(member => member!.agentId),
       summary,
@@ -707,10 +801,12 @@ export async function recordMailboxPhaseMemory(
         : sourceMember.agentId === teamFile.leadAgentId
           ? 'request'
           : 'handoff',
+      sourceTerminalContextId,
     })
   } else if (sourceMember.agentId === teamFile.leadAgentId) {
-    recordTeamPhaseRequest(teamFile, {
+    receipt = recordTeamPhaseRequest(teamFile, {
       sourceAgentId: sourceMember.agentId,
+      sourceTerminalContextId,
       targetAgentIds: targetMembers.map(member => member!.agentId),
       requestSummary: summary,
       label:
@@ -719,7 +815,7 @@ export async function recordMailboxPhaseMemory(
           : `Team handoff (${targetMembers.length})`,
     })
   } else {
-    recordTeamPhaseDelivery(teamFile, {
+    receipt = recordTeamPhaseDelivery(teamFile, {
       fromAgentId: sourceMember.agentId,
       toAgentIds: targetMembers.map(member => member!.agentId),
       summary,
@@ -727,6 +823,19 @@ export async function recordMailboxPhaseMemory(
         ? 'deliverable'
         : 'handoff',
     })
+  }
+
+  if (receipt) {
+    pinTeamPhaseForAgents(teamFile, receipt.phaseId, [
+      {
+        agentId: sourceMember.agentId,
+        terminalContextId: sourceTerminalContextId,
+      },
+      ...targetMembers.map(member => ({
+        agentId: member!.agentId,
+        terminalContextId: member!.terminalContextId ?? null,
+      })),
+    ])
   }
 
   await writeTeamFileAsync(teamName, teamFile)
