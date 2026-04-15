@@ -17,6 +17,7 @@ import {
   getOpenJawsTrainingModelDisplay,
   getOpenJawsTrainingModelLabel,
   getLatestQTrainingSnapshot,
+  getLatestQTrainingHybridSession,
   getNextQueuedQTrainingRoute,
   isQTrainingRouteQueueClaimExpired,
   isQTrainingRouteQueuePendingRemoteResult,
@@ -38,6 +39,7 @@ import {
   updateQTrainingRouteQueueClaim,
   upsertQTrainingRouteQueueEntry,
   upsertQTrainingRegistryEntry,
+  upsertQTrainingHybridSessionReceipt,
   upsertQTrainingRouteWorkerRuntimeStatus,
   upsertQTrainingRouteWorker,
   verifyQTrainingRouteManifest,
@@ -132,6 +134,89 @@ describe('qTraining registry', () => {
     expect(entries).toHaveLength(1)
     expect(entries[0]?.status).toBe('running')
     expect(entries[0]?.pid).toBe(456)
+  })
+
+  it('upserts and reads the latest hybrid session receipt', () => {
+    const root = makeRoot()
+
+    upsertQTrainingHybridSessionReceipt(
+      {
+        sessionId: 'session-1',
+        generatedAt: '2026-04-14T19:00:00.000Z',
+        outputDir: join(root, 'artifacts', 'q-hybrid-sessions', 'session-1'),
+        bundleDir: join(root, 'data', 'sft', 'audited'),
+        localBaseModel: 'q-lite',
+        immaculateBaseModel: 'q',
+        tags: ['agentic'],
+        languages: ['python'],
+        localLane: {
+          lane: 'local',
+          runId: 'run-local-1',
+          baseModel: 'q-lite',
+          outputDir: join(root, 'artifacts', 'q-hybrid-sessions', 'session-1', 'local'),
+          runStatePath: join(root, 'artifacts', 'q-hybrid-sessions', 'session-1', 'local', 'run-state.json'),
+          status: 'launched',
+          executionMode: 'local',
+        },
+        immaculateLane: {
+          lane: 'immaculate',
+          runId: 'run-cloud-1',
+          baseModel: 'q',
+          outputDir: join(root, 'artifacts', 'q-hybrid-sessions', 'session-1', 'immaculate'),
+          runStatePath: join(root, 'artifacts', 'q-hybrid-sessions', 'session-1', 'immaculate', 'run-state.json'),
+          status: 'route_requested',
+          executionMode: 'immaculate_route_requested',
+          routeQueueDisplayStatus: 'pending_assignment',
+          routeQueueSummary: 'pending assignment',
+        },
+        status: 'started',
+        honestyBoundary:
+          'This hybrid session coordinates a local Q lane and an Immaculate-routed Q lane under one receipt.',
+      },
+      root,
+    )
+
+    upsertQTrainingHybridSessionReceipt(
+      {
+        sessionId: 'session-1',
+        generatedAt: '2026-04-14T19:05:00.000Z',
+        outputDir: join(root, 'artifacts', 'q-hybrid-sessions', 'session-1'),
+        bundleDir: join(root, 'data', 'sft', 'audited'),
+        localBaseModel: 'q-lite',
+        immaculateBaseModel: 'q',
+        tags: ['agentic'],
+        languages: ['python'],
+        localLane: {
+          lane: 'local',
+          runId: 'run-local-1',
+          baseModel: 'q-lite',
+          outputDir: join(root, 'artifacts', 'q-hybrid-sessions', 'session-1', 'local'),
+          runStatePath: join(root, 'artifacts', 'q-hybrid-sessions', 'session-1', 'local', 'run-state.json'),
+          status: 'launched',
+          executionMode: 'local',
+        },
+        immaculateLane: {
+          lane: 'immaculate',
+          runId: 'run-cloud-1',
+          baseModel: 'q',
+          outputDir: join(root, 'artifacts', 'q-hybrid-sessions', 'session-1', 'immaculate'),
+          runStatePath: join(root, 'artifacts', 'q-hybrid-sessions', 'session-1', 'immaculate', 'run-state.json'),
+          status: 'route_requested',
+          executionMode: 'immaculate_route_requested',
+          routeQueueDisplayStatus: 'queued',
+          routeQueueSummary: 'queued',
+        },
+        status: 'degraded',
+        honestyBoundary:
+          'This hybrid session coordinates a local Q lane and an Immaculate-routed Q lane under one receipt.',
+      },
+      root,
+    )
+
+    const latest = getLatestQTrainingHybridSession(root)
+    expect(latest?.status).toBe('degraded')
+    expect(latest?.immaculateLane.routeQueueSummary).toBe('queued')
+    expect(latest?.cloudLane?.lane).toBe('cloud')
   })
 
   it('reads the latest run snapshot and optional run-state file', async () => {

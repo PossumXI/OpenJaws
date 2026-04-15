@@ -18,6 +18,7 @@ export type QTrainingStatus =
   | 'running'
   | 'completed'
   | 'failed'
+  | 'dry_run'
   | 'route_requested'
   | 'remote_required'
   | 'preflight_blocked'
@@ -401,6 +402,98 @@ export type QRunState = {
   routeQueue?: QTrainingRouteQueueEntry | null
   routeQueueDisplayStatus?: QTrainingRouteQueueDisplayStatus | null
   routeQueueSummary?: string | null
+}
+
+export type QTrainingHybridLaneKind = 'local' | 'immaculate' | 'cloud'
+
+export type QTrainingHybridLaneReceipt = {
+  lane: QTrainingHybridLaneKind
+  runId: string | null
+  baseModel: string
+  outputDir: string
+  runStatePath: string | null
+  status: QTrainingStatus | 'failed'
+  executionMode?: QTrainingExecutionMode | null
+  routeQueueDisplayStatus?: QTrainingRouteQueueDisplayStatus | null
+  routeQueueSummary?: string | null
+  stderr?: string | null
+}
+
+export type QTrainingHybridSessionStatus =
+  | 'started'
+  | 'degraded'
+  | 'failed'
+  | 'dry_run'
+
+export type QTrainingHybridSessionReceipt = {
+  sessionId: string
+  generatedAt: string
+  outputDir: string
+  bundleDir: string
+  localBaseModel: string
+  immaculateBaseModel: string
+  tags: string[]
+  languages: string[]
+  localLane: QTrainingHybridLaneReceipt
+  immaculateLane: QTrainingHybridLaneReceipt
+  cloudBaseModel?: string | null
+  cloudLane?: QTrainingHybridLaneReceipt | null
+  status: QTrainingHybridSessionStatus
+  honestyBoundary: string
+}
+
+function buildLegacyCloudLaneAlias(
+  lane: QTrainingHybridLaneReceipt,
+): QTrainingHybridLaneReceipt {
+  return {
+    ...lane,
+    lane: lane.lane === 'local' ? 'local' : 'cloud',
+  }
+}
+
+function normalizeQTrainingHybridLaneReceipt(
+  lane: QTrainingHybridLaneReceipt | null | undefined,
+): QTrainingHybridLaneReceipt | null {
+  if (!lane) {
+    return null
+  }
+  return {
+    ...lane,
+    lane: lane.lane === 'cloud' ? 'immaculate' : lane.lane,
+  }
+}
+
+function normalizeQTrainingHybridSessionReceipt(
+  entry: QTrainingHybridSessionReceipt,
+): QTrainingHybridSessionReceipt {
+  const immaculateLane =
+    normalizeQTrainingHybridLaneReceipt(entry.immaculateLane ?? entry.cloudLane) ??
+    entry.localLane
+  const immaculateBaseModel =
+    entry.immaculateBaseModel ?? entry.cloudBaseModel ?? immaculateLane.baseModel
+  const legacyCloudLaneAlias = buildLegacyCloudLaneAlias(immaculateLane)
+
+  return {
+    ...entry,
+    immaculateBaseModel,
+    immaculateLane,
+    cloudBaseModel: entry.cloudBaseModel ?? immaculateBaseModel,
+    cloudLane: legacyCloudLaneAlias,
+  }
+}
+
+export function getQTrainingImmaculateLane(
+  session: QTrainingHybridSessionReceipt,
+): QTrainingHybridLaneReceipt {
+  return normalizeQTrainingHybridLaneReceipt(
+    session.immaculateLane ?? session.cloudLane,
+  ) ?? session.localLane
+}
+
+export function getQTrainingImmaculateBaseModel(
+  session: QTrainingHybridSessionReceipt,
+): string {
+  return session.immaculateBaseModel ?? session.cloudBaseModel ?? getQTrainingImmaculateLane(session).baseModel
 }
 
 const GIB = 1024 ** 3
@@ -1474,6 +1567,16 @@ export function getQTrainingRegistryPath(root = process.cwd()): string {
   return join(getQTrainingRunsDir(root), 'registry.json')
 }
 
+export function getQTrainingHybridSessionsDir(root = process.cwd()): string {
+  return resolve(root, 'artifacts', 'q-hybrid-sessions')
+}
+
+export function getQTrainingHybridSessionRegistryPath(
+  root = process.cwd(),
+): string {
+  return join(getQTrainingHybridSessionsDir(root), 'registry.json')
+}
+
 export function getQTrainingRouteQueuePath(root = process.cwd()): string {
   return join(getQTrainingRunsDir(root), 'route-queue.json')
 }
@@ -2096,6 +2199,53 @@ export function writeQTrainingRegistry(
   const path = getQTrainingRegistryPath(root)
   mkdirSync(getQTrainingRunsDir(root), { recursive: true })
   writeFileSync(path, `${JSON.stringify(entries, null, 2)}\n`, 'utf8')
+}
+
+export function readQTrainingHybridSessionRegistry(
+  root = process.cwd(),
+): QTrainingHybridSessionReceipt[] {
+  const entries =
+    readJsonIfExists<QTrainingHybridSessionReceipt[]>(
+      getQTrainingHybridSessionRegistryPath(root),
+    ) ?? []
+  return entries.map(normalizeQTrainingHybridSessionReceipt)
+}
+
+export function writeQTrainingHybridSessionRegistry(
+  entries: QTrainingHybridSessionReceipt[],
+  root = process.cwd(),
+): void {
+  const path = getQTrainingHybridSessionRegistryPath(root)
+  mkdirSync(getQTrainingHybridSessionsDir(root), { recursive: true })
+  writeFileSync(
+    path,
+    `${JSON.stringify(
+      entries.map(normalizeQTrainingHybridSessionReceipt),
+      null,
+      2,
+    )}\n`,
+    'utf8',
+  )
+}
+
+export function upsertQTrainingHybridSessionReceipt(
+  entry: QTrainingHybridSessionReceipt,
+  root = process.cwd(),
+): void {
+  const existing = readQTrainingHybridSessionRegistry(root)
+  const normalizedEntry = normalizeQTrainingHybridSessionReceipt(entry)
+  const updated = existing.filter(session => session.sessionId !== normalizedEntry.sessionId)
+  updated.push(normalizedEntry)
+  updated.sort((left, right) =>
+    left.generatedAt < right.generatedAt ? -1 : left.generatedAt > right.generatedAt ? 1 : 0,
+  )
+  writeQTrainingHybridSessionRegistry(updated, root)
+}
+
+export function getLatestQTrainingHybridSession(
+  root = process.cwd(),
+): QTrainingHybridSessionReceipt | null {
+  return readQTrainingHybridSessionRegistry(root).at(-1) ?? null
 }
 
 export function readQTrainingRouteQueue(
