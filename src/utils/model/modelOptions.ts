@@ -32,7 +32,7 @@ import {
 } from './model.js'
 import { has1mContext } from '../context.js'
 import { getGlobalConfig } from '../config.js'
-import { listConfiguredExternalModels } from './externalProviders.js'
+import { listVisibleExternalModels } from './externalProviders.js'
 
 // @[MODEL LAUNCH]: Update all the available and default model option strings below.
 
@@ -462,7 +462,7 @@ function getKnownModelOption(model: string): ModelOption | null {
 export function getModelOptions(fastMode = false): ModelOption[] {
   const options = getModelOptionsBase(fastMode)
 
-  const externalOptions = listConfiguredExternalModels()
+  const externalOptions = listVisibleExternalModels()
     .filter(external => !options.some(existing => existing.value === external.value))
     .map(external => ({
       value: external.value,

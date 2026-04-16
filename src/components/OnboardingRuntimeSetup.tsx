@@ -24,6 +24,10 @@ import {
   probeExternalProviderModel,
   type ExternalProviderProbeResult,
 } from '../utils/externalProviderProbe.js'
+import {
+  resolveEffectiveOciBaseUrl,
+  resolveOciQRuntime,
+} from '../utils/ociQRuntime.js'
 
 type RuntimeChoice = ExternalModelProvider | 'openjaws-account'
 type SetupStage = 'runtime' | 'model' | 'key' | 'probe'
@@ -36,6 +40,21 @@ type ProbeState = {
 type Props = {
   oauthEnabled: boolean
   onDone: (skipOAuth: boolean) => void
+}
+
+function getProviderBrowserAssistCopy(
+  provider: ExternalModelProvider | null,
+): string {
+  switch (provider) {
+    case 'oci':
+      return 'Need a Q key? /provider connect oci opens qline.site in your browser.'
+    case 'openai':
+      return 'Need an OpenAI key? /provider connect openai opens the OpenAI API keys page in your browser.'
+    case 'gemini':
+      return 'Need a Gemini key? /provider connect gemini keeps the setup flow explicit and key-based.'
+    default:
+      return `Need help getting one? /provider connect ${provider ?? 'openai'} opens the provider setup page in your browser.`
+  }
 }
 
 function getInitialRuntimeChoice(): RuntimeChoice {
@@ -61,8 +80,19 @@ function buildRuntimeOptionDescription(
   const resolved = resolveExternalModelConfig(
     buildExternalProviderModelRef(provider, model),
   )
+  const ociRuntime = provider === 'oci' ? resolveOciQRuntime() : null
+  const baseURL =
+    provider === 'oci'
+      ? resolveEffectiveOciBaseUrl({
+          baseURL: resolved?.baseURL ?? defaults.baseURL,
+          baseURLSource: resolved?.baseURLSource ?? null,
+        })
+      : resolved?.baseURL ?? defaults.baseURL
   if (provider === 'ollama') {
-    return `${model} · local runtime · ${resolved?.baseURL ?? defaults.baseURL}`
+    return `${model} · local runtime · ${baseURL}`
+  }
+  if (provider === 'oci' && !resolved?.apiKeySource && ociRuntime?.authMode === 'iam' && ociRuntime.ready) {
+    return `${model} · OCI IAM ${ociRuntime.profile} · ${baseURL}`
   }
   return `${model} · ${resolved?.apiKeySource ? `key ${resolved.apiKeySource}` : `needs ${defaults.apiKeyEnvVars[0]}`}`
 }
@@ -97,7 +127,8 @@ export function OnboardingRuntimeSetup({
       options.push({
         label: 'OpenJaws account',
         value: 'openjaws-account',
-        description: 'Use built-in login, managed defaults, and the standard startup path.',
+        description:
+          'Use built-in browser login, managed defaults, and the standard startup path.',
       })
     }
 
@@ -200,7 +231,14 @@ export function OnboardingRuntimeSetup({
       const resolved = resolveExternalModelConfig(
         buildExternalProviderModelRef(selectedProvider, trimmedModel),
       )
-      if (selectedProvider !== 'ollama' && !resolved?.apiKeySource) {
+      const ociRuntime =
+        selectedProvider === 'oci' ? resolveOciQRuntime() : null
+      const hasOciIam =
+        selectedProvider === 'oci' &&
+        !resolved?.apiKeySource &&
+        ociRuntime?.authMode === 'iam' &&
+        ociRuntime.ready
+      if (selectedProvider !== 'ollama' && !resolved?.apiKeySource && !hasOciIam) {
         setStage('key')
         return
       }
@@ -281,6 +319,8 @@ export function OnboardingRuntimeSetup({
             Pick the provider or account path you want OpenJaws to use first.
             Q on OCI is the default runtime path for fresh installs. You can
             change it later in Settings &gt; Config &gt; Model or with /provider.
+            {' '}Use OpenJaws account when you want the built-in browser login
+            lane. External providers stay browser-assisted and key-based.
           </Text>
         </Box>
         <Select
@@ -306,11 +346,25 @@ export function OnboardingRuntimeSetup({
             should start with.
             <Newline />
             {selectedProvider
-              ? `Base URL: ${resolvedSelection?.baseURL ?? getExternalProviderDefaults(selectedProvider).baseURL}`
+              ? `Base URL: ${
+                  selectedProvider === 'oci'
+                    ? resolveEffectiveOciBaseUrl({
+                        baseURL:
+                          resolvedSelection?.baseURL ??
+                          getExternalProviderDefaults(selectedProvider).baseURL,
+                        baseURLSource: resolvedSelection?.baseURLSource ?? null,
+                      })
+                    : resolvedSelection?.baseURL ??
+                      getExternalProviderDefaults(selectedProvider).baseURL
+                }`
               : 'Base URL pending'}
             {selectedProvider !== 'ollama'
               ? resolvedSelection?.apiKeySource
                 ? ` · key ${resolvedSelection.apiKeySource}`
+                : selectedProvider === 'oci' &&
+                    resolveOciQRuntime().authMode === 'iam' &&
+                    resolveOciQRuntime().ready
+                  ? ` · OCI IAM ${resolveOciQRuntime().profile}`
                 : ` · key next`
               : ' · no key required'}
           </Text>
@@ -438,7 +492,11 @@ export function OnboardingRuntimeSetup({
         <Text dimColor>
           Store a key now or leave this blank and press Enter to continue.
           OpenJaws will also use {providerDefaults?.apiKeyEnvVars.join(' / ')}
-          {' '}if one is already set in the environment.
+          {' '}if one is already set in the environment.{' '}
+          {getProviderBrowserAssistCopy(selectedProvider)}
+          {selectedProvider === 'oci'
+            ? ' Public installs should bring their own key or a hosted key from qline.site when that issuing lane is live. Internal operator surfaces can use OCI IAM instead.'
+            : ''}
         </Text>
       </Box>
       <Box borderStyle="round" borderColor="border" paddingLeft={1}>

@@ -2,7 +2,7 @@
 
 This is the main setup page for the default OpenJaws runtime path.
 
-Fresh public installs start on `OCI:Q`.
+Fresh public installs start on `Q` in the model picker. Under the hood that is `oci:Q`.
 
 ## Default Runtime
 
@@ -19,12 +19,13 @@ In plain terms: OpenJaws does not just save your settings and hope for the best.
 
 1. Start OpenJaws.
 2. Use the built-in first-run setup lane.
-3. Keep `OCI:Q` if you want the default public runtime, or switch provider/model there.
+3. Keep `Q` selected if you want the default public runtime, or switch provider/model there.
 4. Store your key with `/provider key oci <api-key>` or set one of:
    - `Q_API_KEY`
    - `OCI_API_KEY`
    - `OCI_GENAI_API_KEY`
    If the hosted public Q issuing lane is active, that key can come from `https://qline.site`, which is now the canonical HTTPS public shell.
+   If you just need the browser setup page, run `/provider connect oci`.
 5. Let the first-run flow finish its live provider check, or run `/provider test oci Q` yourself.
 6. If your OCI endpoint differs, set it with `/provider base-url oci <url>`.
 7. Run `/status` and confirm:
@@ -60,6 +61,7 @@ See [Q Access and Limits](Q-Access-and-Limits.md) for the operator policy bounda
 
 - `/provider use oci Q`
 - `/provider key oci <api-key>`
+- `/provider connect oci`
 - `/provider test oci Q`
 - `/provider base-url oci <url>`
 - `/provider`

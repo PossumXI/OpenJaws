@@ -19,6 +19,30 @@ exit /b 0
 :resolve_default_model
 set "OPENJAWS_DEFAULT_MODEL="
 
+if defined Q_API_KEY (
+    set "OPENJAWS_DEFAULT_MODEL=oci:Q"
+    goto :eof
+)
+
+if defined OCI_API_KEY (
+    set "OPENJAWS_DEFAULT_MODEL=oci:Q"
+    goto :eof
+)
+
+if defined OCI_GENAI_API_KEY (
+    set "OPENJAWS_DEFAULT_MODEL=oci:Q"
+    goto :eof
+)
+
+if defined OCI_CONFIG_FILE (
+    if defined OCI_COMPARTMENT_ID (
+        if defined OCI_GENAI_PROJECT_ID (
+            set "OPENJAWS_DEFAULT_MODEL=oci:Q"
+            goto :eof
+        )
+    )
+)
+
 if defined OPENAI_API_KEY (
     if defined OPENAI_MODEL (
         set "OPENJAWS_DEFAULT_MODEL=openai:%OPENAI_MODEL%"

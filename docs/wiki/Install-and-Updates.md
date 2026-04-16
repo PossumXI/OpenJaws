@@ -72,17 +72,28 @@ OpenJaws does not treat arbitrary `main` pushes, mirrors, or copied installer sn
 After the first launch:
 
 1. Use the built-in first-run setup lane to choose provider/model and wire your key or auth path.
-2. Fresh public installs default to `OCI:Q`; if you are keeping that path, store your key with `/provider key oci <api-key>` or set `Q_API_KEY`, `OCI_API_KEY`, or `OCI_GENAI_API_KEY`.
-3. Let the first-run lane complete its live provider check, or run `/provider test oci Q`.
-4. Run `/login` if your selected provider still requires account auth.
-5. Run `/provider` if you want to change the provider/model chosen during first-run setup.
-6. Run `/status` and verify:
+2. Fresh public installs default to `Q` in the picker, which maps to `oci:Q` under the hood.
+3. If you are keeping that path, store your key with `/provider key oci <api-key>` or set `Q_API_KEY`, `OCI_API_KEY`, or `OCI_GENAI_API_KEY`.
+4. If you need the key first, run `/provider connect oci` to open the browser setup page.
+5. Let the first-run lane complete its live provider check, or run `/provider test oci Q`.
+6. Run `/login` only when you want the managed Anthropic/OpenJaws browser-login lane.
+7. Run `/provider` if you want to change the provider/model chosen during first-run setup.
+8. Run `/status` and verify:
    - active provider and model
    - latest provider reachability receipt
    - runtime mode
    - sandbox state
    - routed work or worker state, if present
-7. Run `/immaculate status` if you want to inspect orchestration pressure and worker health before heavier work.
+9. Run `/immaculate status` if you want to inspect orchestration pressure and worker health before heavier work.
+
+If you later issue hosted `Q` keys through the website lane, the OpenJaws-side
+step is still explicit:
+
+- generate the key through the hosted `Q` service at `https://qline.site`
+- store it locally with `/provider key oci <generated-q-key>`
+- or open the browser setup lane directly with `/provider connect oci`
+- run `/provider test oci Q`
+- verify the active runtime and provider receipt with `/status`
 
 ## Provider Switching
 
@@ -102,6 +113,7 @@ Common OCI/Q controls:
 - `/provider base-url oci <url>`
 
 See [Q and OCI Setup](Q-and-OCI-Setup.md) for the canonical shipped-runtime setup flow.
+See [Q Access and Limits](Q-Access-and-Limits.md) for the public key, credits, and rate-limit boundary.
 
 Do not assume the visible model name alone tells the whole story. Check the runtime and route state as well.
 

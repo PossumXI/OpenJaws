@@ -29,7 +29,7 @@
 
 ## Provider and Runtime Control
 
-- `OCI:Q` as the public default runtime for fresh installs
+- `Q` as the public default picker option for fresh installs, backed by `oci:Q`
 - provider/model switching through `/provider`
 - provider key rotation and base-URL override through `/provider key` and `/provider base-url`
 - remote environment selection through `/remote-env`

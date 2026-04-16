@@ -8,8 +8,13 @@ import {
   getExternalProviderDefaults,
   resolveExternalModelConfig,
 } from '../../utils/model/externalProviders.js'
+import { openBrowser } from '../../utils/browser.js'
 import { modelDisplayString } from '../../utils/model/model.js'
 import { stripSignatureBlocks } from '../../utils/messages.js'
+import {
+  resolveEffectiveOciBaseUrl,
+  resolveOciQRuntime,
+} from '../../utils/ociQRuntime.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
 import {
   buildExternalProviderModelRef,
@@ -29,6 +34,7 @@ import {
 
 const HELP_ARGS = new Set(['help', '-h', '--help'])
 const STATUS_ARGS = new Set(['', 'status', 'list', 'current'])
+type ProviderBrowserConnectTarget = ExternalModelProvider | 'anthropic'
 
 function formatProviderStatus(
   provider: ExternalModelProvider,
@@ -40,28 +46,44 @@ function formatProviderStatus(
     provider,
     context.getAppState().mainLoopModel,
   )
+  const ociRuntime = provider === 'oci' ? resolveOciQRuntime() : null
   const keySource =
     resolved?.apiKeySource ??
     (provider === 'ollama'
       ? 'not required'
-      : `missing (env: ${defaults.apiKeyEnvVars.join(', ')})`)
+      : provider === 'oci' &&
+          ociRuntime?.authMode === 'iam' &&
+          ociRuntime.ready
+        ? `OCI IAM (${ociRuntime.profile})`
+        : provider === 'oci'
+          ? `missing (env: ${defaults.apiKeyEnvVars.join(', ')} or OCI IAM envs)`
+          : `missing (env: ${defaults.apiKeyEnvVars.join(', ')})`)
   const modelHint = preferredModel
     ? buildExternalProviderModelRef(provider, preferredModel)
     : `unset (env: ${defaults.modelEnvVars.join(', ') || 'none'})`
-  return `- ${provider}: model ${modelHint} · key ${keySource} · base URL ${resolved?.baseURL ?? defaults.baseURL}`
+  const baseURL =
+    provider === 'oci'
+      ? resolveEffectiveOciBaseUrl({
+          baseURL: resolved?.baseURL ?? defaults.baseURL,
+          baseURLSource: resolved?.baseURLSource ?? null,
+        })
+      : resolved?.baseURL ?? defaults.baseURL
+  return `- ${provider}: model ${modelHint} · key ${keySource} · base URL ${baseURL}`
 }
 
 function buildStatusMessage(context: LocalJSXCommandContext): string {
   const currentModel =
     context.getAppState().mainLoopModel ?? getInitialSettings().model ?? null
   const currentDisplay =
-    currentModel === null ? 'default (public default oci:Q)' : modelDisplayString(currentModel)
+    currentModel === null
+      ? 'default (public default Q on OCI · oci:Q)'
+      : modelDisplayString(currentModel)
   const providerLines = EXTERNAL_MODEL_PROVIDERS.map(provider =>
     formatProviderStatus(provider, context),
   )
   return [
     `Current model: ${currentDisplay}`,
-    'Public default runtime: oci:Q',
+    'Public default runtime: Q on OCI (oci:Q)',
     '',
     'External providers:',
     ...providerLines,
@@ -69,8 +91,12 @@ function buildStatusMessage(context: LocalJSXCommandContext): string {
     'Examples:',
     '- /provider use oci Q',
     '- /provider test oci Q',
+    '- /provider connect oci',
     '- /provider key oci <api-key>',
     '- /provider use openai gpt-5.4',
+    '- /provider connect openai',
+    '- /provider connect anthropic',
+    '- /login',
     '- /provider model gemini gemini-3.1-pro-preview',
     '- /provider base-url oci <url>',
     '- /provider clear-key oci',
@@ -79,13 +105,14 @@ function buildStatusMessage(context: LocalJSXCommandContext): string {
 
 function buildHelpMessage(): string {
   return [
-    'Usage: /provider [status|use|key|clear-key|model|base-url|test] ...',
+    'Usage: /provider [status|use|key|clear-key|model|base-url|test|connect] ...',
     '',
     'Commands:',
     '- /provider',
     '- /provider status',
     '- /provider use <provider> [model]',
     '- /provider test [provider] [model]',
+    '- /provider connect <provider>',
     '- /provider key <provider> <api-key>',
     '- /provider clear-key <provider>',
     '- /provider model <provider> <model>',
@@ -94,15 +121,85 @@ function buildHelpMessage(): string {
     'Notes:',
     '- /provider use switches the active model for this session and future launches.',
     '- /provider test sends a lightweight live probe to the configured provider endpoint.',
+    '- /provider connect opens the provider portal or account docs in your browser.',
     '- /provider key stores the key in user settings.json. It is convenient, but it is still plaintext on disk.',
     '- /provider model remembers a model option for the picker without switching immediately.',
+    '- OCI can also use IAM for internal operator surfaces; public installs should still bring their own key or a hosted key issued separately.',
+    '- OpenAI browser setup is a portal-to-key flow. Anthropic/OpenJaws browser login stays on /login. OpenJaws does not mint third-party provider OAuth tokens for those API paths.',
   ].join('\n')
+}
+
+function resolveProviderBrowserConnectTarget(
+  input: string,
+): ProviderBrowserConnectTarget | null {
+  const normalized = input.trim().toLowerCase()
+  if (!normalized) {
+    return null
+  }
+  if (normalized === 'anthropic' || normalized === 'claude') {
+    return 'anthropic'
+  }
+  return normalizeExternalProvider(normalized)
+}
+
+function getProviderBrowserConnectInfo(
+  target: ProviderBrowserConnectTarget,
+): {
+  label: string
+  url: string | null
+  nextStep: string
+  summary: string
+} {
+  switch (target) {
+    case 'oci':
+      return {
+        label: 'Q on OCI',
+        url: 'https://qline.site',
+        nextStep:
+          '/provider key oci <api-key> or configure OCI IAM locally before /provider use oci Q',
+        summary:
+          'Q on OCI stays API-key or OCI-IAM based in OpenJaws. The browser path is for key issuance/docs, not provider OAuth.',
+      }
+    case 'openai':
+      return {
+        label: 'OpenAI',
+        url: 'https://platform.openai.com/api-keys',
+        nextStep: '/provider key openai <api-key> then /provider use openai gpt-5.4',
+        summary:
+          'OpenAI browser setup here is a provider-portal key flow. OpenJaws does not receive an OpenAI OAuth token for the API path.',
+      }
+    case 'anthropic':
+      return {
+        label: 'Anthropic / OpenJaws account',
+        url: 'https://platform.claude.com/settings/keys',
+        nextStep:
+          'Run /login for the built-in browser OAuth lane, or use an Anthropic console key for direct Anthropic API tooling outside the external-provider path.',
+        summary:
+          'The managed Anthropic/OpenJaws account lane is already browser-based through /login. The console keys page is opened here for direct key management.',
+      }
+    default: {
+      const defaults = getExternalProviderDefaults(target)
+      return {
+        label: defaults.label,
+        url: null,
+        nextStep: `/provider key ${target} <api-key>`,
+        summary:
+          'This provider currently uses API-key setup in OpenJaws. No browser OAuth flow is wired for it yet.',
+      }
+    }
+  }
 }
 
 function buildProbeMessage(probe: ExternalProviderProbeResult): string {
   const fixHints =
     probe.provider === 'ollama'
       ? [`/provider base-url ollama <url>`]
+      : probe.provider === 'oci'
+        ? [
+            `/provider key ${probe.provider} <api-key>`,
+            `/provider base-url ${probe.provider} <url>`,
+            'or configure OCI_CONFIG_FILE / OCI_PROFILE / OCI_COMPARTMENT_ID / OCI_GENAI_PROJECT_ID',
+          ]
       : [
           `/provider key ${probe.provider} <api-key>`,
           `/provider base-url ${probe.provider} <url>`,
@@ -139,6 +236,26 @@ export async function call(
 
   const parts = args.split(/\s+/).filter(Boolean)
   const action = parts[0]?.toLowerCase()
+
+  if (action === 'connect') {
+    const target = resolveProviderBrowserConnectTarget(parts[1] ?? '')
+    if (!target) {
+      onDone('Usage: /provider connect <provider>', { display: 'system' })
+      return null
+    }
+
+    const info = getProviderBrowserConnectInfo(target)
+    const opened = info.url ? await openBrowser(info.url) : false
+    onDone(
+      [
+        `${opened ? 'Opened' : 'Could not auto-open'} ${info.label} browser setup${info.url ? `: ${info.url}` : '.'}`,
+        info.summary,
+        `Next: ${info.nextStep}`,
+      ].join('\n'),
+      { display: 'system' },
+    )
+    return null
+  }
 
   if (action === 'test' || action === 'validate') {
     const explicitModel = parts.slice(2).join(' ').trim()

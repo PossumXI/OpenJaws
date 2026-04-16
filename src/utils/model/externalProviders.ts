@@ -64,7 +64,7 @@ export type ConfiguredExternalModel = {
 
 const PROVIDER_DEFAULTS: Record<ExternalModelProvider, ProviderDefaults> = {
   oci: {
-    label: 'OCI',
+    label: 'Q on OCI',
     apiKeyEnvVars: ['Q_API_KEY', 'OCI_API_KEY', 'OCI_GENAI_API_KEY'],
     modelEnvVars: ['Q_MODEL', 'OCI_MODEL'],
     baseURL:
@@ -318,6 +318,12 @@ export function renderExternalModelName(rawModel: string): string | null {
   if (!modelRef) {
     return null
   }
+  if (
+    modelRef.provider === 'oci' &&
+    modelRef.model.trim().toLowerCase() === 'q'
+  ) {
+    return 'Q'
+  }
   return `${modelRef.model} (${modelRef.label})`
 }
 
@@ -372,8 +378,13 @@ function addConfiguredExternalModel(
   })
 }
 
-export function listConfiguredExternalModels(): ConfiguredExternalModel[] {
+export function listVisibleExternalModels(): ConfiguredExternalModel[] {
   const models = new Map<string, ConfiguredExternalModel>()
+  addConfiguredExternalModel(
+    models,
+    'oci:Q',
+    'OpenJaws default runtime',
+  )
   const settingsModel = getInitialSettings().model
 
   if (typeof settingsModel === 'string') {
@@ -411,4 +422,8 @@ export function listConfiguredExternalModels(): ConfiguredExternalModel[] {
   }
 
   return Array.from(models.values())
+}
+
+export function listConfiguredExternalModels(): ConfiguredExternalModel[] {
+  return listVisibleExternalModels()
 }
