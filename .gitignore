@@ -6,6 +6,7 @@ coverage/
 
 # Runtime state and generated artifacts
 artifacts/
+jobs/
 wandb/
 latest
 .tmp-config/
@@ -50,7 +51,12 @@ openjaws_patched*.exe
 data/web-datasets/
 data/sft/
 training/q/__pycache__/
+scripts/__pycache__/
 tmp-probe.h5
+website/.data/
+website/.netlify/
+website/.netlify-cli-config/
+website/.next/
 
 # IDE / OS noise
 .DS_Store

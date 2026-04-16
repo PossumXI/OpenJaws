@@ -11,6 +11,16 @@ import type { AssistantMessage, UserMessage } from '../../types/message.js'
 import { createAssistantMessage, createUserMessage } from '../../utils/messages.js'
 import { createAxiosInstance } from '../../utils/proxy.js'
 import type { ResolvedExternalModelConfig } from '../../utils/model/externalProviders.js'
+import {
+  queryOciResponsesViaPython,
+  queryOciQViaPython,
+  resolveOciBridgeModel,
+  type OciQBridgeRuntimeOverride,
+} from '../../utils/ociQBridge.js'
+import {
+  resolveEffectiveOciBaseUrl,
+  resolveOciQRuntime,
+} from '../../utils/ociQRuntime.js'
 import type { SystemPrompt } from '../../utils/systemPromptType.js'
 import {
   buildOpenAICompatibleAssistantContent as buildOpenAICompatibleAssistantContentInterop,
@@ -202,6 +212,44 @@ function buildHeaders(
   return headers
 }
 
+function buildOciQBridgeRuntimeOverride(
+  config: ResolvedExternalModelConfig,
+): OciQBridgeRuntimeOverride | null {
+  const runtime = resolveOciQRuntime()
+  const model = resolveOciBridgeModel(config.model)
+
+  if (config.apiKey) {
+    const baseURL = resolveEffectiveOciBaseUrl({
+      baseURL: config.baseURL,
+      baseURLSource: config.baseURLSource,
+    })
+    return {
+      authMode: 'bearer',
+      apiKey: config.apiKey,
+      baseURL,
+      model,
+      projectId: runtime.projectId,
+      compartmentId: runtime.compartmentId,
+    }
+  }
+
+  if (runtime.authMode === 'iam' && runtime.ready) {
+    return {
+      authMode: 'iam',
+      configFile: runtime.configFile!,
+      profile: runtime.profile,
+      // OCI IAM is region-bound through the local OCI runtime, so prefer the
+      // resolved runtime endpoint over any stale settings-level provider URL.
+      baseURL: runtime.baseURL,
+      projectId: runtime.projectId!,
+      compartmentId: runtime.compartmentId!,
+      model,
+    }
+  }
+
+  return null
+}
+
 function toOllamaFormat(
   outputFormat?: BetaJSONOutputFormat,
 ): 'json' | Record<string, unknown> | undefined {
@@ -317,6 +365,35 @@ function tryParseLooseJson(value: string): unknown {
     } catch {
       return undefined
     }
+  }
+}
+
+type OciResponsesOutputTextPart = {
+  type?: string
+  text?: string
+}
+
+type OciResponsesOutputItem = {
+  id?: string
+  type?: string
+  role?: string
+  call_id?: string
+  name?: string
+  arguments?: string
+  content?: string | OciResponsesOutputTextPart[]
+}
+
+type OciResponsesPayload = {
+  id?: string
+  model?: string
+  status?: string
+  incomplete_details?: {
+    reason?: string | null
+  } | null
+  output?: OciResponsesOutputItem[]
+  usage?: {
+    input_tokens?: number
+    output_tokens?: number
   }
 }
 
@@ -848,6 +925,202 @@ function buildOllamaTools(tools: BetaToolUnion[]): OllamaTool[] {
   })
 }
 
+function buildOciResponsesTools(
+  tools: BetaToolUnion[],
+): Array<{
+  type: 'function'
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+}> {
+  return tools.flatMap(tool => {
+    const candidate = tool as Record<string, unknown>
+    if (
+      typeof candidate.name !== 'string' ||
+      typeof candidate.description !== 'string' ||
+      typeof candidate.input_schema !== 'object' ||
+      candidate.input_schema === null ||
+      Array.isArray(candidate.input_schema)
+    ) {
+      return []
+    }
+
+    return [
+      {
+        type: 'function' as const,
+        name: candidate.name,
+        description: candidate.description,
+        parameters: candidate.input_schema as Record<string, unknown>,
+      },
+    ]
+  })
+}
+
+function buildOciResponsesInput(args: {
+  messages: ExternalConversationMessage[]
+}): Array<Record<string, unknown>> {
+  const result: Array<Record<string, unknown>> = []
+
+  for (const message of args.messages) {
+    const content = message.message.content
+    const blocks = Array.isArray(content)
+      ? (content as Record<string, unknown>[])
+      : [{ type: 'text', text: String(content ?? '') }]
+
+    if (message.type === 'user') {
+      const pendingText: string[] = []
+      const flushPending = () => {
+        if (pendingText.length === 0) {
+          return
+        }
+        result.push({
+          role: 'user',
+          content: pendingText.join('\n\n'),
+        })
+        pendingText.length = 0
+      }
+
+      for (const block of blocks) {
+        if (block.type === 'tool_result') {
+          flushPending()
+          const toolUseId =
+            typeof block.tool_use_id === 'string' ? block.tool_use_id : null
+          if (!toolUseId) {
+            continue
+          }
+          result.push({
+            type: 'function_call_output',
+            call_id: toolUseId,
+            output: renderToolResultContent(block.content),
+          })
+          continue
+        }
+
+        const text = renderBlockAsText(block)
+        if (text) {
+          pendingText.push(text)
+        }
+      }
+
+      flushPending()
+      continue
+    }
+
+    const pendingText: string[] = []
+    const flushPending = () => {
+      if (pendingText.length === 0) {
+        return
+      }
+      result.push({
+        role: 'assistant',
+        content: pendingText.join('\n\n'),
+      })
+      pendingText.length = 0
+    }
+
+    for (const block of blocks) {
+      if (block.type === 'tool_use') {
+        flushPending()
+        const name = typeof block.name === 'string' ? block.name : null
+        if (!name) {
+          continue
+        }
+        const toolUseId =
+          typeof block.id === 'string' ? block.id : randomUUID()
+        result.push({
+          type: 'function_call',
+          call_id: toolUseId,
+          name,
+          arguments: JSON.stringify(
+            normalizeToolArguments(
+              block.input as Record<string, unknown> | string | undefined,
+            ),
+          ),
+        })
+        continue
+      }
+
+      const text = renderBlockAsText(block)
+      if (text) {
+        pendingText.push(text)
+      }
+    }
+
+    flushPending()
+  }
+
+  return result
+}
+
+function buildOciResponsesAssistantMessage(
+  payload: OciResponsesPayload,
+  usage: NonNullableUsage,
+): AssistantMessage {
+  const contentBlocks: BetaContentBlock[] = []
+
+  for (const item of payload.output ?? []) {
+    if (item.type === 'function_call' && item.name) {
+      contentBlocks.push({
+        type: 'tool_use',
+        id:
+          typeof item.call_id === 'string'
+            ? item.call_id
+            : typeof item.id === 'string'
+              ? item.id
+              : randomUUID(),
+        name: item.name,
+        input: normalizeToolArguments(item.arguments),
+      } as BetaContentBlock)
+      continue
+    }
+
+    if (item.type !== 'message') {
+      continue
+    }
+
+    const text =
+      typeof item.content === 'string'
+        ? item.content.trim()
+        : Array.isArray(item.content)
+          ? item.content
+              .map(part =>
+                typeof part.text === 'string' ? part.text.trim() : '',
+              )
+              .filter(Boolean)
+              .join('\n\n')
+          : ''
+
+    if (text) {
+      contentBlocks.push({
+        type: 'text',
+        text,
+      } as BetaContentBlock)
+    }
+  }
+
+  return createAssistantMessage({
+    content: contentBlocks.length > 0 ? contentBlocks : '',
+    usage,
+  })
+}
+
+function mapOciResponsesStopReason(
+  payload: OciResponsesPayload,
+): BetaStopReason | null {
+  if ((payload.output ?? []).some(item => item.type === 'function_call')) {
+    return 'tool_use'
+  }
+
+  if (
+    payload.status === 'incomplete' &&
+    payload.incomplete_details?.reason === 'max_output_tokens'
+  ) {
+    return 'max_tokens'
+  }
+
+  return 'end_turn'
+}
+
 function mapOllamaStopReason(payload: OllamaResponse): BetaStopReason | null {
   if ((payload.message?.tool_calls?.length ?? 0) > 0) {
     return 'tool_use'
@@ -1004,6 +1277,56 @@ export async function queryExternalToolLoopModel({
   temperature?: number
   outputFormat?: BetaJSONOutputFormat
 }): Promise<QueryExternalToolLoopResult> {
+  if (config.provider === 'oci' && !config.apiKey) {
+    const runtime = resolveOciQRuntime()
+    if (runtime.authMode === 'iam' && runtime.ready) {
+      const runtimeOverride = buildOciQBridgeRuntimeOverride(config)
+      if (!runtimeOverride) {
+        throw new Error(
+          'OCI IAM is configured, but the runtime override could not be resolved for the Responses bridge.',
+        )
+      }
+
+      const payload = await queryOciResponsesViaPython({
+        input: buildOciResponsesInput({
+          messages,
+        }),
+        instructions: system.map(block => block.text).filter(Boolean).join('\n\n'),
+        tools: buildOciResponsesTools(tools),
+        maxOutputTokens,
+        temperature,
+        runtimeOverride,
+      })
+
+      const responsePayload = isObjectRecord(payload.response)
+        ? (payload.response as OciResponsesPayload)
+        : null
+
+      if (!responsePayload) {
+        throw new Error(
+          'OCI Responses bridge returned no structured response payload.',
+        )
+      }
+
+      const usage: NonNullableUsage = {
+        ...EMPTY_USAGE,
+        input_tokens: responsePayload.usage?.input_tokens ?? 0,
+        output_tokens: responsePayload.usage?.output_tokens ?? 0,
+      }
+
+      return {
+        assistantMessage: buildOciResponsesAssistantMessage(
+          responsePayload,
+          usage,
+        ),
+        usage,
+        stopReason: mapOciResponsesStopReason(responsePayload),
+        headers: new Headers(),
+        model: responsePayload.model ?? payload.model,
+      }
+    }
+  }
+
   const headers = buildHeaders(config)
   const ollamaMessages = buildOllamaMessages({ system, messages })
   const ollamaTools = buildOllamaTools(tools)
@@ -1172,6 +1495,21 @@ export async function queryExternalModel({
       outputFormat,
     })
     return result.assistantMessage
+  }
+
+  if (config.provider === 'oci') {
+    const runtimeOverride = buildOciQBridgeRuntimeOverride(config)
+    if (runtimeOverride) {
+      const result = await queryOciQViaPython({
+        prompt: userPrompt,
+        systemPrompt: systemPrompt.join('\n\n'),
+        maxOutputTokens,
+        runtimeOverride,
+      })
+      return createAssistantMessage({
+        content: result.text,
+      })
+    }
   }
 
   const headers = buildHeaders(config)

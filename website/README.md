@@ -16,6 +16,7 @@ What it does today:
 
 - ships the branded one-page frontend with real local 2D and 3D assets
 - includes Netlify config
+- includes a benchmark snapshot section sourced from local BridgeBench, soak, and TerminalBench receipts
 - includes server routes that proxy to a real hosted-Q backend when configured
 - includes a local filesystem access ledger for development and self-hosted smoke work
 - fails closed in production unless you attach a real hosted-Q backend
@@ -94,6 +95,7 @@ Production notes:
 - `NEXT_PUBLIC_AURA_GENESIS_URL` should stay on `https://aura-genesis.org`
 - `https://qline.site` now serves valid Netlify-managed HTTPS and is the canonical public domain for this site
 - Stripe webhook target should be `https://qline.site/api/webhooks/stripe`
+- benchmark snapshot copy should only be updated from real local receipts; do not invent a W&B URL or a Terminal-Bench score that the artifacts did not produce
 - if you later move to a different custom domain, update the Netlify envs and reprovision TLS before exposing checkout traffic there
 
 ## Honest Boundary

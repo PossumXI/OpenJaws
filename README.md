@@ -170,8 +170,9 @@ OpenJaws currently ships as source plus native local builds.
 
 Useful first-run operator commands:
 
-- `/login` to authenticate your selected provider or OpenJaws account flow
+- `/login` to use the built-in browser login for the managed Anthropic/OpenJaws account lane
 - `/provider` to choose provider/model wiring or rotate keys later
+- `/provider connect oci` or `/provider connect openai` to open the provider key/setup page in your browser
 - `/provider test [provider] [model]` to prove the selected provider path is reachable
 - `/status` to inspect harness, route queue, worker health, and runtime wiring
 - `/immaculate` to inspect live orchestration topology and control state
@@ -182,12 +183,15 @@ Fresh installs also get a first-run setup flow inside the TUI. It helps you pick
 Recommended first-run checklist:
 
 1. Start OpenJaws.
-2. If you are staying on the public default runtime, bring your own `OCI` Generative AI key with `/provider key oci <api-key>` or set `Q_API_KEY`, `OCI_API_KEY`, or `OCI_GENAI_API_KEY`.
-3. If you are running an internal operator surface, you can also use OCI IAM by setting `OCI_CONFIG_FILE`, `OCI_PROFILE`, `OCI_COMPARTMENT_ID`, `OCI_GENAI_PROJECT_ID`, and an upstream `Q_MODEL`.
-4. Run `/provider test oci Q` to confirm the selected `OCI:Q` path is reachable.
-5. Run `/provider` if you want to switch away from `OCI:Q`, rotate keys, or override the base URL.
-6. Run `/status` and confirm runtime, sandbox, route queue, voice state, provider wiring, and the latest reachability receipt.
-7. Run `/immaculate status` if you want to inspect orchestration state before heavy work.
+2. If you are staying on the public default runtime, keep `Q` selected in the model picker. It maps to `oci:Q` under the hood.
+3. Bring your own `OCI` Generative AI key with `/provider key oci <api-key>` or set `Q_API_KEY`, `OCI_API_KEY`, or `OCI_GENAI_API_KEY`.
+4. If you need a key first, run `/provider connect oci` to open the hosted Q/OCI setup page in your browser.
+5. If you want the managed Anthropic/OpenJaws browser-login lane instead, run `/login`.
+6. Run `/provider test oci Q` to confirm the selected `Q on OCI` path is reachable.
+7. Run `/provider` if you want to switch away from `Q on OCI`, rotate keys, or override the base URL.
+8. Run `/status` and confirm runtime, sandbox, route queue, voice state, provider wiring, and the latest reachability receipt.
+9. Run `/immaculate status` if you want to inspect orchestration state before heavy work.
+10. If you are running an internal operator surface, you can also use OCI IAM by setting `OCI_CONFIG_FILE`, `OCI_PROFILE`, `OCI_COMPARTMENT_ID`, `OCI_GENAI_PROJECT_ID`, and an upstream `Q_MODEL`.
 
 ## Provider Switching
 
@@ -304,6 +308,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - the team dialog and `/status` now surface the co-work registry directly, including `terminal_context_id`, project roots, and the shared registry receipt path
 - resumed teammate sessions now rehydrate their saved terminal context IDs instead of coming back as context-blind shells
 - co-work now also keeps a phase ledger so the team can preserve what was asked, what got handed off, and what was delivered across sibling terminals and project roots
+- agents can now target an exact saved phase on purpose with `phase_id` or direct-message syntax like `@scout [phase:phase-abc12345] continue the bridge work`, so new work can reuse the right project thread instead of falling back to the latest matching receipt
 
 ## Immaculate Integration
 
@@ -352,16 +357,26 @@ OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
 - `bun run q:bridgebench` runs eval-only pack checks over audited `Q` bundles
 - `bun run q:curriculum` trains bounded specialization adapters and benchmarks them back against those same packs
 - `bun run q:hybrid` coordinates one bounded local `Q` lane plus one Immaculate-routed lane under a shared receipt
+- `bun run q:soak` runs a bounded repeated-probe soak over native OpenJaws plus direct OCI Q
 - `bun run q:terminalbench` wraps Harbor / Terminal-Bench for external terminal-task evaluation when Harbor and Docker are available
 - benchmark artifacts now write `bridgebench-report.json` plus `reward.json` and `reward-details.json` in a Rewardkit-style shape so the results are easy to inspect or reuse
 - training and benchmark receipts also record whether W&B logging was enabled, incomplete, or disabled, including the resolved project URL when that lane is actually configured
+- `q:bridgebench`, `q:curriculum`, `q:hybrid`, and routed `launch:q` runs can now carry both `--lineage-id` and optional `--phase-id`, so local, routed, and follow-up benchmark receipts stay attached to one intentional work thread
 - the local Discord `Q_agent` lane now writes a shared receipt file that `/status` can read, so patrol cadence, routing decisions, Discord voice readiness, local knowledge readiness, and the last operator action stay visible to operators
+
+Current local benchmark snapshot from this workspace:
+
+- BridgeBench best pack: `all` at `42.11`
+- 30-minute soak: `52/52` successful probes with `0` errors
+- local W&B lane: attempted, but no local auth was configured so the pass stayed receipt-only
+- local Harbor / Terminal-Bench lane: Harbor, Docker, and provider preflight passed, and the newest one-task receipt lands as `completed_with_errors` because the OCI IAM config path inside the container still needs one more portability fix
 
 Important boundary:
 
 - these local `Q` receipts are for comparing training and evaluation runs inside OpenJaws
 - they do not replace the public Immaculate benchmark record
 - the Harbor / Terminal-Bench path is an in-repo adapter lane, not a public leaderboard claim by itself
+- the latest local Harbor / Terminal-Bench run now reaches real execution, but it still ends with one runtime error in the OCI container path, so it is documented as an error-bearing run rather than a success claim
 - the Discord station currently speaks through text-channel `.wav` attachments, not live voice-channel participation
 - the private Discord station now supports secret-safe local corpus retrieval and explicit operator-only OpenJaws workflows, not an unrestricted remote shell
 

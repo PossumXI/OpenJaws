@@ -27,6 +27,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - the team dialog and `/status` now surface the shared co-work registry, so operators can inspect terminal IDs, project roots, and registry receipts without opening raw config files
 - resumed teammate sessions now rehydrate their saved terminal context IDs, which keeps co-work handoffs intact after reconnects or reloads
 - co-work now writes a phase ledger too, so request summaries, teammate handoffs, and delivered outputs stay attached to the same work phase instead of disappearing between turns
+- agents can now bind new work to an exact saved phase instead of guessing, including direct teammate syntax like `@scout [phase:phase-abc12345] continue`
 - the shared registry is designed for same-owner co-work and path/runtime facts only; it is not a secret dump and does not write credentials into team memory
 
 ## Immaculate Integration
@@ -38,7 +39,7 @@ This page summarizes the current public OpenJaws surface that is already working
 
 ## Provider and First-Run Setup
 
-- fresh public installs now default to `OCI:Q`
+- fresh public installs now default to `Q` in the picker, backed by `oci:Q`
 - first-run setup lane lets shipped users choose provider/model, wire keys, and check Immaculate reachability without slash-command knowledge
 - `/provider key` and `/provider base-url` make OCI/Q key rotation and endpoint changes explicit
 - `/status` surfaces provider, model, runtime, sandbox, routed work, worker health, and recovery guidance
@@ -69,13 +70,23 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 - `bun run q:curriculum` runs bounded specialization passes and benchmarks those adapters back against the audited packs
 - `bun run q:hybrid` coordinates one bounded local lane and one Immaculate-routed lane under one receipt
 - `bun run q:terminalbench` adds a Harbor / Terminal-Bench adapter lane for external terminal-task evaluation
+- `bun run q:soak` adds a 30-minute bounded repeated-probe soak lane for native OpenJaws plus direct OCI Q
+- hybrid, curriculum, benchmark, and routed launch receipts can now carry a shared `lineage_id` plus optional `phase_id`, so the local lane, routed lane, and follow-up benchmark reports stay attached to the same intentional work thread
 - `Q` training and benchmark receipts now record W&B readiness so live logging state is visible instead of guessed
 - the Windows OCI bridge now stages larger payloads through temp files so `q:terminalbench --dry-run` can prove Harbor, Docker, and the local OCI-backed OpenJaws lane are actually ready instead of dying on argv length
+- the Harbor adapter now stages a Linux Bun runtime and OCI bridge Python dependencies inside the container, which moved the live Terminal-Bench lane from setup failure into real execution-stage errors
 - the repo now carries a scheduled `Q Benchmark Soak` GitHub workflow that emits sample benchmark, hybrid, and Terminal-Bench dry-run receipts as artifacts
 - the local Discord `Q_agent` station now runs scheduled Immaculate-aware patrols, controlled room routing, and first-phase ElevenLabs speech attachments, with one shared receipt file surfaced back into `/status`
 - that same private Discord lane now keeps a secret-safe local knowledge index and explicit operator-only OpenJaws actions under the same receipt, so operators can see both what Q knows locally and what it touched
 
 This is useful for tuning and honest before/after comparison. It is not a replacement for the public Immaculate benchmark source or a fake Harbor / Terminal-Bench leaderboard claim.
+
+Current April 16, 2026 local snapshot:
+
+- BridgeBench best pack: `all` at `42.11`
+- 30-minute soak: `52/52` successful probes, `0` errors
+- local W&B lane: attempted, but no local auth was configured so the run stayed receipt-only
+- local Harbor / Terminal-Bench lane: Harbor, Docker, and provider preflight passed, and the newest one-task receipt now lands truthfully as `completed_with_errors` instead of claiming a clean pass
 
 This pass also tightens the public `Q` runtime story:
 

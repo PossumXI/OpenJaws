@@ -1,7 +1,8 @@
 import { existsSync } from 'fs'
 import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
-import { join, resolve } from 'path'
+import { dirname, join, resolve } from 'path'
+import { fileURLToPath } from 'url'
 import { execa } from 'execa'
 import { resolveOciQRuntime } from './ociQRuntime.js'
 
@@ -65,6 +66,27 @@ function resolveOciQPythonInvocation(): {
     command: 'python3',
     prefixArgs: [],
   }
+}
+
+function resolveOciQBridgeScriptPath(): string {
+  const moduleDir = dirname(fileURLToPath(import.meta.url))
+  const configured = process.env.OPENJAWS_OCI_BRIDGE_SCRIPT?.trim()
+  const candidates = [
+    configured,
+    resolve(process.cwd(), 'scripts', 'oci-q-response.py'),
+    resolve(process.cwd(), '..', 'scripts', 'oci-q-response.py'),
+    resolve(moduleDir, '..', '..', 'scripts', 'oci-q-response.py'),
+  ].filter((candidate): candidate is string => Boolean(candidate))
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate
+    }
+  }
+
+  throw new Error(
+    `OCI Q bridge helper not found. Checked: ${candidates.join(', ')}`,
+  )
 }
 
 async function withBridgeTempDir<T>(
@@ -132,10 +154,7 @@ export async function queryOciQViaPython(args: {
     }
   }
 
-  const scriptPath = resolve(process.cwd(), 'scripts', 'oci-q-response.py')
-  if (!existsSync(scriptPath)) {
-    throw new Error(`OCI Q bridge helper not found at ${scriptPath}`)
-  }
+  const scriptPath = resolveOciQBridgeScriptPath()
 
   const pythonInvocation = resolveOciQPythonInvocation()
   return withBridgeTempDir(async tempDir => {
@@ -247,10 +266,7 @@ export async function queryOciResponsesViaPython(args: {
     }
   }
 
-  const scriptPath = resolve(process.cwd(), 'scripts', 'oci-q-response.py')
-  if (!existsSync(scriptPath)) {
-    throw new Error(`OCI Q bridge helper not found at ${scriptPath}`)
-  }
+  const scriptPath = resolveOciQBridgeScriptPath()
 
   const pythonInvocation = resolveOciQPythonInvocation()
   return withBridgeTempDir(async tempDir => {

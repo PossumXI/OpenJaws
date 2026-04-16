@@ -75,6 +75,7 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 - the crew dialog and `/status` now show the live co-work map instead of hiding it in team files
 - resumed teammate sessions keep their saved terminal context IDs so handoffs stay intact after reloads
 - co-work now keeps a shared phase memory too, so the crew can reopen the request/deliverable thread for a project phase instead of restating the same work every time
+- agents can now continue an exact saved phase on purpose with `phase_id` or direct-message syntax like `@scout [phase:phase-abc12345] keep going`, which avoids accidental fallback to the latest similar receipt
 
 ## Live Benchmark Record
 
@@ -88,7 +89,10 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 
 - `bun run q:bridgebench` evaluates audited packs like `all`, `coding`, `agentic`, and `security`
 - `bun run q:curriculum` runs bounded specialization passes and benchmarks the resulting adapters back against those packs
+- `bun run q:soak` runs a bounded repeated-probe soak over native OpenJaws and direct OCI Q under one receipt
+- `bun run q:hybrid` keeps one bounded local lane and one Immaculate-routed lane under one explicit receipt
 - the local lane writes `reward.json` and `reward-details.json` so the results are easy to compare with Rewardkit-style tooling
+- `--lineage-id` and optional `--phase-id` now let the local, routed, and follow-up benchmark receipts stay attached to the same intentional work thread
 - the local Discord `Q_agent` lane now writes patrol/routing/voice/knowledge/operator receipts that `/status` can read from the same machine
 
 Honest boundary:
@@ -96,6 +100,7 @@ Honest boundary:
 - the local `Q` lane is for in-repo evaluation and tuning
 - the public benchmark source of truth still lives in Immaculate
 - OpenJaws is not yet pretending to be a full Harbor / Terminal-Bench agent adapter
+- the latest local Harbor / Terminal-Bench run reached real execution, but it still ended with one runtime error instead of a publishable pass
 - the Discord station currently uses scheduled text-channel patrols and optional speech attachments, not full voice-channel presence
 - the private Discord station can search a secret-safe local corpus and run explicit operator-only OpenJaws workflows, but it is not a hidden shell surface
 
@@ -113,7 +118,7 @@ The intended public hosted-Q surface is `https://qline.site`. `https://aura-gene
 - Tagged installs update from the official release policy, not from every `main` push.
 - Use `/status` when you want the plain truth about what is active: provider, runtime, sandbox, routed work, and worker health.
 - Use `/provider` and `/remote-env` on purpose. OpenJaws is built to show setup changes, not hide them.
-- Fresh installs start on `OCI:Q`; use `/provider` when you want to rotate keys, change the base URL, or switch providers.
+- Fresh installs start on `Q` in the picker, which maps to `oci:Q`; use `/provider` when you want to rotate keys, change the base URL, or switch providers.
 - Public installs should bring their own `OCI` / `Q` key. Internal operator surfaces can use OCI IAM with a local project/profile when that is the intended trust boundary.
 
 ## Install Paths
