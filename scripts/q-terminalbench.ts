@@ -644,6 +644,25 @@ function readJsonIfExists(path: string): Record<string, unknown> | null {
   }
 }
 
+function sanitizeHarborResultFileInPlace(path: string | null): void {
+  if (!path || !existsSync(path)) {
+    return
+  }
+  try {
+    const payload = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+    writeFileSync(path, `${JSON.stringify(sanitizeJson(payload), null, 2)}\n`, 'utf8')
+  } catch {
+    // Best-effort only. Do not let cleanup break the benchmark receipt.
+  }
+}
+
+function sanitizeHarborJobArtifacts(jobRoot: string | null, jobResultPath: string | null): void {
+  sanitizeHarborResultFileInPlace(jobResultPath)
+  for (const trialResultPath of listHarborTrialResultPaths(jobRoot)) {
+    sanitizeHarborResultFileInPlace(trialResultPath)
+  }
+}
+
 function readOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value : null
 }
@@ -947,6 +966,7 @@ async function runHarborAttempt(args: {
   const harborJobPath = resolveHarborJobRoot(harborJobResultPath)
   const jobResultSummary = readHarborResultSummary(harborJobResultPath)
   const taskReceipts = readHarborTaskReceipts(harborJobPath, args.attempt)
+  sanitizeHarborJobArtifacts(harborJobPath, harborJobResultPath)
   const trialCounts = buildTrialCounts(taskReceipts)
   const attemptSummary = buildAttemptSummary({
     attempt: args.attempt,

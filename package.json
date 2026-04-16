@@ -20,6 +20,7 @@
     "build:native": "bun scripts/build-native.ts",
     "website:dev": "bun run --cwd website dev",
     "website:build": "bun run --cwd website build",
+    "website:sharecard": "bun scripts/generate-qline-share-card.ts",
     "release:version": "bun scripts/print-release-version.ts",
     "release:asset": "bun scripts/build-release-asset.ts",
     "banner:export": "bun scripts/export-openjaws-banner.ts",

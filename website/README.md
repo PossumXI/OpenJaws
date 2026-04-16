@@ -15,11 +15,17 @@ It is designed to front:
 What it does today:
 
 - ships the branded one-page frontend with real local 2D and 3D assets
+- surfaces OpenJaws, Q_agents, Agent Co-Work, and the public repo directly on the landing page
 - includes Netlify config
-- includes a benchmark snapshot section sourced from local BridgeBench, soak, and TerminalBench receipts
+- includes a benchmark snapshot section sourced from local BridgeBench, soak, and verified official TerminalBench task receipts
 - includes server routes that proxy to a real hosted-Q backend when configured
 - includes a local filesystem access ledger for development and self-hosted smoke work
 - fails closed in production unless you attach a real hosted-Q backend
+
+Share-card asset refresh:
+
+- run `bun run website:sharecard` from the repo root to regenerate `website/public/assets/images/q-share-card.png`
+- the shared-link preview is intentionally derived from repo-owned assets and verified benchmark copy, not invented metrics
 
 ## Environment
 

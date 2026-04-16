@@ -16,6 +16,8 @@ export type BenchmarkSnapshot = {
   }
   terminalBench: {
     runId: string
+    taskName: string
+    scope: string
     status: string
     agent: string
     model: string
@@ -31,9 +33,9 @@ export type BenchmarkSnapshot = {
 }
 
 export const BENCHMARK_SNAPSHOT: BenchmarkSnapshot = {
-  generatedAt: '2026-04-16T02:13:00.000Z',
+  generatedAt: '2026-04-16T05:38:00.000Z',
   source:
-    'Rendered from local artifacts: q-bridgebench-live-20260415-nowandb, q-soak-live-20260416, and q-terminalbench-live-20260416-ociq-fixed9.',
+    'Rendered from verified receipts: q-bridgebench-live-20260415-nowandb, q-soak-live-20260416, and q-terminalbench-public-20260416-circuit-fibsqrt-scrubtest.',
   bridgeBench: {
     benchmarkId: 'q-bridgebench-20260416T004137',
     bestPack: 'all',
@@ -50,13 +52,15 @@ export const BENCHMARK_SNAPSHOT: BenchmarkSnapshot = {
       '30-minute bounded soak. 52/52 probes succeeded with zero errors. OpenJaws p95 latency: 8455 ms. Direct OCI-Q p95 latency: 4254 ms.',
   },
   terminalBench: {
-    runId: 'q-terminalbench-20260416T020922',
+    runId: 'q-terminalbench-20260416T053356',
+    taskName: 'terminal-bench/circuit-fibsqrt',
+    scope: 'Official public TerminalBench task',
     status: 'completed_with_errors',
     agent: 'openjaws-harbor',
     model: 'oci:Q',
-    outcome: '1 runtime error',
+    outcome: 'reward 0.0',
     summary:
-      'Harbor, Docker, and local provider preflight are green. The latest one-task run reached real execution and completed with one runtime error because OCI IAM config staging inside the container is still not portable end to end.',
+      'The latest bounded public-dataset TerminalBench pass completed cleanly at the harness level on circuit-fibsqrt. Reward stayed 0.0 with zero runtime errors, and the wrapper now redacts Harbor raw env bundles in place.',
   },
   wandb: {
     status: 'auth missing',

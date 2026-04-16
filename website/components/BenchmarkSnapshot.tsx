@@ -9,7 +9,11 @@ function formatSnapshotDate(value: string): string {
 
 export function BenchmarkSnapshotSection(): React.ReactNode {
   return (
-    <section className="benchmark-snapshot" aria-label="Benchmark snapshot">
+    <section
+      className="benchmark-snapshot"
+      aria-label="Benchmark snapshot"
+      id="benchmarks"
+    >
       <div className="section-heading">
         <span className="eyebrow">Benchmark snapshot</span>
         <h2>Measured, not invented.</h2>
@@ -18,7 +22,7 @@ export function BenchmarkSnapshotSection(): React.ReactNode {
 
       <div className="benchmark-snapshot-meta">
         <span>Generated {formatSnapshotDate(BENCHMARK_SNAPSHOT.generatedAt)}</span>
-        <span>Rendered from local artifacts</span>
+        <span>Local + official receipts</span>
         <span>No synthetic benchmark claims</span>
       </div>
 
@@ -44,10 +48,12 @@ export function BenchmarkSnapshotSection(): React.ReactNode {
         </article>
 
         <article className="benchmark-card">
-          <span className="benchmark-label">TerminalBench</span>
+          <span className="benchmark-label">Public TerminalBench</span>
           <strong>{BENCHMARK_SNAPSHOT.terminalBench.outcome}</strong>
           <p>{BENCHMARK_SNAPSHOT.terminalBench.summary}</p>
           <div className="benchmark-card-footnote">
+            <span>{BENCHMARK_SNAPSHOT.terminalBench.scope}</span>
+            <span>Task: {BENCHMARK_SNAPSHOT.terminalBench.taskName}</span>
             <span>Agent: {BENCHMARK_SNAPSHOT.terminalBench.agent}</span>
             <span>Model: {BENCHMARK_SNAPSHOT.terminalBench.model}</span>
             <span>Status: {BENCHMARK_SNAPSHOT.terminalBench.status}</span>

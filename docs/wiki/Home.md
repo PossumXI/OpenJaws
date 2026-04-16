@@ -100,7 +100,7 @@ Honest boundary:
 - the local `Q` lane is for in-repo evaluation and tuning
 - the public benchmark source of truth still lives in Immaculate
 - OpenJaws is not yet pretending to be a full Harbor / Terminal-Bench agent adapter
-- the latest local Harbor / Terminal-Bench run reached real execution, but it still ended with one runtime error instead of a publishable pass
+- the newest bounded official Terminal-Bench task receipt reached clean Harbor execution on the public dataset, but the verifier reward stayed `0.0`, so it is external execution proof rather than a leaderboard pass
 - the Discord station currently uses scheduled text-channel patrols and optional speech attachments, not full voice-channel presence
 - the private Discord station can search a secret-safe local corpus and run explicit operator-only OpenJaws workflows, but it is not a hidden shell surface
 
@@ -110,6 +110,7 @@ OpenJaws now also carries a Netlify-ready Next.js surface for public `Q` access 
 
 The intended public hosted-Q surface is `https://qline.site`. `https://aura-genesis.org` remains the broader company path.
 `https://qline.site` now resolves over valid HTTPS and is the canonical public shell for hosted-Q signup and checkout.
+`https://qline.site` now also foregrounds OpenJaws, Q_agents, Agent Co-Work, the public GitHub repo, and the latest verified benchmark snapshot instead of looking like a billing-only landing page.
 
 ## Public Release Notes
 

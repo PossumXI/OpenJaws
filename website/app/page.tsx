@@ -6,6 +6,7 @@ import { Q_PLAN_DEFINITIONS } from '../lib/pricing'
 
 const auraGenesisUrl =
   process.env.NEXT_PUBLIC_AURA_GENESIS_URL ?? 'https://aura-genesis.org'
+const githubUrl = 'https://github.com/PossumXI/OpenJaws'
 
 export default function Page(): React.ReactNode {
   return (
@@ -23,11 +24,14 @@ export default function Page(): React.ReactNode {
           />
           <div>
             <span>Q</span>
-            <strong>Hosted access</strong>
+            <strong>OpenJaws // Q_agents</strong>
           </div>
         </a>
 
         <div className="topbar-actions">
+          <a className="topbar-link" href={githubUrl} target="_blank" rel="noreferrer">
+            GitHub
+          </a>
           <a className="topbar-link" href="#console">
             Open Console
           </a>
@@ -44,26 +48,35 @@ export default function Page(): React.ReactNode {
 
       <section className="hero">
         <div className="hero-copy">
-          <span className="eyebrow">OCI Q // IMMACULATE // HOSTED ACCESS</span>
+          <span className="eyebrow">OPENJAWS // OCI Q // Q_AGENTS // AGENT CO-WORK</span>
           <h1>Q.</h1>
-          <p className="hero-kicker">Less noise. More signal.</p>
+          <p className="hero-kicker">OpenJaws for serious terminals.</p>
           <p className="hero-copy-minimal">
-            Keys. Credits. Limits. One visible surface.
+            Q_agents, co-work memory, routed tools, hosted access. One visible
+            control layer.
           </p>
 
           <div className="hero-actions">
             <a className="hero-button" href="#plans">
               View Plans
             </a>
-            <a className="hero-button hero-button-alt" href="#console">
-              Open Console
+            <a
+              className="hero-button hero-button-alt"
+              href={githubUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              GitHub
+            </a>
+            <a className="hero-button hero-button-alt" href="#benchmarks">
+              Benchmarks
             </a>
           </div>
 
           <div className="hero-rail">
-            <span>Real OCI path</span>
-            <span>Metered hosted lane</span>
-            <span>Discord stays separate</span>
+            <span>OCI Q default</span>
+            <span>Agent Co-Work live</span>
+            <span>Public TerminalBench receipt</span>
           </div>
         </div>
 
@@ -72,52 +85,98 @@ export default function Page(): React.ReactNode {
 
       <section className="signal-row">
         <article className="signal-card">
-          <span>Access</span>
-          <strong>Bring your own key or buy the hosted lane.</strong>
+          <span>OpenJaws</span>
+          <strong>Terminal-first control deck.</strong>
         </article>
         <article className="signal-card">
-          <span>Control</span>
-          <strong>Immaculate stays visible.</strong>
+          <span>Q_agents</span>
+          <strong>Helpers that keep phase memory.</strong>
         </article>
         <article className="signal-card">
-          <span>Boundary</span>
-          <strong>No blurred entitlement story.</strong>
+          <span>Receipts</span>
+          <strong>Benchmark, soak, and route truth stays visible.</strong>
         </article>
       </section>
 
       <section className="asset-band">
         <div className="asset-poster-card">
           <Image
-            src="/assets/images/q-poster.png"
-            alt="Q poster"
+            src="/assets/images/q-share-card.png"
+            alt="Qline site preview"
             width={1600}
-            height={2000}
+            height={900}
             priority
           />
         </div>
 
         <div className="asset-copy">
-          <span className="eyebrow">Hosted Q</span>
-          <h2>Free to try. Paid to push.</h2>
+          <span className="eyebrow">Public Surface</span>
+          <h2>Qline is the front door. OpenJaws is the machine room.</h2>
           <p>
-            Public installs should not inherit internal operator access. Q can
-            be generous on day one and still meter the heavy lane honestly.
+            Hosted keys and credits on the front end. OpenJaws, Q_agents,
+            Immaculate, and Agent Co-Work behind it.
           </p>
 
           <div className="asset-mini-grid">
             <article>
-              <strong>Free credit</strong>
-              <span>Small monthly grant.</span>
+              <strong>OpenJaws</strong>
+              <span>Tools, crews, routing, receipts.</span>
             </article>
             <article>
-              <strong>API keys</strong>
-              <span>Server-owned and revocable.</span>
+              <strong>Q_agents</strong>
+              <span>Helpers with co-work memory.</span>
             </article>
             <article>
-              <strong>Rate limits</strong>
-              <span>Per key. Per lane. Visible.</span>
+              <strong>Public repo</strong>
+              <span>GitHub-linked and benchmarked.</span>
             </article>
           </div>
+        </div>
+      </section>
+
+      <section className="feature-band" id="openjaws">
+        <div className="section-heading">
+          <span className="eyebrow">OpenJaws</span>
+          <h2>The cockpit behind Q.</h2>
+          <p>
+            OpenJaws is the terminal workspace. Q is the default mind. Q_agents
+            make it collaborative instead of lonely.
+          </p>
+        </div>
+
+        <div className="feature-grid">
+          <article className="feature-card">
+            <span>Q_agents</span>
+            <strong>Spawn helpers that actually stay coordinated.</strong>
+            <p>One crew, one visible deck, one source of truth for progress.</p>
+          </article>
+          <article className="feature-card">
+            <span>Agent Co-Work</span>
+            <strong>Reuse terminal, phase, and project context.</strong>
+            <p>
+              Shared registry plus phase memory so sibling agents stop
+              re-discovering the same work.
+            </p>
+          </article>
+          <article className="feature-card">
+            <span>Immaculate</span>
+            <strong>Keep orchestration visible.</strong>
+            <p>Routing, pacing, and worker state stay inspectable instead of implied.</p>
+          </article>
+          <article className="feature-card">
+            <span>Benchmarks</span>
+            <strong>BridgeBench, soak, and Harbor receipts.</strong>
+            <p>Local tuning plus an official public TerminalBench task receipt.</p>
+          </article>
+        </div>
+
+        <div className="feature-actions">
+          <a className="hero-button" href={githubUrl} target="_blank" rel="noreferrer">
+            OpenJaws on GitHub
+          </a>
+          <a className="hero-button hero-button-alt" href="#benchmarks">
+            See benchmark snapshot
+          </a>
         </div>
       </section>
 
@@ -145,14 +204,42 @@ export default function Page(): React.ReactNode {
 
       <section className="console-anchor" id="console">
         <div className="section-heading">
-          <span className="eyebrow">Console</span>
+          <span className="eyebrow">Hosted lane</span>
           <h2>Sign up. Checkout. Keys. Usage.</h2>
           <p>
-            Frontend first. Backend next. No fake billing story in the middle.
+            Clean public access on the front end. Real entitlements stay
+            server-side.
           </p>
         </div>
 
         <QLandingConsole />
+      </section>
+
+      <section className="cowork-band">
+        <div className="cowork-copy">
+          <span className="eyebrow">Agent Co-Work</span>
+          <h2>One crew. Multiple terminals. Same thread.</h2>
+          <p>
+            Active terminals keep their own IDs, but the phase memory stays
+            shared. That means cross-project help can keep the context that
+            matters instead of resetting every handoff.
+          </p>
+        </div>
+
+        <div className="cowork-stack">
+          <article>
+            <strong>Shared terminal registry</strong>
+            <p>Project roots, runtime facts, and context IDs stay reusable.</p>
+          </article>
+          <article>
+            <strong>Phase memory</strong>
+            <p>Requests, handoffs, and delivered outputs stay attached to one thread.</p>
+          </article>
+          <article>
+            <strong>Exact phase reuse</strong>
+            <p>New work can bind to the right saved phase on purpose.</p>
+          </article>
+        </div>
       </section>
 
       <section className="service-note">
@@ -189,6 +276,14 @@ export default function Page(): React.ReactNode {
         </div>
 
         <div className="site-footer-actions">
+          <a
+            className="topbar-link"
+            href={githubUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            GitHub
+          </a>
           <a className="topbar-link" href="#plans">
             Plans
           </a>

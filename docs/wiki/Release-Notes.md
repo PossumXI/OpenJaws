@@ -73,6 +73,7 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 - `bun run q:terminalbench` adds a Harbor / Terminal-Bench adapter lane for external terminal-task evaluation
 - `bun run q:soak` adds a 30-minute bounded repeated-probe soak lane for native OpenJaws plus direct OCI Q
 - `q:terminalbench` now supports `--repeat` and writes `attempts[]` plus flattened `tasks[]` receipts, so repeated-run stability and real multi-task concurrency are visible in one JSON artifact
+- `q:terminalbench` now scrubs Harbor raw `jobs/.../result.json` env maps in place after a run so the wrapper does not leave plaintext agent env bundles behind in those local artifacts
 - hybrid, curriculum, benchmark, and routed launch receipts can now carry a shared `lineage_id` plus optional `phase_id`, so the local lane, routed lane, and follow-up benchmark reports stay attached to the same intentional work thread
 - `Q` training and benchmark receipts now record W&B readiness so live logging state is visible instead of guessed
 - the Windows OCI bridge now stages larger payloads through temp files so `q:terminalbench --dry-run` can prove Harbor, Docker, and the local OCI-backed OpenJaws lane are actually ready instead of dying on argv length
@@ -90,6 +91,7 @@ Current April 16, 2026 local snapshot:
 - local W&B lane: attempted, but no local auth was configured so the run stayed receipt-only
 - local Harbor / Terminal-Bench lane:
   - single-task live receipt now reaches clean Harbor completion under OCI `Q`
+  - first bounded official public-task receipt now exists for `terminal-bench/circuit-fibsqrt`, with a clean harness completion, reward `0.0`, and Harbor raw env bundles scrubbed in place
   - repeated-attempt stability receipt captured `1` benchmark-failing trial plus `1` execution-error trial across `2` attempts
   - real concurrent receipt captured `2` live tasks at concurrency `2`
   - task outcomes are still variant, so the lane is not ready for leaderboard claims
@@ -102,6 +104,7 @@ This pass also tightens the public `Q` runtime story:
 - the repo now includes a Netlify-ready Next.js `website/` surface for public Q signup, plans, Stripe checkout, API keys, credits, and usage UI
 - that website lane can exercise a local filesystem-backed hosted-Q demo flow during development while still failing closed in production when no real backend is attached
 - `https://qline.site` is now the canonical public hosted-Q domain and serves valid HTTPS, with Stripe webhook traffic intended for `/api/webhooks/stripe`
+- `https://qline.site` now foregrounds OpenJaws, Q_agents, Agent Co-Work, the public GitHub repo, and the latest verified benchmark snapshot, and the shared-link preview now uses a dedicated Q/OpenJaws share card instead of the old static poster
 
 ## What Is Planned Next
 

@@ -1,5 +1,5 @@
 [build]
-  command = "npm run build"
+  command = "npx next build"
   publish = ".next"
 
 [build.environment]
@@ -24,3 +24,9 @@
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/___netlify-server-handler"
+  status = 200
+  force = false

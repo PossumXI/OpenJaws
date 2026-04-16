@@ -21,18 +21,19 @@ const plexMono = IBM_Plex_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Q // Intelligence With Every Frame',
+  title: 'Q // OpenJaws // Q_agents',
   description:
-    'OCI-backed Q access, credits, plans, API keys, and usage receipts in one cinematic command-mark landing page.',
+    'OCI-backed Q with OpenJaws, Q_agents, Agent Co-Work, benchmark receipts, and hosted access on one cinematic surface.',
   metadataBase: new URL(siteUrl),
   keywords: [
     'Q',
     'OpenJaws',
+    'Q_agents',
+    'Agent Co-Work',
     'OCI Q',
-    'API keys',
-    'credits',
-    'hosted AI',
     'Immaculate',
+    'TerminalBench',
+    'API keys',
   ],
   alternates: {
     canonical: '/',
@@ -49,20 +50,27 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'Q // Intelligence With Every Frame',
+    title: 'Q // OpenJaws // Q_agents',
     description:
-      'OCI-backed Q access, credits, plans, API keys, and usage receipts in one cinematic command-mark landing page.',
+      'OCI-backed Q with OpenJaws, Q_agents, Agent Co-Work, benchmark receipts, and hosted access on one cinematic surface.',
     url: siteUrl,
     siteName: 'Q',
     type: 'website',
-    images: ['/assets/images/q-poster.png'],
+    images: [
+      {
+        url: '/assets/images/q-share-card.png',
+        width: 1600,
+        height: 900,
+        alt: 'Qline.site preview with OpenJaws, Q_agents, and benchmark snapshot',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Q // Intelligence With Every Frame',
+    title: 'Q // OpenJaws // Q_agents',
     description:
-      'OCI-backed Q access, credits, plans, API keys, and usage receipts in one cinematic command-mark landing page.',
-    images: ['/assets/images/q-poster.png'],
+      'OCI-backed Q with OpenJaws, Q_agents, Agent Co-Work, benchmark receipts, and hosted access on one cinematic surface.',
+    images: ['/assets/images/q-share-card.png'],
   },
 }
 

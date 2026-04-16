@@ -99,6 +99,10 @@ These are the newest local OpenJaws receipts from this repo workspace. They are 
   - state: Harbor, Docker, and provider preflight all passed, and the OCI IAM container bridge now reaches real execution
   - single-task result: `completed`
     - note: the harness/trial itself completed cleanly, but the verifier reward was still `0.0`, so this is execution proof rather than a benchmark pass claim
+  - first bounded official public-task receipt: `artifacts/q-terminalbench-public-20260416-circuit-fibsqrt-scrubtest/terminalbench-report.json`
+    - task: `terminal-bench/circuit-fibsqrt`
+    - result: `completed_with_errors`
+    - note: the official public-dataset task finished with `0` runtime errors, the verifier reward stayed `0.0`, and the wrapper scrubbed Harbor raw env bundles in place
   - repeated-attempt stability receipt: `artifacts/q-terminalbench-repeat-smoke-20260416/terminalbench-report.json`
     - result: `completed_with_errors`
     - aggregate: `2` attempts, `1` benchmark-failing trial, `1` execution-error trial
@@ -121,6 +125,7 @@ The local `Q` benchmark lane follows the same broad principles used by Harbor, T
 - the Harbor adapter now stages a Linux Bun runtime from the host and installs the OCI bridge Python dependencies inside the container, so Terminal-Bench reaches real execution instead of dying during bootstrap
 - the Harbor adapter now embeds OCI IAM config material into the staged Linux runtime instead of assuming the Windows-side `.oci` path is portable
 - `q:terminalbench` now supports `--repeat` and writes `attempts[]` plus flattened `tasks[]` receipts, so repeated-run stability and real multi-task concurrency are inspectable instead of hidden inside Harbor internals
+- `q:terminalbench` now also scrubs Harbor raw `jobs/.../result.json` env maps in place after a run, so the wrapper no longer leaves plaintext agent env bundles behind in those local artifacts
 - small wiring smokes stay clearly labeled as local proof, not leaderboard claims
 - any heavier public benchmark story still needs real provenance
 
@@ -131,6 +136,7 @@ Important honesty boundary:
 - the local `Q` benchmark lane is useful for tuning and comparison, but it is not the public Terminal-Bench or Harbor leaderboard record
 - a green `q:terminalbench --dry-run` proves Harbor, Docker, and the local OCI-backed OpenJaws path are ready; it does not count as a published benchmark run by itself
 - the newest local Harbor receipts now include one bounded clean single-task completion plus repeated-run and concurrent receipts, but the lane is still variant and not ready for leaderboard claims
+- the newest bounded official public-task receipt is worth more than a dry-run for credibility, but it still is not a leaderboard submission by itself
 - downloaded public installs should still bring their own `Q` / `OCI` key unless you have built and operate a separate hosted entitlement service
 - the Harbor / Terminal-Bench adapter in this repo is for honest local runs and exportable receipts, not automatic leaderboard publication
 - public hosted `Q` credits, billing, and rate limiting still need to live in the operator service that issues keys; this repo does not ship a payment processor or hosted billing backend by itself

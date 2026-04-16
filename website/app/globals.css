@@ -387,8 +387,10 @@ select {
 }
 
 .asset-band,
+.feature-band,
 .plans,
 .console-anchor,
+.cowork-band,
 .service-note {
   margin-top: 4.4rem;
 }
@@ -445,6 +447,101 @@ select {
   display: block;
   margin-top: 0.45rem;
   color: var(--muted);
+}
+
+.feature-band,
+.cowork-band {
+  position: relative;
+  z-index: 1;
+  width: min(1200px, 100%);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.feature-grid,
+.cowork-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.feature-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.feature-card,
+.cowork-stack article {
+  border: 1px solid var(--line);
+  border-radius: 1.45rem;
+  background: var(--panel);
+  backdrop-filter: blur(16px);
+  padding: 1.2rem;
+}
+
+.feature-card span,
+.cowork-stack strong {
+  display: block;
+  color: var(--gold);
+  font-size: 0.74rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.feature-card strong {
+  display: block;
+  margin-top: 0.55rem;
+  color: var(--foam);
+  font-size: 1.16rem;
+  line-height: 1.28;
+}
+
+.feature-card p,
+.cowork-stack p {
+  margin: 0.75rem 0 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.feature-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin-top: 1.3rem;
+}
+
+.cowork-band {
+  display: grid;
+  grid-template-columns: 0.9fr 1.1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.cowork-copy h2 {
+  margin: 0.85rem 0 0;
+  font-family: var(--font-display), "Segoe UI", sans-serif;
+  font-size: clamp(2.25rem, 6vw, 4.3rem);
+  letter-spacing: -0.06em;
+  line-height: 0.98;
+}
+
+.cowork-copy p {
+  max-width: 36rem;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.cowork-stack {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.cowork-stack article {
+  min-height: 100%;
+}
+
+.cowork-stack strong {
+  color: var(--foam);
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 
 .section-heading {
@@ -828,6 +925,9 @@ select {
 @media (max-width: 1024px) {
   .hero,
   .asset-band,
+  .feature-grid,
+  .cowork-band,
+  .cowork-stack,
   .console-shell,
   .signal-row,
   .benchmark-snapshot-grid,
@@ -871,6 +971,11 @@ select {
 
   .hero-stage-frame {
     min-height: 24rem;
+  }
+
+  .feature-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .hero-emblem-card {
