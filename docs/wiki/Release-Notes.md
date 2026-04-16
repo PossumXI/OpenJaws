@@ -91,10 +91,12 @@ Current April 16, 2026 local snapshot:
 - local W&B lane: attempted, but no local auth was configured so the run stayed receipt-only
 - local Harbor / Terminal-Bench lane:
   - single-task live receipt now reaches clean Harbor completion under OCI `Q`
-  - first bounded official public-task receipt now exists for `terminal-bench/circuit-fibsqrt`, with a clean harness completion, reward `0.0`, and Harbor raw env bundles scrubbed in place
+  - official public-task five-attempt receipt now exists for `circuit-fibsqrt`, with `0` runtime errors, reward `0.0`, and Harbor raw env bundles scrubbed in place
+  - that same receipt is now packaged and submitted through the official leaderboard discussion flow:
+    - `https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard/discussions/141`
   - repeated-attempt stability receipt captured `1` benchmark-failing trial plus `1` execution-error trial across `2` attempts
   - real concurrent receipt captured `2` live tasks at concurrency `2`
-  - task outcomes are still variant, so the lane is not ready for leaderboard claims
+  - task outcomes are still variant, so the lane is not ready for strong leaderboard positioning
 
 This pass also tightens the public `Q` runtime story:
 

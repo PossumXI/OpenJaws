@@ -23,6 +23,7 @@ export type BenchmarkSnapshot = {
     model: string
     outcome: string
     summary: string
+    submissionUrl?: string
   }
   wandb: {
     status: string
@@ -33,9 +34,9 @@ export type BenchmarkSnapshot = {
 }
 
 export const BENCHMARK_SNAPSHOT: BenchmarkSnapshot = {
-  generatedAt: '2026-04-16T05:38:00.000Z',
+  generatedAt: '2026-04-16T16:20:00.000Z',
   source:
-    'Rendered from verified receipts: q-bridgebench-live-20260415-nowandb, q-soak-live-20260416, and q-terminalbench-public-20260416-circuit-fibsqrt-scrubtest.',
+    'Rendered from verified receipts: q-bridgebench-live-20260415-nowandb, q-soak-live-20260416, and q-terminalbench-official-public-20260416-circuit-fibsqrt-v2 plus the official leaderboard submission discussion.',
   bridgeBench: {
     benchmarkId: 'q-bridgebench-20260416T004137',
     bestPack: 'all',
@@ -52,21 +53,23 @@ export const BENCHMARK_SNAPSHOT: BenchmarkSnapshot = {
       '30-minute bounded soak. 52/52 probes succeeded with zero errors. OpenJaws p95 latency: 8455 ms. Direct OCI-Q p95 latency: 4254 ms.',
   },
   terminalBench: {
-    runId: 'q-terminalbench-20260416T053356',
-    taskName: 'terminal-bench/circuit-fibsqrt',
-    scope: 'Official public TerminalBench task',
-    status: 'completed_with_errors',
+    runId: 'q-terminalbench-20260416T160708',
+    taskName: 'circuit-fibsqrt',
+    scope: 'Official TerminalBench 2.0 public task',
+    status: 'submitted',
     agent: 'openjaws-harbor',
     model: 'oci:Q',
-    outcome: 'reward 0.0',
+    outcome: 'reward 0.0 // 5 trials',
     summary:
-      'The latest bounded public-dataset TerminalBench pass completed cleanly at the harness level on circuit-fibsqrt. Reward stayed 0.0 with zero runtime errors, and the wrapper now redacts Harbor raw env bundles in place.',
+      'OpenJaws ran one official public TerminalBench 2.0 task on OCI Q with five attempts, zero runtime errors, and reward 0.0. The receipt is now packaged and submitted through the official leaderboard repo discussion flow.',
+    submissionUrl:
+      'https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard/discussions/141',
   },
   wandb: {
     status: 'auth missing',
     enabled: false,
     source: 'local machine',
     summary:
-      'Live W&B logging was attempted for the April 16 benchmark pass, but no local WANDB_API_KEY/login was configured, so the benchmark receipts stayed local only.',
+      'Live W&B logging was attempted for the April 16 benchmark pass, but no local WANDB login was configured on this machine, so the benchmark receipts stayed local only.',
   },
 } as const

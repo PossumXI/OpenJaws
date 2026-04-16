@@ -100,7 +100,7 @@ Honest boundary:
 - the local `Q` lane is for in-repo evaluation and tuning
 - the public benchmark source of truth still lives in Immaculate
 - OpenJaws is not yet pretending to be a full Harbor / Terminal-Bench agent adapter
-- the newest bounded official Terminal-Bench task receipt reached clean Harbor execution on the public dataset, but the verifier reward stayed `0.0`, so it is external execution proof rather than a leaderboard pass
+- the newest official Terminal-Bench public-task receipt is now submitted through the official leaderboard repo discussion flow, but the verifier reward stayed `0.0`, so it is execution proof rather than a strong leaderboard result
 - the Discord station currently uses scheduled text-channel patrols and optional speech attachments, not full voice-channel presence
 - the private Discord station can search a secret-safe local corpus and run explicit operator-only OpenJaws workflows, but it is not a hidden shell surface
 

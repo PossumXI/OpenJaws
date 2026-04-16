@@ -1,13 +1,16 @@
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'fs'
 import { dirname, join, resolve } from 'path'
 import { execa } from 'execa'
+import { resolveOciQRuntime } from '../src/utils/ociQRuntime.js'
 
 type AgentMode = 'openjaws' | 'oracle'
 
@@ -20,11 +23,14 @@ type CliOptions = {
   model: string | null
   nTasks: number
   nConcurrent: number
+  nAttempts: number
   repeat: number
   includeTaskNames: string[]
   excludeTaskNames: string[]
   maxTurns: number
   agentSetupTimeoutMultiplier: number | null
+  jobsDir: string | null
+  jobName: string | null
   timeoutMs: number
   exportTraces: boolean
   exportSharegpt: boolean
@@ -34,6 +40,7 @@ type CliOptions = {
   env: string
   dryRun: boolean
   force: boolean
+  officialSubmission: boolean
 }
 
 type CheckStatus = 'passed' | 'failed' | 'warning'
@@ -139,11 +146,14 @@ function parseArgs(argv: string[]): CliOptions {
     model: 'oci:Q',
     nTasks: 1,
     nConcurrent: 1,
+    nAttempts: 1,
     repeat: 1,
     includeTaskNames: [],
     excludeTaskNames: [],
     maxTurns: 12,
     agentSetupTimeoutMultiplier: 3,
+    jobsDir: null,
+    jobName: null,
     timeoutMs: 7_200_000,
     exportTraces: false,
     exportSharegpt: false,
@@ -153,6 +163,7 @@ function parseArgs(argv: string[]): CliOptions {
     env: 'docker',
     dryRun: false,
     force: false,
+    officialSubmission: false,
   }
 
   for (let i = 0; i < argv.length; i++) {
@@ -202,6 +213,13 @@ function parseArgs(argv: string[]): CliOptions {
       }
       continue
     }
+    if ((arg === '--n-attempts' || arg === '-k') && argv[i + 1]) {
+      const parsed = parseOptionalInt(argv[++i]!)
+      if (parsed !== null && parsed > 0) {
+        options.nAttempts = parsed
+      }
+      continue
+    }
     if (arg === '--repeat' && argv[i + 1]) {
       const parsed = parseOptionalInt(argv[++i]!)
       if (parsed !== null && parsed > 0) {
@@ -229,6 +247,14 @@ function parseArgs(argv: string[]): CliOptions {
       if (Number.isFinite(parsed) && parsed > 0) {
         options.agentSetupTimeoutMultiplier = parsed
       }
+      continue
+    }
+    if ((arg === '--jobs-dir' || arg === '-o') && argv[i + 1]) {
+      options.jobsDir = resolve(argv[++i]!)
+      continue
+    }
+    if (arg === '--job-name' && argv[i + 1]) {
+      options.jobName = argv[++i]!
       continue
     }
     if (arg === '--timeout-ms' && argv[i + 1]) {
@@ -273,6 +299,10 @@ function parseArgs(argv: string[]): CliOptions {
       options.force = true
       continue
     }
+    if (arg === '--official-submission') {
+      options.officialSubmission = true
+      continue
+    }
     if (arg === '--help' || arg === '-h') {
       printHelpAndExit()
     }
@@ -293,14 +323,18 @@ function printHelpAndExit(): never {
       '  --no-model                   Do not pass a model to the OpenJaws agent',
       '  --n-tasks <n>                Maximum number of tasks to run (default 1)',
       '  --n-concurrent <n>           Harbor concurrency for parallel task execution (default 1)',
+      '  --n-attempts, -k <n>         Harbor attempts per trial (default 1)',
       '  --repeat <n>                 Repeat the Harbor run sequentially and aggregate the receipts (default 1)',
       '  --include-task-name <glob>   Include only matching task names',
       '  --exclude-task-name <glob>   Exclude matching task names',
       '  --max-turns <n>              Max OpenJaws turns inside Harbor (default 12)',
       '  --agent-setup-timeout-multiplier <n>  Harbor agent setup timeout multiplier (default 3)',
+      '  --jobs-dir, -o <path>        Harbor jobs directory for deterministic job capture',
+      '  --job-name <name>            Harbor job name for deterministic job capture',
       '  --env <name>                 Harbor environment (default docker)',
       '  --harbor <command>           Harbor CLI command or path',
       '  --out-dir <path>             Output directory for receipts',
+      '  --official-submission        Force Terminal-Bench 2.0 leaderboard-compliant settings',
       '  --dry-run                    Run only preflight checks and emit the command receipt',
       '  --force                      Run Harbor even if provider preflight fails',
       '  --export-traces              Ask Harbor to export ATIF traces after the job',
@@ -330,6 +364,14 @@ function tailText(text: string, maxLines = 30, maxChars = 4000): string {
   return tailLines.length > maxChars
     ? tailLines.slice(tailLines.length - maxChars)
     : tailLines
+}
+
+function sanitizeSubmissionSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'submission'
 }
 
 async function runPreflightCheck(
@@ -418,7 +460,7 @@ async function runOpenJawsProviderPreflight(options: CliOptions): Promise<Prefli
   }
 }
 
-function collectAgentEnv(): Record<string, string> {
+function collectAgentEnv(options?: { officialSubmission?: boolean; model?: string | null }): Record<string, string> {
   const envNames = [
     'Q_API_KEY',
     'Q_BASE_URL',
@@ -449,8 +491,30 @@ function collectAgentEnv(): Record<string, string> {
     'AZURE_OPENAI_ENDPOINT',
     'HF_TOKEN',
   ]
+  const officialAllowedNames = new Set([
+    'Q_API_KEY',
+    'Q_BASE_URL',
+    'Q_MODEL',
+    'OCI_CONFIG_FILE',
+    'OCI_COMPARTMENT_ID',
+    'OCI_GENAI_API_KEY',
+    'OCI_GENAI_PROJECT_ID',
+    'OCI_GENAI_ENDPOINT',
+    'OCI_PROFILE',
+    'OCI_REGION',
+    'OCI_BASE_URL',
+    'OCI_MODEL',
+    'OCI_API_KEY',
+  ])
   const collected: Record<string, string> = {}
   for (const name of envNames) {
+    if (
+      options?.officialSubmission &&
+      options.model === 'oci:Q' &&
+      !officialAllowedNames.has(name)
+    ) {
+      continue
+    }
     const value = process.env[name]
     if (value) {
       collected[name] = value
@@ -459,12 +523,32 @@ function collectAgentEnv(): Record<string, string> {
   return collected
 }
 
-function buildHarborArgs(options: CliOptions): string[] {
-  const agentEnv = collectAgentEnv()
+function normalizeTaskFilter(options: CliOptions, value: string): string {
+  if (options.officialSubmission && options.dataset === 'terminal-bench@2.0') {
+    return value.startsWith('terminal-bench/') ? value.slice('terminal-bench/'.length) : value
+  }
+  return value
+}
+
+function resolveAttemptJobName(options: CliOptions, attempt: number): string | null {
+  if (!options.jobName) {
+    return null
+  }
+  return options.repeat > 1 ? `${options.jobName}-attempt-${attempt}` : options.jobName
+}
+
+function buildHarborArgs(options: CliOptions, attempt: number): string[] {
+  const attemptJobName = resolveAttemptJobName(options, attempt)
+  const agentEnv = collectAgentEnv({
+    officialSubmission: options.officialSubmission,
+    model: options.model,
+  })
   const args = [
     'run',
     '--dataset',
     options.dataset,
+    '--n-attempts',
+    String(options.nAttempts),
     '--n-tasks',
     String(options.nTasks),
     '--env',
@@ -473,6 +557,12 @@ function buildHarborArgs(options: CliOptions): string[] {
     String(options.nConcurrent),
     '--yes',
   ]
+  if (options.jobsDir) {
+    args.push('--jobs-dir', options.jobsDir)
+  }
+  if (attemptJobName) {
+    args.push('--job-name', attemptJobName)
+  }
   if (options.agentSetupTimeoutMultiplier !== null) {
     args.push(
       '--agent-setup-timeout-multiplier',
@@ -481,10 +571,10 @@ function buildHarborArgs(options: CliOptions): string[] {
   }
 
   for (const includeTaskName of options.includeTaskNames) {
-    args.push('--include-task-name', includeTaskName)
+    args.push('--include-task-name', normalizeTaskFilter(options, includeTaskName))
   }
   for (const excludeTaskName of options.excludeTaskNames) {
-    args.push('--exclude-task-name', excludeTaskName)
+    args.push('--exclude-task-name', normalizeTaskFilter(options, excludeTaskName))
   }
 
   if (options.agent === 'oracle') {
@@ -592,6 +682,17 @@ function guessLatestHarborJobResultPath(excludedPaths?: ReadonlySet<string>): st
   return latestPath
 }
 
+function resolveExpectedHarborJobRoot(args: {
+  jobsDir: string | null
+  jobName: string | null
+}): string | null {
+  if (!args.jobsDir || !args.jobName) {
+    return null
+  }
+  const root = resolve(args.jobsDir, args.jobName)
+  return existsSync(root) ? root : null
+}
+
 function resolveHarborJobRoot(jobResultPath: string | null): string | null {
   return jobResultPath ? dirname(jobResultPath) : null
 }
@@ -662,6 +763,136 @@ function sanitizeHarborJobArtifacts(jobRoot: string | null, jobResultPath: strin
     sanitizeHarborResultFileInPlace(trialResultPath)
   }
 }
+
+function shouldScrubTextFile(path: string): boolean {
+  const normalized = path.toLowerCase()
+  return (
+    normalized.endsWith('.json') ||
+    normalized.endsWith('.log') ||
+    normalized.endsWith('.txt') ||
+    normalized.endsWith('.yaml') ||
+    normalized.endsWith('.yml') ||
+    normalized.endsWith('.toml')
+  )
+}
+
+function scrubTextSecrets(text: string, secretValues: readonly string[]): string {
+  let next = text
+  for (const value of secretValues) {
+    if (value) {
+      next = next.split(value).join('<redacted>')
+    }
+  }
+  return next
+}
+
+function scrubSubmissionBundle(submissionRoot: string, secretValues: readonly string[]): void {
+  visitPaths(submissionRoot, path => {
+    if (!statSync(path).isFile() || !shouldScrubTextFile(path)) {
+      return
+    }
+    try {
+      const original = readFileSync(path, 'utf8')
+      const scrubbedText = scrubTextSecrets(original, secretValues)
+      if (path.toLowerCase().endsWith('.json')) {
+        try {
+          const payload = JSON.parse(scrubbedText) as Record<string, unknown>
+          writeFileSync(path, `${JSON.stringify(sanitizeJson(payload), null, 2)}\n`, 'utf8')
+          return
+        } catch {
+          // Fall through to plain text rewrite.
+        }
+      }
+      if (scrubbedText !== original) {
+        writeFileSync(path, scrubbedText, 'utf8')
+      }
+    } catch {
+      // Best-effort scrub only.
+    }
+  })
+}
+
+function writeSubmissionMetadata(args: {
+  metadataPath: string
+  agentDisplayName: string
+  agentOrgDisplayName: string
+  agentUrl: string
+  modelName: string
+  modelProvider: string
+  modelDisplayName: string
+  modelOrgDisplayName: string
+}): void {
+  const contents = [
+    `agent_url: ${args.agentUrl}`,
+    `agent_display_name: "${args.agentDisplayName}"`,
+    `agent_org_display_name: "${args.agentOrgDisplayName}"`,
+    '',
+    'models:',
+    `  - model_name: ${args.modelName}`,
+    `    model_provider: ${args.modelProvider}`,
+    `    model_display_name: "${args.modelDisplayName}"`,
+    `    model_org_display_name: "${args.modelOrgDisplayName}"`,
+    '',
+  ].join('\n')
+  writeFileSync(args.metadataPath, contents, 'utf8')
+}
+
+function stageOfficialSubmissionBundle(args: {
+  outputDir: string
+  attempts: readonly TerminalBenchAttemptReceipt[]
+  secretValues: readonly string[]
+  modelLabel: string
+}): {
+  submissionDir: string
+  metadataPath: string
+  stagedJobDirs: string[]
+} {
+  const submissionDir = join(
+    args.outputDir,
+    'submission',
+    'submissions',
+    'terminal-bench',
+    '2.0',
+    `openjaws__${sanitizeSubmissionSlug(args.modelLabel)}`,
+  )
+  if (existsSync(submissionDir)) {
+    rmSync(submissionDir, { recursive: true, force: true })
+  }
+  mkdirSync(submissionDir, { recursive: true })
+
+  const ociRuntime = resolveOciQRuntime()
+  const metadataPath = join(submissionDir, 'metadata.yaml')
+  writeSubmissionMetadata({
+    metadataPath,
+    agentDisplayName: 'OpenJaws',
+    agentOrgDisplayName: 'Arobi Technology Alliance',
+    agentUrl: 'https://github.com/PossumXI/OpenJaws',
+    modelName: ociRuntime.model,
+    modelProvider: 'oci',
+    modelDisplayName: args.modelLabel,
+    modelOrgDisplayName: 'Oracle',
+  })
+
+  const stagedJobDirs: string[] = []
+  for (const attempt of args.attempts) {
+    if (!attempt.harborJobPath || !existsSync(attempt.harborJobPath)) {
+      continue
+    }
+    const targetPath = join(submissionDir, attempt.harborJobPath.split(/[\\/]/).at(-1) ?? `job-${attempt.attempt}`)
+    cpSync(attempt.harborJobPath, targetPath, { recursive: true })
+    stagedJobDirs.push(targetPath)
+  }
+
+  for (const stagedJobDir of stagedJobDirs) {
+    scrubSubmissionBundle(stagedJobDir, args.secretValues)
+  }
+  return {
+    submissionDir,
+    metadataPath,
+    stagedJobDirs,
+  }
+}
+
 
 function readOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value : null
@@ -947,23 +1178,39 @@ function buildAttemptSummary(args: {
 async function runHarborAttempt(args: {
   attempt: number
   options: CliOptions
-  harborArgs: string[]
 }): Promise<{
   attemptReceipt: TerminalBenchAttemptReceipt
   taskReceipts: TerminalBenchTaskReceipt[]
 }> {
+  const harborArgs = buildHarborArgs(args.options, args.attempt)
   const beforeJobResultPaths = new Set(listHarborJobResultPaths())
-  const result = await execa(args.options.harborCommand, args.harborArgs, {
+  const result = await execa(args.options.harborCommand, harborArgs, {
     cwd: args.options.root,
     reject: false,
     windowsHide: true,
     timeout: args.options.timeoutMs,
   })
 
+  const expectedJobName = resolveAttemptJobName(args.options, args.attempt)
+  const expectedJobPath = resolveExpectedHarborJobRoot({
+    jobsDir: args.options.jobsDir,
+    jobName: expectedJobName,
+  })
+  const harborJobPath =
+    expectedJobPath ??
+    (args.options.officialSubmission
+      ? null
+      : resolveHarborJobRoot(
+          guessLatestHarborJobResultPath(beforeJobResultPaths) ??
+            guessLatestHarborJobResultPath(),
+        ))
   const harborJobResultPath =
-    guessLatestHarborJobResultPath(beforeJobResultPaths) ??
-    guessLatestHarborJobResultPath()
-  const harborJobPath = resolveHarborJobRoot(harborJobResultPath)
+    harborJobPath && existsSync(join(harborJobPath, 'result.json'))
+      ? join(harborJobPath, 'result.json')
+      : args.options.officialSubmission
+        ? null
+        : guessLatestHarborJobResultPath(beforeJobResultPaths) ??
+          guessLatestHarborJobResultPath()
   const jobResultSummary = readHarborResultSummary(harborJobResultPath)
   const taskReceipts = readHarborTaskReceipts(harborJobPath, args.attempt)
   sanitizeHarborJobArtifacts(harborJobPath, harborJobResultPath)
@@ -991,12 +1238,44 @@ async function runHarborAttempt(args: {
   }
 }
 
+function validateOfficialSubmissionOptions(options: CliOptions): void {
+  if (!options.officialSubmission) {
+    return
+  }
+  const violations: string[] = []
+  if (options.dataset !== 'terminal-bench@2.0') {
+    violations.push('dataset must be terminal-bench@2.0')
+  }
+  if (options.nAttempts < 5) {
+    violations.push('n-attempts must be at least 5')
+  }
+  if (options.agentSetupTimeoutMultiplier !== null) {
+    violations.push('agent-setup-timeout-multiplier must be omitted')
+  }
+  if (options.repeat !== 1) {
+    violations.push('repeat must stay at 1 for a single official submission job')
+  }
+  if (violations.length > 0) {
+    throw new Error(
+      `Official Terminal-Bench submission mode is misconfigured: ${violations.join('; ')}.`,
+    )
+  }
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2))
   const runId = makeRunId()
   const outputDir =
     options.outputDir ?? resolve(options.root, 'artifacts', 'terminalbench', runId)
   mkdirSync(outputDir, { recursive: true })
+  if (options.officialSubmission) {
+    options.dataset = 'terminal-bench@2.0'
+    options.nAttempts = Math.max(options.nAttempts, 5)
+    options.agentSetupTimeoutMultiplier = null
+    options.jobsDir = options.jobsDir ?? join(outputDir, 'jobs')
+    options.jobName = options.jobName ?? `${runId}-official`
+  }
+  validateOfficialSubmissionOptions(options)
 
   const checks: PreflightCheck[] = []
   checks.push(
@@ -1009,7 +1288,7 @@ async function main() {
     checks.push(await runOpenJawsProviderPreflight(options))
   }
 
-  const harborArgs = buildHarborArgs(options)
+  const representativeHarborArgs = buildHarborArgs(options, 1)
   const report: Record<string, unknown> = {
     runId,
     generatedAt: new Date().toISOString(),
@@ -1019,12 +1298,23 @@ async function main() {
     model: options.model,
     nTasks: options.nTasks,
     nConcurrent: options.nConcurrent,
+    nAttempts: options.nAttempts,
     repeat: options.repeat,
     agentSetupTimeoutMultiplier: options.agentSetupTimeoutMultiplier,
+    jobsDir: options.jobsDir,
+    jobName: options.jobName,
+    officialSubmission: options.officialSubmission,
     harborCommand: options.harborCommand,
-    harborArgs: redactHarborArgs(harborArgs),
+    harborArgs: redactHarborArgs(representativeHarborArgs),
     agentEnvNames:
-      options.agent === 'openjaws' ? Object.keys(collectAgentEnv()) : [],
+      options.agent === 'openjaws'
+        ? Object.keys(
+            collectAgentEnv({
+              officialSubmission: options.officialSubmission,
+              model: options.model,
+            }),
+          )
+        : [],
     checks,
     exportTraces: options.exportTraces,
     exportSharegpt: options.exportSharegpt,
@@ -1047,7 +1337,7 @@ async function main() {
       options.dryRun
         ? 'Terminal-Bench preflight completed.'
         : 'Terminal-Bench run blocked because the OpenJaws provider preflight is not healthy.'
-    report.command = [options.harborCommand, ...redactHarborArgs(harborArgs)].join(' ')
+    report.command = [options.harborCommand, ...redactHarborArgs(representativeHarborArgs)].join(' ')
     const reportPath = join(outputDir, 'terminalbench-report.json')
     writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
     console.log(
@@ -1092,7 +1382,7 @@ async function main() {
     report.status = 'blocked'
     report.summary =
       'Terminal-Bench run blocked because the OpenJaws provider preflight is not healthy.'
-    report.command = [options.harborCommand, ...redactHarborArgs(harborArgs)].join(' ')
+    report.command = [options.harborCommand, ...redactHarborArgs(representativeHarborArgs)].join(' ')
     const reportPath = join(outputDir, 'terminalbench-report.json')
     writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
     console.log(
@@ -1118,7 +1408,6 @@ async function main() {
     const attemptResult = await runHarborAttempt({
       attempt,
       options,
-      harborArgs,
     })
     attempts.push(attemptResult.attemptReceipt)
     tasks.push(...attemptResult.taskReceipts)
@@ -1140,6 +1429,36 @@ async function main() {
   report.jobResultSummary = lastAttempt?.jobResultSummary ?? null
   report.stdoutTail = lastAttempt?.stdoutTail ?? ''
   report.stderrTail = lastAttempt?.stderrTail ?? ''
+  if (options.officialSubmission) {
+    const agentEnv = collectAgentEnv({
+      officialSubmission: options.officialSubmission,
+      model: options.model,
+    })
+    const submissionSecretValues = Object.entries(agentEnv)
+      .filter(([name]) =>
+        !(
+          name.endsWith('_MODEL') ||
+          name.endsWith('_BASE_URL') ||
+          name === 'Q_MODEL' ||
+          name === 'Q_BASE_URL'
+        ),
+      )
+      .map(([, value]) => value)
+    const attemptsWithJobDirs = attempts.filter(
+      attempt => attempt.harborJobPath && existsSync(attempt.harborJobPath),
+    )
+    if (attemptsWithJobDirs.length > 0) {
+      const submission = stageOfficialSubmissionBundle({
+        outputDir,
+        attempts: attemptsWithJobDirs,
+        secretValues: submissionSecretValues,
+        modelLabel: options.model === 'oci:Q' ? 'q' : options.model ?? 'model',
+      })
+      report.submissionPath = submission.submissionDir
+      report.submissionMetadataPath = submission.metadataPath
+      report.submissionJobDirs = submission.stagedJobDirs
+    }
+  }
 
   if (failedAttempts.length > 0) {
     report.status = 'failed'

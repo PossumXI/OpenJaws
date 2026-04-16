@@ -372,10 +372,11 @@ Current local benchmark snapshot from this workspace:
 - local W&B lane: attempted, but no local auth was configured so the pass stayed receipt-only
 - local Harbor / Terminal-Bench lane:
   - single-task live receipt now reaches clean Harbor completion under OCI `Q`
-  - first bounded official public-task receipt now exists at `artifacts/q-terminalbench-public-20260416-circuit-fibsqrt-scrubtest/terminalbench-report.json`
-    - task: `terminal-bench/circuit-fibsqrt`
+  - official public-task five-attempt receipt now exists at `artifacts/q-terminalbench-official-public-20260416-circuit-fibsqrt-v2/terminalbench-report.json`
+    - task: `circuit-fibsqrt`
     - harness result: `completed_with_errors`
-    - truth: the official task completed without runtime errors, reward stayed `0.0`, and the wrapper now scrubs Harbor raw env bundles in place
+    - truth: the official task completed with `5` attempts, `0` runtime errors, reward `0.0`, and Harbor raw env bundles scrubbed in place
+  - official leaderboard submission discussion: `https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard/discussions/141`
   - repeated-attempt stability receipt captured `1` benchmark-failing trial plus `1` execution-error trial across `2` attempts
   - real concurrent receipt captured `2` live tasks at concurrency `2`
 
@@ -384,7 +385,7 @@ Important boundary:
 - these local `Q` receipts are for comparing training and evaluation runs inside OpenJaws
 - they do not replace the public Immaculate benchmark record
 - the Harbor / Terminal-Bench path is an in-repo adapter lane, not a public leaderboard claim by itself
-- the newest bounded official Terminal-Bench task receipt now reaches clean Harbor execution on the public dataset, but the verifier reward stayed `0.0`, so it is external execution proof rather than a leaderboard pass claim
+- the newest official Terminal-Bench submission is real and public, but the verifier reward stayed `0.0`, so it is credibility-proofed execution rather than a strong benchmark result
 - the Discord station currently speaks through text-channel `.wav` attachments, not live voice-channel participation
 - the private Discord station now supports secret-safe local corpus retrieval and explicit operator-only OpenJaws workflows, not an unrestricted remote shell
 

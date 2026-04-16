@@ -57,6 +57,15 @@ export function BenchmarkSnapshotSection(): React.ReactNode {
             <span>Agent: {BENCHMARK_SNAPSHOT.terminalBench.agent}</span>
             <span>Model: {BENCHMARK_SNAPSHOT.terminalBench.model}</span>
             <span>Status: {BENCHMARK_SNAPSHOT.terminalBench.status}</span>
+            {BENCHMARK_SNAPSHOT.terminalBench.submissionUrl ? (
+              <a
+                href={BENCHMARK_SNAPSHOT.terminalBench.submissionUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Official submission
+              </a>
+            ) : null}
           </div>
         </article>
 
