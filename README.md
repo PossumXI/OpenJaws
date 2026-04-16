@@ -359,6 +359,7 @@ OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
 - `bun run q:hybrid` coordinates one bounded local `Q` lane plus one Immaculate-routed lane under a shared receipt
 - `bun run q:soak` runs a bounded repeated-probe soak over native OpenJaws plus direct OCI Q
 - `bun run q:terminalbench` wraps Harbor / Terminal-Bench for external terminal-task evaluation when Harbor and Docker are available
+- `q:terminalbench` now supports `--repeat` and writes `attempts[]` plus flattened `tasks[]` receipts so repeated-run stability and real multi-task concurrency are visible in one artifact
 - benchmark artifacts now write `bridgebench-report.json` plus `reward.json` and `reward-details.json` in a Rewardkit-style shape so the results are easy to inspect or reuse
 - training and benchmark receipts also record whether W&B logging was enabled, incomplete, or disabled, including the resolved project URL when that lane is actually configured
 - `q:bridgebench`, `q:curriculum`, `q:hybrid`, and routed `launch:q` runs can now carry both `--lineage-id` and optional `--phase-id`, so local, routed, and follow-up benchmark receipts stay attached to one intentional work thread
@@ -369,7 +370,10 @@ Current local benchmark snapshot from this workspace:
 - BridgeBench best pack: `all` at `42.11`
 - 30-minute soak: `52/52` successful probes with `0` errors
 - local W&B lane: attempted, but no local auth was configured so the pass stayed receipt-only
-- local Harbor / Terminal-Bench lane: Harbor, Docker, and provider preflight passed, and the newest one-task receipt lands as `completed_with_errors` because the OCI IAM config path inside the container still needs one more portability fix
+- local Harbor / Terminal-Bench lane:
+  - single-task live receipt now reaches clean Harbor completion under OCI `Q`
+  - repeated-attempt stability receipt captured `1` benchmark-failing trial plus `1` execution-error trial across `2` attempts
+  - real concurrent receipt captured `2` live tasks at concurrency `2`
 
 Important boundary:
 

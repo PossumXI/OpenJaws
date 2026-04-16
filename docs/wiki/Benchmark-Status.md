@@ -95,10 +95,16 @@ These are the newest local OpenJaws receipts from this repo workspace. They are 
   - OpenJaws latency: average `7573 ms`, p95 `8455 ms`
   - direct OCI-Q latency: average `3282 ms`, p95 `4254 ms`
 - Harbor / Terminal-Bench:
-  - artifact: `artifacts/q-terminalbench-live-20260416-ociq-fixed9/terminalbench-report.json`
-  - state: Harbor, Docker, and provider preflight all passed
-  - latest run: `completed_with_errors`
-  - current blocker: the one-task Harbor run reached real execution, but it still ended with one runtime error because the OCI IAM config path is not yet portable end to end for the staged Linux runtime
+  - single-task live receipt: `artifacts/q-terminalbench-live-20260416-ociq-fixed19/terminalbench-report.json`
+  - state: Harbor, Docker, and provider preflight all passed, and the OCI IAM container bridge now reaches real execution
+  - single-task result: `completed`
+    - note: the harness/trial itself completed cleanly, but the verifier reward was still `0.0`, so this is execution proof rather than a benchmark pass claim
+  - repeated-attempt stability receipt: `artifacts/q-terminalbench-repeat-smoke-20260416/terminalbench-report.json`
+    - result: `completed_with_errors`
+    - aggregate: `2` attempts, `1` benchmark-failing trial, `1` execution-error trial
+  - real concurrent receipt: `artifacts/q-terminalbench-concurrent-smoke-20260416/terminalbench-report.json`
+    - result: `completed_with_errors`
+    - aggregate: `2` tasks at concurrency `2`, with `1` benchmark-failing trial and `1` execution-error trial
 - W&B:
   - state: attempted for the same local benchmark pass, but no local `WANDB_API_KEY` / login was configured
   - result: receipts stayed local only, and there is no truthful W&B URL to publish for this pass
@@ -113,6 +119,8 @@ The local `Q` benchmark lane follows the same broad principles used by Harbor, T
 - OCI-backed one-shot `Q` surfaces can now use either a user key or an internal IAM project/profile, which keeps the auth boundary explicit instead of hiding shared credentials in the app
 - the Windows OCI bridge now stages larger payloads through temp files, which keeps Harbor / Terminal-Bench preflight from failing on command-line length before the run even starts
 - the Harbor adapter now stages a Linux Bun runtime from the host and installs the OCI bridge Python dependencies inside the container, so Terminal-Bench reaches real execution instead of dying during bootstrap
+- the Harbor adapter now embeds OCI IAM config material into the staged Linux runtime instead of assuming the Windows-side `.oci` path is portable
+- `q:terminalbench` now supports `--repeat` and writes `attempts[]` plus flattened `tasks[]` receipts, so repeated-run stability and real multi-task concurrency are inspectable instead of hidden inside Harbor internals
 - small wiring smokes stay clearly labeled as local proof, not leaderboard claims
 - any heavier public benchmark story still needs real provenance
 
@@ -122,7 +130,7 @@ Important honesty boundary:
 - the W&B benchmark numbers above come from Immaculate itself; OpenJaws consumes and explains those records rather than inventing its own benchmark figures
 - the local `Q` benchmark lane is useful for tuning and comparison, but it is not the public Terminal-Bench or Harbor leaderboard record
 - a green `q:terminalbench --dry-run` proves Harbor, Docker, and the local OCI-backed OpenJaws path are ready; it does not count as a published benchmark run by itself
-- the latest live Harbor run reached agent execution, but it did not complete the task successfully, so the public snapshot should describe it as an error-bearing run, not a success claim
+- the newest local Harbor receipts now include one bounded clean single-task completion plus repeated-run and concurrent receipts, but the lane is still variant and not ready for leaderboard claims
 - downloaded public installs should still bring their own `Q` / `OCI` key unless you have built and operate a separate hosted entitlement service
 - the Harbor / Terminal-Bench adapter in this repo is for honest local runs and exportable receipts, not automatic leaderboard publication
 - public hosted `Q` credits, billing, and rate limiting still need to live in the operator service that issues keys; this repo does not ship a payment processor or hosted billing backend by itself

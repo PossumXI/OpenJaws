@@ -6,7 +6,7 @@ import {
   statSync,
   writeFileSync,
 } from 'fs'
-import { join, resolve } from 'path'
+import { dirname, join, resolve } from 'path'
 import { execa } from 'execa'
 
 type AgentMode = 'openjaws' | 'oracle'
@@ -20,6 +20,7 @@ type CliOptions = {
   model: string | null
   nTasks: number
   nConcurrent: number
+  repeat: number
   includeTaskNames: string[]
   excludeTaskNames: string[]
   maxTurns: number
@@ -41,6 +42,57 @@ type PreflightCheck = {
   name: string
   status: CheckStatus
   summary: string
+}
+
+type TerminalBenchExecutionStatus = 'completed' | 'error'
+type TerminalBenchBenchmarkStatus = 'passed' | 'failed' | 'unknown'
+
+type TerminalBenchTaskReceipt = {
+  attempt: number
+  taskIndex: number
+  taskName: string | null
+  trialName: string | null
+  source: string | null
+  trialUri: string | null
+  harborResultPath: string
+  executionStatus: TerminalBenchExecutionStatus
+  benchmarkStatus: TerminalBenchBenchmarkStatus
+  summary: string
+  startedAt: string | null
+  finishedAt: string | null
+  totalDurationMs: number | null
+  environmentSetupDurationMs: number | null
+  agentSetupDurationMs: number | null
+  agentExecutionDurationMs: number | null
+  verifierDurationMs: number | null
+  rewardTotal: number | null
+  rewardBreakdown: Record<string, number> | null
+  returnCode: number | null
+  isError: boolean | null
+  permissionDenialCount: number | null
+  exceptionType: string | null
+  exceptionMessage: string | null
+}
+
+type TerminalBenchTrialCounts = {
+  total: number
+  executionErrors: number
+  benchmarkPassed: number
+  benchmarkFailed: number
+  benchmarkUnknown: number
+}
+
+type TerminalBenchAttemptReceipt = {
+  attempt: number
+  status: 'completed' | 'completed_with_errors' | 'failed'
+  summary: string
+  exitCode: number | null
+  harborJobPath: string | null
+  harborJobResultPath: string | null
+  jobResultSummary: Record<string, unknown> | null
+  stdoutTail: string
+  stderrTail: string
+  trialCounts: TerminalBenchTrialCounts
 }
 
 function resolveDefaultHarborCommand(): string {
@@ -87,6 +139,7 @@ function parseArgs(argv: string[]): CliOptions {
     model: 'oci:Q',
     nTasks: 1,
     nConcurrent: 1,
+    repeat: 1,
     includeTaskNames: [],
     excludeTaskNames: [],
     maxTurns: 12,
@@ -146,6 +199,13 @@ function parseArgs(argv: string[]): CliOptions {
       const parsed = parseOptionalInt(argv[++i]!)
       if (parsed !== null && parsed > 0) {
         options.nConcurrent = parsed
+      }
+      continue
+    }
+    if (arg === '--repeat' && argv[i + 1]) {
+      const parsed = parseOptionalInt(argv[++i]!)
+      if (parsed !== null && parsed > 0) {
+        options.repeat = parsed
       }
       continue
     }
@@ -233,6 +293,7 @@ function printHelpAndExit(): never {
       '  --no-model                   Do not pass a model to the OpenJaws agent',
       '  --n-tasks <n>                Maximum number of tasks to run (default 1)',
       '  --n-concurrent <n>           Harbor concurrency for parallel task execution (default 1)',
+      '  --repeat <n>                 Repeat the Harbor run sequentially and aggregate the receipts (default 1)',
       '  --include-task-name <glob>   Include only matching task names',
       '  --exclude-task-name <glob>   Exclude matching task names',
       '  --max-turns <n>              Max OpenJaws turns inside Harbor (default 12)',
@@ -494,45 +555,45 @@ function visitPaths(root: string, visitor: (path: string) => void): void {
   }
 }
 
-function guessLatestHarborJobPath(): string | null {
-  let latestPath: string | null = null
-  let latestMtime = -Infinity
+function listHarborJobResultPaths(): string[] {
+  const resultPaths: string[] = []
   for (const root of scanHarborJobRoots()) {
     const jobsDir = join(root, 'jobs')
     if (!existsSync(jobsDir)) {
       continue
     }
-    visitPaths(jobsDir, path => {
-      const lastModified = statSync(path).mtimeMs
-      if (lastModified > latestMtime) {
-        latestMtime = lastModified
-        latestPath = path
+    const entries = readdirSync(jobsDir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue
       }
-    })
+      const resultPath = join(jobsDir, entry.name, 'result.json')
+      if (existsSync(resultPath)) {
+        resultPaths.push(resultPath)
+      }
+    }
+  }
+  return resultPaths
+}
+
+function guessLatestHarborJobResultPath(excludedPaths?: ReadonlySet<string>): string | null {
+  let latestPath: string | null = null
+  let latestMtime = -Infinity
+  for (const path of listHarborJobResultPaths()) {
+    if (excludedPaths?.has(path)) {
+      continue
+    }
+    const lastModified = statSync(path).mtimeMs
+    if (lastModified > latestMtime) {
+      latestMtime = lastModified
+      latestPath = path
+    }
   }
   return latestPath
 }
 
-function guessLatestHarborResultPath(): string | null {
-  let latestPath: string | null = null
-  let latestMtime = -Infinity
-  for (const root of scanHarborJobRoots()) {
-    const jobsDir = join(root, 'jobs')
-    if (!existsSync(jobsDir)) {
-      continue
-    }
-    visitPaths(jobsDir, path => {
-      if (!path.endsWith('result.json')) {
-        return
-      }
-      const lastModified = statSync(path).mtimeMs
-      if (lastModified > latestMtime) {
-        latestMtime = lastModified
-        latestPath = path
-      }
-    })
-  }
-  return latestPath
+function resolveHarborJobRoot(jobResultPath: string | null): string | null {
+  return jobResultPath ? dirname(jobResultPath) : null
 }
 
 function sanitizeJson(value: unknown): unknown {
@@ -572,6 +633,344 @@ function readHarborResultSummary(path: string | null): Record<string, unknown> |
   }
 }
 
+function readJsonIfExists(path: string): Record<string, unknown> | null {
+  if (!existsSync(path)) {
+    return null
+  }
+  try {
+    return sanitizeJson(JSON.parse(readFileSync(path, 'utf8'))) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+function readOptionalString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
+function readOptionalNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function readIsoDurationMs(start: unknown, end: unknown): number | null {
+  if (typeof start !== 'string' || typeof end !== 'string') {
+    return null
+  }
+  const startMs = Date.parse(start)
+  const endMs = Date.parse(end)
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    return null
+  }
+  return Math.max(0, Math.round(endMs - startMs))
+}
+
+function normalizeRewardBreakdown(
+  rewards: unknown,
+): Record<string, number> | null {
+  if (!rewards || typeof rewards !== 'object' || Array.isArray(rewards)) {
+    return null
+  }
+  const normalized = Object.fromEntries(
+    Object.entries(rewards)
+      .filter(([, value]) => typeof value === 'number' && Number.isFinite(value))
+      .map(([key, value]) => [key, value as number]),
+  )
+  return Object.keys(normalized).length > 0 ? normalized : null
+}
+
+function listHarborTrialResultPaths(jobRoot: string | null): string[] {
+  if (!jobRoot || !existsSync(jobRoot)) {
+    return []
+  }
+  return readdirSync(jobRoot, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => join(jobRoot, entry.name, 'result.json'))
+    .filter(path => existsSync(path))
+    .sort((left, right) => left.localeCompare(right))
+}
+
+function buildTrialCounts(
+  tasks: readonly TerminalBenchTaskReceipt[],
+): TerminalBenchTrialCounts {
+  return {
+    total: tasks.length,
+    executionErrors: tasks.filter(task => task.executionStatus === 'error').length,
+    benchmarkPassed: tasks.filter(task => task.benchmarkStatus === 'passed').length,
+    benchmarkFailed: tasks.filter(task => task.benchmarkStatus === 'failed').length,
+    benchmarkUnknown: tasks.filter(task => task.benchmarkStatus === 'unknown').length,
+  }
+}
+
+function buildTaskSummary(args: {
+  taskName: string | null
+  executionStatus: TerminalBenchExecutionStatus
+  benchmarkStatus: TerminalBenchBenchmarkStatus
+  rewardTotal: number | null
+  exceptionMessage: string | null
+  permissionDenialCount: number | null
+}): string {
+  const taskName = args.taskName ?? 'Terminal-Bench task'
+  if (args.executionStatus === 'error') {
+    const permissionNote =
+      args.permissionDenialCount && args.permissionDenialCount > 0
+        ? ` (${args.permissionDenialCount} permission denial${args.permissionDenialCount === 1 ? '' : 's'})`
+        : ''
+    return args.exceptionMessage
+      ? `${taskName} errored${permissionNote}: ${args.exceptionMessage}`
+      : `${taskName} errored${permissionNote}.`
+  }
+  const permissionNote =
+    args.permissionDenialCount && args.permissionDenialCount > 0
+      ? ` with ${args.permissionDenialCount} permission denial${args.permissionDenialCount === 1 ? '' : 's'}`
+      : ''
+  if (args.benchmarkStatus === 'passed') {
+    return `${taskName} passed${permissionNote}.`
+  }
+  if (args.benchmarkStatus === 'failed') {
+    return args.rewardTotal !== null
+      ? `${taskName} completed with reward ${args.rewardTotal.toFixed(2)}${permissionNote}.`
+      : `${taskName} completed with a failing verifier result.`
+  }
+  return `${taskName} completed without a verifier reward${permissionNote}.`
+}
+
+function readHarborTaskReceipts(
+  jobRoot: string | null,
+  attempt: number,
+): TerminalBenchTaskReceipt[] {
+  return listHarborTrialResultPaths(jobRoot)
+    .map((path, index) => {
+      const payload = readJsonIfExists(path)
+      if (!payload) {
+        return null
+      }
+
+      const agentResult =
+        payload.agent_result && typeof payload.agent_result === 'object'
+          ? (payload.agent_result as Record<string, unknown>)
+          : null
+      const metadata =
+        agentResult?.metadata && typeof agentResult.metadata === 'object'
+          ? (agentResult.metadata as Record<string, unknown>)
+          : null
+      const exceptionInfo =
+        payload.exception_info && typeof payload.exception_info === 'object'
+          ? (payload.exception_info as Record<string, unknown>)
+          : null
+      const verifierResult =
+        payload.verifier_result && typeof payload.verifier_result === 'object'
+          ? (payload.verifier_result as Record<string, unknown>)
+          : null
+
+      const rewardBreakdown = normalizeRewardBreakdown(verifierResult?.rewards)
+      const rewardTotal =
+        rewardBreakdown !== null
+          ? Object.values(rewardBreakdown).reduce((sum, value) => sum + value, 0)
+          : null
+      const executionStatus: TerminalBenchExecutionStatus =
+        exceptionInfo || metadata?.is_error === true ? 'error' : 'completed'
+      const benchmarkStatus: TerminalBenchBenchmarkStatus =
+        executionStatus === 'error'
+          ? 'unknown'
+          : rewardTotal === null
+            ? 'unknown'
+            : rewardTotal > 0
+              ? 'passed'
+              : 'failed'
+      const exceptionMessage =
+        readOptionalString(exceptionInfo?.exception_message) ??
+        readOptionalString(payload.exception_message)
+      const taskName = readOptionalString(payload.task_name)
+      const permissionDenialCount = Array.isArray(metadata?.permission_denials)
+        ? metadata.permission_denials.length
+        : null
+
+      return {
+        attempt,
+        taskIndex: index + 1,
+        taskName,
+        trialName: readOptionalString(payload.trial_name),
+        source: readOptionalString(payload.source),
+        trialUri: readOptionalString(payload.trial_uri),
+        harborResultPath: path,
+        executionStatus,
+        benchmarkStatus,
+        summary: buildTaskSummary({
+          taskName,
+          executionStatus,
+          benchmarkStatus,
+          rewardTotal,
+          exceptionMessage,
+          permissionDenialCount,
+        }),
+        startedAt: readOptionalString(payload.started_at),
+        finishedAt: readOptionalString(payload.finished_at),
+        totalDurationMs: readIsoDurationMs(payload.started_at, payload.finished_at),
+        environmentSetupDurationMs: readIsoDurationMs(
+          (payload.environment_setup as Record<string, unknown> | null)?.started_at,
+          (payload.environment_setup as Record<string, unknown> | null)?.finished_at,
+        ),
+        agentSetupDurationMs: readIsoDurationMs(
+          (payload.agent_setup as Record<string, unknown> | null)?.started_at,
+          (payload.agent_setup as Record<string, unknown> | null)?.finished_at,
+        ),
+        agentExecutionDurationMs: readIsoDurationMs(
+          (payload.agent_execution as Record<string, unknown> | null)?.started_at,
+          (payload.agent_execution as Record<string, unknown> | null)?.finished_at,
+        ),
+        verifierDurationMs: readIsoDurationMs(
+          (payload.verifier as Record<string, unknown> | null)?.started_at,
+          (payload.verifier as Record<string, unknown> | null)?.finished_at,
+        ),
+        rewardTotal,
+        rewardBreakdown,
+        returnCode: readOptionalNumber(metadata?.return_code),
+        isError:
+          typeof metadata?.is_error === 'boolean' ? (metadata.is_error as boolean) : null,
+        permissionDenialCount,
+        exceptionType: readOptionalString(exceptionInfo?.exception_type),
+        exceptionMessage,
+      }
+    })
+    .filter((task): task is TerminalBenchTaskReceipt => task !== null)
+}
+
+function percentile(values: readonly number[], fraction: number): number | null {
+  if (values.length === 0) {
+    return null
+  }
+  const sorted = [...values].sort((left, right) => left - right)
+  const index = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil(sorted.length * fraction) - 1),
+  )
+  return sorted[index] ?? null
+}
+
+function buildAggregateSummary(
+  attempts: readonly TerminalBenchAttemptReceipt[],
+  tasks: readonly TerminalBenchTaskReceipt[],
+): Record<string, number> {
+  const counts = buildTrialCounts(tasks)
+  const completedAttempts = attempts.filter(attempt => attempt.status === 'completed').length
+  const attemptsWithErrors = attempts.filter(
+    attempt => attempt.status === 'completed_with_errors',
+  ).length
+  const failedAttempts = attempts.filter(attempt => attempt.status === 'failed').length
+  const durationValues = tasks
+    .map(task => task.totalDurationMs)
+    .filter((value): value is number => value !== null)
+  const rewardValues = tasks
+    .map(task => task.rewardTotal)
+    .filter((value): value is number => value !== null)
+
+  return {
+    attemptCount: attempts.length,
+    completedAttempts,
+    attemptsWithErrors,
+    failedAttempts,
+    totalTrials: counts.total,
+    executionErrorTrials: counts.executionErrors,
+    benchmarkPassedTrials: counts.benchmarkPassed,
+    benchmarkFailedTrials: counts.benchmarkFailed,
+    benchmarkUnknownTrials: counts.benchmarkUnknown,
+    avgTrialDurationMs:
+      durationValues.length > 0
+        ? Math.round(
+            durationValues.reduce((sum, value) => sum + value, 0) / durationValues.length,
+          )
+        : 0,
+    p50TrialDurationMs: percentile(durationValues, 0.5) ?? 0,
+    p95TrialDurationMs: percentile(durationValues, 0.95) ?? 0,
+    avgReward:
+      rewardValues.length > 0
+        ? Math.round(
+            (rewardValues.reduce((sum, value) => sum + value, 0) / rewardValues.length) *
+              1000,
+          ) / 1000
+        : 0,
+  }
+}
+
+function buildAttemptSummary(args: {
+  attempt: number
+  exitCode: number | null
+  trialCounts: TerminalBenchTrialCounts
+}): { status: TerminalBenchAttemptReceipt['status']; summary: string } {
+  if (args.exitCode !== 0) {
+    return {
+      status: 'failed',
+      summary: `Attempt ${args.attempt} failed to finish the Harbor run.`,
+    }
+  }
+
+  if (args.trialCounts.executionErrors > 0 || args.trialCounts.benchmarkFailed > 0) {
+    const issueParts = [
+      args.trialCounts.executionErrors > 0
+        ? `${args.trialCounts.executionErrors} execution error${args.trialCounts.executionErrors === 1 ? '' : 's'}`
+        : null,
+      args.trialCounts.benchmarkFailed > 0
+        ? `${args.trialCounts.benchmarkFailed} benchmark failure${args.trialCounts.benchmarkFailed === 1 ? '' : 's'}`
+        : null,
+    ].filter(Boolean)
+    return {
+      status: 'completed_with_errors',
+      summary: `Attempt ${args.attempt} completed with ${issueParts.join(' and ')} across ${args.trialCounts.total} trial${args.trialCounts.total === 1 ? '' : 's'}.`,
+    }
+  }
+
+  return {
+    status: 'completed',
+    summary: `Attempt ${args.attempt} completed with ${args.trialCounts.benchmarkPassed}/${args.trialCounts.total} passing trial${args.trialCounts.total === 1 ? '' : 's'}.`,
+  }
+}
+
+async function runHarborAttempt(args: {
+  attempt: number
+  options: CliOptions
+  harborArgs: string[]
+}): Promise<{
+  attemptReceipt: TerminalBenchAttemptReceipt
+  taskReceipts: TerminalBenchTaskReceipt[]
+}> {
+  const beforeJobResultPaths = new Set(listHarborJobResultPaths())
+  const result = await execa(args.options.harborCommand, args.harborArgs, {
+    cwd: args.options.root,
+    reject: false,
+    windowsHide: true,
+    timeout: args.options.timeoutMs,
+  })
+
+  const harborJobResultPath =
+    guessLatestHarborJobResultPath(beforeJobResultPaths) ??
+    guessLatestHarborJobResultPath()
+  const harborJobPath = resolveHarborJobRoot(harborJobResultPath)
+  const jobResultSummary = readHarborResultSummary(harborJobResultPath)
+  const taskReceipts = readHarborTaskReceipts(harborJobPath, args.attempt)
+  const trialCounts = buildTrialCounts(taskReceipts)
+  const attemptSummary = buildAttemptSummary({
+    attempt: args.attempt,
+    exitCode: result.exitCode,
+    trialCounts,
+  })
+
+  return {
+    attemptReceipt: {
+      attempt: args.attempt,
+      status: attemptSummary.status,
+      summary: attemptSummary.summary,
+      exitCode: result.exitCode,
+      harborJobPath,
+      harborJobResultPath,
+      jobResultSummary,
+      stdoutTail: tailText(result.stdout),
+      stderrTail: tailText(result.stderr),
+      trialCounts,
+    },
+    taskReceipts,
+  }
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2))
   const runId = makeRunId()
@@ -600,6 +999,7 @@ async function main() {
     model: options.model,
     nTasks: options.nTasks,
     nConcurrent: options.nConcurrent,
+    repeat: options.repeat,
     agentSetupTimeoutMultiplier: options.agentSetupTimeoutMultiplier,
     harborCommand: options.harborCommand,
     harborArgs: redactHarborArgs(harborArgs),
@@ -692,47 +1092,57 @@ async function main() {
     return
   }
 
-  const result = await execa(options.harborCommand, harborArgs, {
-    cwd: options.root,
-    reject: false,
-    windowsHide: true,
-    timeout: options.timeoutMs,
-  })
+  const attempts: TerminalBenchAttemptReceipt[] = []
+  const tasks: TerminalBenchTaskReceipt[] = []
+  for (let attempt = 1; attempt <= options.repeat; attempt++) {
+    const attemptResult = await runHarborAttempt({
+      attempt,
+      options,
+      harborArgs,
+    })
+    attempts.push(attemptResult.attemptReceipt)
+    tasks.push(...attemptResult.taskReceipts)
+  }
 
-  report.status = result.exitCode === 0 ? 'completed' : 'failed'
-  report.summary =
-    result.exitCode === 0
-      ? 'Harbor Terminal-Bench run completed.'
-      : 'Harbor Terminal-Bench run failed.'
-  report.exitCode = result.exitCode
-  report.stdoutTail = tailText(result.stdout)
-  report.stderrTail = tailText(result.stderr)
-  report.jobPathGuess = guessLatestHarborJobPath()
-  report.jobResultPath = guessLatestHarborResultPath()
-  report.jobResultSummary = readHarborResultSummary(
-    typeof report.jobResultPath === 'string' ? report.jobResultPath : null,
+  const aggregate = buildAggregateSummary(attempts, tasks)
+  const failedAttempts = attempts.filter(attempt => attempt.status === 'failed')
+  const attemptsWithErrors = attempts.filter(
+    attempt => attempt.status === 'completed_with_errors',
   )
+  const lastAttempt = attempts.at(-1) ?? null
 
-  const stats = report.jobResultSummary?.stats
-  const nErrors =
-    stats &&
-    typeof stats === 'object' &&
-    typeof (stats as { n_errors?: unknown }).n_errors === 'number'
-      ? (stats as { n_errors: number }).n_errors
-      : null
-  const nTrials =
-    stats &&
-    typeof stats === 'object' &&
-    typeof (stats as { n_trials?: unknown }).n_trials === 'number'
-      ? (stats as { n_trials: number }).n_trials
-      : null
+  report.aggregate = aggregate
+  report.attempts = attempts
+  report.tasks = tasks
+  report.exitCode = failedAttempts.length > 0 ? 1 : 0
+  report.jobPathGuess = lastAttempt?.harborJobPath ?? null
+  report.jobResultPath = lastAttempt?.harborJobResultPath ?? null
+  report.jobResultSummary = lastAttempt?.jobResultSummary ?? null
+  report.stdoutTail = lastAttempt?.stdoutTail ?? ''
+  report.stderrTail = lastAttempt?.stderrTail ?? ''
 
-  if (result.exitCode === 0 && nErrors !== null && nErrors > 0) {
+  if (failedAttempts.length > 0) {
+    report.status = 'failed'
+    report.summary =
+      options.repeat > 1
+        ? `Terminal-Bench repeated run failed in ${failedAttempts.length}/${options.repeat} attempt${options.repeat === 1 ? '' : 's'}.`
+        : 'Harbor Terminal-Bench run failed.'
+  } else if (
+    aggregate.executionErrorTrials > 0 ||
+    aggregate.benchmarkFailedTrials > 0 ||
+    attemptsWithErrors.length > 0
+  ) {
     report.status = 'completed_with_errors'
     report.summary =
-      nTrials !== null
-        ? `Harbor Terminal-Bench run completed with ${nErrors} error${nErrors === 1 ? '' : 's'} across ${nTrials} trial${nTrials === 1 ? '' : 's'}.`
-        : `Harbor Terminal-Bench run completed with ${nErrors} error${nErrors === 1 ? '' : 's'}.`
+      options.repeat > 1
+        ? `Terminal-Bench repeated run completed with ${aggregate.executionErrorTrials} execution error trial${aggregate.executionErrorTrials === 1 ? '' : 's'} and ${aggregate.benchmarkFailedTrials} benchmark-failing trial${aggregate.benchmarkFailedTrials === 1 ? '' : 's'} across ${aggregate.totalTrials} total trial${aggregate.totalTrials === 1 ? '' : 's'}.`
+        : `Harbor Terminal-Bench run completed with ${aggregate.executionErrorTrials} execution error trial${aggregate.executionErrorTrials === 1 ? '' : 's'} and ${aggregate.benchmarkFailedTrials} benchmark-failing trial${aggregate.benchmarkFailedTrials === 1 ? '' : 's'}.`
+  } else {
+    report.status = 'completed'
+    report.summary =
+      options.repeat > 1
+        ? `Terminal-Bench repeated run completed with ${aggregate.benchmarkPassedTrials}/${aggregate.totalTrials} passing trial${aggregate.totalTrials === 1 ? '' : 's'} across ${options.repeat} attempt${options.repeat === 1 ? '' : 's'}.`
+        : 'Harbor Terminal-Bench run completed.'
   }
 
   const reportPath = join(outputDir, 'terminalbench-report.json')
@@ -741,15 +1151,15 @@ async function main() {
     JSON.stringify(
       {
         status:
-          result.exitCode === 0 && report.status === 'completed_with_errors'
+          report.status === 'completed_with_errors'
             ? 'warning'
-            : result.exitCode === 0
+            : report.status === 'completed'
               ? 'ok'
               : 'failed',
         runId,
         reportPath,
         summary: report.summary,
-        exitCode: result.exitCode,
+        exitCode: report.exitCode,
         jobPathGuess: report.jobPathGuess,
         jobResultPath: report.jobResultPath,
       },
@@ -758,8 +1168,8 @@ async function main() {
     ),
   )
 
-  if (result.exitCode !== 0) {
-    process.exit(result.exitCode ?? 1)
+  if (typeof report.exitCode === 'number' && report.exitCode !== 0) {
+    process.exit(report.exitCode)
   }
 }
 
