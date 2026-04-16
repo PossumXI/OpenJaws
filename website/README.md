@@ -82,18 +82,37 @@ bun run build
 
 ## Netlify Deploy
 
-For this site, manual Netlify production deploys should be run from Linux or
-WSL, not from a Windows-built Next runtime bundle.
+Use the guarded repo command instead of ad hoc Netlify CLI calls:
+
+```powershell
+bun run website:deploy:check
+bun run website:deploy:safe
+```
+
+What the guarded publish does:
+
+- uses the existing `qline.site` Netlify project instead of creating or targeting another site
+- runs the build from Linux or WSL, not from a Windows-built Next runtime bundle
+- deploys the explicit Next output from `.netlify/static` plus `.netlify/functions-internal`
+- rejects any draft that does not ship the real `Next.js Server Handler`
+- verifies the unique deploy URL returns `200`
+- verifies the apex domain `https://qline.site` returns `200`
+- verifies the live page still contains the expected benchmark snapshot text before it leaves production in place
+
+Do not use these broken paths for this site:
+
+- `netlify deploy --build`
+- `netlify deploy --functions .netlify/functions`
+- a Windows-built `___netlify-server-handler` bundle
 
 Reason:
 
-- the Windows-built `___netlify-server-handler` can upload successfully but fail
+- a Windows-built `___netlify-server-handler` can upload successfully but fail
   at runtime on Netlify with lambda decode errors
-- the Linux or WSL build path produces a working server handler and the correct
-  runtime route bundle for the live site
-
-Use the Netlify CLI from a Linux or WSL shell when you publish this site
-manually.
+- a generic `--build` deploy on this site can publish with `No functions deployed`
+  and produce a `404`
+- a plain generic function upload can produce `error decoding lambda response`
+  because it is missing the Next runtime metadata that this site needs
 
 Production notes:
 

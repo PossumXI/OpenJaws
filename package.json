@@ -20,6 +20,8 @@
     "build:native": "bun scripts/build-native.ts",
     "website:dev": "bun run --cwd website dev",
     "website:build": "bun run --cwd website build",
+    "website:deploy:check": "bun scripts/deploy-qline-site.ts --check-live",
+    "website:deploy:safe": "bun scripts/deploy-qline-site.ts --promote",
     "website:sharecard": "bun scripts/generate-qline-share-card.ts",
     "release:version": "bun scripts/print-release-version.ts",
     "release:asset": "bun scripts/build-release-asset.ts",
