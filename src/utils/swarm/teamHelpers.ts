@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
-import { mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { mkdir, readFile, rm, writeFile } from 'fs/promises'
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { mkdir, readFile, rm, stat, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { z } from 'zod/v4'
 import { getProjectRoot, getSessionCreatedTeams } from '../../bootstrap/state.js'
@@ -149,6 +149,118 @@ export type TeamFile = {
   }>
 }
 
+type TeamFileCacheEntry = {
+  mtimeMs: number
+  teamFile: TeamFile
+}
+
+type TeamFileIndex = {
+  terminalContextsById: Map<string, TeamTerminalContext>
+  latestTerminalContextByAgentId: Map<string, TeamTerminalContext>
+  phaseReceiptsById: Map<string, TeamPhaseReceipt>
+  phaseReceiptsBySourceAgentId: Map<string, TeamPhaseReceipt[]>
+  phaseReceiptsByTargetAgentId: Map<string, TeamPhaseReceipt[]>
+  phaseReceiptsByRelatedAgentId: Map<string, TeamPhaseReceipt[]>
+}
+
+const TEAM_FILE_CACHE = new Map<string, TeamFileCacheEntry>()
+const TEAM_FILE_INDEX_CACHE = new WeakMap<TeamFile, TeamFileIndex>()
+
+function cloneTeamFile<T extends TeamFile>(teamFile: T): T {
+  return structuredClone(teamFile)
+}
+
+function rememberCachedTeamFile(
+  teamName: string,
+  teamFile: TeamFile,
+  mtimeMs: number,
+): void {
+  TEAM_FILE_CACHE.set(teamName, {
+    mtimeMs,
+    teamFile: cloneTeamFile(teamFile),
+  })
+}
+
+function clearCachedTeamFile(teamName: string): void {
+  TEAM_FILE_CACHE.delete(teamName)
+}
+
+function invalidateTeamFileIndex(teamFile: TeamFile): void {
+  TEAM_FILE_INDEX_CACHE.delete(teamFile)
+}
+
+function pushReceiptToAgentIndex(
+  map: Map<string, TeamPhaseReceipt[]>,
+  agentId: string,
+  receipt: TeamPhaseReceipt,
+): void {
+  const existing = map.get(agentId)
+  if (!existing) {
+    map.set(agentId, [receipt])
+    return
+  }
+  if (!existing.includes(receipt)) {
+    existing.push(receipt)
+  }
+}
+
+function getTeamFileIndex(teamFile: TeamFile): TeamFileIndex {
+  const cached = TEAM_FILE_INDEX_CACHE.get(teamFile)
+  if (cached) {
+    return cached
+  }
+
+  const terminalContextsById = new Map<string, TeamTerminalContext>()
+  const latestTerminalContextByAgentId = new Map<string, TeamTerminalContext>()
+  for (const context of teamFile.terminalContexts ?? []) {
+    terminalContextsById.set(context.terminalContextId, context)
+    const current = latestTerminalContextByAgentId.get(context.agentId)
+    if (!current || context.updatedAt > current.updatedAt) {
+      latestTerminalContextByAgentId.set(context.agentId, context)
+    }
+  }
+
+  const phaseReceiptsById = new Map<string, TeamPhaseReceipt>()
+  const phaseReceiptsBySourceAgentId = new Map<string, TeamPhaseReceipt[]>()
+  const phaseReceiptsByTargetAgentId = new Map<string, TeamPhaseReceipt[]>()
+  const phaseReceiptsByRelatedAgentId = new Map<string, TeamPhaseReceipt[]>()
+  const sortedReceipts = [...(teamFile.phaseReceipts ?? [])].sort(
+    (left, right) => right.updatedAt - left.updatedAt,
+  )
+
+  for (const receipt of sortedReceipts) {
+    phaseReceiptsById.set(receipt.phaseId, receipt)
+    pushReceiptToAgentIndex(
+      phaseReceiptsBySourceAgentId,
+      receipt.sourceAgentId,
+      receipt,
+    )
+    pushReceiptToAgentIndex(
+      phaseReceiptsByRelatedAgentId,
+      receipt.sourceAgentId,
+      receipt,
+    )
+    for (const agentId of receipt.targetAgentIds) {
+      pushReceiptToAgentIndex(phaseReceiptsByTargetAgentId, agentId, receipt)
+      pushReceiptToAgentIndex(phaseReceiptsByRelatedAgentId, agentId, receipt)
+    }
+    for (const agentId of receipt.collaboratorAgentIds) {
+      pushReceiptToAgentIndex(phaseReceiptsByRelatedAgentId, agentId, receipt)
+    }
+  }
+
+  const index: TeamFileIndex = {
+    terminalContextsById,
+    latestTerminalContextByAgentId,
+    phaseReceiptsById,
+    phaseReceiptsBySourceAgentId,
+    phaseReceiptsByTargetAgentId,
+    phaseReceiptsByRelatedAgentId,
+  }
+  TEAM_FILE_INDEX_CACHE.set(teamFile, index)
+  return index
+}
+
 function inferTerminalProvider(model?: string): string | undefined {
   const normalized = model?.trim().toLowerCase()
   if (!normalized) {
@@ -215,6 +327,7 @@ export function upsertTeamTerminalContext(
   teamFile: TeamFile,
   entry: TeamTerminalContext,
 ): TeamFile {
+  invalidateTeamFileIndex(teamFile)
   const entries = [...(teamFile.terminalContexts ?? [])]
   const existingIndex = entries.findIndex(
     context =>
@@ -281,20 +394,33 @@ function getLatestTerminalContextForAgent(
     return null
   }
 
+  const index = getTeamFileIndex(teamFile)
   if (terminalContextId) {
-    const exactMatch = teamFile.terminalContexts.find(
-      context => context.terminalContextId === terminalContextId,
-    )
+    const exactMatch = index.terminalContextsById.get(terminalContextId)
     if (exactMatch) {
       return exactMatch
     }
   }
 
-  const matchingContexts = teamFile.terminalContexts
-    .filter(context => context.agentId === agentId)
-    .sort((left, right) => right.updatedAt - left.updatedAt)
+  return index.latestTerminalContextByAgentId.get(agentId) ?? null
+}
 
-  return matchingContexts[0] ?? null
+function getRequestedTerminalContextIdForAgent(
+  teamFile: TeamFile,
+  agentId: string,
+  requestedTerminalContextIds?: string[],
+): string | undefined {
+  if (!requestedTerminalContextIds || requestedTerminalContextIds.length === 0) {
+    return undefined
+  }
+  const index = getTeamFileIndex(teamFile)
+  for (const terminalContextId of requestedTerminalContextIds) {
+    const context = index.terminalContextsById.get(terminalContextId)
+    if (context?.agentId === agentId) {
+      return terminalContextId
+    }
+  }
+  return undefined
 }
 
 export function getActiveTeamPhaseId(
@@ -350,8 +476,10 @@ export function setActiveTeamPhaseId(
     if (!receipt) {
       return null
     }
+    invalidateTeamFileIndex(teamFile)
     context.activePhaseId = receipt.phaseId
   } else {
+    invalidateTeamFileIndex(teamFile)
     delete context.activePhaseId
   }
   context.updatedAt = Date.now()
@@ -476,12 +604,10 @@ export function recordTeamPhaseRequest(
       getLatestTerminalContextForAgent(
         teamFile,
         agentId,
-        args.targetTerminalContextIds?.find(contextId =>
-          teamFile.terminalContexts?.some(
-            context =>
-              context.agentId === agentId &&
-              context.terminalContextId === contextId,
-          ),
+        getRequestedTerminalContextIdForAgent(
+          teamFile,
+          agentId,
+          args.targetTerminalContextIds,
         ),
       ),
     )
@@ -531,6 +657,7 @@ export function recordTeamPhaseRequest(
   }
 
   teamFile.phaseReceipts = [...(teamFile.phaseReceipts ?? []), receipt]
+  invalidateTeamFileIndex(teamFile)
   return receipt
 }
 
@@ -538,9 +665,7 @@ export function getTeamPhaseReceiptById(
   teamFile: TeamFile,
   phaseId: string,
 ): TeamPhaseReceipt | null {
-  return (
-    teamFile.phaseReceipts?.find(receipt => receipt.phaseId === phaseId) ?? null
-  )
+  return getTeamFileIndex(teamFile).phaseReceiptsById.get(phaseId) ?? null
 }
 
 export function reuseTeamPhaseReceipt(
@@ -576,18 +701,17 @@ export function reuseTeamPhaseReceipt(
       getLatestTerminalContextForAgent(
         teamFile,
         agentId,
-        args.targetTerminalContextIds?.find(contextId =>
-          teamFile.terminalContexts?.some(
-            context =>
-              context.agentId === agentId &&
-              context.terminalContextId === contextId,
-          ),
+        getRequestedTerminalContextIdForAgent(
+          teamFile,
+          agentId,
+          args.targetTerminalContextIds,
         ),
       ),
     )
     .filter(Boolean)
   const summary = summarizeTeamPhaseText(args.summary)
 
+  invalidateTeamFileIndex(teamFile)
   receipt.updatedAt = timestamp
   receipt.status = args.kind === 'deliverable' ? 'delivered' : 'active'
   receipt.sourceTerminalContextId ??=
@@ -641,27 +765,22 @@ function findPhaseReceiptForAgent(
   fromAgentId: string,
   toAgentIds: string[],
 ): TeamPhaseReceipt | null {
-  const receipts = [...(teamFile.phaseReceipts ?? [])].sort(
-    (left, right) => right.updatedAt - left.updatedAt,
-  )
-
-  for (const receipt of receipts) {
-    if (receipt.targetAgentIds.includes(fromAgentId)) {
-      if (
-        toAgentIds.length === 0 ||
-        toAgentIds.includes(receipt.sourceAgentId) ||
-        toAgentIds.some(agentId => receipt.targetAgentIds.includes(agentId))
-      ) {
-        return receipt
-      }
-    }
-  }
+  const index = getTeamFileIndex(teamFile)
+  const receipts = index.phaseReceiptsByTargetAgentId.get(fromAgentId) ?? []
 
   for (const receipt of receipts) {
     if (
-      receipt.sourceAgentId === fromAgentId &&
+      toAgentIds.length === 0 ||
+      toAgentIds.includes(receipt.sourceAgentId) ||
       toAgentIds.some(agentId => receipt.targetAgentIds.includes(agentId))
     ) {
+      return receipt
+    }
+  }
+
+  for (const receipt of index.phaseReceiptsBySourceAgentId.get(fromAgentId) ??
+    []) {
+    if (toAgentIds.some(agentId => receipt.targetAgentIds.includes(agentId))) {
       return receipt
     }
   }
@@ -698,6 +817,7 @@ export function recordTeamPhaseDelivery(
     .filter(Boolean)
   const summary = summarizeTeamPhaseText(args.summary)
 
+  invalidateTeamFileIndex(teamFile)
   receipt.updatedAt = timestamp
   receipt.collaboratorAgentIds = uniqStrings([
     ...receipt.collaboratorAgentIds,
@@ -739,17 +859,7 @@ export function getLatestPhaseReceiptForAgent(
   teamFile: TeamFile,
   agentId: string,
 ): TeamPhaseReceipt | null {
-  const receipts = (teamFile.phaseReceipts ?? []).filter(
-    receipt =>
-      receipt.sourceAgentId === agentId ||
-      receipt.targetAgentIds.includes(agentId) ||
-      receipt.collaboratorAgentIds.includes(agentId),
-  )
-  if (receipts.length === 0) {
-    return null
-  }
-  receipts.sort((left, right) => right.updatedAt - left.updatedAt)
-  return receipts[0] ?? null
+  return getTeamFileIndex(teamFile).phaseReceiptsByRelatedAgentId.get(agentId)?.[0] ?? null
 }
 
 export async function recordMailboxPhaseMemory(
@@ -924,6 +1034,7 @@ function removeTerminalContextsForMember(
   if (!teamFile.terminalContexts || teamFile.terminalContexts.length === 0) {
     return
   }
+  invalidateTeamFileIndex(teamFile)
   teamFile.terminalContexts = teamFile.terminalContexts.filter(context => {
     if (identifier.agentId && context.agentId === identifier.agentId) {
       return false
@@ -982,11 +1093,22 @@ export function getTeamFilePath(teamName: string): string {
  */
 // sync IO: called from sync context
 export function readTeamFile(teamName: string): TeamFile | null {
+  const teamFilePath = getTeamFilePath(teamName)
   try {
-    const content = readFileSync(getTeamFilePath(teamName), 'utf-8')
-    return jsonParse(content) as TeamFile
+    const currentMtimeMs = statSync(teamFilePath).mtimeMs
+    const cached = TEAM_FILE_CACHE.get(teamName)
+    if (cached && cached.mtimeMs === currentMtimeMs) {
+      return cloneTeamFile(cached.teamFile)
+    }
+    const content = readFileSync(teamFilePath, 'utf-8')
+    const teamFile = jsonParse(content) as TeamFile
+    rememberCachedTeamFile(teamName, teamFile, currentMtimeMs)
+    return teamFile
   } catch (e) {
-    if (getErrnoCode(e) === 'ENOENT') return null
+    if (getErrnoCode(e) === 'ENOENT') {
+      clearCachedTeamFile(teamName)
+      return null
+    }
     logForDebugging(
       `[TeammateTool] Failed to read team file for ${teamName}: ${errorMessage(e)}`,
     )
@@ -1000,11 +1122,22 @@ export function readTeamFile(teamName: string): TeamFile | null {
 export async function readTeamFileAsync(
   teamName: string,
 ): Promise<TeamFile | null> {
+  const teamFilePath = getTeamFilePath(teamName)
   try {
-    const content = await readFile(getTeamFilePath(teamName), 'utf-8')
-    return jsonParse(content) as TeamFile
+    const currentMtimeMs = (await stat(teamFilePath)).mtimeMs
+    const cached = TEAM_FILE_CACHE.get(teamName)
+    if (cached && cached.mtimeMs === currentMtimeMs) {
+      return cloneTeamFile(cached.teamFile)
+    }
+    const content = await readFile(teamFilePath, 'utf-8')
+    const teamFile = jsonParse(content) as TeamFile
+    rememberCachedTeamFile(teamName, teamFile, currentMtimeMs)
+    return teamFile
   } catch (e) {
-    if (getErrnoCode(e) === 'ENOENT') return null
+    if (getErrnoCode(e) === 'ENOENT') {
+      clearCachedTeamFile(teamName)
+      return null
+    }
     logForDebugging(
       `[TeammateTool] Failed to read team file for ${teamName}: ${errorMessage(e)}`,
     )
@@ -1018,8 +1151,11 @@ export async function readTeamFileAsync(
 // sync IO: called from sync context
 function writeTeamFile(teamName: string, teamFile: TeamFile): void {
   const teamDir = getTeamDir(teamName)
+  invalidateTeamFileIndex(teamFile)
   mkdirSync(teamDir, { recursive: true })
-  writeFileSync(getTeamFilePath(teamName), jsonStringify(teamFile, null, 2))
+  const teamFilePath = getTeamFilePath(teamName)
+  writeFileSync(teamFilePath, jsonStringify(teamFile, null, 2))
+  rememberCachedTeamFile(teamName, teamFile, statSync(teamFilePath).mtimeMs)
   syncTeamTerminalMemory(teamName, teamFile)
   syncTeamPhaseMemory(teamName, teamFile)
 }
@@ -1032,8 +1168,11 @@ export async function writeTeamFileAsync(
   teamFile: TeamFile,
 ): Promise<void> {
   const teamDir = getTeamDir(teamName)
+  invalidateTeamFileIndex(teamFile)
   await mkdir(teamDir, { recursive: true })
-  await writeFile(getTeamFilePath(teamName), jsonStringify(teamFile, null, 2))
+  const teamFilePath = getTeamFilePath(teamName)
+  await writeFile(teamFilePath, jsonStringify(teamFile, null, 2))
+  rememberCachedTeamFile(teamName, teamFile, (await stat(teamFilePath)).mtimeMs)
   syncTeamTerminalMemory(teamName, teamFile)
   syncTeamPhaseMemory(teamName, teamFile)
 }
@@ -1533,6 +1672,7 @@ export async function cleanupTeamDirectories(teamName: string): Promise<void> {
   const teamDir = getTeamDir(teamName)
   try {
     await rm(teamDir, { recursive: true, force: true })
+    clearCachedTeamFile(teamName)
     logForDebugging(`[TeammateTool] Cleaned up team directory: ${teamDir}`)
   } catch (error) {
     logForDebugging(

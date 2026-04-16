@@ -76,6 +76,7 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 - resumed teammate sessions keep their saved terminal context IDs so handoffs stay intact after reloads
 - co-work now keeps a shared phase memory too, so the crew can reopen the request/deliverable thread for a project phase instead of restating the same work every time
 - agents can now continue an exact saved phase on purpose with `phase_id` or direct-message syntax like `@scout [phase:phase-abc12345] keep going`, which avoids accidental fallback to the latest similar receipt
+- the live co-work path now keeps an indexed in-memory team view during a session, which cuts repeated team-file rereads and rescans out of helper handoffs while keeping the file-backed receipts as the durable record
 
 ## Live Benchmark Record
 
@@ -111,6 +112,9 @@ OpenJaws now also carries a Netlify-ready Next.js surface for public `Q` access 
 The intended public hosted-Q surface is `https://qline.site`. `https://aura-genesis.org` remains the broader company path.
 `https://qline.site` now resolves over valid HTTPS and is the canonical public shell for hosted-Q signup and checkout.
 `https://qline.site` now also foregrounds OpenJaws, Q_agents, Agent Co-Work, the public GitHub repo, and the latest verified benchmark snapshot instead of looking like a billing-only landing page.
+That public benchmark snapshot is now generated from checked-in benchmark receipts and validated during CI instead of being left as hand-maintained copy.
+The local release sweep now also includes a live same-site `qline.site` smoke, so the published Netlify handler/runtime/content state is checked alongside the repo build before a local ship pass is called clean.
+The release sweep now also fails closed on real `system:check` failures, and the unit-test lane is scoped to the live repo `src/` and `scripts/` trees so mirrored benchmark artifacts cannot quietly contaminate a public ship pass.
 
 ## Public Release Notes
 

@@ -110,6 +110,40 @@ async function startProviderServer(expectedApiKey: string): Promise<{
       return
     }
 
+    if (req.url === '/responses' && req.method === 'POST') {
+      if (req.headers.authorization !== `Bearer ${expectedApiKey}`) {
+        writeJson(401, { message: 'Unauthorized' })
+        return
+      }
+
+      writeJson(200, {
+        id: 'resp_q_walkthrough',
+        object: 'response',
+        model: 'openai.gpt-oss-120b',
+        output: [
+          {
+            id: 'msg_q_walkthrough',
+            type: 'message',
+            role: 'assistant',
+            content: [
+              {
+                type: 'output_text',
+                text: 'OK',
+                annotations: [],
+              },
+            ],
+          },
+        ],
+        output_text: 'OK',
+        usage: {
+          input_tokens: 1,
+          output_tokens: 1,
+          total_tokens: 2,
+        },
+      })
+      return
+    }
+
     writeJson(404, { message: 'not found' })
   })
 
@@ -157,9 +191,9 @@ async function main(): Promise<void> {
   process.env.ANTHROPIC_MODEL = 'oci:Q'
   process.env.IMMACULATE_HARNESS_URL = harness.url
   process.env.Q_BASE_URL = provider.url
-  delete process.env.Q_API_KEY
-  delete process.env.OCI_API_KEY
-  delete process.env.OCI_GENAI_API_KEY
+  process.env.Q_API_KEY = expectedApiKey
+  process.env.OCI_API_KEY = expectedApiKey
+  process.env.OCI_GENAI_API_KEY = expectedApiKey
 
   try {
     await setMacroVersionFromPackageJson()
@@ -242,6 +276,8 @@ async function main(): Promise<void> {
       readFrame,
       frame =>
         frame.includes('API key') ||
+        frame.includes('Validate Q on OCI wiring') ||
+        frame.includes('Running a lightweight live reachability check') ||
         (frame.includes('Immaculate reachability') &&
           frame.includes('immaculate online')),
       WALKTHROUGH_TIMEOUT_MS,
@@ -252,6 +288,11 @@ async function main(): Promise<void> {
       recordStep('provider-key', keyOrImmaculateFrame)
       stdin.write(expectedApiKey)
       stdin.write('\r')
+    } else if (
+      keyOrImmaculateFrame.includes('Validate Q on OCI wiring') ||
+      keyOrImmaculateFrame.includes('Running a lightweight live reachability check')
+    ) {
+      recordStep('provider-validation', keyOrImmaculateFrame)
     } else {
       recordStep('provider-key-existing', keyOrImmaculateFrame)
     }
@@ -261,7 +302,7 @@ async function main(): Promise<void> {
       frame =>
         frame.includes('reachability') &&
         frame.includes('reachable') &&
-        frame.includes('/models'),
+        (frame.includes('/responses') || frame.includes('/models')),
       WALKTHROUGH_TIMEOUT_MS,
       'Onboarding walkthrough did not confirm provider reachability',
     )

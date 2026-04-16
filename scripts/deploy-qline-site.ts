@@ -9,7 +9,7 @@ const REQUIRED_CONTENT_CHECKS = [
   'Agent Co-Work',
   'official public TerminalBench',
   'circuit-fibsqrt',
-  'auth missing',
+  'OpenJaws on GitHub',
 ] as const
 
 type CliOptions = {
@@ -105,17 +105,27 @@ function readNetlifyAuthToken(repoRoot: string): string {
 }
 
 async function netlifyApi<T>(token: string, path: string): Promise<T> {
-  const response = await fetch(`https://api.netlify.com/api/v1${path}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'User-Agent': 'openjaws-qline-deployer/1.0',
-      Accept: 'application/json',
-    },
-  })
-  if (!response.ok) {
-    throw new Error(`Netlify API ${path} failed: ${response.status} ${response.statusText}`)
+  let lastStatus = 0
+  let lastStatusText = 'Unknown'
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const response = await fetch(`https://api.netlify.com/api/v1${path}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'User-Agent': 'openjaws-qline-deployer/1.0',
+        Accept: 'application/json',
+      },
+    })
+    if (response.ok) {
+      return (await response.json()) as T
+    }
+    lastStatus = response.status
+    lastStatusText = response.statusText
+    if (response.status !== 429 || attempt === 5) {
+      break
+    }
+    await Bun.sleep(2000 * (attempt + 1))
   }
-  return (await response.json()) as T
+  throw new Error(`Netlify API ${path} failed: ${lastStatus} ${lastStatusText}`)
 }
 
 function assertSiteIdentity(site: NetlifySite, siteId: string): void {
@@ -230,13 +240,38 @@ function toWslPath(windowsPath: string): string {
   return `/mnt/${match[1]!.toLowerCase()}/${match[2]!}`
 }
 
+function extractTrailingJsonObject(stdout: string): string | null {
+  const cleaned = stdout
+    .replace(/\u001b\[[0-9;]*m/g, '')
+    .replace(/[\u200b-\u200d\uFEFF]/g, '')
+    .trim()
+  const firstBrace = cleaned.indexOf('{')
+  const lastBrace = cleaned.lastIndexOf('}')
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
+    return null
+  }
+  return cleaned.slice(firstBrace, lastBrace + 1)
+}
+
 async function runWslCommand(command: string, env: Record<string, string>): Promise<string> {
+  const passthroughKeys = Object.keys(env)
+  const existingWslEnv = process.env.WSLENV?.trim()
+  const wslEnvEntries = existingWslEnv ? existingWslEnv.split(':').filter(Boolean) : []
+  for (const key of passthroughKeys) {
+    const marker = `${key}/u`
+    if (!wslEnvEntries.includes(marker)) {
+      wslEnvEntries.push(marker)
+    }
+  }
   const result = await execa(
     'wsl.exe',
     ['bash', '-lc', command],
     {
       cwd: process.cwd(),
-      env,
+      env: {
+        ...env,
+        WSLENV: wslEnvEntries.join(':'),
+      },
       timeout: 30 * 60 * 1000,
       windowsHide: true,
     },
@@ -251,12 +286,16 @@ async function createDraftDeploy(repoRoot: string, siteId: string, token: string
     'if [ -n "${QLINE_WSL_NODE_BIN:-}" ]; then export PATH="${QLINE_WSL_NODE_BIN}:$PATH"; fi',
     'if [ -d "$HOME/.local/node-v22.22.2-linux-x64/bin" ]; then export PATH="$HOME/.local/node-v22.22.2-linux-x64/bin:$PATH"; fi',
     'cd ' + JSON.stringify(websiteDir),
-    `npx -y netlify build --context production --site ${JSON.stringify(siteId)}`,
+    'npx -y netlify build --context production',
     `npx -y netlify deploy --no-build --site ${JSON.stringify(siteId)} --dir .netlify/static --functions .netlify/functions-internal --json`,
   ].join(' && ')
 
   const stdout = await runWslCommand(command, { NETLIFY_AUTH_TOKEN: token })
-  const deploy = JSON.parse(stdout) as { deploy_id?: string; id?: string }
+  const deployJson = extractTrailingJsonObject(stdout)
+  if (!deployJson) {
+    throw new Error('Netlify deploy command did not return a parseable JSON line.')
+  }
+  const deploy = JSON.parse(deployJson) as { deploy_id?: string; id?: string }
   const deployId = deploy.deploy_id ?? deploy.id
   if (!deployId) {
     throw new Error('Netlify deploy command did not return a deploy id.')

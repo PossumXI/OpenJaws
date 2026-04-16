@@ -40,6 +40,11 @@ const runId = `system-check-${new Date()
   .replace(/[-:]/g, '')
   .replace(/\..+/, '')}`
 const runDir = resolve(rootDir, 'artifacts', 'system-check', runId)
+const hasNetlifyAuth =
+  Boolean(process.env.NETLIFY_AUTH_TOKEN?.trim()) ||
+  existsSync(
+    resolve(rootDir, 'website', '.netlify-cli-config', 'config.json'),
+  )
 const qSmokeBaseModelSource =
   process.env.OPENJAWS_Q_SMOKE_MODEL ?? Q_SMOKE_BASE_MODEL
 const qSmokeBaseModel = getOpenJawsTrainingModelDisplay(qSmokeBaseModelSource)
@@ -315,7 +320,7 @@ async function main() {
   const liveTrainDir = join(runDir, 'q-live-smoke')
 
   results.push(
-    await runCommandCheck('unit-tests', 'bun', ['test'], {
+    await runCommandCheck('unit-tests', 'bun', ['run', 'test'], {
       successSummary: 'unit tests passed',
       timeoutMs: 180_000,
     }),
@@ -330,6 +335,19 @@ async function main() {
     await runCommandCheck('native-build', 'bun', ['run', 'build:native'], {
       successSummary: 'native build passed',
       timeoutMs: 300_000,
+    }),
+  )
+  results.push(
+    await runJsonCommandCheck('qline-site-live', 'bun', [
+      'run',
+      'website:deploy:check',
+    ], {
+      successSummary: 'qline.site live deploy check passed',
+      failureSummary: hasNetlifyAuth
+        ? 'qline.site live deploy check failed'
+        : 'qline.site live deploy check could not run without local Netlify auth',
+      timeoutMs: 180_000,
+      allowFailure: !hasNetlifyAuth,
     }),
   )
   results.push(
@@ -1082,6 +1100,10 @@ async function main() {
   await writeFile(join(runDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8')
 
   console.log(JSON.stringify(report, null, 2))
+
+  if (statusCounts.failed > 0) {
+    process.exitCode = 1
+  }
 }
 
 await main()

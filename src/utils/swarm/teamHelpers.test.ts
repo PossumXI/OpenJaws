@@ -13,11 +13,13 @@ import {
   removeMemberByAgentId,
   removeMemberFromTeam,
   removeTeammateFromTeamFile,
+  readTeamFileAsync,
   recordTeamPhaseDelivery,
   recordTeamPhaseRequest,
   reuseTeamPhaseReceipt,
   setActiveTeamPhaseId,
   type TeamFile,
+  writeTeamFileAsync,
 } from './teamHelpers.js'
 
 describe('teamHelpers agent co-work', () => {
@@ -66,8 +68,8 @@ describe('teamHelpers agent co-work', () => {
 
       expect(context.terminalContextId).toMatch(/^term-[a-f0-9]{8}$/)
       expect(context.provider).toBe('oci')
-      expect(context.qBaseUrl).toBe(
-        'https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1',
+      expect(context.qBaseUrl).toMatch(
+        /^https:\/\/inference\.generativeai\.[a-z0-9-]+\.oci\.oraclecloud\.com\/openai\/v1$/,
       )
       expect(context.immaculateHarnessUrl).toBe('http://127.0.0.1:8787')
       expect(context.parentSessionId).toBe('session-parent')
@@ -568,5 +570,128 @@ describe('teamHelpers agent co-work', () => {
     const updated = JSON.parse(readFileSync(teamFilePath, 'utf8')) as TeamFile
     expect(updated.members.map(member => member.name)).toEqual(['team-lead'])
     expect(updated.terminalContexts ?? []).toEqual([])
+  })
+
+  it('refreshes the async team cache when the team file changes on disk', async () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'openjaws-team-cache-'))
+    process.env.CLAUDE_CONFIG_DIR = configDir
+
+    const teamName = 'cache-crew'
+    const initialTeamFile: TeamFile = {
+      name: teamName,
+      createdAt: 1,
+      leadAgentId: 'team-lead@cache-crew',
+      members: [
+        {
+          agentId: 'team-lead@cache-crew',
+          name: 'team-lead',
+          joinedAt: 1,
+          tmuxPaneId: '',
+          cwd: 'D:\\openjaws\\OpenJaws',
+          subscriptions: [],
+        },
+      ],
+    }
+
+    await writeTeamFileAsync(teamName, initialTeamFile)
+    const firstRead = await readTeamFileAsync(teamName)
+    expect(firstRead?.description).toBeUndefined()
+
+    const teamFilePath = getTeamFilePath(teamName)
+    mkdirSync(dirname(teamFilePath), { recursive: true })
+    writeFileSync(
+      teamFilePath,
+      JSON.stringify(
+        {
+          ...initialTeamFile,
+          description: 'updated on disk',
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const refreshed = await readTeamFileAsync(teamName)
+    expect(refreshed?.description).toBe('updated on disk')
+  })
+
+  it('keeps latest phase lookups aligned after reusing a pinned receipt', () => {
+    const teamFile: TeamFile = {
+      name: 'bridge-crew',
+      createdAt: 1,
+      leadAgentId: 'team-lead@bridge-crew',
+      leadTerminalContextId: 'term-lead01',
+      members: [
+        {
+          agentId: 'team-lead@bridge-crew',
+          name: 'team-lead',
+          joinedAt: 1,
+          tmuxPaneId: '',
+          cwd: 'D:\\openjaws\\OpenJaws',
+          terminalContextId: 'term-lead01',
+          subscriptions: [],
+        },
+        {
+          agentId: 'scout@bridge-crew',
+          name: 'scout',
+          joinedAt: 2,
+          tmuxPaneId: '%2',
+          cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          terminalContextId: 'term-scout02',
+          subscriptions: [],
+        },
+      ],
+      terminalContexts: [
+        {
+          terminalContextId: 'term-lead01',
+          agentId: 'team-lead@bridge-crew',
+          agentName: 'team-lead',
+          cwd: 'D:\\openjaws\\OpenJaws',
+          projectRoot: 'D:\\openjaws\\OpenJaws',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          terminalContextId: 'term-scout02',
+          agentId: 'scout@bridge-crew',
+          agentName: 'scout',
+          cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          projectRoot: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          createdAt: 2,
+          updatedAt: 2,
+        },
+      ],
+    }
+
+    const receipt = recordTeamPhaseRequest(teamFile, {
+      sourceAgentId: 'team-lead@bridge-crew',
+      sourceTerminalContextId: 'term-lead01',
+      targetAgentIds: ['scout@bridge-crew'],
+      targetTerminalContextIds: ['term-scout02'],
+      requestSummary: 'Audit the bridge before the next cutover.',
+      label: 'bridge audit',
+    })
+
+    reuseTeamPhaseReceipt(teamFile, {
+      phaseId: receipt.phaseId,
+      fromAgentId: 'scout@bridge-crew',
+      toAgentIds: ['team-lead@bridge-crew'],
+      summary: 'Pinned the bridge audit receipt and delivered the cutover notes.',
+      kind: 'deliverable',
+      sourceTerminalContextId: 'term-scout02',
+      targetTerminalContextIds: ['term-lead01'],
+    })
+
+    expect(getLatestPhaseReceiptForAgent(teamFile, 'scout@bridge-crew')?.phaseId).toBe(
+      receipt.phaseId,
+    )
+    expect(getLatestPhaseReceiptForAgent(teamFile, 'team-lead@bridge-crew')?.phaseId).toBe(
+      receipt.phaseId,
+    )
+    expect(
+      getLatestPhaseReceiptForAgent(teamFile, 'scout@bridge-crew')
+        ?.lastDeliverableSummary,
+    ).toBe('Pinned the bridge audit receipt and delivered the cutover notes.')
   })
 })

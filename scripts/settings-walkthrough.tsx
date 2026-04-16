@@ -20,7 +20,6 @@ function includesUsageMarker(frame: string): boolean {
   return (
     frame.includes('Loading usage data') ||
     frame.includes('Current session') ||
-    frame.includes('Error:') ||
     frame.includes('/usage is only available for subscription plans')
   )
 }

@@ -15,23 +15,57 @@ async function startProviderServer(expectedApiKey: string): Promise<{
   close: () => Promise<void>
 }> {
   const server = http.createServer((req, res) => {
+    const writeJson = (status: number, body: unknown): void => {
+      res.statusCode = status
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify(body))
+    }
+
     if (req.url === '/models') {
       if (req.headers.authorization !== `Bearer ${expectedApiKey}`) {
-        res.statusCode = 401
-        res.setHeader('content-type', 'application/json')
-        res.end(JSON.stringify({ message: 'Unauthorized' }))
+        writeJson(401, { message: 'Unauthorized' })
         return
       }
 
-      res.statusCode = 200
-      res.setHeader('content-type', 'application/json')
-      res.end(JSON.stringify({ data: [{ id: 'Q' }, { id: 'Q-coder' }] }))
+      writeJson(200, { data: [{ id: 'Q' }, { id: 'Q-coder' }] })
       return
     }
 
-    res.statusCode = 404
-    res.setHeader('content-type', 'application/json')
-    res.end(JSON.stringify({ message: 'not found' }))
+    if (req.url === '/responses' && req.method === 'POST') {
+      if (req.headers.authorization !== `Bearer ${expectedApiKey}`) {
+        writeJson(401, { message: 'Unauthorized' })
+        return
+      }
+
+      writeJson(200, {
+        id: 'resp_q_probe',
+        object: 'response',
+        model: 'openai.gpt-oss-120b',
+        output: [
+          {
+            id: 'msg_q_probe',
+            type: 'message',
+            role: 'assistant',
+            content: [
+              {
+                type: 'output_text',
+                text: 'OK',
+                annotations: [],
+              },
+            ],
+          },
+        ],
+        output_text: 'OK',
+        usage: {
+          input_tokens: 1,
+          output_tokens: 1,
+          total_tokens: 2,
+        },
+      })
+      return
+    }
+
+    writeJson(404, { message: 'not found' })
   })
 
   await new Promise<void>((resolve, reject) => {
@@ -106,7 +140,11 @@ async function main(): Promise<void> {
       )
     }
 
-    if (!output.includes('Provider test: OCI:Q reachable')) {
+    if (
+      !output.includes('Provider test:') ||
+      !output.includes('oci:Q') ||
+      !output.includes('reachable')
+    ) {
       throw new Error(
         `Provider probe output did not report reachability.\n${output}`,
       )

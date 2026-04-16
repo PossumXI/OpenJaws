@@ -76,6 +76,7 @@ export default function Page(): React.ReactNode {
           <div className="hero-rail">
             <span>OCI Q default</span>
             <span>Agent Co-Work live</span>
+            <span>Release-checked qline.site</span>
             <span>Public TerminalBench receipt</span>
           </div>
         </div>
@@ -154,8 +155,8 @@ export default function Page(): React.ReactNode {
             <span>Agent Co-Work</span>
             <strong>Reuse terminal, phase, and project context.</strong>
             <p>
-              Shared registry plus phase memory so sibling agents stop
-              re-discovering the same work.
+              Indexed registry plus phase memory so sibling agents stop
+              re-discovering the same work every handoff.
             </p>
           </article>
           <article className="feature-card">

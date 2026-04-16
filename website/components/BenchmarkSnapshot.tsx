@@ -39,7 +39,10 @@ export function BenchmarkSnapshotSection(): React.ReactNode {
 
         <article className="benchmark-card">
           <span className="benchmark-label">30-Min Soak</span>
-          <strong>{BENCHMARK_SNAPSHOT.soak.successCount}/52</strong>
+          <strong>
+            {BENCHMARK_SNAPSHOT.soak.successCount}/
+            {BENCHMARK_SNAPSHOT.soak.totalProbes}
+          </strong>
           <p>{BENCHMARK_SNAPSHOT.soak.summary}</p>
           <div className="benchmark-card-footnote">
             <span>Duration: {BENCHMARK_SNAPSHOT.soak.durationMinutes} min</span>
@@ -76,6 +79,15 @@ export function BenchmarkSnapshotSection(): React.ReactNode {
           <div className="benchmark-card-footnote">
             <span>Enabled: {BENCHMARK_SNAPSHOT.wandb.enabled ? 'yes' : 'no'}</span>
             <span>Source: {BENCHMARK_SNAPSHOT.wandb.source}</span>
+            {BENCHMARK_SNAPSHOT.wandb.url ? (
+              <a
+                href={BENCHMARK_SNAPSHOT.wandb.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                W&B target
+              </a>
+            ) : null}
           </div>
         </article>
       </div>

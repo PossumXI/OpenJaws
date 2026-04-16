@@ -1,0 +1,35 @@
+{
+  "generatedAt": "2026-04-16T16:07:17.177Z",
+  "source": "Generated from benchmark receipts: D:/openjaws/OpenJaws/artifacts/q-bridgebench-live-20260415-nowandb\\bridgebench-report.json, D:/openjaws/OpenJaws/artifacts/q-soak-live-20260416\\q-soak-report.json, D:/openjaws/OpenJaws/artifacts/q-terminalbench-official-public-20260416-circuit-fibsqrt-v2\\terminalbench-report.json, and D:/openjaws/OpenJaws/artifacts/q-bridgebench-live-20260415-nowandb\\bridgebench-report.json.",
+  "bridgeBench": {
+    "benchmarkId": "q-bridgebench-20260416T004137",
+    "bestPack": "all",
+    "scorePercent": 42.11,
+    "summary": "All pack · 42.11% mean token accuracy · score 42.11 · 1 eval sample"
+  },
+  "soak": {
+    "runId": "q-soakbench-20260416T005306",
+    "durationMinutes": 30,
+    "totalProbes": 52,
+    "successCount": 52,
+    "errorCount": 0,
+    "summary": "30-minute bounded soak. 52/52 probes succeeded with 0 errors. OpenJaws p95 latency: 8455 ms. Direct OCI-Q p95 latency: 4254 ms."
+  },
+  "terminalBench": {
+    "runId": "q-terminalbench-20260416T160708",
+    "taskName": "circuit-fibsqrt",
+    "scope": "Official TerminalBench 2.0 public task",
+    "status": "submitted",
+    "agent": "openjaws",
+    "model": "oci:Q",
+    "outcome": "reward 0.0 // 5 trials",
+    "summary": "OpenJaws ran circuit-fibsqrt on OCI Q with 5 trials and 0 runtime errors. Mean reward: 0.0. The official leaderboard submission discussion is linked here.",
+    "submissionUrl": "https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard/discussions/141"
+  },
+  "wandb": {
+    "status": "disabled",
+    "enabled": false,
+    "source": "none",
+    "summary": "disabled"
+  }
+}
