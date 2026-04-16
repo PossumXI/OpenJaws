@@ -36,6 +36,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - per-turn checkpoints are injected into the main loop, tool rounds, and agent spawn/resume paths
 - crew launch pacing, retry windows, route assignment, and worker health all use the same orchestration layer
 - routed `Q` execution now uses signed manifests, worker assignment, remote dispatch, and signed result reconciliation
+- the Immaculate integration notes now carry the verified hybrid-session, OCI-training, W&B, and benchmark publication contracts that OpenJaws is aligning against
 
 ## Provider and First-Run Setup
 
@@ -86,7 +87,7 @@ Current April 16, 2026 local snapshot:
 - BridgeBench best pack: `all` at `42.11`
 - 30-minute soak: `52/52` successful probes, `0` errors
 - local W&B lane: attempted, but no local auth was configured so the run stayed receipt-only
-- local Harbor / Terminal-Bench lane: Harbor, Docker, and provider preflight passed, and the newest one-task receipt now lands truthfully as `completed_with_errors` instead of claiming a clean pass
+- local Harbor / Terminal-Bench lane: Harbor, Docker, and provider preflight now pass, OCI config portability is fixed, and the bounded one-task Harbor receipt can reach real completion, but task outcomes are still variant so the lane is not ready for leaderboard claims
 
 This pass also tightens the public `Q` runtime story:
 

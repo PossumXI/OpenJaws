@@ -19,9 +19,11 @@ type CliOptions = {
   agent: AgentMode
   model: string | null
   nTasks: number
+  nConcurrent: number
   includeTaskNames: string[]
   excludeTaskNames: string[]
   maxTurns: number
+  agentSetupTimeoutMultiplier: number | null
   timeoutMs: number
   exportTraces: boolean
   exportSharegpt: boolean
@@ -82,11 +84,13 @@ function parseArgs(argv: string[]): CliOptions {
     dataset: 'terminal-bench/terminal-bench-2',
     harborCommand: resolveDefaultHarborCommand(),
     agent: 'openjaws',
-    model: 'q',
+    model: 'oci:Q',
     nTasks: 1,
+    nConcurrent: 1,
     includeTaskNames: [],
     excludeTaskNames: [],
     maxTurns: 12,
+    agentSetupTimeoutMultiplier: 3,
     timeoutMs: 7_200_000,
     exportTraces: false,
     exportSharegpt: false,
@@ -138,6 +142,13 @@ function parseArgs(argv: string[]): CliOptions {
       }
       continue
     }
+    if (arg === '--n-concurrent' && argv[i + 1]) {
+      const parsed = parseOptionalInt(argv[++i]!)
+      if (parsed !== null && parsed > 0) {
+        options.nConcurrent = parsed
+      }
+      continue
+    }
     if (arg === '--include-task-name' && argv[i + 1]) {
       options.includeTaskNames.push(argv[++i]!)
       continue
@@ -150,6 +161,13 @@ function parseArgs(argv: string[]): CliOptions {
       const parsed = parseOptionalInt(argv[++i]!)
       if (parsed !== null && parsed > 0) {
         options.maxTurns = parsed
+      }
+      continue
+    }
+    if (arg === '--agent-setup-timeout-multiplier' && argv[i + 1]) {
+      const parsed = Number.parseFloat(argv[++i]!)
+      if (Number.isFinite(parsed) && parsed > 0) {
+        options.agentSetupTimeoutMultiplier = parsed
       }
       continue
     }
@@ -211,12 +229,14 @@ function printHelpAndExit(): never {
       'Options:',
       '  --dataset <name>             Harbor dataset name (default terminal-bench/terminal-bench-2)',
       '  --agent <mode>               openjaws | oracle',
-      '  --model <name>               OpenJaws model identifier for the Harbor adapter (default q)',
+      '  --model <name>               OpenJaws model identifier for the Harbor adapter (default oci:Q)',
       '  --no-model                   Do not pass a model to the OpenJaws agent',
       '  --n-tasks <n>                Maximum number of tasks to run (default 1)',
+      '  --n-concurrent <n>           Harbor concurrency for parallel task execution (default 1)',
       '  --include-task-name <glob>   Include only matching task names',
       '  --exclude-task-name <glob>   Exclude matching task names',
       '  --max-turns <n>              Max OpenJaws turns inside Harbor (default 12)',
+      '  --agent-setup-timeout-multiplier <n>  Harbor agent setup timeout multiplier (default 3)',
       '  --env <name>                 Harbor environment (default docker)',
       '  --harbor <command>           Harbor CLI command or path',
       '  --out-dir <path>             Output directory for receipts',
@@ -389,9 +409,15 @@ function buildHarborArgs(options: CliOptions): string[] {
     '--env',
     options.env,
     '--n-concurrent',
-    '1',
+    String(options.nConcurrent),
     '--yes',
   ]
+  if (options.agentSetupTimeoutMultiplier !== null) {
+    args.push(
+      '--agent-setup-timeout-multiplier',
+      String(options.agentSetupTimeoutMultiplier),
+    )
+  }
 
   for (const includeTaskName of options.includeTaskNames) {
     args.push('--include-task-name', includeTaskName)
@@ -509,12 +535,38 @@ function guessLatestHarborResultPath(): string | null {
   return latestPath
 }
 
+function sanitizeJson(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(entry => sanitizeJson(entry))
+  }
+  if (value && typeof value === 'object') {
+    const sanitized: Record<string, unknown> = {}
+    for (const [key, entry] of Object.entries(value)) {
+      if (
+        key === 'env' &&
+        entry &&
+        typeof entry === 'object' &&
+        !Array.isArray(entry)
+      ) {
+        sanitized[key] = Object.fromEntries(
+          Object.keys(entry as Record<string, unknown>).map(name => [name, '<redacted>']),
+        )
+        continue
+      }
+      sanitized[key] = sanitizeJson(entry)
+    }
+    return sanitized
+  }
+  return value
+}
+
 function readHarborResultSummary(path: string | null): Record<string, unknown> | null {
   if (!path || !existsSync(path)) {
     return null
   }
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+    const payload = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+    return sanitizeJson(payload) as Record<string, unknown>
   } catch {
     return null
   }
@@ -546,6 +598,9 @@ async function main() {
     dataset: options.dataset,
     agent: options.agent,
     model: options.model,
+    nTasks: options.nTasks,
+    nConcurrent: options.nConcurrent,
+    agentSetupTimeoutMultiplier: options.agentSetupTimeoutMultiplier,
     harborCommand: options.harborCommand,
     harborArgs: redactHarborArgs(harborArgs),
     agentEnvNames:

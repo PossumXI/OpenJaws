@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import configparser
+import io
 import json
 import shlex
 import shutil
@@ -31,10 +34,13 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
     _CONTAINER_BINARY_PATH = "/usr/local/bin/openjaws"
     _CONTAINER_BUN_ARCHIVE_PATH = "/tmp/openjaws-bun.zip"
     _CONTAINER_BUN_ROOT = "/opt/openjaws-bun"
-    _CONTAINER_OCI_DIR = "/opt/openjaws-oci"
+    _CONTAINER_OCI_DIR = "/opt/openjaws-src/runtime/oci"
+    _CONTAINER_OCI_CONFIG_PATH = "/opt/openjaws-src/runtime/oci/config"
     _WORKSPACE_DIR = "/app"
     _BUN_ARCHIVE_FILENAME = "bun-linux-x64-baseline.zip"
     _DEFAULT_BUN_VERSION = "1.3.11"
+    _OCI_REFERENCED_PATH_KEYS = ("key_file", "security_token_file", "cert_bundle")
+    _EMBEDDED_OCI_BUNDLE_ENV = "OPENJAWS_OCI_CONFIG_BUNDLE_B64"
 
     def __init__(
         self,
@@ -179,16 +185,135 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
 
         return archive_path
 
+    def _stage_oci_runtime_bundle(self, host_config_file: str | None) -> Path | None:
+        if not host_config_file:
+            return None
+
+        host_config_path = Path(host_config_file).expanduser().resolve()
+        if not host_config_path.exists():
+            raise FileNotFoundError(
+                f"OCI_CONFIG_FILE points to a missing file: {host_config_path}"
+            )
+
+        bundle_dir = self.logs_dir / "runtime" / "oci"
+        if bundle_dir.exists():
+            shutil.rmtree(bundle_dir)
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+
+        parser = configparser.RawConfigParser()
+        parser.read(host_config_path, encoding="utf-8")
+        staged_targets_by_source: dict[Path, str] = {}
+        section_names = ["DEFAULT", *parser.sections()]
+
+        for section_name in section_names:
+            section = parser[section_name]
+            section_slug = "".join(
+                char.lower() if char.isalnum() else "-"
+                for char in section_name
+            ).strip("-") or "default"
+            for option in self._OCI_REFERENCED_PATH_KEYS:
+                raw_value = section.get(option)
+                if not raw_value:
+                    continue
+
+                source_path = Path(raw_value).expanduser()
+                if not source_path.is_absolute():
+                    source_path = (host_config_path.parent / source_path).resolve()
+                else:
+                    source_path = source_path.resolve()
+
+                if not source_path.exists():
+                    raise FileNotFoundError(
+                        "OCI config references a missing path "
+                        f"for {section_name}.{option}: {source_path}"
+                    )
+
+                target_name = staged_targets_by_source.get(source_path)
+                if not target_name:
+                    target_name = f"{section_slug}-{option}-{source_path.name}"
+                    shutil.copy2(source_path, bundle_dir / target_name)
+                    staged_targets_by_source[source_path] = target_name
+
+                section[option] = f"{self._CONTAINER_OCI_DIR}/{target_name}"
+
+        config_output_path = bundle_dir / "config"
+        with config_output_path.open("w", encoding="utf-8", newline="\n") as handle:
+            parser.write(handle)
+
+        return bundle_dir
+
+    def _build_oci_embedded_env(
+        self,
+        host_config_file: str | None,
+        profile_name: str | None,
+    ) -> dict[str, str]:
+        if not host_config_file:
+            return {}
+
+        host_config_path = Path(host_config_file).expanduser().resolve()
+        if not host_config_path.exists():
+            raise FileNotFoundError(
+                f"OCI_CONFIG_FILE points to a missing file: {host_config_path}"
+            )
+
+        parser = configparser.RawConfigParser()
+        parser.read(host_config_path, encoding="utf-8")
+        staged_payload_files: dict[str, str] = {}
+        staged_targets_by_source: dict[Path, str] = {}
+        section_names = ["DEFAULT", *parser.sections()]
+
+        for section_name in section_names:
+            section = parser[section_name]
+            section_slug = "".join(
+                char.lower() if char.isalnum() else "-"
+                for char in section_name
+            ).strip("-") or "default"
+            for option in self._OCI_REFERENCED_PATH_KEYS:
+                raw_value = section.get(option)
+                if not raw_value:
+                    continue
+
+                source_path = Path(raw_value).expanduser()
+                if not source_path.is_absolute():
+                    source_path = (host_config_path.parent / source_path).resolve()
+                else:
+                    source_path = source_path.resolve()
+
+                if not source_path.exists():
+                    raise FileNotFoundError(
+                        "OCI config references a missing path "
+                        f"for {section_name}.{option}: {source_path}"
+                    )
+
+                target_name = staged_targets_by_source.get(source_path)
+                if not target_name:
+                    target_name = f"{section_slug}-{option}-{source_path.name}"
+                    staged_targets_by_source[source_path] = target_name
+                    staged_payload_files[target_name] = base64.b64encode(
+                        source_path.read_bytes()
+                    ).decode("ascii")
+
+                section[option] = target_name
+
+        config_handle = io.StringIO()
+        parser.write(config_handle)
+        config_text = config_handle.getvalue()
+
+        payload = {
+            "profile": (profile_name or "DEFAULT").strip() or "DEFAULT",
+            "config": config_text,
+            "files": staged_payload_files,
+        }
+        return {
+            self._EMBEDDED_OCI_BUNDLE_ENV: base64.b64encode(
+                json.dumps(payload).encode("utf-8")
+            ).decode("ascii")
+        }
+
     async def install(self, environment: BaseEnvironment) -> None:
-        stage_dir = self._stage_source_tree()
         bun_archive = self._resolve_host_bun_archive_path()
         resolved_env = self.resolve_env_vars()
-        host_oci_config_file = resolved_env.get("OCI_CONFIG_FILE")
-        host_oci_dir = (
-            Path(host_oci_config_file).expanduser().resolve().parent
-            if host_oci_config_file
-            else None
-        )
+        stage_dir = self._stage_source_tree()
         await self.exec_as_root(
             environment,
             command=(
@@ -209,13 +334,6 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
             timeout_sec=120,
         )
         await environment.upload_dir(stage_dir, self._CONTAINER_SOURCE_DIR)
-        if host_oci_dir and host_oci_dir.exists():
-            await self.exec_as_root(
-                environment,
-                command=f"rm -rf {self._CONTAINER_OCI_DIR} && mkdir -p {self._CONTAINER_OCI_DIR}",
-                timeout_sec=120,
-            )
-            await environment.upload_dir(host_oci_dir, self._CONTAINER_OCI_DIR)
         await environment.upload_file(bun_archive, self._CONTAINER_BUN_ARCHIVE_PATH)
         await self.exec_as_root(
             environment,
@@ -417,8 +535,15 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
             "OPENJAWS_OCI_BRIDGE_SCRIPT",
             f"{self._CONTAINER_SOURCE_DIR}/scripts/oci-q-response.py",
         )
-        if env.get("OCI_CONFIG_FILE"):
-            env["OCI_CONFIG_FILE"] = f"{self._CONTAINER_OCI_DIR}/config"
+        host_oci_config_file = env.get("OCI_CONFIG_FILE")
+        if host_oci_config_file:
+            env.update(
+                self._build_oci_embedded_env(
+                    host_oci_config_file,
+                    env.get("OCI_PROFILE"),
+                )
+            )
+            env["OCI_CONFIG_FILE"] = self._CONTAINER_OCI_CONFIG_PATH
         result = await environment.exec(
             command=command,
             env=env or None,
@@ -439,5 +564,6 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
         if result.return_code != 0 or bool(payload.get("is_error")):
             message = payload.get("result")
             if not isinstance(message, str) or not message.strip():
-                message = result.stderr.strip() or "OpenJaws Harbor agent failed."
+                stderr_text = (result.stderr or "").strip()
+                message = stderr_text or "OpenJaws Harbor agent failed."
             raise RuntimeError(message)
