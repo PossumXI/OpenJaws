@@ -9,6 +9,10 @@ import {
   type ImmaculateHarnessResult,
   type ImmaculateHarnessStatus,
 } from '../../utils/immaculateHarness.js'
+import {
+  readLatestImmaculateTraceSummary,
+  type ImmaculateTraceSummary,
+} from '../../immaculate/traceSummary.js'
 
 type ParsedImmaculateCommand =
   | { type: 'help' }
@@ -197,6 +201,7 @@ export function parseImmaculateCommand(
 export function formatImmaculateStatusMessage(
   status: ImmaculateHarnessStatus,
   deckReceipt: Awaited<ReturnType<typeof getImmaculateHarnessDeckReceipt>> | null,
+  traceSummary: ImmaculateTraceSummary | null = null,
 ): string {
   const lines = [
     `Immaculate: ${status.enabled ? 'on' : 'off'} · mode ${status.mode}`,
@@ -224,6 +229,16 @@ export function formatImmaculateStatusMessage(
     )
     lines.push(
       `Intelligence: ${deckReceipt.layerCount} layers · ${deckReceipt.executionCount} executions${deckReceipt.recommendedLayerId ? ` · recommended ${deckReceipt.recommendedLayerId}` : ''}`,
+    )
+  }
+  if (traceSummary) {
+    const formatTraceLatency = (value: number | null) =>
+      value === null ? 'n/a' : `${Math.round(value)}ms`
+    lines.push(
+      `Trace: ${traceSummary.sessionId} · ${traceSummary.eventCount} events · ${traceSummary.routeDispatchCount} dispatched · ${traceSummary.workerAssignmentCount} assigned`,
+    )
+    lines.push(
+      `Latency: interaction p95 ${formatTraceLatency(traceSummary.interactionLatency.p95Ms)} · reflex p95 ${formatTraceLatency(traceSummary.reflexLatency.p95Ms)} · cognitive p95 ${formatTraceLatency(traceSummary.cognitiveLatency.p95Ms)}`,
     )
   }
 
@@ -394,13 +409,14 @@ export const call: LocalCommandCall = async (rawArgs, _context) => {
     return { type: 'text', value: parsed.message }
   }
   if (parsed.type === 'status') {
-    const [status, deckReceipt] = await Promise.all([
+    const [status, deckReceipt, traceSummary] = await Promise.all([
       getImmaculateHarnessStatus(),
       getImmaculateHarnessDeckReceipt(),
+      Promise.resolve(readLatestImmaculateTraceSummary()),
     ])
     return {
       type: 'text',
-      value: formatImmaculateStatusMessage(status, deckReceipt),
+      value: formatImmaculateStatusMessage(status, deckReceipt, traceSummary),
     }
   }
   if (parsed.type === 'register_ollama') {

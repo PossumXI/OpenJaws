@@ -11,6 +11,11 @@ import {
 import { dirname, join, resolve } from 'path'
 import { execa } from 'execa'
 import {
+  appendBenchmarkTraceEvent,
+  closeBenchmarkTraceWriter,
+  createBenchmarkTraceWriter,
+} from '../src/immaculate/benchmarkTrace.js'
+import {
   runOpenJawsProviderPreflight,
   type QPreflightCheck as PreflightCheck,
 } from '../src/q/runtime.js'
@@ -33,6 +38,14 @@ import {
   type QTerminalBenchTaskReceipt as TerminalBenchTaskReceipt,
   type QTerminalBenchTrialCounts as TerminalBenchTrialCounts,
 } from '../src/q/terminalBench.js'
+import {
+  resolveBenchmarkSigningPrivateKey,
+  signBenchmarkReceipt,
+} from '../src/utils/benchmarkReceiptSignature.js'
+import {
+  buildImmaculateTraceReference,
+  sha256File,
+} from '../src/utils/immaculateTraceReceipt.js'
 import { resolveOciQRuntime } from '../src/utils/ociQRuntime.js'
 
 type AgentMode = 'openjaws' | 'oracle'
@@ -1127,6 +1140,42 @@ function validateOfficialSubmissionOptions(options: CliOptions): void {
   }
 }
 
+function writeSignedBenchmarkArtifacts(args: {
+  outputDir: string
+  runId: string
+  report: Record<string, unknown>
+  traceWriter: ReturnType<typeof createBenchmarkTraceWriter>
+}): { reportPath: string; receiptPath: string } {
+  closeBenchmarkTraceWriter(args.traceWriter)
+  args.report.traceReferences = [
+    buildImmaculateTraceReference(args.traceWriter.path),
+  ]
+  const reportPath = join(args.outputDir, 'terminalbench-report.json')
+  writeFileSync(reportPath, `${JSON.stringify(args.report, null, 2)}\n`, 'utf8')
+  const receipt: Record<string, unknown> = {
+    kind: 'q_terminalbench_benchmark_receipt',
+    runId: args.runId,
+    generatedAt: new Date().toISOString(),
+    reportPath,
+    reportSha256: sha256File(reportPath),
+    traceReferences: args.report.traceReferences,
+    summary: args.report.summary ?? null,
+    status: args.report.status ?? null,
+  }
+  const signingKey = resolveBenchmarkSigningPrivateKey()
+  if (signingKey) {
+    receipt.signature = signBenchmarkReceipt({
+      receipt,
+      privateKeyPem: signingKey,
+    })
+  } else {
+    receipt.signature = null
+  }
+  const receiptPath = join(args.outputDir, 'terminalbench-receipt.json')
+  writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8')
+  return { reportPath, receiptPath }
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2))
   const runId = makeRunId(options)
@@ -1146,6 +1195,10 @@ async function main() {
     options.jobName = options.jobName ?? `${runId}-official`
   }
   validateOfficialSubmissionOptions(options)
+  const traceWriter = createBenchmarkTraceWriter({
+    outputDir,
+    sessionId: runId,
+  })
 
   const checks: PreflightCheck[] = []
   checks.push(
@@ -1168,6 +1221,14 @@ async function main() {
       }),
     )
   }
+  appendBenchmarkTraceEvent(traceWriter, 'route.dispatched', {
+    routeId: `${runId}-preflight`,
+    runId,
+    provider: options.agent,
+    model: options.model,
+    projectRoot: options.root,
+    queueDepth: options.nTasks,
+  })
 
   const representativeHarborArgs = buildHarborArgs(options, 1, 1)
   const report: Record<string, unknown> = {
@@ -1242,14 +1303,19 @@ async function main() {
     report.jobResultSummary = null
     report.stdoutTail = ''
     report.stderrTail = ''
-    const reportPath = join(outputDir, 'terminalbench-report.json')
-    writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
+    const { reportPath, receiptPath } = writeSignedBenchmarkArtifacts({
+      outputDir,
+      runId,
+      report,
+      traceWriter,
+    })
     console.log(
       JSON.stringify(
         {
           status: 'ok',
           runId,
           reportPath,
+          receiptPath,
           summary: report.summary,
           checks,
           command: report.command,
@@ -1264,14 +1330,19 @@ async function main() {
   if (failedChecks.length > 0) {
     report.status = 'failed_preflight'
     report.summary = 'Terminal-Bench run blocked by failed Harbor/Docker preflight.'
-    const reportPath = join(outputDir, 'terminalbench-report.json')
-    writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
+    const { reportPath, receiptPath } = writeSignedBenchmarkArtifacts({
+      outputDir,
+      runId,
+      report,
+      traceWriter,
+    })
     console.log(
       JSON.stringify(
         {
           status: 'failed',
           runId,
           reportPath,
+          receiptPath,
           summary: report.summary,
           checks,
         },
@@ -1287,14 +1358,19 @@ async function main() {
     report.summary =
       'Terminal-Bench run blocked because the OpenJaws provider preflight is not healthy.'
     report.command = [options.harborCommand, ...redactHarborArgs(representativeHarborArgs)].join(' ')
-    const reportPath = join(outputDir, 'terminalbench-report.json')
-    writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
+    const { reportPath, receiptPath } = writeSignedBenchmarkArtifacts({
+      outputDir,
+      runId,
+      report,
+      traceWriter,
+    })
     console.log(
       JSON.stringify(
         {
           status: 'ok',
           runId,
           reportPath,
+          receiptPath,
           summary: report.summary,
           checks,
           command: report.command,
@@ -1329,6 +1405,23 @@ async function main() {
     const cycleTasks: TerminalBenchTaskReceipt[] = []
 
     for (let attempt = 1; attempt <= options.repeat; attempt++) {
+      const routeId = resolveAttemptJobName(
+        {
+          jobName: options.jobName,
+          repeat: options.repeat,
+          soak: options.soak,
+        },
+        cycle,
+        attempt,
+      )
+      appendBenchmarkTraceEvent(traceWriter, 'route.dispatched', {
+        routeId,
+        runId,
+        provider: options.agent,
+        model: options.model,
+        queueDepth: options.nTasks,
+        projectRoot: options.root,
+      })
       const attemptResult = await runHarborAttempt({
         cycle,
         attempt,
@@ -1338,6 +1431,24 @@ async function main() {
       cycleTasks.push(...attemptResult.taskReceipts)
       attempts.push(attemptResult.attemptReceipt)
       tasks.push(...attemptResult.taskReceipts)
+      for (const task of attemptResult.taskReceipts) {
+        appendBenchmarkTraceEvent(traceWriter, 'turn.complete', {
+          turnId: task.trialName,
+          routeId,
+          workerId: task.taskName,
+          status:
+            task.executionStatus === 'error'
+              ? 'failed'
+              : task.benchmarkStatus === 'passed'
+                ? 'completed'
+                : task.exceptionType?.toLowerCase().includes('timeout')
+                  ? 'timeout'
+                  : 'failed',
+          latencyMs: Math.max(0, task.totalDurationMs ?? 0),
+          promptTokens: null,
+          completionTokens: null,
+        })
+      }
     }
 
     cycles.push(
@@ -1442,8 +1553,12 @@ async function main() {
   report.summary = outcome.summary
   report.exitCode = outcome.exitCode
 
-  const reportPath = join(outputDir, 'terminalbench-report.json')
-  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
+  const { reportPath, receiptPath } = writeSignedBenchmarkArtifacts({
+    outputDir,
+    runId,
+    report,
+    traceWriter,
+  })
   console.log(
     JSON.stringify(
       {
@@ -1455,6 +1570,7 @@ async function main() {
               : 'failed',
         runId,
         reportPath,
+        receiptPath,
         summary: report.summary,
         exitCode: report.exitCode,
         jobPathGuess: report.jobPathGuess,

@@ -167,6 +167,8 @@ import { type ProcessedResume, processResumedConversation } from 'src/utils/sess
 import { parseSettingSourcesFlag } from 'src/utils/settings/constants.js';
 import { plural } from 'src/utils/stringUtils.js';
 import { type ChannelEntry, getInitialMainLoopModel, getIsNonInteractiveSession, getSdkBetas, getSessionId, getUserMsgOptIn, setAllowedChannels, setAllowedSettingSources, setChromeFlagOverride, setClientType, setCwdState, setDirectConnectServerUrl, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setKairosActive, setOriginalCwd, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled, setSessionSource, setUserMsgOptIn, switchSession } from './bootstrap/state.js';
+import { syncSessionTrace, endSessionTrace } from './utils/telemetry/sessionTracing.js';
+import { onSessionSwitch } from './bootstrap/state.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER') ? require('./utils/permissions/autoModeState.js') as typeof import('./utils/permissions/autoModeState.js') : null;
@@ -208,6 +210,17 @@ import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from '.
 
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
 profileCheckpoint('main_tsx_imports_loaded');
+
+// eslint-disable-next-line custom-rules/no-top-level-side-effects
+syncSessionTrace(getSessionId());
+// eslint-disable-next-line custom-rules/no-top-level-side-effects
+onSessionSwitch(id => {
+  syncSessionTrace(id);
+});
+// eslint-disable-next-line custom-rules/no-top-level-side-effects
+registerCleanup(() => {
+  endSessionTrace();
+});
 
 // Keep the legacy desktop import subcommand working without registering a
 // second visible/hidden commander command. This avoids leaking the old name

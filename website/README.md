@@ -86,6 +86,11 @@ bun run dev
 bun run build
 ```
 
+The guarded repo-level `bun run website:build` command uses a Node-driven Next
+production build wrapper on Windows. That avoids the Bun-vs-Next manifest /
+diagnostics flake that can break local release verification even when the site
+code itself is clean.
+
 ## Netlify Deploy
 
 Use the guarded repo command instead of ad hoc Netlify CLI calls:

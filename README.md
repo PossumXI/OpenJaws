@@ -310,7 +310,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - co-work now also keeps a phase ledger so the team can preserve what was asked, what got handed off, and what was delivered across sibling terminals and project roots
 - agents can now target an exact saved phase on purpose with `phase_id` or direct-message syntax like `@scout [phase:phase-abc12345] continue the bridge work`, so new work can reuse the right project thread instead of falling back to the latest matching receipt
 - the live co-work hot path now keeps an indexed in-memory team view during a session, which cuts repeated team-file rereads and rescans out of cross-terminal handoffs while keeping the file-backed receipts as the durable source of truth
-- the first Phase 1 runtime split is now in `src/q/*`, so shared provider preflight, soak helpers, and TerminalBench receipt math live in one library surface instead of drifting across separate `q-*` scripts
+- the first Phase 1 runtime split is now in `src/q/*`, and the routed launch / dispatch / worker / poll / hybrid entrypoints now sit behind shared library surfaces too, so `launch-q-train`, `dispatch-q-route`, `process-q-routes`, `poll-q-route-result`, and `run-q-hybrid-session` stop drifting as standalone logic copies
 
 ## Immaculate Integration
 
@@ -321,7 +321,8 @@ OpenJaws treats Immaculate as the orchestration core rather than an optional add
 - `Q` route assignment, worker capability registry, remote dispatch, and result reconciliation are all surfaced through the same harness.
 - `/immaculate` exposes live topology, control pulses, execution pressure, and worker health.
 - `/status` and the flight-deck surfaces expose the same route and worker state to installed users, not just internal operators.
-- the tracing lane now has a typed `src/immaculate/events.ts` contract plus structured session-trace writing, so future signed benchmark receipts can anchor to one stable event schema instead of ad hoc strings
+- the tracing lane now has a typed `src/immaculate/events.ts` contract plus structured session-trace writing, and benchmark lanes now emit deterministic trace-backed receipt files with signature blocks when a signing key is configured
+- `/status` and `/immaculate` now read the latest typed Immaculate trace summary directly, and `/status` now also surfaces the latest Q benchmark trace summary, so route flow and p95 latency stop living only in ad hoc benchmark strings
 
 Details:
 

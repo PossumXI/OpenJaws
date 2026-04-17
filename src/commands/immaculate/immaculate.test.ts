@@ -61,9 +61,48 @@ describe('/immaculate status formatting', () => {
           executionCount: 0,
           recommendedLayerId: 'ollama-mid-q-e4b',
         },
+        {
+          path: 'D:/openjaws/OpenJaws/artifacts/immaculate/session-traces/session.jsonl',
+          sessionId: 'session-1',
+          eventCount: 12,
+          startedAt: '2026-04-16T00:00:00.000Z',
+          endedAt: '2026-04-16T00:05:00.000Z',
+          lastTimestamp: '2026-04-16T00:05:00.000Z',
+          countsByType: {
+            'route.dispatched': 2,
+            'worker.assigned': 1,
+          },
+          routeDispatchCount: 2,
+          routeLeaseCount: 1,
+          workerAssignmentCount: 1,
+          latestRouteId: 'route-2',
+          latestWorkerId: 'worker-1',
+          interactionLatency: {
+            count: 3,
+            p50Ms: 120,
+            p95Ms: 450,
+            maxMs: 450,
+          },
+          llmLatency: {
+            count: 2,
+            p50Ms: 200,
+            p95Ms: 300,
+            maxMs: 300,
+          },
+          reflexLatency: {
+            count: 1,
+            p50Ms: 80,
+            p95Ms: 80,
+            maxMs: 80,
+          },
+          cognitiveLatency: {
+            count: 1,
+            p50Ms: 140,
+            p95Ms: 140,
+            maxMs: 140,
+          },
+        },
       ),
-    ).toContain(
-      'Deck: human-connectome-harness · cycle 1032 · 11 nodes · 16 edges',
-    )
+    ).toContain('Trace: session-1 · 12 events · 2 dispatched · 1 assigned')
   })
 })

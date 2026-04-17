@@ -124,6 +124,7 @@ These are the newest local OpenJaws receipts from this repo workspace. They are 
 The local `Q` benchmark lane follows the same broad principles used by Harbor, Terminal-Bench, LLM-as-a-judge flows, and Rewardkit:
 
 - benchmark work is written to inspectable JSON receipts
+- `bun run q:receipt:sign -- --report <path>` can repackage a benchmark report into one deterministic trace-backed receipt file, with an Ed25519 signature block when a signing key is configured
 - local results can emit `reward.json` and `reward-details.json` for downstream comparison
 - hybrid sessions keep local and routed lane outcomes under one receipt instead of forcing you to compare two unrelated folders
 - W&B state is captured in the run receipts with the resolved project URL when available, so it is obvious whether a run really logged live

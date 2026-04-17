@@ -2,6 +2,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join, resolve } from 'path'
 import { execa } from 'execa'
 import {
+  closeBenchmarkTraceWriter,
+  createBenchmarkTraceWriter,
+  appendBenchmarkTraceEvent,
+} from '../src/immaculate/benchmarkTrace.js'
+import {
   buildQProviderProbeCheck,
   probeQProviderModel,
   type QPreflightCheck as PreflightCheck,
@@ -12,6 +17,14 @@ import {
   type QSoakProbeResult as SoakProbeResult,
   type QSoakProbeStatus as ProbeStatus,
 } from '../src/q/soak.js'
+import {
+  resolveBenchmarkSigningPrivateKey,
+  signBenchmarkReceipt,
+} from '../src/utils/benchmarkReceiptSignature.js'
+import {
+  buildImmaculateTraceReference,
+  sha256File,
+} from '../src/utils/immaculateTraceReceipt.js'
 import { queryOciQViaPython } from '../src/utils/ociQBridge.js'
 import { resolveOciQRuntime } from '../src/utils/ociQRuntime.js'
 
@@ -341,6 +354,10 @@ async function main() {
 
   const startAt = new Date()
   const deadlineMs = startAt.getTime() + options.durationMinutes * 60_000
+  const traceWriter = createBenchmarkTraceWriter({
+    outputDir,
+    sessionId: runId,
+  })
   const checks: PreflightCheck[] = []
   const openjawsBinary = buildOpenJawsBinary(options.root)
   checks.push({
@@ -363,6 +380,14 @@ async function main() {
       }),
     )
   }
+  appendBenchmarkTraceEvent(traceWriter, 'route.dispatched', {
+    routeId: `${runId}-preflight`,
+    runId,
+    provider: 'oci',
+    model: options.openjawsModel,
+    queueDepth: options.maxProbes,
+    projectRoot: options.root,
+  })
 
   const plannedCycleCount =
     options.maxProbes !== null
@@ -411,6 +436,15 @@ async function main() {
         const remainingMs = deadlineMs - startedAt.getTime()
         const probeTimeoutMs = Math.max(1_000, Math.min(options.timeoutMs, remainingMs))
 
+        const routeId = `${runId}-${mode}-${probeIndex}`
+        appendBenchmarkTraceEvent(traceWriter, 'route.dispatched', {
+          routeId,
+          runId,
+          provider: mode === 'openjaws' ? 'openjaws' : 'oci',
+          model: mode === 'openjaws' ? options.openjawsModel : 'oci:Q',
+          projectRoot: options.root,
+          queueDepth: options.maxProbes,
+        })
         let probeOutcome:
           | Omit<SoakProbeResult, 'index' | 'mode' | 'startedAt' | 'endedAt'>
           | null = null
@@ -454,6 +488,26 @@ async function main() {
         }
 
         results.push(result)
+        appendBenchmarkTraceEvent(
+          traceWriter,
+          mode === 'openjaws' ? 'reflex.sampled' : 'cognitive.sampled',
+          {
+            sampleId: routeId,
+            workerId: mode,
+            latencyMs: Math.max(
+              0,
+              probeOutcome.latencyMs ??
+                endedAt.getTime() - startedAt.getTime(),
+            ),
+            tokenCount: null,
+            status:
+              probeOutcome.status === 'ok'
+                ? 'completed'
+                : probeOutcome.error?.toLowerCase().includes('timeout')
+                  ? 'timeout'
+                  : 'failed',
+          },
+        )
         modeSummary[mode].total++
         if (probeOutcome.status === 'ok') {
           modeSummary[mode].ok++
@@ -480,6 +534,15 @@ async function main() {
   } else {
     for (let index = 0; index < plannedCycleCount; index++) {
       for (const mode of options.modes) {
+        const routeId = `${runId}-${mode}-${index}`
+        appendBenchmarkTraceEvent(traceWriter, 'route.dispatched', {
+          routeId,
+          runId,
+          provider: mode === 'openjaws' ? 'openjaws' : 'oci',
+          model: mode === 'openjaws' ? options.openjawsModel : 'oci:Q',
+          projectRoot: options.root,
+          queueDepth: plannedCycleCount,
+        })
         const result: SoakProbeResult = {
           index: results.length,
           mode,
@@ -527,7 +590,29 @@ async function main() {
   report.reportPath = join(outputDir, 'q-soak-report.json')
 
   const reportPath = report.reportPath as string
+  closeBenchmarkTraceWriter(traceWriter)
+  report.traceReferences = [buildImmaculateTraceReference(traceWriter.path)]
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
+  const receipt: Record<string, unknown> = {
+    kind: 'q_soak_benchmark_receipt',
+    runId,
+    generatedAt: new Date().toISOString(),
+    reportPath,
+    reportSha256: sha256File(reportPath),
+    traceReferences: report.traceReferences,
+    summary: report.summary,
+  }
+  const signingKey = resolveBenchmarkSigningPrivateKey()
+  if (signingKey) {
+    receipt.signature = signBenchmarkReceipt({
+      receipt,
+      privateKeyPem: signingKey,
+    })
+  } else {
+    receipt.signature = null
+  }
+  const receiptPath = join(outputDir, 'q-soak-receipt.json')
+  writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8')
 
   console.log(
     JSON.stringify(
@@ -535,6 +620,7 @@ async function main() {
         status: 'ok',
         runId,
         reportPath,
+        receiptPath,
         summary:
           options.dryRun
             ? `Q soak dry run prepared for ${options.durationMinutes} minute${options.durationMinutes === 1 ? '' : 's'} across ${options.modes.join(', ')}.`

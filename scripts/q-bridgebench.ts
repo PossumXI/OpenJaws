@@ -2,6 +2,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join, resolve } from 'path'
 import { execa } from 'execa'
 import {
+  appendBenchmarkTraceEvent,
+  closeBenchmarkTraceWriter,
+  createBenchmarkTraceWriter,
+} from '../src/immaculate/benchmarkTrace.js'
+import {
   computeQBridgeBenchScore,
   extractQBridgeBenchMetrics,
   getDefaultQBridgeBenchPacks,
@@ -15,6 +20,14 @@ import {
   DEFAULT_Q_BASE_MODEL,
   resolveQTrainingPythonCommand,
 } from '../src/utils/qTraining.js'
+import {
+  resolveBenchmarkSigningPrivateKey,
+  signBenchmarkReceipt,
+} from '../src/utils/benchmarkReceiptSignature.js'
+import {
+  buildImmaculateTraceReference,
+  sha256File,
+} from '../src/utils/immaculateTraceReceipt.js'
 import { resolveWandbConfig } from '../src/utils/wandb.js'
 
 type CliOptions = {
@@ -304,6 +317,10 @@ async function main() {
   const outputDir =
     options.outputDir ?? resolve(root, 'artifacts', 'bridgebench', benchmarkId)
   mkdirSync(outputDir, { recursive: true })
+  const traceWriter = createBenchmarkTraceWriter({
+    outputDir,
+    sessionId: benchmarkId,
+  })
   const wandb = resolveWandbConfig({
     project: options.wandbProject,
     entity: options.wandbEntity,
@@ -318,10 +335,28 @@ async function main() {
       manifest,
       pack: packName,
     })
+    const packStartedAt = Date.now()
     const packOutputDir = join(outputDir, pack.pack)
     mkdirSync(packOutputDir, { recursive: true })
+    appendBenchmarkTraceEvent(traceWriter, 'route.dispatched', {
+      routeId: pack.pack,
+      runId: benchmarkId,
+      provider: 'bridgebench',
+      model: options.baseModel,
+      projectRoot: root,
+      queueDepth: options.packs.length,
+    })
 
     if (!existsSync(pack.evalFile) || pack.splitCounts.eval === 0) {
+      appendBenchmarkTraceEvent(traceWriter, 'turn.complete', {
+        turnId: pack.pack,
+        routeId: pack.pack,
+        workerId: pack.pack,
+        status: 'failed',
+        latencyMs: Math.max(0, Date.now() - packStartedAt),
+        promptTokens: null,
+        completionTokens: null,
+      })
       packResults.push({
         pack: pack.pack,
         status: 'skipped',
@@ -345,6 +380,15 @@ async function main() {
     })
     const command = [options.python, ...pythonArgs].join(' ')
     if (options.dryRun) {
+      appendBenchmarkTraceEvent(traceWriter, 'turn.complete', {
+        turnId: pack.pack,
+        routeId: pack.pack,
+        workerId: pack.pack,
+        status: 'completed',
+        latencyMs: Math.max(0, Date.now() - packStartedAt),
+        promptTokens: null,
+        completionTokens: null,
+      })
       packResults.push({
         pack: pack.pack,
         status: 'dry_run',
@@ -366,6 +410,15 @@ async function main() {
     })
 
     if (result.exitCode !== 0) {
+      appendBenchmarkTraceEvent(traceWriter, 'turn.complete', {
+        turnId: pack.pack,
+        routeId: pack.pack,
+        workerId: pack.pack,
+        status: 'failed',
+        latencyMs: Math.max(0, Date.now() - packStartedAt),
+        promptTokens: null,
+        completionTokens: null,
+      })
       packResults.push({
         pack: pack.pack,
         status: 'failed',
@@ -388,6 +441,15 @@ async function main() {
     const runState = readJsonIfExists(join(packOutputDir, 'run-state.json'))
     const metrics = extractQBridgeBenchMetrics(metricsSummary)
     const score = computeQBridgeBenchScore(metrics)
+    appendBenchmarkTraceEvent(traceWriter, 'turn.complete', {
+      turnId: pack.pack,
+      routeId: pack.pack,
+      workerId: pack.pack,
+      status: 'completed',
+      latencyMs: Math.max(0, Date.now() - packStartedAt),
+      promptTokens: null,
+      completionTokens: null,
+    })
     writeFileSync(
       join(packOutputDir, 'reward.json'),
       `${JSON.stringify(
@@ -486,7 +548,29 @@ async function main() {
       'This is a local Q benchmark over audited OpenJaws packs. It is useful for in-repo comparison, but it is not the public Immaculate benchmark source of truth.',
   }
   const reportPath = join(outputDir, 'bridgebench-report.json')
+  closeBenchmarkTraceWriter(traceWriter)
+  report.traceReferences = [buildImmaculateTraceReference(traceWriter.path)]
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
+  const receipt: Record<string, unknown> = {
+    kind: 'q_bridgebench_benchmark_receipt',
+    benchmarkId,
+    generatedAt: new Date().toISOString(),
+    reportPath,
+    reportSha256: sha256File(reportPath),
+    traceReferences: report.traceReferences,
+    summary: report.bestResult ?? null,
+  }
+  const signingKey = resolveBenchmarkSigningPrivateKey()
+  if (signingKey) {
+    receipt.signature = signBenchmarkReceipt({
+      receipt,
+      privateKeyPem: signingKey,
+    })
+  } else {
+    receipt.signature = null
+  }
+  const receiptPath = join(outputDir, 'bridgebench-receipt.json')
+  writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8')
   writeFileSync(
     join(outputDir, 'reward.json'),
     `${JSON.stringify(
@@ -537,6 +621,7 @@ async function main() {
         lineageId,
         phaseId: options.phaseId,
         reportPath,
+        receiptPath,
         summary: options.dryRun
           ? 'Q BridgeBench dry run completed.'
           : bestResult

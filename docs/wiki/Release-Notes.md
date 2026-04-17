@@ -30,7 +30,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - agents can now bind new work to an exact saved phase instead of guessing, including direct teammate syntax like `@scout [phase:phase-abc12345] continue`
 - the shared registry is designed for same-owner co-work and path/runtime facts only; it is not a secret dump and does not write credentials into team memory
 - the co-work hot path now keeps an indexed in-memory team view during a live session, so helper handoffs stop rereading and rescanning the same team file on every cross-terminal step
-- the first Phase 1 `src/q/*` split is now live, so shared provider preflight, soak helpers, and TerminalBench receipt math sit behind library surfaces instead of drifting across separate `q-*` scripts
+- the first Phase 1 `src/q/*` split is now live, and the routed launch / dispatch / worker / poll / hybrid helpers now sit there too, so shared provider preflight, route dispatch, route processing, result reconcile, and TerminalBench receipt math stop drifting across separate `q-*` scripts
 
 ## Immaculate Integration
 
@@ -39,7 +39,8 @@ This page summarizes the current public OpenJaws surface that is already working
 - crew launch pacing, retry windows, route assignment, and worker health all use the same orchestration layer
 - routed `Q` execution now uses signed manifests, worker assignment, remote dispatch, and signed result reconciliation
 - the Immaculate integration notes now carry the verified hybrid-session, OCI-training, W&B, and benchmark publication contracts that OpenJaws is aligning against
-- the tracing lane now has a typed `src/immaculate/events.ts` schema plus structured session-trace writing, which starts the move toward signed benchmark receipts backed by one stable event contract
+- the tracing lane now has a typed `src/immaculate/events.ts` schema plus structured session-trace writing, and benchmark lanes now emit deterministic trace-backed receipt files with signature blocks when a signing key is configured
+- `/status` and `/immaculate` now read the latest typed trace summary directly, and `/status` now also reads the latest Q benchmark trace summary, so route flow and p95 latency are visible in operator surfaces instead of only inside artifact folders
 
 ## Provider and First-Run Setup
 
@@ -119,6 +120,7 @@ This pass also tightens the public `Q` runtime story:
 - the public website benchmark snapshot is now generated from checked-in receipts and checked in CI so release copy cannot drift silently away from the real artifacts
 - the local release sweep now also includes a live same-site `qline.site` smoke so the published Netlify handler/runtime/content state is checked alongside the repo build before a ship pass is called clean
 - the guarded `qline.site` deploy helper now also falls back to the authenticated Windows Netlify CLI config when the repo-local CLI config is missing, so same-site redeploys stay anchored to the real project auth on this machine
+- the public website build lane now uses a Node-driven Next production build wrapper on Windows, which avoids the Bun-vs-Next manifest/diagnostics flake that was poisoning local release verification
 - `system:check` now exits nonzero on real failures, and the unit-test lane is scoped to the live repo `src/` and `scripts/` trees so mirrored benchmark artifacts cannot fake-break or fake-green a release pass
 - the CI lane now adds a bounded Phase 0 hygiene gate too: `scripts/` dead-file scan via `knip` plus a `15%` non-test scripts coverage floor before the main verify sweep runs
 

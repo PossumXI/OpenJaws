@@ -3,6 +3,8 @@ import {
   buildAgentCoworkProperties,
   buildDiscordQAgentProperties,
   buildImmaculateGuidanceProperties,
+  buildImmaculateTraceProperties,
+  buildQTraceProperties,
   buildProviderProbeProperties,
   buildProviderGuidanceProperties,
 } from './status.js'
@@ -430,6 +432,173 @@ describe('buildDiscordQAgentProperties', () => {
       {
         label: 'Q operator',
         value: ['PossumX', 'start-openjaws', 'pid 4.2k', 'D:\\repo'],
+      },
+    ])
+  })
+})
+
+describe('buildImmaculateTraceProperties', () => {
+  test('surfaces latest typed trace latency and flow data', () => {
+    expect(
+      buildImmaculateTraceProperties({
+        path: 'D:/openjaws/OpenJaws/artifacts/immaculate/session-traces/session.jsonl',
+        sessionId: 'session-1',
+        eventCount: 12,
+        startedAt: '2026-04-16T00:00:00.000Z',
+        endedAt: '2026-04-16T00:05:00.000Z',
+        lastTimestamp: '2026-04-16T00:05:00.000Z',
+        countsByType: {
+          'route.dispatched': 2,
+          'worker.assigned': 1,
+        },
+        routeDispatchCount: 2,
+        routeLeaseCount: 1,
+        workerAssignmentCount: 1,
+        latestRouteId: 'route-2',
+        latestWorkerId: 'worker-1',
+        interactionLatency: {
+          count: 3,
+          p50Ms: 120,
+          p95Ms: 450,
+          maxMs: 450,
+        },
+        llmLatency: {
+          count: 2,
+          p50Ms: 200,
+          p95Ms: 300,
+          maxMs: 300,
+        },
+        reflexLatency: {
+          count: 1,
+          p50Ms: 80,
+          p95Ms: 80,
+          maxMs: 80,
+        },
+        cognitiveLatency: {
+          count: 1,
+          p50Ms: 140,
+          p95Ms: 140,
+          maxMs: 140,
+        },
+      }),
+    ).toEqual([
+      {
+        label: 'Immaculate trace',
+        value: [
+          'session-1',
+          '12 events',
+          'started 2026-04-16T00:00:00.000Z',
+          'ended 2026-04-16T00:05:00.000Z',
+        ],
+      },
+      {
+        label: 'Immaculate trace flow',
+        value: ['2 dispatched', '1 leased', '1 assigned', 'route route-2', 'worker worker-1'],
+      },
+      {
+        label: 'Immaculate trace latency',
+        value: [
+          '3 spans',
+          'p50 120ms',
+          'p95 450ms',
+          '2 spans',
+          'p50 200ms',
+          'p95 300ms',
+          '1 reflex',
+          '1 cognitive',
+          'reflex p95 80ms',
+          'cognitive p95 140ms',
+        ],
+      },
+      {
+        label: 'Immaculate trace path',
+        value: 'D:/openjaws/OpenJaws/artifacts/immaculate/session-traces/session.jsonl',
+      },
+    ])
+  })
+})
+
+describe('buildQTraceProperties', () => {
+  test('surfaces the latest Q benchmark trace flow and latency data', () => {
+    expect(
+      buildQTraceProperties({
+        kind: 'benchmark',
+        path: '/tmp/q-trace.jsonl',
+        sessionId: 'q-soak-1',
+        eventCount: 6,
+        startedAt: '2026-04-17T00:00:00.000Z',
+        endedAt: '2026-04-17T00:00:05.000Z',
+        lastTimestamp: '2026-04-17T00:00:05.000Z',
+        countsByType: {
+          'session.started': 1,
+          'route.dispatched': 1,
+          'turn.complete': 1,
+          'session.ended': 1,
+        },
+        routeDispatchCount: 1,
+        routeLeaseCount: 0,
+        workerAssignmentCount: 1,
+        latestRouteId: 'route-1',
+        latestWorkerId: 'worker-1',
+        interactionLatency: {
+          count: 1,
+          p50Ms: 120,
+          p95Ms: 120,
+          maxMs: 120,
+        },
+        llmLatency: {
+          count: 1,
+          p50Ms: 420,
+          p95Ms: 420,
+          maxMs: 420,
+        },
+        reflexLatency: {
+          count: 1,
+          p50Ms: 80,
+          p95Ms: 80,
+          maxMs: 80,
+        },
+        cognitiveLatency: {
+          count: 1,
+          p50Ms: 160,
+          p95Ms: 160,
+          maxMs: 160,
+        },
+      }),
+    ).toEqual([
+      {
+        label: 'Q trace',
+        value: [
+          'q-soak-1',
+          'benchmark',
+          '6 events',
+          'started 2026-04-17T00:00:00.000Z',
+          'ended 2026-04-17T00:00:05.000Z',
+        ],
+      },
+      {
+        label: 'Q trace flow',
+        value: [
+          '1 dispatched',
+          '0 leased',
+          '1 assigned',
+          'route route-1',
+          'worker worker-1',
+        ],
+      },
+      {
+        label: 'Q trace latency',
+        value: [
+          '1 spans',
+          'interaction p95 120ms',
+          'llm p95 420ms',
+          'reflex p95 80ms',
+          'cognitive p95 160ms',
+        ],
+      },
+      {
+        label: 'Q trace path',
+        value: '/tmp/q-trace.jsonl',
       },
     ])
   })

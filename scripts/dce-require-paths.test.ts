@@ -5,7 +5,7 @@ import { relative, resolve } from 'path'
 const rootDir = resolve(import.meta.dir, '..')
 const srcDir = resolve(rootDir, 'src')
 
-function scanFiles(): string[] {
+function scanFilesWithGlob(): string[] {
   const patterns = ['**/*.ts', '**/*.tsx']
   return patterns.flatMap(pattern =>
     Array.from(new Bun.Glob(pattern).scanSync({ cwd: srcDir })).map(file =>
@@ -14,9 +14,65 @@ function scanFiles(): string[] {
   )
 }
 
-describe('dead-code-eliminated lazy requires', () => {
-  test('does not use path-aliased src/* strings in require() expressions', () => {
-    const offenders = scanFiles()
+function scanFilesWithRipgrep(): Array<{ file: string; matches: string[] }> {
+  const result = Bun.spawnSync({
+    cmd: [
+      'rg',
+      '-n',
+      '--no-heading',
+      '--glob',
+      '!**/*.test.*',
+      '--glob',
+      '!**/*.spec.*',
+      `require\\((['"])src/.+?\\1\\)`,
+      srcDir,
+    ],
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+
+  if (result.exitCode === 1) {
+    return []
+  }
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `ripgrep scan failed: ${Buffer.from(result.stderr).toString('utf8').trim() || `exit ${result.exitCode}`}`,
+    )
+  }
+
+  const output = Buffer.from(result.stdout).toString('utf8').trim()
+  if (!output) {
+    return []
+  }
+
+  const offenders = new Map<string, string[]>()
+  for (const line of output.split(/\r?\n/)) {
+    const match = line.match(/^(.*?):\d+:(.*)$/)
+    if (!match) {
+      continue
+    }
+    const file = relative(rootDir, resolve(match[1]!)).replace(/\\/g, '/')
+    const sourceLine = match[2]!
+    const matches = Array.from(
+      sourceLine.matchAll(/require\((['"])src\/.+?\1\)/g),
+    ).map(entry => entry[0])
+    if (matches.length === 0) {
+      continue
+    }
+    offenders.set(file, [...(offenders.get(file) ?? []), ...matches])
+  }
+
+  return Array.from(offenders.entries()).map(([file, matches]) => ({
+    file,
+    matches,
+  }))
+}
+
+function scanOffendersWithFallback(): Array<{ file: string; matches: string[] }> {
+  try {
+    return scanFilesWithRipgrep()
+  } catch {
+    return scanFilesWithGlob()
       .map(file => {
         const content = readFileSync(file, 'utf8')
         const matches = Array.from(
@@ -30,7 +86,17 @@ describe('dead-code-eliminated lazy requires', () => {
           : null
       })
       .filter(entry => entry !== null)
+  }
+}
 
-    expect(offenders).toEqual([])
-  })
+describe('dead-code-eliminated lazy requires', () => {
+  test(
+    'does not use path-aliased src/* strings in require() expressions',
+    () => {
+      const offenders = scanOffendersWithFallback()
+
+      expect(offenders).toEqual([])
+    },
+    30_000,
+  )
 })

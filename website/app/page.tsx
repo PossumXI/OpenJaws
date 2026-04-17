@@ -78,6 +78,7 @@ export default function Page(): React.ReactNode {
             <span>Agent Co-Work live</span>
             <span>Release-checked qline.site</span>
             <span>Public + soak TerminalBench receipts</span>
+            <span>Typed Q + Immaculate traces</span>
           </div>
         </div>
 
@@ -168,7 +169,9 @@ export default function Page(): React.ReactNode {
             <strong>Keep orchestration visible.</strong>
             <p>
               Routing, pacing, worker state, and now typed trace receipts stay
-              inspectable instead of implied.
+              inspectable instead of implied. `/status` and `/immaculate` read
+              the latest Immaculate trace summary directly, and `/status` also
+              surfaces the latest Q benchmark trace.
             </p>
           </article>
           <article className="feature-card">
@@ -177,7 +180,8 @@ export default function Page(): React.ReactNode {
             <p>
               Local tuning plus official public and repeated TerminalBench
               receipts, all checked against one shared OCI Q preflight lane and
-              one typed Immaculate event contract.
+              one typed Immaculate event contract with trace-backed receipt
+              files ready to sign.
             </p>
           </article>
           <article className="feature-card">

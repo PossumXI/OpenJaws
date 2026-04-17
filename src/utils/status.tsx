@@ -31,6 +31,7 @@ import {
   type ImmaculateHarnessStatus,
   type ImmaculateHarnessWorkerCatalog,
 } from './immaculateHarness.js';
+import { readLatestImmaculateTraceSummary, type ImmaculateTraceSummary } from '../immaculate/traceSummary.js';
 import {
   getExternalProviderDefaults,
   resolveExternalModelConfig,
@@ -73,6 +74,7 @@ import {
   readQTrainingRouteWorkerRuntimeStatuses,
   readQTrainingRouteWorkers,
 } from './qTraining.js';
+import { readLatestQTraceSummary, type QTraceSummary } from '../q/traceSummary.js';
 export type Property = {
   label?: string;
   value: React.ReactNode | Array<string>;
@@ -290,6 +292,125 @@ export function buildImmaculateProperties(
     }
   }
   return properties
+}
+export function buildImmaculateTraceProperties(
+  summary: ImmaculateTraceSummary | null = readLatestImmaculateTraceSummary(),
+): Property[] {
+  if (!summary) {
+    return []
+  }
+  const formatTraceLatency = (ms: number): string =>
+    ms < 1000 ? `${Math.round(ms)}ms` : formatDuration(ms)
+  const interactionParts = [
+    `${formatNumber(summary.interactionLatency.count)} spans`,
+    ...(summary.interactionLatency.p50Ms !== null
+      ? [`p50 ${formatTraceLatency(summary.interactionLatency.p50Ms)}`]
+      : []),
+    ...(summary.interactionLatency.p95Ms !== null
+      ? [`p95 ${formatTraceLatency(summary.interactionLatency.p95Ms)}`]
+      : []),
+  ]
+  const llmParts = [
+    `${formatNumber(summary.llmLatency.count)} spans`,
+    ...(summary.llmLatency.p50Ms !== null
+      ? [`p50 ${formatTraceLatency(summary.llmLatency.p50Ms)}`]
+      : []),
+    ...(summary.llmLatency.p95Ms !== null
+      ? [`p95 ${formatTraceLatency(summary.llmLatency.p95Ms)}`]
+      : []),
+  ]
+  const samplingParts = [
+    `${formatNumber(summary.reflexLatency.count)} reflex`,
+    `${formatNumber(summary.cognitiveLatency.count)} cognitive`,
+    ...(summary.reflexLatency.p95Ms !== null
+      ? [`reflex p95 ${formatTraceLatency(summary.reflexLatency.p95Ms)}`]
+      : []),
+    ...(summary.cognitiveLatency.p95Ms !== null
+      ? [`cognitive p95 ${formatTraceLatency(summary.cognitiveLatency.p95Ms)}`]
+      : []),
+  ]
+  return [
+    {
+      label: 'Immaculate trace',
+      value: [
+        summary.sessionId,
+        `${formatNumber(summary.eventCount)} events`,
+        ...(summary.startedAt ? [`started ${summary.startedAt}`] : []),
+        ...(summary.endedAt ? [`ended ${summary.endedAt}`] : []),
+      ],
+    },
+    {
+      label: 'Immaculate trace flow',
+      value: [
+        `${formatNumber(summary.routeDispatchCount)} dispatched`,
+        `${formatNumber(summary.routeLeaseCount)} leased`,
+        `${formatNumber(summary.workerAssignmentCount)} assigned`,
+        ...(summary.latestRouteId ? [`route ${summary.latestRouteId}`] : []),
+        ...(summary.latestWorkerId ? [`worker ${summary.latestWorkerId}`] : []),
+      ],
+    },
+    {
+      label: 'Immaculate trace latency',
+      value: [...interactionParts, ...llmParts, ...samplingParts],
+    },
+    {
+      label: 'Immaculate trace path',
+      value: summary.path,
+    },
+  ]
+}
+export function buildQTraceProperties(
+  summary: QTraceSummary | null = readLatestQTraceSummary(),
+): Property[] {
+  if (!summary) {
+    return []
+  }
+  const formatTraceLatency = (ms: number): string =>
+    ms < 1000 ? `${Math.round(ms)}ms` : formatDuration(ms)
+  return [
+    {
+      label: 'Q trace',
+      value: [
+        summary.sessionId,
+        summary.kind,
+        `${formatNumber(summary.eventCount)} events`,
+        ...(summary.startedAt ? [`started ${summary.startedAt}`] : []),
+        ...(summary.endedAt ? [`ended ${summary.endedAt}`] : []),
+      ],
+    },
+    {
+      label: 'Q trace flow',
+      value: [
+        `${formatNumber(summary.routeDispatchCount)} dispatched`,
+        `${formatNumber(summary.routeLeaseCount)} leased`,
+        `${formatNumber(summary.workerAssignmentCount)} assigned`,
+        ...(summary.latestRouteId ? [`route ${summary.latestRouteId}`] : []),
+        ...(summary.latestWorkerId ? [`worker ${summary.latestWorkerId}`] : []),
+      ],
+    },
+    {
+      label: 'Q trace latency',
+      value: [
+        `${formatNumber(summary.interactionLatency.count)} spans`,
+        ...(summary.interactionLatency.p95Ms !== null
+          ? [`interaction p95 ${formatTraceLatency(summary.interactionLatency.p95Ms)}`]
+          : []),
+        ...(summary.llmLatency.p95Ms !== null
+          ? [`llm p95 ${formatTraceLatency(summary.llmLatency.p95Ms)}`]
+          : []),
+        ...(summary.reflexLatency.p95Ms !== null
+          ? [`reflex p95 ${formatTraceLatency(summary.reflexLatency.p95Ms)}`]
+          : []),
+        ...(summary.cognitiveLatency.p95Ms !== null
+          ? [`cognitive p95 ${formatTraceLatency(summary.cognitiveLatency.p95Ms)}`]
+          : []),
+      ],
+    },
+    {
+      label: 'Q trace path',
+      value: summary.path,
+    },
+  ]
 }
 type ProviderGuidanceModel = Pick<
   ResolvedExternalModelConfig,

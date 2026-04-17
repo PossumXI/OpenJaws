@@ -22,6 +22,7 @@ let currentInteractionSpan: Span | undefined
 let currentToolSpan: Span | undefined
 let currentToolBlockedSpan: Span | undefined
 let currentToolExecutionSpan: Span | undefined
+let trackedSessionId: string | null = null
 
 export type Span = {
   id: string
@@ -216,6 +217,7 @@ export function endSessionTrace(): void {
   currentToolSpan = undefined
   currentToolBlockedSpan = undefined
   currentToolExecutionSpan = undefined
+  trackedSessionId = null
 }
 
 export function getActiveSessionTracePath(): string | null {
@@ -362,4 +364,15 @@ export function addToolContentEvent(
     name,
     attributes: normalizeAttributes(attributes),
   })
+}
+
+export function syncSessionTrace(sessionId: string): void {
+  if (trackedSessionId === sessionId && activeSessionTrace) {
+    return
+  }
+  if (activeSessionTrace) {
+    endSessionTrace()
+  }
+  startSessionTrace(sessionId)
+  trackedSessionId = sessionId
 }
