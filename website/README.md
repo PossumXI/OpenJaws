@@ -98,6 +98,7 @@ bun run website:deploy:safe
 What the guarded publish does:
 
 - uses the existing `qline.site` Netlify project instead of creating or targeting another site
+- can reuse the authenticated Windows Netlify CLI config if the repo-local CLI config is missing
 - runs the build from Linux or WSL, not from a Windows-built Next runtime bundle
 - deploys the explicit Next output from `.netlify/static` plus `.netlify/functions-internal`
 - rejects any draft that does not ship the real `Next.js Server Handler`

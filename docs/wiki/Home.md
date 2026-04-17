@@ -93,6 +93,7 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 - `bun run q:soak` runs a bounded repeated-probe soak over native OpenJaws and direct OCI Q under one receipt
 - `bun run q:terminalbench:soak` runs a bounded repeated Harbor / Terminal-Bench soak lane with live `cycles[]` receipts
 - `bun run q:hybrid` keeps one bounded local lane and one Immaculate-routed lane under one explicit receipt
+- the direct soak lane and the Harbor-backed lane now share the same OCI/Q provider probe surface before launch, so blocked vs. forceable preflight behavior stays consistent
 - the local lane writes `reward.json` and `reward-details.json` so the results are easy to compare with Rewardkit-style tooling
 - `--lineage-id` and optional `--phase-id` now let the local, routed, and follow-up benchmark receipts stay attached to the same intentional work thread
 - the local Discord `Q_agent` lane now writes patrol/routing/voice/knowledge/operator receipts that `/status` can read from the same machine

@@ -173,7 +173,7 @@ export default function Page(): React.ReactNode {
             <strong>BridgeBench, soak, and Harbor receipts.</strong>
             <p>
               Local tuning plus official public and repeated TerminalBench
-              receipts.
+              receipts, all checked against one shared OCI Q preflight lane.
             </p>
           </article>
           <article className="feature-card">

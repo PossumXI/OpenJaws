@@ -360,6 +360,7 @@ OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
 - `bun run q:hybrid` coordinates one bounded local `Q` lane plus one Immaculate-routed lane under a shared receipt
 - `bun run q:soak` runs a bounded repeated-probe soak over native OpenJaws plus direct OCI Q
 - `bun run q:terminalbench` wraps Harbor / Terminal-Bench for external terminal-task evaluation when Harbor and Docker are available
+- `q:soak` and `q:terminalbench` now share the same OCI/Q provider probe surface before launch, so preflight receipts stop drifting across the direct soak lane and the Harbor-backed lane
 - `q:terminalbench` now supports `--repeat` and writes `attempts[]` plus flattened `tasks[]` receipts so repeated-run stability and real multi-task concurrency are visible in one artifact
 - `q:terminalbench` now also supports `--soak`, and `bun run q:terminalbench:soak` wraps that into repeated live cycles with `cycles[]`, per-cycle aggregates, and one managed jobs lane per run
 - benchmark artifacts now write `bridgebench-report.json` plus `reward.json` and `reward-details.json` in a Rewardkit-style shape so the results are easy to inspect or reuse

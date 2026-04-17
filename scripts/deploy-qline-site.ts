@@ -85,24 +85,34 @@ function readNetlifyAuthToken(repoRoot: string): string {
     return directToken
   }
 
-  const configPath = resolve(repoRoot, 'website', '.netlify-cli-config', 'config.json')
-  if (!existsSync(configPath)) {
-    throw new Error(
-      'No Netlify auth token found. Set NETLIFY_AUTH_TOKEN or log in through website/.netlify-cli-config/config.json.',
-    )
+  const candidatePaths = [
+    resolve(repoRoot, 'website', '.netlify-cli-config', 'config.json'),
+    process.env.APPDATA
+      ? resolve(process.env.APPDATA, 'netlify', 'Config', 'config.json')
+      : null,
+    process.env.APPDATA
+      ? resolve(process.env.APPDATA, 'Netlify', 'Config', 'config.json')
+      : null,
+  ].filter((value): value is string => typeof value === 'string')
+
+  for (const configPath of candidatePaths) {
+    if (!existsSync(configPath)) {
+      continue
+    }
+
+    const config = JSON.parse(readFileSync(configPath, 'utf8')) as {
+      users?: Record<string, { auth?: { token?: string } }>
+    }
+    const firstUser = config.users ? Object.values(config.users)[0] : null
+    const token = firstUser?.auth?.token?.trim()
+    if (token) {
+      return token
+    }
   }
 
-  const config = JSON.parse(readFileSync(configPath, 'utf8')) as {
-    users?: Record<string, { auth?: { token?: string } }>
-  }
-  const firstUser = config.users ? Object.values(config.users)[0] : null
-  const token = firstUser?.auth?.token?.trim()
-  if (!token) {
-    throw new Error(
-      'Netlify auth config exists, but no user auth token was found in website/.netlify-cli-config/config.json.',
-    )
-  }
-  return token
+  throw new Error(
+    'No Netlify auth token found. Set NETLIFY_AUTH_TOKEN or log in through website/.netlify-cli-config/config.json or the Windows Netlify CLI config.',
+  )
 }
 
 async function netlifyApi<T>(token: string, path: string): Promise<T> {

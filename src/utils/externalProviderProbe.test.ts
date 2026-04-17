@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import {
+  mapExternalProviderProbeToCheckStatus,
+  probeExternalProviderModel,
   probeResolvedExternalProvider,
   resolveProviderProbeModelRef,
 } from './externalProviderProbe.js'
@@ -203,10 +208,125 @@ describe('externalProviderProbe', () => {
     expect(result.code).toBe('auth_failed')
     expect(result.endpointLabel).toBe('/responses')
   })
+
+  test('probes the default oci:Q model through the shared raw-model helper', async () => {
+    process.env.Q_API_KEY = 'sk-env-test'
+    const seen: Array<{ authMode: string; model: string }> = []
+
+    const result = await probeExternalProviderModel('oci:Q', {
+      ociQueryFn: async args => {
+        seen.push({
+          authMode: args.runtimeOverride?.authMode ?? 'unknown',
+          model: args.runtimeOverride?.model ?? 'unknown',
+        })
+        return {
+          ok: true,
+          text: 'OK',
+          model: 'openai.gpt-oss-120b',
+          base_url: 'https://example.com/openai/v1',
+          auth_mode: 'bearer',
+          project_id: null,
+          compartment_id: null,
+          profile: null,
+          config_file: null,
+        }
+      },
+    })
+
+    expect(seen).toEqual([
+      {
+        authMode: 'bearer',
+        model: 'openai.gpt-oss-120b',
+      },
+    ])
+    expect(result.ok).toBe(true)
+    expect(result.provider).toBe('oci')
+    expect(result.modelRef).toBe('oci:Q')
+  })
+
+  test('probes oci:Q through IAM when OCI config is present', async () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'openjaws-oci-probe-'))
+    const configPath = join(configDir, 'config')
+    writeFileSync(
+      configPath,
+      ['[DEFAULT]', 'region=us-chicago-1', ''].join('\n'),
+      'utf8',
+    )
+    process.env.OCI_CONFIG_FILE = configPath
+    process.env.OCI_COMPARTMENT_ID = 'ocid1.compartment.oc1..example'
+    process.env.OCI_GENAI_PROJECT_ID = 'ocid1.generativeaiendpoint.oc1..example'
+
+    const seen: Array<{
+      authMode: string
+      configFile: string | null | undefined
+      projectId: string | null | undefined
+      compartmentId: string | null | undefined
+    }> = []
+
+    try {
+      const result = await probeExternalProviderModel('oci:Q', {
+        ociQueryFn: async args => {
+          seen.push({
+            authMode: args.runtimeOverride?.authMode ?? 'unknown',
+            configFile: args.runtimeOverride?.configFile,
+            projectId: args.runtimeOverride?.projectId,
+            compartmentId: args.runtimeOverride?.compartmentId,
+          })
+          return {
+            ok: true,
+            text: 'OK',
+            model: 'openai.gpt-oss-120b',
+            base_url: 'https://example.com/openai/v1',
+            auth_mode: 'iam',
+            project_id: 'ocid1.generativeaiendpoint.oc1..example',
+            compartment_id: 'ocid1.compartment.oc1..example',
+            profile: 'DEFAULT',
+            config_file: configPath,
+          }
+        },
+      })
+
+      expect(seen).toEqual([
+        {
+          authMode: 'iam',
+          configFile: configPath,
+          projectId: 'ocid1.generativeaiendpoint.oc1..example',
+          compartmentId: 'ocid1.compartment.oc1..example',
+        },
+      ])
+      expect(result.ok).toBe(true)
+      expect(result.apiKeySource).toBe('OCI IAM')
+    } finally {
+      rmSync(configDir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('resolveProviderProbeModelRef', () => {
   test('falls back to the current external model when no provider is given', () => {
     expect(resolveProviderProbeModelRef(null, null, 'oci:Q')).toBe('oci:Q')
+  })
+})
+
+describe('mapExternalProviderProbeToCheckStatus', () => {
+  test('treats hard config faults as failed checks', () => {
+    expect(
+      mapExternalProviderProbeToCheckStatus({
+        ok: false,
+        code: 'missing_key',
+      }),
+    ).toBe('failed')
+  })
+
+  test('downgrades unhealthy probes to warning when a caller wants forceable checks', () => {
+    expect(
+      mapExternalProviderProbeToCheckStatus(
+        {
+          ok: false,
+          code: 'auth_failed',
+        },
+        { warnOnFailure: true },
+      ),
+    ).toBe('warning')
   })
 })

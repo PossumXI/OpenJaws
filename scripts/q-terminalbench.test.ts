@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  buildOpenJawsProviderProbeCheck,
   buildAggregateSummary,
   buildCycleReceipt,
   parseArgs,
@@ -198,5 +199,32 @@ describe('q-terminalbench soak receipts', () => {
     expect(aggregate.totalTrials).toBe(2)
     expect(aggregate.avgReward).toBe(0.5)
     expect(aggregate.p95TrialDurationMs).toBe(2000)
+  })
+})
+
+describe('q-terminalbench provider probe checks', () => {
+  test('downgrades unhealthy external provider probes to forceable warnings', () => {
+    const check = buildOpenJawsProviderProbeCheck({
+      ok: false,
+      code: 'auth_failed',
+      provider: 'oci',
+      label: 'OCI',
+      model: 'Q',
+      modelRef: 'oci:Q',
+      baseURL: 'https://example.com/openai/v1',
+      baseURLSource: null,
+      apiKeySource: 'Q_API_KEY',
+      endpoint: 'https://example.com/openai/v1/responses',
+      endpointLabel: '/responses',
+      method: 'POST',
+      checkedAt: 0,
+      summary: 'OCI:Q failed · auth rejected (401)',
+    })
+
+    expect(check).toEqual({
+      name: 'openjaws-provider-preflight',
+      status: 'warning',
+      summary: 'OCI:Q failed · auth rejected (401)',
+    })
   })
 })

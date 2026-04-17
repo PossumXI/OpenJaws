@@ -1,6 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join, resolve } from 'path'
 import { execa } from 'execa'
+import {
+  mapExternalProviderProbeToCheckStatus,
+  probeExternalProviderModel,
+  type ExternalProviderProbeResult,
+} from '../src/utils/externalProviderProbe.js'
 import { queryOciQViaPython } from '../src/utils/ociQBridge.js'
 import { resolveOciQRuntime } from '../src/utils/ociQRuntime.js'
 
@@ -39,6 +44,29 @@ type SoakProbeResult = {
   exitCode?: number | null
   responseText?: string | null
   error?: string | null
+}
+
+function isOciModelRef(value: string | null | undefined): boolean {
+  return typeof value === 'string' && value.trim().toLowerCase().startsWith('oci:')
+}
+
+export function resolveOciProbeModel(
+  options: Pick<CliOptions, 'modes' | 'openjawsModel'>,
+): string | null {
+  if (options.modes.includes('oci-q')) {
+    return 'oci:Q'
+  }
+  return isOciModelRef(options.openjawsModel) ? options.openjawsModel : null
+}
+
+export function buildOciProbeCheck(
+  result: ExternalProviderProbeResult,
+): PreflightCheck {
+  return {
+    name: 'oci-q-runtime',
+    status: mapExternalProviderProbeToCheckStatus(result),
+    summary: result.summary,
+  }
 }
 
 function parseOptionalInt(value: string | undefined): number | null {
@@ -401,12 +429,16 @@ async function main() {
       ? `Compiled OpenJaws binary found at ${openjawsBinary}.`
       : `Compiled OpenJaws binary not found at ${openjawsBinary}.`,
   })
-  const ociRuntime = resolveOciQRuntime()
-  checks.push({
-    name: 'oci-q-runtime',
-    status: ociRuntime.ready ? 'passed' : ociRuntime.authMode === 'unconfigured' ? 'failed' : 'warning',
-    summary: ociRuntime.summary,
-  })
+  const ociProbeModel = resolveOciProbeModel(options)
+  if (ociProbeModel) {
+    checks.push(
+      buildOciProbeCheck(
+        await probeExternalProviderModel(ociProbeModel, {
+          timeoutMs: Math.min(options.timeoutMs, 15_000),
+        }),
+      ),
+    )
+  }
 
   const plannedCycleCount =
     options.maxProbes !== null
@@ -596,4 +628,6 @@ async function main() {
   )
 }
 
-await main()
+if (import.meta.main) {
+  await main()
+}

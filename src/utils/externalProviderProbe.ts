@@ -49,6 +49,8 @@ export type ExternalProviderProbeResult = {
   summary: string
 }
 
+export type ExternalProviderProbeCheckStatus = 'passed' | 'warning' | 'failed'
+
 type ProbeFetch = (
   input: string,
   init?: RequestInit,
@@ -308,6 +310,29 @@ export function resolveProviderProbeModelRef(
   return defaultModel
     ? buildExternalProviderModelRef(defaultProvider, defaultModel)
     : null
+}
+
+export function mapExternalProviderProbeToCheckStatus(
+  result: Pick<ExternalProviderProbeResult, 'ok' | 'code'>,
+  options: { warnOnFailure?: boolean } = {},
+): ExternalProviderProbeCheckStatus {
+  if (result.ok) {
+    return 'passed'
+  }
+
+  if (options.warnOnFailure) {
+    return 'warning'
+  }
+
+  switch (result.code) {
+    case 'missing_key':
+    case 'invalid_model':
+    case 'invalid_base_url':
+    case 'auth_failed':
+      return 'failed'
+    default:
+      return 'warning'
+  }
 }
 
 export async function probeResolvedExternalProvider(

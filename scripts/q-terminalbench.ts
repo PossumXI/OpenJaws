@@ -10,6 +10,12 @@ import {
 } from 'fs'
 import { dirname, join, resolve } from 'path'
 import { execa } from 'execa'
+import {
+  mapExternalProviderProbeToCheckStatus,
+  probeExternalProviderModel,
+  type ExternalProviderProbeResult,
+} from '../src/utils/externalProviderProbe.js'
+import { resolveExternalModelRef } from '../src/utils/model/externalProviders.js'
 import { resolveOciQRuntime } from '../src/utils/ociQRuntime.js'
 
 type AgentMode = 'openjaws' | 'oracle'
@@ -169,6 +175,18 @@ type TerminalBenchSoakReceipt = {
   startedAt: string | null
   finishedAt: string | null
   durationMs: number | null
+}
+
+export function buildOpenJawsProviderProbeCheck(
+  result: ExternalProviderProbeResult,
+): PreflightCheck {
+  return {
+    name: 'openjaws-provider-preflight',
+    status: mapExternalProviderProbeToCheckStatus(result, {
+      warnOnFailure: true,
+    }),
+    summary: result.summary,
+  }
 }
 
 function resolveDefaultHarborCommand(): string {
@@ -515,6 +533,20 @@ async function runPreflightCheck(
 }
 
 async function runOpenJawsProviderPreflight(options: CliOptions): Promise<PreflightCheck> {
+  let providerProbeSummary: string | null = null
+  const externalModelRef = options.model
+    ? resolveExternalModelRef(options.model)
+    : null
+  if (externalModelRef) {
+    const providerProbe = await probeExternalProviderModel(externalModelRef, {
+      timeoutMs: 15_000,
+    })
+    if (!providerProbe.ok) {
+      return buildOpenJawsProviderProbeCheck(providerProbe)
+    }
+    providerProbeSummary = providerProbe.summary
+  }
+
   const binary =
     process.platform === 'win32'
       ? resolve(options.root, 'dist', 'openjaws.exe')
@@ -562,7 +594,9 @@ async function runOpenJawsProviderPreflight(options: CliOptions): Promise<Prefli
     return {
       name: 'openjaws-provider-preflight',
       status: 'passed',
-      summary: 'OpenJaws local provider preflight succeeded.',
+      summary: providerProbeSummary
+        ? `${providerProbeSummary} · OpenJaws local provider preflight succeeded.`
+        : 'OpenJaws local provider preflight succeeded.',
     }
   }
 
