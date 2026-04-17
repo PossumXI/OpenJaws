@@ -19,24 +19,51 @@ async function resolveNodeCommand(): Promise<string> {
   )
 }
 
-async function main() {
-  const root = process.cwd()
-  const websiteRoot = resolve(root, 'website')
-  const nextBin = join(
-    websiteRoot,
-    'node_modules',
-    'next',
-    'dist',
-    'bin',
-    'next',
-  )
+export function getNextBinCandidates(root: string, websiteRoot: string): string[] {
+  return [
+    join(websiteRoot, 'node_modules', 'next', 'dist', 'bin', 'next'),
+    join(root, 'node_modules', 'next', 'dist', 'bin', 'next'),
+  ]
+}
 
-  if (!existsSync(nextBin)) {
-    throw new Error(
-      `Next.js build binary not found at ${nextBin}. Run bun install in website/ first.`,
-    )
+export function findExistingNextBin(root: string, websiteRoot: string): string | null {
+  return getNextBinCandidates(root, websiteRoot).find(candidate => existsSync(candidate)) ?? null
+}
+
+export async function installWebsiteDependencies(websiteRoot: string): Promise<void> {
+  await execa('bun', ['install'], {
+    cwd: websiteRoot,
+    stdio: 'inherit',
+    windowsHide: true,
+  })
+}
+
+export async function ensureNextBuildBinary(
+  root: string,
+  websiteRoot: string,
+  installDeps: (websiteRoot: string) => Promise<void> = installWebsiteDependencies,
+): Promise<string> {
+  const existing = findExistingNextBin(root, websiteRoot)
+  if (existing) {
+    return existing
   }
 
+  await installDeps(websiteRoot)
+
+  const installed = findExistingNextBin(root, websiteRoot)
+  if (installed) {
+    return installed
+  }
+
+  throw new Error(
+    `Next.js build binary not found. Checked: ${getNextBinCandidates(root, websiteRoot).join(', ')}`,
+  )
+}
+
+export async function main() {
+  const root = process.cwd()
+  const websiteRoot = resolve(root, 'website')
+  const nextBin = await ensureNextBuildBinary(root, websiteRoot)
   const nodeCommand = await resolveNodeCommand()
   await execa(nodeCommand, [nextBin, 'build'], {
     cwd: websiteRoot,
@@ -45,4 +72,6 @@ async function main() {
   })
 }
 
-await main()
+if (import.meta.main) {
+  await main()
+}

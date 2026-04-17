@@ -130,6 +130,7 @@ This pass also tightens the public `Q` runtime story:
 - `system:check` now exits nonzero on real failures, and the unit-test lane is scoped to the live repo `src/` and `scripts/` trees so mirrored benchmark artifacts cannot fake-break or fake-green a release pass
 - the CI lane now adds a bounded Phase 0 hygiene gate too: `scripts/` dead-file scan via `knip` plus a `15%` non-test scripts coverage floor before the main verify sweep runs
 - the website snapshot checker now fails closed on local drift while still falling back to the committed generated snapshot on runners that do not have private live benchmark receipts checked out, and the typed trace-summary tests now isolate their temp output so parallel CI runs do not collide
+- the Windows website build wrapper now provisions `website/` dependencies on demand when CI runners do not have a prebuilt nested `node_modules` tree, so `verify:ci` and `verify:public` no longer depend on local install layout quirks
 
 ## What Is Planned Next
 
