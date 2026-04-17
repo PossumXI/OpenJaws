@@ -117,6 +117,7 @@ The intended public hosted-Q surface is `https://qline.site`. `https://aura-gene
 That public benchmark snapshot is now generated from checked-in benchmark receipts and validated during CI instead of being left as hand-maintained copy.
 The local release sweep now also includes a live same-site `qline.site` smoke, so the published Netlify handler/runtime/content state is checked alongside the repo build before a local ship pass is called clean.
 The release sweep now also fails closed on real `system:check` failures, and the unit-test lane is scoped to the live repo `src/` and `scripts/` trees so mirrored benchmark artifacts cannot quietly contaminate a public ship pass.
+The CI lane now also enforces a bounded Phase 0 hygiene gate: a `scripts/` dead-file scan via `knip` plus a `15%` non-test scripts coverage floor before the main verify sweep runs.
 
 ## Public Release Notes
 

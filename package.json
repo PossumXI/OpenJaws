@@ -31,9 +31,11 @@
     "banner:export": "bun scripts/export-openjaws-banner.ts",
     "qmark:export": "bun scripts/export-q-mark.ts",
     "test": "bun scripts/run-unit-tests.ts",
-    "verify:ci": "bun test && bun run build && bun run website:verify",
-    "verify:public": "bun test && bun run build && bun run build:native && bun run website:verify",
-    "verify:release": "bun test && bun run build && bun run build:native && bun run website:verify && bun run system:check",
+    "test:coverage:scripts": "bun scripts/run-unit-tests.ts --scope scripts --coverage --min-line-coverage 15",
+    "audit:knip": "knip --config knip.json --include files",
+    "verify:ci": "bun run test && bun run build && bun run website:verify",
+    "verify:public": "bun run test && bun run build && bun run build:native && bun run website:verify",
+    "verify:release": "bun run test && bun run build && bun run build:native && bun run website:verify && bun run system:check",
     "export:sft": "bun scripts/export-openjaws-sft.ts",
     "prepare:sft": "bun scripts/prepare-openjaws-sft.ts",
     "audit:sft": "bun scripts/audit-openjaws-sft.ts",
@@ -135,6 +137,7 @@
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/react": "^19.2.14",
+    "knip": "^6.4.1",
     "typescript": "^5.5.0"
   }
 }

@@ -97,6 +97,10 @@ export default function Page(): React.ReactNode {
           <span>Receipts</span>
           <strong>Benchmark, soak, and route truth stays visible.</strong>
         </article>
+        <article className="signal-card">
+          <span>Release gate</span>
+          <strong>Coverage floor plus dead-file scan before ship.</strong>
+        </article>
       </section>
 
       <section className="asset-band">
@@ -170,6 +174,15 @@ export default function Page(): React.ReactNode {
             <p>
               Local tuning plus official public and repeated TerminalBench
               receipts.
+            </p>
+          </article>
+          <article className="feature-card">
+            <span>Release hardening</span>
+            <strong>Ship checks fail closed.</strong>
+            <p>
+              Same-site qline deploy checks, scoped test lanes, and bounded
+              hygiene gates now run before public ship calls are treated as
+              clean.
             </p>
           </article>
         </div>

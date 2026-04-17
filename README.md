@@ -402,6 +402,7 @@ Public hosted-Q website target:
 - the public `qline.site` benchmark block is now generated from checked-in benchmark receipts and fails CI if it drifts from those artifacts
 - the local release sweep now also includes a live same-site `qline.site` smoke, so the published Netlify handler/runtime/content state is checked alongside the repo build before a local ship pass is called clean
 - the release sweep now fails closed on real `system:check` failures, and the unit-test lane is scoped to the live repo `src/` and `scripts/` trees so mirrored benchmark artifacts cannot poison a ship pass
+- the CI lane now enforces a bounded Phase 0 hygiene gate too: `scripts/` dead-file scan via `knip` plus a `15%` non-test line-coverage floor for `scripts/` before the main verify sweep runs
 - Stripe webhook target for that hosted lane is `https://qline.site/api/webhooks/stripe`
 - `https://aura-genesis.org` stays the company path, not the hosted-Q checkout surface
 
@@ -422,6 +423,7 @@ That means the repo can exercise the hosted-Q flow end to end without pretending
 - Public-release docs and contribution policy are included in this repo.
 - Generated artifacts, logs, local runtime state, datasets, and env files are excluded from version control.
 - GitHub workflow scaffolding is provided for CI, hosted verification, CodeQL, dependency review, gitleaks, and optional GitGuardian scanning when configured with a repository secret.
+- The release-facing CI lane now fails closed on a scoped dead-file scan and a scripts-only coverage floor before it moves on to build and website verification.
 
 Start here:
 

@@ -116,6 +116,7 @@ This pass also tightens the public `Q` runtime story:
 - the public website benchmark snapshot is now generated from checked-in receipts and checked in CI so release copy cannot drift silently away from the real artifacts
 - the local release sweep now also includes a live same-site `qline.site` smoke so the published Netlify handler/runtime/content state is checked alongside the repo build before a ship pass is called clean
 - `system:check` now exits nonzero on real failures, and the unit-test lane is scoped to the live repo `src/` and `scripts/` trees so mirrored benchmark artifacts cannot fake-break or fake-green a release pass
+- the CI lane now adds a bounded Phase 0 hygiene gate too: `scripts/` dead-file scan via `knip` plus a `15%` non-test scripts coverage floor before the main verify sweep runs
 
 ## What Is Planned Next
 

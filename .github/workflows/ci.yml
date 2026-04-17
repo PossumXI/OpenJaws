@@ -18,5 +18,9 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: Audit dead files and unresolved imports
+        run: bun run audit:knip
+      - name: Enforce scripts coverage floor
+        run: bun run test:coverage:scripts
       - name: Verify PR build
         run: bun run verify:ci

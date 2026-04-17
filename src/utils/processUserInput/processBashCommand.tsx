@@ -71,11 +71,11 @@ export async function processBashCommand(inputString: string, precedingInputBloc
     // native, shouldUseSandbox() returns false regardless (unsupported platform).
     // Lazy-require PowerShellTool so its ~300KB chunk only loads when the
     // user has actually selected the powershell default shell.
-    type PSMod = typeof import('src/tools/PowerShellTool/PowerShellTool.js');
+    type PSMod = typeof import('../../tools/PowerShellTool/PowerShellTool.js');
     let PowerShellTool: PSMod['PowerShellTool'] | null = null;
     if (usePowerShell) {
       /* eslint-disable @typescript-eslint/no-require-imports */
-      PowerShellTool = (require('src/tools/PowerShellTool/PowerShellTool.js') as PSMod).PowerShellTool;
+      PowerShellTool = (require('../../tools/PowerShellTool/PowerShellTool.js') as PSMod).PowerShellTool;
       /* eslint-enable @typescript-eslint/no-require-imports */
     }
     const shellTool = PowerShellTool ?? BashTool;
