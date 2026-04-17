@@ -21,8 +21,18 @@ jobs:
         run: bun run build:native
       - name: Verify soak utility smoke
         run: bun test src/utils/ociQRuntime.test.ts src/utils/externalProviderProbe.test.ts
+      - name: Create tracked-free sample SFT input
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/ci-q-soak-input | Out-Null
+          @'
+          {"messages":[{"role":"user","content":"Use the Bash tool to print the working directory. Then respond with only the path."},{"role":"assistant","content":"/d/openjaws/OpenJaws"}],"metadata":{"sessionId":"ci-q-soak-sample-1","cwd":"D:\\openjaws\\OpenJaws","transcriptPath":"C:\\ci\\sample-1.jsonl","userTimestamp":"2026-04-10T20:46:25.634Z","assistantTimestamp":"2026-04-10T20:51:01.667Z","assistantModel":"<synthetic>","isSidechain":false}}
+          {"messages":[{"role":"user","content":"Use Bash to print the current working directory. Then answer with exactly that path and nothing else."},{"role":"assistant","content":"/d/openjaws/OpenJaws"}],"metadata":{"sessionId":"ci-q-soak-sample-2","cwd":"D:\\openjaws\\OpenJaws","transcriptPath":"C:\\ci\\sample-2.jsonl","userTimestamp":"2026-04-11T03:30:22.760Z","assistantTimestamp":"2026-04-11T03:36:57.709Z","assistantModel":"<synthetic>","isSidechain":false}}
+          '@ | Set-Content -Path artifacts/ci-q-soak-input/openjaws-q-sample.jsonl -Encoding UTF8
+      - name: Prepare sample bundle
+        run: bun scripts/prepare-openjaws-sft.ts --in artifacts/ci-q-soak-input/openjaws-q-sample.jsonl --out-dir artifacts/ci-q-soak-prepared-sample --eval-ratio 0.5
       - name: Build audited sample bundle
-        run: bun scripts/audit-openjaws-sft.ts --in data/sft/prepared-sample/all.jsonl --out-dir artifacts/ci-q-soak-audited-sample
+        run: bun scripts/audit-openjaws-sft.ts --in artifacts/ci-q-soak-prepared-sample/all.jsonl --out-dir artifacts/ci-q-soak-audited-sample
       - name: Q soak dry run
         run: bun scripts/q-soak-bench.ts --dry-run --out-dir artifacts/ci-q-soak --mode both --duration-minutes 30 --interval-ms 60000 --timeout-ms 120000
       - name: Upload benchmark receipts
@@ -30,5 +40,7 @@ jobs:
         with:
           name: q-benchmark-soak-receipts
           path: |
+            artifacts/ci-q-soak-input
+            artifacts/ci-q-soak-prepared-sample
             artifacts/ci-q-soak-audited-sample
             artifacts/ci-q-soak

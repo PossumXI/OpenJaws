@@ -1,4 +1,5 @@
 import { updateSessionBridgeId } from '../utils/concurrentSessions.js'
+import { setReplBridgeActive } from '../bootstrap/state.js'
 import type { ReplBridgeHandle } from './replBridge.js'
 import { toCompatSessionId } from './sessionIdCompat.js'
 
@@ -17,6 +18,7 @@ let handle: ReplBridgeHandle | null = null
 
 export function setReplBridgeHandle(h: ReplBridgeHandle | null): void {
   handle = h
+  setReplBridgeActive(Boolean(h))
   // Publish (or clear) our bridge session ID in the session record so other
   // local peers can dedup us out of their bridge list — local is preferred.
   void updateSessionBridgeId(getSelfBridgeCompatId() ?? null).catch(() => {})

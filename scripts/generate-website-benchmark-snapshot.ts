@@ -146,11 +146,26 @@ function normalizeGlobPattern(path: string): string {
   return path.replace(/\\/g, '/')
 }
 
+function isValidExistingReceiptPath(path: string): boolean {
+  if (typeof path !== 'string') {
+    return false
+  }
+  const trimmed = path.trim()
+  if (!trimmed || trimmed.includes('\0')) {
+    return false
+  }
+  try {
+    return existsSync(trimmed) && statSync(trimmed).isFile()
+  } catch {
+    return false
+  }
+}
+
 function resolveLatestReceipt(patterns: string[], fallbackPath: string): string {
   const matches = patterns.flatMap(pattern =>
     Array.from(new Bun.Glob(normalizeGlobPattern(pattern)).scanSync()),
   )
-  const uniqueMatches = Array.from(new Set(matches)).filter(existsSync)
+  const uniqueMatches = Array.from(new Set(matches)).filter(isValidExistingReceiptPath)
   if (uniqueMatches.length === 0) {
     return fallbackPath
   }

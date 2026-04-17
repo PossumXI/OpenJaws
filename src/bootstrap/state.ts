@@ -197,6 +197,10 @@ type State = {
   mainThreadAgentType: string | undefined
   // Remote mode (--remote flag)
   isRemoteMode: boolean
+  // Whether the REPL bridge is currently active for inbound/outbound control.
+  // Kept in bootstrap state so non-React callers can gate bridge-dependent
+  // tools without threading hook state through every call path.
+  replBridgeActive?: boolean
   // Direct connect server URL (for display in header)
   directConnectServerUrl: string | undefined
   // System prompt section cache state
@@ -1634,6 +1638,14 @@ export function getIsRemoteMode(): boolean {
 
 export function setIsRemoteMode(value: boolean): void {
   STATE.isRemoteMode = value
+}
+
+export function isReplBridgeActive(): boolean {
+  return STATE.replBridgeActive === true
+}
+
+export function setReplBridgeActive(value: boolean): void {
+  STATE.replBridgeActive = value
 }
 
 // System prompt section accessors
