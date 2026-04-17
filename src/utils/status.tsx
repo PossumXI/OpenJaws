@@ -56,9 +56,11 @@ import { getElevenLabsConfig } from '../services/voiceOutput.js';
 import type { ExternalProviderProbeResult } from './externalProviderProbe.js';
 import { readDiscordQAgentReceipt, type DiscordQAgentReceipt } from './discordQAgentRuntime.js';
 import {
+  getActiveTeamTerminalContexts,
+  getTeamPhaseReceiptsByRecency,
   getTeamPhaseRegistryPath,
   getTeamTerminalRegistryPath,
-  readTeamFile,
+  readTeamFileSessionSnapshot,
 } from './swarm/teamHelpers.js';
 import {
   getLatestQTrainingHybridSession,
@@ -533,7 +535,9 @@ type AgentCoworkContext = {
 } | null | undefined
 export function buildAgentCoworkProperties(
   teamContext: AgentCoworkContext,
-  teamFile = teamContext?.teamName ? readTeamFile(teamContext.teamName) : null,
+  teamFile = teamContext?.teamName
+    ? readTeamFileSessionSnapshot(teamContext.teamName)
+    : null,
   registryPath = teamContext?.teamName
     ? getTeamTerminalRegistryPath(teamContext.teamName)
     : null,
@@ -553,10 +557,7 @@ export function buildAgentCoworkProperties(
     ]
   }
 
-  const activeAgentIds = new Set(teamFile.members.map(member => member.agentId))
-  const activeContexts = (teamFile.terminalContexts ?? []).filter(context =>
-    activeAgentIds.has(context.agentId),
-  )
+  const activeContexts = getActiveTeamTerminalContexts(teamFile)
   const pinnedContexts = activeContexts.filter(context => Boolean(context.activePhaseId))
   const teammateCount = teamFile.members.filter(
     member => member.name !== 'team-lead',
@@ -569,9 +570,7 @@ export function buildAgentCoworkProperties(
       const phase = context.activePhaseId ? ` ${context.activePhaseId}` : ''
       return `${context.agentName} ${context.terminalContextId}${provider}${phase} ${location}`
     })
-  const phaseReceipts = [...(teamFile.phaseReceipts ?? [])].sort(
-    (left, right) => right.updatedAt - left.updatedAt,
-  )
+  const phaseReceipts = getTeamPhaseReceiptsByRecency(teamFile)
   const deliveredCount = phaseReceipts.filter(
     receipt => receipt.status === 'delivered',
   ).length

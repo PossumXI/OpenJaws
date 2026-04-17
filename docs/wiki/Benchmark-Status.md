@@ -75,6 +75,7 @@ These are the current live-check lanes OpenJaws can run honestly against its shi
 - `bun run q:curriculum` for bounded specialization runs plus follow-up local pack comparison
 - `bun run q:hybrid` for one bounded local lane plus one Immaculate-routed lane under a shared receipt
 - `bun run q:terminalbench` for Harbor / Terminal-Bench runs when the external harness is actually installed
+- `bun run q:terminalbench:soak` for repeated bounded Harbor / Terminal-Bench cycles under one soak receipt
 - `bun run q:soak` for a bounded repeated-probe soak over native OpenJaws and direct OCI Q
 - `bun run q-route:assignment` for `Q` route assignment behavior
 - `bun run q-route:remote-dispatch` for signed remote-dispatch behavior
@@ -108,6 +109,11 @@ These are the newest local OpenJaws receipts from this repo workspace. They are 
   - repeated-attempt stability receipt: `artifacts/q-terminalbench-repeat-smoke-20260416/terminalbench-report.json`
     - result: `completed_with_errors`
     - aggregate: `2` attempts, `1` benchmark-failing trial, `1` execution-error trial
+  - repeated soak lane:
+    - command: `bun run q:terminalbench:soak`
+    - live receipt: `artifacts/q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3/terminalbench-report.json`
+    - result: `completed_with_errors`
+    - truth: `2` cycles produced `2` total trials with `0` runtime errors and `2` benchmark-failing trials
   - real concurrent receipt: `artifacts/q-terminalbench-concurrent-smoke-20260416/terminalbench-report.json`
     - result: `completed_with_errors`
     - aggregate: `2` tasks at concurrency `2`, with `1` benchmark-failing trial and `1` execution-error trial
@@ -127,6 +133,9 @@ The local `Q` benchmark lane follows the same broad principles used by Harbor, T
 - the Harbor adapter now stages a Linux Bun runtime from the host and installs the OCI bridge Python dependencies inside the container, so Terminal-Bench reaches real execution instead of dying during bootstrap
 - the Harbor adapter now embeds OCI IAM config material into the staged Linux runtime instead of assuming the Windows-side `.oci` path is portable
 - `q:terminalbench` now supports `--repeat` and writes `attempts[]` plus flattened `tasks[]` receipts, so repeated-run stability and real multi-task concurrency are inspectable instead of hidden inside Harbor internals
+- `q:terminalbench` now also supports `--soak`, and `bun run q:terminalbench:soak` wraps that mode into a bounded repeated Terminal-Bench lane with `cycles[]`, per-cycle summaries, and a top-level `soak` receipt block
+- the live repeated soak lane now writes into a managed per-run `jobs/` directory, and the wrapper only reads Harbor fallback results from that scoped lane when it exists, which stops stale global job results from contaminating fresh receipts
+- Docker preflight for `q:terminalbench` now uses `docker version` instead of `docker info`, which matches the real Windows/Docker Desktop reachability surface on this machine more reliably
 - `q:terminalbench` now also scrubs Harbor raw `jobs/.../result.json` env maps in place after a run, so the wrapper no longer leaves plaintext agent env bundles behind in those local artifacts
 - small wiring smokes stay clearly labeled as local proof, not leaderboard claims
 - any heavier public benchmark story still needs real provenance
@@ -137,6 +146,7 @@ Important honesty boundary:
 - the W&B benchmark numbers above come from Immaculate itself; OpenJaws consumes and explains those records rather than inventing its own benchmark figures
 - the local `Q` benchmark lane is useful for tuning and comparison, but it is not the public Terminal-Bench or Harbor leaderboard record
 - a green `q:terminalbench --dry-run` proves Harbor, Docker, and the local OCI-backed OpenJaws path are ready; it does not count as a published benchmark run by itself
+- a green `q:terminalbench:soak -- --dry-run` proves the repeated soak receipt shape and command wiring; the live `v3` soak receipt above is the honest published bounded soak artifact from this workspace snapshot
 - the newest local Harbor receipts now include one bounded clean single-task completion plus repeated-run and concurrent receipts, but the lane is still variant and not ready for leaderboard claims
 - the newest official public-task receipt is now packaged and submitted through the official leaderboard repo, but the verifier reward is still `0.0`, so it is not a strong benchmark result yet
 - downloaded public installs should still bring their own `Q` / `OCI` key unless you have built and operate a separate hosted entitlement service

@@ -43,6 +43,7 @@
     "q:hybrid": "bun scripts/run-q-hybrid-session.ts",
     "q:soak": "bun scripts/q-soak-bench.ts",
     "q:terminalbench": "bun scripts/q-terminalbench.ts",
+    "q:terminalbench:soak": "bun scripts/q-terminalbench.ts --soak --soak-cycles 3 --soak-duration-minutes 45",
     "dispatch:q-route": "bun scripts/dispatch-q-route.ts",
     "process:q-routes": "bun scripts/process-q-routes.ts",
     "poll:q-route": "bun scripts/poll-q-route-result.ts",

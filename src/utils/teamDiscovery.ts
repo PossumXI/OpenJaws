@@ -9,10 +9,11 @@ import { isPaneBackend, type PaneBackendType } from './swarm/backends/types.js'
 import {
   getActiveTeamPhaseId,
   getActiveTeamPhaseReceiptForAgent,
+  getLatestTerminalContextForAgent,
   getLatestPhaseReceiptForAgent,
   getTeamPhaseRegistryPath,
   getTeamTerminalRegistryPath,
-  readTeamFile,
+  readTeamFileSessionSnapshot,
 } from './swarm/teamHelpers.js'
 
 export type TeamSummary = {
@@ -55,37 +56,12 @@ export type TeammateStatus = {
   phaseRegistryPath?: string | null
 }
 
-function getLatestTerminalContextForMember(
-  teamFile: NonNullable<ReturnType<typeof readTeamFile>>,
-  agentId: string,
-  terminalContextId?: string,
-) {
-  if (!teamFile.terminalContexts || teamFile.terminalContexts.length === 0) {
-    return null
-  }
-
-  if (terminalContextId) {
-    const exactMatch = teamFile.terminalContexts.find(
-      context => context.terminalContextId === terminalContextId,
-    )
-    if (exactMatch) {
-      return exactMatch
-    }
-  }
-
-  const matchingContexts = teamFile.terminalContexts
-    .filter(context => context.agentId === agentId)
-    .sort((left, right) => right.updatedAt - left.updatedAt)
-
-  return matchingContexts[0] ?? null
-}
-
 /**
  * Get detailed teammate statuses for a team
  * Reads isActive from config to determine status
  */
 export function getTeammateStatuses(teamName: string): TeammateStatus[] {
-  const teamFile = readTeamFile(teamName)
+  const teamFile = readTeamFileSessionSnapshot(teamName)
   if (!teamFile) {
     return []
   }
@@ -104,7 +80,7 @@ export function getTeammateStatuses(teamName: string): TeammateStatus[] {
     // Read isActive from config, defaulting to true (active) if undefined
     const isActive = member.isActive !== false
     const status: 'running' | 'idle' = isActive ? 'running' : 'idle'
-    const terminalContext = getLatestTerminalContextForMember(
+    const terminalContext = getLatestTerminalContextForAgent(
       teamFile,
       member.agentId,
       member.terminalContextId,

@@ -28,6 +28,16 @@ export type BenchmarkSnapshot = {
     summary: string
     submissionUrl?: string
   }
+  terminalBenchSoak: {
+    runId: string
+    taskName: string
+    status: string
+    cycleCount: number
+    totalTrials: number
+    executionErrorTrials: number
+    benchmarkFailedTrials: number
+    summary: string
+  }
   wandb: {
     status: string
     enabled: boolean

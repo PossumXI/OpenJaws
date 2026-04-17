@@ -14,6 +14,8 @@ import {
   removeMemberFromTeam,
   removeTeammateFromTeamFile,
   readTeamFileAsync,
+  readTeamFileSessionSnapshot,
+  recordMailboxPhaseMemory,
   recordTeamPhaseDelivery,
   recordTeamPhaseRequest,
   reuseTeamPhaseReceipt,
@@ -614,6 +616,144 @@ describe('teamHelpers agent co-work', () => {
 
     const refreshed = await readTeamFileAsync(teamName)
     expect(refreshed?.description).toBe('updated on disk')
+  })
+
+  it('keeps a shared session snapshot hot until the team file changes on disk', async () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'openjaws-team-cache-'))
+    process.env.CLAUDE_CONFIG_DIR = configDir
+
+    const teamName = 'cache-crew'
+    const initialTeamFile: TeamFile = {
+      name: teamName,
+      createdAt: 1,
+      leadAgentId: 'team-lead@cache-crew',
+      members: [
+        {
+          agentId: 'team-lead@cache-crew',
+          name: 'team-lead',
+          joinedAt: 1,
+          tmuxPaneId: '',
+          cwd: 'D:\\openjaws\\OpenJaws',
+          subscriptions: [],
+        },
+      ],
+    }
+
+    await writeTeamFileAsync(teamName, initialTeamFile)
+
+    const firstSnapshot = readTeamFileSessionSnapshot(teamName)
+    const secondSnapshot = readTeamFileSessionSnapshot(teamName)
+
+    expect(secondSnapshot).toBe(firstSnapshot)
+
+    const teamFilePath = getTeamFilePath(teamName)
+    mkdirSync(dirname(teamFilePath), { recursive: true })
+    writeFileSync(
+      teamFilePath,
+      JSON.stringify(
+        {
+          ...initialTeamFile,
+          description: 'updated on disk',
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const refreshed = readTeamFileSessionSnapshot(teamName)
+    expect(refreshed).not.toBe(firstSnapshot)
+    expect(refreshed?.description).toBe('updated on disk')
+  })
+
+  it('keeps repeated mailbox handoffs on the shared session cache', async () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'openjaws-team-cache-'))
+    process.env.CLAUDE_CONFIG_DIR = configDir
+
+    const teamName = 'bridge-crew'
+    await writeTeamFileAsync(teamName, {
+      name: teamName,
+      createdAt: 1,
+      leadAgentId: 'team-lead@bridge-crew',
+      leadTerminalContextId: 'term-lead01',
+      members: [
+        {
+          agentId: 'team-lead@bridge-crew',
+          name: 'team-lead',
+          joinedAt: 1,
+          tmuxPaneId: '',
+          cwd: 'D:\\openjaws\\OpenJaws',
+          terminalContextId: 'term-lead01',
+          subscriptions: [],
+        },
+        {
+          agentId: 'scout@bridge-crew',
+          name: 'scout',
+          joinedAt: 2,
+          tmuxPaneId: '%2',
+          cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          terminalContextId: 'term-scout02',
+          subscriptions: [],
+        },
+      ],
+      terminalContexts: [
+        {
+          terminalContextId: 'term-lead01',
+          agentId: 'team-lead@bridge-crew',
+          agentName: 'team-lead',
+          cwd: 'D:\\openjaws\\OpenJaws',
+          projectRoot: 'D:\\openjaws\\OpenJaws',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          terminalContextId: 'term-scout02',
+          agentId: 'scout@bridge-crew',
+          agentName: 'scout',
+          cwd: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          projectRoot: 'C:\\Users\\Knight\\Desktop\\cheeks',
+          createdAt: 2,
+          updatedAt: 2,
+        },
+      ],
+    } satisfies TeamFile)
+
+    const snapshot = readTeamFileSessionSnapshot(teamName)
+    expect(snapshot).not.toBeNull()
+
+    await recordMailboxPhaseMemory(teamName, {
+      fromName: 'user',
+      toNames: ['scout'],
+      text: 'Compare the OpenJaws and cheeks routing before patching.',
+      summary: 'Compare the OpenJaws and cheeks routing before patching.',
+      sourceTerminalContextId: 'term-lead01',
+    })
+
+    const phaseId = snapshot?.phaseReceipts?.[0]?.phaseId
+    expect(phaseId).toBeDefined()
+    expect(readTeamFileSessionSnapshot(teamName)).toBe(snapshot)
+
+    await recordMailboxPhaseMemory(teamName, {
+      fromName: 'scout',
+      toNames: ['team-lead'],
+      phaseId,
+      text: 'Patched the shared routing and delivered the cross-project notes.',
+      summary: 'Patched the shared routing and delivered the cross-project notes.',
+      sourceTerminalContextId: 'term-scout02',
+    })
+
+    const refreshed = readTeamFileSessionSnapshot(teamName)
+    expect(refreshed).toBe(snapshot)
+    expect(refreshed?.phaseReceipts).toHaveLength(1)
+    expect(refreshed?.phaseReceipts?.[0]?.deliveries).toHaveLength(2)
+    expect(refreshed?.phaseReceipts?.[0]?.lastDeliverableSummary).toBe(
+      'Patched the shared routing and delivered the cross-project notes.',
+    )
+    expect(
+      refreshed?.terminalContexts?.find(
+        context => context.agentId === 'scout@bridge-crew',
+      )?.activePhaseId,
+    ).toBe(phaseId)
   })
 
   it('keeps latest phase lookups aligned after reusing a pinned receipt', () => {

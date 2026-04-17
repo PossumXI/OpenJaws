@@ -361,6 +361,7 @@ OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
 - `bun run q:soak` runs a bounded repeated-probe soak over native OpenJaws plus direct OCI Q
 - `bun run q:terminalbench` wraps Harbor / Terminal-Bench for external terminal-task evaluation when Harbor and Docker are available
 - `q:terminalbench` now supports `--repeat` and writes `attempts[]` plus flattened `tasks[]` receipts so repeated-run stability and real multi-task concurrency are visible in one artifact
+- `q:terminalbench` now also supports `--soak`, and `bun run q:terminalbench:soak` wraps that into repeated live cycles with `cycles[]`, per-cycle aggregates, and one managed jobs lane per run
 - benchmark artifacts now write `bridgebench-report.json` plus `reward.json` and `reward-details.json` in a Rewardkit-style shape so the results are easy to inspect or reuse
 - training and benchmark receipts also record whether W&B logging was enabled, incomplete, or disabled, including the resolved project URL when that lane is actually configured
 - `q:bridgebench`, `q:curriculum`, `q:hybrid`, and routed `launch:q` runs can now carry both `--lineage-id` and optional `--phase-id`, so local, routed, and follow-up benchmark receipts stay attached to one intentional work thread
@@ -379,6 +380,9 @@ Current local benchmark snapshot from this workspace:
     - truth: the official task completed with `5` attempts, `0` runtime errors, reward `0.0`, and Harbor raw env bundles scrubbed in place
   - official leaderboard submission discussion: `https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard/discussions/141`
   - repeated-attempt stability receipt captured `1` benchmark-failing trial plus `1` execution-error trial across `2` attempts
+  - repeated soak live receipt now exists at `artifacts/q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3/terminalbench-report.json`
+    - result: `completed_with_errors`
+    - truth: `2` cycles produced `2` total trials, `0` runtime errors, and `2` benchmark-failing trials under one managed jobs lane
   - real concurrent receipt captured `2` live tasks at concurrency `2`
 
 Important boundary:

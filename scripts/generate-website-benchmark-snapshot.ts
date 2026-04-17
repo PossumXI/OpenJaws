@@ -7,6 +7,7 @@ type CliOptions = {
   bridgeBenchReportPath: string
   soakReportPath: string
   terminalBenchReportPath: string
+  terminalBenchSoakReportPath: string
   wandbReportPath: string
   terminalBenchSubmissionUrl: string | null
 }
@@ -38,6 +39,16 @@ type BenchmarkSnapshot = {
     outcome: string
     summary: string
     submissionUrl?: string
+  }
+  terminalBenchSoak: {
+    runId: string
+    taskName: string
+    status: string
+    cycleCount: number
+    totalTrials: number
+    executionErrorTrials: number
+    benchmarkFailedTrials: number
+    summary: string
   }
   wandb: {
     status: string
@@ -75,6 +86,12 @@ function parseArgs(argv: string[]): CliOptions {
       'q-terminalbench-official-public-20260416-circuit-fibsqrt-v2',
       'terminalbench-report.json',
     ),
+    terminalBenchSoakReportPath: resolve(
+      process.cwd(),
+      'artifacts',
+      'q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3',
+      'terminalbench-report.json',
+    ),
     wandbReportPath: resolve(
       process.cwd(),
       'artifacts',
@@ -105,6 +122,10 @@ function parseArgs(argv: string[]): CliOptions {
     }
     if (arg === '--terminalbench-report' && argv[i + 1]) {
       options.terminalBenchReportPath = resolve(argv[++i]!)
+      continue
+    }
+    if (arg === '--terminalbench-soak-report' && argv[i + 1]) {
+      options.terminalBenchSoakReportPath = resolve(argv[++i]!)
       continue
     }
     if (arg === '--wandb-report' && argv[i + 1]) {
@@ -213,6 +234,13 @@ function buildSnapshot(options: CliOptions): BenchmarkSnapshot {
     ],
     options.terminalBenchReportPath,
   )
+  const terminalBenchSoakReportPath = resolveLatestReceipt(
+    [
+      resolve(process.cwd(), 'artifacts', 'q-terminalbench-soak-live-*', 'terminalbench-report.json'),
+      resolve(process.cwd(), 'artifacts', 'q-terminalbench-soak-*', 'terminalbench-report.json'),
+    ],
+    options.terminalBenchSoakReportPath,
+  )
   const wandbReportPath = resolveLatestReceipt(
     [resolve(process.cwd(), 'artifacts', 'q-bridgebench-live-*', 'bridgebench-report.json')],
     options.wandbReportPath,
@@ -252,6 +280,18 @@ function buildSnapshot(options: CliOptions): BenchmarkSnapshot {
     agent?: string
     model?: string
   }>(terminalBenchReportPath)
+  const terminalBenchSoak = readJson<{
+    runId: string
+    generatedAt: string
+    status?: string
+    tasks?: Array<{ taskName?: string }>
+    cycles?: Array<unknown>
+    aggregate?: {
+      totalTrials?: number
+      executionErrorTrials?: number
+      benchmarkFailedTrials?: number
+    }
+  }>(terminalBenchSoakReportPath)
 
   const wandbReport = readJson<{
     generatedAt: string
@@ -268,6 +308,7 @@ function buildSnapshot(options: CliOptions): BenchmarkSnapshot {
     bridgeBench.generatedAt,
     soak.generatedAt,
     terminalBench.generatedAt,
+    terminalBenchSoak.generatedAt,
     wandbReport.generatedAt,
   ]
     .filter(value => typeof value === 'string' && value.length > 0)
@@ -281,10 +322,17 @@ function buildSnapshot(options: CliOptions): BenchmarkSnapshot {
   const executionErrorTrials = terminalBench.aggregate?.executionErrorTrials ?? 0
   const taskName = terminalBench.tasks?.[0]?.taskName ?? 'unknown'
   const submissionUrl = options.terminalBenchSubmissionUrl ?? undefined
+  const soakTaskName = terminalBenchSoak.tasks?.[0]?.taskName ?? 'unknown'
+  const soakCycleCount = terminalBenchSoak.cycles?.length ?? 0
+  const soakTotalTrials = terminalBenchSoak.aggregate?.totalTrials ?? 0
+  const soakExecutionErrorTrials =
+    terminalBenchSoak.aggregate?.executionErrorTrials ?? 0
+  const soakBenchmarkFailedTrials =
+    terminalBenchSoak.aggregate?.benchmarkFailedTrials ?? 0
 
   return {
     generatedAt,
-    source: `Generated from benchmark receipts: ${bridgeBenchReportPath}, ${soakReportPath}, ${terminalBenchReportPath}, and ${wandbReportPath}.`,
+    source: `Generated from benchmark receipts: ${bridgeBenchReportPath}, ${soakReportPath}, ${terminalBenchReportPath}, ${terminalBenchSoakReportPath}, and ${wandbReportPath}.`,
     bridgeBench: {
       benchmarkId: bridgeBench.benchmarkId,
       bestPack: bridgeBench.bestResult?.pack ?? 'unknown',
@@ -313,6 +361,19 @@ function buildSnapshot(options: CliOptions): BenchmarkSnapshot {
       outcome: `reward ${formatNumber(avgReward, 1).toFixed(1)} // ${totalTrials} trials`,
       summary: `OpenJaws ran ${taskName} on OCI Q with ${totalTrials} trials and ${executionErrorTrials} runtime errors. Mean reward: ${formatNumber(avgReward, 1).toFixed(1)}.${submissionUrl ? ' The official leaderboard submission discussion is linked here.' : ''}`,
       submissionUrl,
+    },
+    terminalBenchSoak: {
+      runId: terminalBenchSoak.runId,
+      taskName: soakTaskName,
+      status:
+        typeof terminalBenchSoak.status === 'string'
+          ? terminalBenchSoak.status
+          : 'unknown',
+      cycleCount: soakCycleCount,
+      totalTrials: soakTotalTrials,
+      executionErrorTrials: soakExecutionErrorTrials,
+      benchmarkFailedTrials: soakBenchmarkFailedTrials,
+      summary: `Repeated TerminalBench soak over ${soakTaskName}. ${soakCycleCount} cycles produced ${soakTotalTrials} total trials, ${soakExecutionErrorTrials} runtime errors, and ${soakBenchmarkFailedTrials} benchmark-failing trials.`,
     },
     wandb: buildWandbSummary(wandbReport.wandb ?? {}),
   }

@@ -40,6 +40,10 @@ type CliOptions = {
   env: string
   dryRun: boolean
   force: boolean
+  soak: boolean
+  soakCycles: number
+  soakDurationMinutes: number | null
+  soakIntervalMs: number
   officialSubmission: boolean
 }
 
@@ -55,6 +59,7 @@ type TerminalBenchExecutionStatus = 'completed' | 'error'
 type TerminalBenchBenchmarkStatus = 'passed' | 'failed' | 'unknown'
 
 type TerminalBenchTaskReceipt = {
+  cycle: number
   attempt: number
   taskIndex: number
   taskName: string | null
@@ -90,6 +95,7 @@ type TerminalBenchTrialCounts = {
 }
 
 type TerminalBenchAttemptReceipt = {
+  cycle: number
   attempt: number
   status: 'completed' | 'completed_with_errors' | 'failed'
   summary: string
@@ -100,6 +106,69 @@ type TerminalBenchAttemptReceipt = {
   stdoutTail: string
   stderrTail: string
   trialCounts: TerminalBenchTrialCounts
+}
+
+type TerminalBenchRunSummary = {
+  attemptCount: number
+  completedAttempts: number
+  attemptsWithErrors: number
+  failedAttempts: number
+  totalTrials: number
+  executionErrorTrials: number
+  benchmarkPassedTrials: number
+  benchmarkFailedTrials: number
+  benchmarkUnknownTrials: number
+  avgTrialDurationMs: number
+  p50TrialDurationMs: number
+  p95TrialDurationMs: number
+  avgReward: number
+}
+
+type TerminalBenchCycleStatus = TerminalBenchAttemptReceipt['status'] | 'dry_run'
+
+type TerminalBenchCycleReceipt = {
+  cycle: number
+  status: TerminalBenchCycleStatus
+  summary: string
+  startedAt: string | null
+  finishedAt: string | null
+  durationMs: number | null
+  attemptCount: number
+  aggregate: TerminalBenchRunSummary
+  attempts: readonly TerminalBenchAttemptReceipt[]
+  tasks: readonly TerminalBenchTaskReceipt[]
+  exitCode: number | null
+  jobPathGuess: string | null
+  jobResultPath: string | null
+  jobResultSummary: Record<string, unknown> | null
+  stdoutTail: string
+  stderrTail: string
+}
+
+type TerminalBenchAggregateSummary = TerminalBenchRunSummary & {
+  cycleCount: number
+  completedCycles: number
+  cyclesWithErrors: number
+  failedCycles: number
+}
+
+type TerminalBenchSoakStopReason =
+  | 'dry_run'
+  | 'single_cycle'
+  | 'cycle_limit'
+  | 'duration_limit'
+
+type TerminalBenchSoakReceipt = {
+  enabled: boolean
+  maxCycles: number
+  maxDurationMinutes: number | null
+  cycleDelayMs: number
+  plannedCycleCount: number
+  completedCycleCount: number
+  stopReason: TerminalBenchSoakStopReason | null
+  startedAt: string | null
+  finishedAt: string | null
+  durationMs: number | null
 }
 
 function resolveDefaultHarborCommand(): string {
@@ -136,7 +205,15 @@ function parseOptionalInt(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function parseArgs(argv: string[]): CliOptions {
+function parseOptionalFloat(value: string | undefined): number | null {
+  if (!value) {
+    return null
+  }
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+export function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     root: process.cwd(),
     outputDir: null,
@@ -163,6 +240,10 @@ function parseArgs(argv: string[]): CliOptions {
     env: 'docker',
     dryRun: false,
     force: false,
+    soak: false,
+    soakCycles: 3,
+    soakDurationMinutes: null,
+    soakIntervalMs: 0,
     officialSubmission: false,
   }
 
@@ -299,6 +380,34 @@ function parseArgs(argv: string[]): CliOptions {
       options.force = true
       continue
     }
+    if (arg === '--soak') {
+      options.soak = true
+      continue
+    }
+    if (arg === '--soak-cycles' && argv[i + 1]) {
+      const parsed = parseOptionalInt(argv[++i]!)
+      if (parsed !== null && parsed > 0) {
+        options.soak = true
+        options.soakCycles = parsed
+      }
+      continue
+    }
+    if (arg === '--soak-duration-minutes' && argv[i + 1]) {
+      const parsed = parseOptionalFloat(argv[++i]!)
+      if (parsed !== null && parsed > 0) {
+        options.soak = true
+        options.soakDurationMinutes = parsed
+      }
+      continue
+    }
+    if (arg === '--soak-interval-ms' && argv[i + 1]) {
+      const parsed = parseOptionalInt(argv[++i]!)
+      if (parsed !== null && parsed >= 0) {
+        options.soak = true
+        options.soakIntervalMs = parsed
+      }
+      continue
+    }
     if (arg === '--official-submission') {
       options.officialSubmission = true
       continue
@@ -334,6 +443,10 @@ function printHelpAndExit(): never {
       '  --env <name>                 Harbor environment (default docker)',
       '  --harbor <command>           Harbor CLI command or path',
       '  --out-dir <path>             Output directory for receipts',
+      '  --soak                       Run repeated bounded Terminal-Bench cycles under one soak receipt',
+      '  --soak-cycles <n>            Maximum bounded cycles to execute in soak mode (default 3)',
+      '  --soak-duration-minutes <n>  Optional wall-clock ceiling for soak mode',
+      '  --soak-interval-ms <n>       Delay between soak cycles in milliseconds (default 0)',
       '  --official-submission        Force Terminal-Bench 2.0 leaderboard-compliant settings',
       '  --dry-run                    Run only preflight checks and emit the command receipt',
       '  --force                      Run Harbor even if provider preflight fails',
@@ -348,11 +461,15 @@ function printHelpAndExit(): never {
   process.exit(0)
 }
 
-function makeRunId(): string {
-  return `q-terminalbench-${new Date()
+function makeRunId(options: Pick<CliOptions, 'soak'>): string {
+  return `${options.soak ? 'q-terminalbench-soak' : 'q-terminalbench'}-${new Date()
     .toISOString()
     .replace(/[-:]/g, '')
     .replace(/\..+/, '')}`
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 function tailText(text: string, maxLines = 30, maxChars = 4000): string {
@@ -530,15 +647,26 @@ function normalizeTaskFilter(options: CliOptions, value: string): string {
   return value
 }
 
-function resolveAttemptJobName(options: CliOptions, attempt: number): string | null {
+export function resolveAttemptJobName(
+  options: Pick<CliOptions, 'jobName' | 'repeat' | 'soak'>,
+  cycle: number,
+  attempt: number,
+): string | null {
   if (!options.jobName) {
     return null
   }
-  return options.repeat > 1 ? `${options.jobName}-attempt-${attempt}` : options.jobName
+  const suffixes: string[] = []
+  if (options.soak) {
+    suffixes.push(`cycle-${cycle}`)
+  }
+  if (options.repeat > 1) {
+    suffixes.push(`attempt-${attempt}`)
+  }
+  return suffixes.length > 0 ? `${options.jobName}-${suffixes.join('-')}` : options.jobName
 }
 
-function buildHarborArgs(options: CliOptions, attempt: number): string[] {
-  const attemptJobName = resolveAttemptJobName(options, attempt)
+function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): string[] {
+  const attemptJobName = resolveAttemptJobName(options, cycle, attempt)
   const agentEnv = collectAgentEnv({
     officialSubmission: options.officialSubmission,
     model: options.model,
@@ -645,9 +773,13 @@ function visitPaths(root: string, visitor: (path: string) => void): void {
   }
 }
 
-function listHarborJobResultPaths(): string[] {
+function listHarborJobResultPaths(roots?: readonly string[]): string[] {
   const resultPaths: string[] = []
-  for (const root of scanHarborJobRoots()) {
+  const selectedRoots =
+    roots && roots.length > 0
+      ? roots.filter(root => root && existsSync(root))
+      : scanHarborJobRoots()
+  for (const root of selectedRoots) {
     const jobsDir = join(root, 'jobs')
     if (!existsSync(jobsDir)) {
       continue
@@ -666,11 +798,14 @@ function listHarborJobResultPaths(): string[] {
   return resultPaths
 }
 
-function guessLatestHarborJobResultPath(excludedPaths?: ReadonlySet<string>): string | null {
+function guessLatestHarborJobResultPath(args?: {
+  excludedPaths?: ReadonlySet<string>
+  roots?: readonly string[]
+}): string | null {
   let latestPath: string | null = null
   let latestMtime = -Infinity
-  for (const path of listHarborJobResultPaths()) {
-    if (excludedPaths?.has(path)) {
+  for (const path of listHarborJobResultPaths(args?.roots)) {
+    if (args?.excludedPaths?.has(path)) {
       continue
     }
     const lastModified = statSync(path).mtimeMs
@@ -986,6 +1121,7 @@ function buildTaskSummary(args: {
 
 function readHarborTaskReceipts(
   jobRoot: string | null,
+  cycle: number,
   attempt: number,
 ): TerminalBenchTaskReceipt[] {
   return listHarborTrialResultPaths(jobRoot)
@@ -1036,6 +1172,7 @@ function readHarborTaskReceipts(
         : null
 
       return {
+        cycle,
         attempt,
         taskIndex: index + 1,
         taskName,
@@ -1097,10 +1234,10 @@ function percentile(values: readonly number[], fraction: number): number | null 
   return sorted[index] ?? null
 }
 
-function buildAggregateSummary(
+export function buildRunSummary(
   attempts: readonly TerminalBenchAttemptReceipt[],
   tasks: readonly TerminalBenchTaskReceipt[],
-): Record<string, number> {
+): TerminalBenchRunSummary {
   const counts = buildTrialCounts(tasks)
   const completedAttempts = attempts.filter(attempt => attempt.status === 'completed').length
   const attemptsWithErrors = attempts.filter(
@@ -1142,6 +1279,21 @@ function buildAggregateSummary(
   }
 }
 
+export function buildAggregateSummary(
+  cycles: readonly Pick<TerminalBenchCycleReceipt, 'status'>[],
+  attempts: readonly TerminalBenchAttemptReceipt[],
+  tasks: readonly TerminalBenchTaskReceipt[],
+): TerminalBenchAggregateSummary {
+  const runSummary = buildRunSummary(attempts, tasks)
+  return {
+    cycleCount: cycles.length,
+    completedCycles: cycles.filter(cycle => cycle.status === 'completed').length,
+    cyclesWithErrors: cycles.filter(cycle => cycle.status === 'completed_with_errors').length,
+    failedCycles: cycles.filter(cycle => cycle.status === 'failed').length,
+    ...runSummary,
+  }
+}
+
 function buildAttemptSummary(args: {
   attempt: number
   exitCode: number | null
@@ -1176,14 +1328,16 @@ function buildAttemptSummary(args: {
 }
 
 async function runHarborAttempt(args: {
+  cycle: number
   attempt: number
   options: CliOptions
 }): Promise<{
   attemptReceipt: TerminalBenchAttemptReceipt
   taskReceipts: TerminalBenchTaskReceipt[]
 }> {
-  const harborArgs = buildHarborArgs(args.options, args.attempt)
-  const beforeJobResultPaths = new Set(listHarborJobResultPaths())
+  const harborArgs = buildHarborArgs(args.options, args.cycle, args.attempt)
+  const harborRoots = args.options.jobsDir ? [dirname(args.options.jobsDir)] : undefined
+  const beforeJobResultPaths = new Set(listHarborJobResultPaths(harborRoots))
   const result = await execa(args.options.harborCommand, harborArgs, {
     cwd: args.options.root,
     reject: false,
@@ -1191,7 +1345,7 @@ async function runHarborAttempt(args: {
     timeout: args.options.timeoutMs,
   })
 
-  const expectedJobName = resolveAttemptJobName(args.options, args.attempt)
+  const expectedJobName = resolveAttemptJobName(args.options, args.cycle, args.attempt)
   const expectedJobPath = resolveExpectedHarborJobRoot({
     jobsDir: args.options.jobsDir,
     jobName: expectedJobName,
@@ -1201,7 +1355,10 @@ async function runHarborAttempt(args: {
     (args.options.officialSubmission
       ? null
       : resolveHarborJobRoot(
-          guessLatestHarborJobResultPath(beforeJobResultPaths) ??
+          guessLatestHarborJobResultPath({
+            excludedPaths: beforeJobResultPaths,
+            roots: harborRoots,
+          }) ??
             guessLatestHarborJobResultPath(),
         ))
   const harborJobResultPath =
@@ -1209,10 +1366,13 @@ async function runHarborAttempt(args: {
       ? join(harborJobPath, 'result.json')
       : args.options.officialSubmission
         ? null
-        : guessLatestHarborJobResultPath(beforeJobResultPaths) ??
+        : guessLatestHarborJobResultPath({
+            excludedPaths: beforeJobResultPaths,
+            roots: harborRoots,
+          }) ??
           guessLatestHarborJobResultPath()
   const jobResultSummary = readHarborResultSummary(harborJobResultPath)
-  const taskReceipts = readHarborTaskReceipts(harborJobPath, args.attempt)
+  const taskReceipts = readHarborTaskReceipts(harborJobPath, args.cycle, args.attempt)
   sanitizeHarborJobArtifacts(harborJobPath, harborJobResultPath)
   const trialCounts = buildTrialCounts(taskReceipts)
   const attemptSummary = buildAttemptSummary({
@@ -1223,6 +1383,7 @@ async function runHarborAttempt(args: {
 
   return {
     attemptReceipt: {
+      cycle: args.cycle,
       attempt: args.attempt,
       status: attemptSummary.status,
       summary: attemptSummary.summary,
@@ -1235,6 +1396,140 @@ async function runHarborAttempt(args: {
       trialCounts,
     },
     taskReceipts,
+  }
+}
+
+export function buildCycleReceipt(args: {
+  cycle: number
+  startedAt: string | null
+  finishedAt: string | null
+  attempts: readonly TerminalBenchAttemptReceipt[]
+  tasks: readonly TerminalBenchTaskReceipt[]
+}): TerminalBenchCycleReceipt {
+  const aggregate = buildRunSummary(args.attempts, args.tasks)
+  const failedAttempts = args.attempts.filter(attempt => attempt.status === 'failed')
+  const attemptsWithErrors = args.attempts.filter(
+    attempt => attempt.status === 'completed_with_errors',
+  )
+  const lastAttempt = args.attempts.at(-1) ?? null
+
+  let status: TerminalBenchCycleStatus
+  let summary: string
+  if (args.attempts.length === 0) {
+    status = 'failed'
+    summary = `Cycle ${args.cycle} did not launch any Harbor attempts.`
+  } else if (failedAttempts.length > 0) {
+    status = 'failed'
+    summary =
+      failedAttempts.length === args.attempts.length
+        ? `Cycle ${args.cycle} failed in all ${args.attempts.length} Harbor attempt${args.attempts.length === 1 ? '' : 's'}.`
+        : `Cycle ${args.cycle} failed in ${failedAttempts.length}/${args.attempts.length} Harbor attempt${args.attempts.length === 1 ? '' : 's'}.`
+  } else if (
+    aggregate.executionErrorTrials > 0 ||
+    aggregate.benchmarkFailedTrials > 0 ||
+    attemptsWithErrors.length > 0
+  ) {
+    status = 'completed_with_errors'
+    summary = `Cycle ${args.cycle} completed with ${aggregate.executionErrorTrials} execution error trial${aggregate.executionErrorTrials === 1 ? '' : 's'} and ${aggregate.benchmarkFailedTrials} benchmark-failing trial${aggregate.benchmarkFailedTrials === 1 ? '' : 's'} across ${aggregate.totalTrials} total trial${aggregate.totalTrials === 1 ? '' : 's'}.`
+  } else {
+    status = 'completed'
+    summary = `Cycle ${args.cycle} completed with ${aggregate.benchmarkPassedTrials}/${aggregate.totalTrials} passing trial${aggregate.totalTrials === 1 ? '' : 's'} across ${aggregate.attemptCount} Harbor attempt${aggregate.attemptCount === 1 ? '' : 's'}.`
+  }
+
+  return {
+    cycle: args.cycle,
+    status,
+    summary,
+    startedAt: args.startedAt,
+    finishedAt: args.finishedAt,
+    durationMs: readIsoDurationMs(args.startedAt, args.finishedAt),
+    attemptCount: args.attempts.length,
+    aggregate,
+    attempts: args.attempts,
+    tasks: args.tasks,
+    exitCode: failedAttempts.length > 0 ? 1 : 0,
+    jobPathGuess: lastAttempt?.harborJobPath ?? null,
+    jobResultPath: lastAttempt?.harborJobResultPath ?? null,
+    jobResultSummary: lastAttempt?.jobResultSummary ?? null,
+    stdoutTail: lastAttempt?.stdoutTail ?? '',
+    stderrTail: lastAttempt?.stderrTail ?? '',
+  }
+}
+
+function buildDryRunCycles(options: CliOptions, plannedCycleCount: number): TerminalBenchCycleReceipt[] {
+  const aggregate = buildRunSummary([], [])
+  return Array.from({ length: plannedCycleCount }, (_, index) => ({
+    cycle: index + 1,
+    status: 'dry_run',
+    summary: options.soak
+      ? `Soak cycle ${index + 1} planned but not executed in dry-run mode.`
+      : 'Bounded Terminal-Bench run planned but not executed in dry-run mode.',
+    startedAt: null,
+    finishedAt: null,
+    durationMs: null,
+    attemptCount: options.repeat,
+    aggregate,
+    attempts: [],
+    tasks: [],
+    exitCode: null,
+    jobPathGuess: null,
+    jobResultPath: null,
+    jobResultSummary: null,
+    stdoutTail: '',
+    stderrTail: '',
+  }))
+}
+
+function buildReportOutcome(args: {
+  options: CliOptions
+  cycles: readonly TerminalBenchCycleReceipt[]
+  aggregate: TerminalBenchAggregateSummary
+}): { status: string; summary: string; exitCode: number } {
+  if (args.options.soak && args.cycles.length === 0) {
+    return {
+      status: 'failed',
+      summary: 'Terminal-Bench soak hit its duration ceiling before any bounded cycle launched.',
+      exitCode: 1,
+    }
+  }
+
+  const failedCycles = args.cycles.filter(cycle => cycle.status === 'failed')
+  if (failedCycles.length > 0) {
+    return {
+      status: 'failed',
+      summary: args.options.soak
+        ? `Terminal-Bench soak failed in ${failedCycles.length}/${args.aggregate.cycleCount} cycle${args.aggregate.cycleCount === 1 ? '' : 's'}.`
+        : args.options.repeat > 1
+          ? `Terminal-Bench repeated run failed in ${args.aggregate.failedAttempts}/${args.aggregate.attemptCount} attempt${args.aggregate.attemptCount === 1 ? '' : 's'}.`
+          : 'Harbor Terminal-Bench run failed.',
+      exitCode: 1,
+    }
+  }
+
+  if (
+    args.aggregate.executionErrorTrials > 0 ||
+    args.aggregate.benchmarkFailedTrials > 0 ||
+    args.aggregate.cyclesWithErrors > 0
+  ) {
+    return {
+      status: 'completed_with_errors',
+      summary: args.options.soak
+        ? `Terminal-Bench soak completed with ${args.aggregate.executionErrorTrials} execution error trial${args.aggregate.executionErrorTrials === 1 ? '' : 's'} and ${args.aggregate.benchmarkFailedTrials} benchmark-failing trial${args.aggregate.benchmarkFailedTrials === 1 ? '' : 's'} across ${args.aggregate.totalTrials} total trial${args.aggregate.totalTrials === 1 ? '' : 's'} in ${args.aggregate.cycleCount} cycle${args.aggregate.cycleCount === 1 ? '' : 's'}.`
+        : args.options.repeat > 1
+          ? `Terminal-Bench repeated run completed with ${args.aggregate.executionErrorTrials} execution error trial${args.aggregate.executionErrorTrials === 1 ? '' : 's'} and ${args.aggregate.benchmarkFailedTrials} benchmark-failing trial${args.aggregate.benchmarkFailedTrials === 1 ? '' : 's'} across ${args.aggregate.totalTrials} total trial${args.aggregate.totalTrials === 1 ? '' : 's'}.`
+          : `Harbor Terminal-Bench run completed with ${args.aggregate.executionErrorTrials} execution error trial${args.aggregate.executionErrorTrials === 1 ? '' : 's'} and ${args.aggregate.benchmarkFailedTrials} benchmark-failing trial${args.aggregate.benchmarkFailedTrials === 1 ? '' : 's'}.`,
+      exitCode: 0,
+    }
+  }
+
+  return {
+    status: 'completed',
+    summary: args.options.soak
+      ? `Terminal-Bench soak completed with ${args.aggregate.benchmarkPassedTrials}/${args.aggregate.totalTrials} passing trial${args.aggregate.totalTrials === 1 ? '' : 's'} across ${args.aggregate.cycleCount} cycle${args.aggregate.cycleCount === 1 ? '' : 's'}.`
+      : args.options.repeat > 1
+        ? `Terminal-Bench repeated run completed with ${args.aggregate.benchmarkPassedTrials}/${args.aggregate.totalTrials} passing trial${args.aggregate.totalTrials === 1 ? '' : 's'} across ${args.aggregate.attemptCount} attempt${args.aggregate.attemptCount === 1 ? '' : 's'}.`
+        : 'Harbor Terminal-Bench run completed.',
+    exitCode: 0,
   }
 }
 
@@ -1255,6 +1550,9 @@ function validateOfficialSubmissionOptions(options: CliOptions): void {
   if (options.repeat !== 1) {
     violations.push('repeat must stay at 1 for a single official submission job')
   }
+  if (options.soak) {
+    violations.push('soak must be disabled for a single official submission job')
+  }
   if (violations.length > 0) {
     throw new Error(
       `Official Terminal-Bench submission mode is misconfigured: ${violations.join('; ')}.`,
@@ -1264,10 +1562,15 @@ function validateOfficialSubmissionOptions(options: CliOptions): void {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2))
-  const runId = makeRunId()
+  const runId = makeRunId(options)
   const outputDir =
     options.outputDir ?? resolve(options.root, 'artifacts', 'terminalbench', runId)
+  const plannedCycleCount = options.soak ? options.soakCycles : 1
   mkdirSync(outputDir, { recursive: true })
+  if (!options.jobsDir) {
+    options.jobsDir = join(outputDir, 'jobs')
+    mkdirSync(options.jobsDir, { recursive: true })
+  }
   if (options.officialSubmission) {
     options.dataset = 'terminal-bench@2.0'
     options.nAttempts = Math.max(options.nAttempts, 5)
@@ -1283,16 +1586,21 @@ async function main() {
       cwd: options.root,
     }),
   )
-  checks.push(await runPreflightCheck('docker', 'docker', ['info'], { cwd: options.root }))
+  checks.push(
+    await runPreflightCheck('docker', 'docker', ['version', '--format', '{{.Server.Version}}'], {
+      cwd: options.root,
+    }),
+  )
   if (options.agent === 'openjaws') {
     checks.push(await runOpenJawsProviderPreflight(options))
   }
 
-  const representativeHarborArgs = buildHarborArgs(options, 1)
+  const representativeHarborArgs = buildHarborArgs(options, 1, 1)
   const report: Record<string, unknown> = {
     runId,
     generatedAt: new Date().toISOString(),
     outputDir,
+    lane: options.soak ? 'soak' : 'bounded',
     dataset: options.dataset,
     agent: options.agent,
     model: options.model,
@@ -1300,6 +1608,21 @@ async function main() {
     nConcurrent: options.nConcurrent,
     nAttempts: options.nAttempts,
     repeat: options.repeat,
+    soak:
+      options.soak
+        ? {
+            enabled: true,
+            maxCycles: options.soakCycles,
+            maxDurationMinutes: options.soakDurationMinutes,
+            cycleDelayMs: options.soakIntervalMs,
+            plannedCycleCount,
+            completedCycleCount: 0,
+            stopReason: options.dryRun ? 'dry_run' : null,
+            startedAt: null,
+            finishedAt: null,
+            durationMs: null,
+          }
+        : null,
     agentSetupTimeoutMultiplier: options.agentSetupTimeoutMultiplier,
     jobsDir: options.jobsDir,
     jobName: options.jobName,
@@ -1329,15 +1652,22 @@ async function main() {
   const warningChecks = checks.filter(check => check.status === 'warning')
 
   if (options.dryRun) {
-    report.status =
-      options.dryRun
-        ? 'dry_run'
-        : 'blocked'
-    report.summary =
-      options.dryRun
-        ? 'Terminal-Bench preflight completed.'
-        : 'Terminal-Bench run blocked because the OpenJaws provider preflight is not healthy.'
+    const dryRunCycles = buildDryRunCycles(options, plannedCycleCount)
+    report.status = 'dry_run'
+    report.summary = options.soak
+      ? `Terminal-Bench soak dry run prepared for ${plannedCycleCount} bounded cycle${plannedCycleCount === 1 ? '' : 's'}.`
+      : 'Terminal-Bench preflight completed.'
     report.command = [options.harborCommand, ...redactHarborArgs(representativeHarborArgs)].join(' ')
+    report.cycles = dryRunCycles
+    report.aggregate = buildAggregateSummary(dryRunCycles, [], [])
+    report.attempts = []
+    report.tasks = []
+    report.exitCode = 0
+    report.jobPathGuess = null
+    report.jobResultPath = null
+    report.jobResultSummary = null
+    report.stdoutTail = ''
+    report.stderrTail = ''
     const reportPath = join(outputDir, 'terminalbench-report.json')
     writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
     console.log(
@@ -1402,33 +1732,102 @@ async function main() {
     return
   }
 
+  const cycles: TerminalBenchCycleReceipt[] = []
   const attempts: TerminalBenchAttemptReceipt[] = []
   const tasks: TerminalBenchTaskReceipt[] = []
-  for (let attempt = 1; attempt <= options.repeat; attempt++) {
-    const attemptResult = await runHarborAttempt({
-      attempt,
-      options,
-    })
-    attempts.push(attemptResult.attemptReceipt)
-    tasks.push(...attemptResult.taskReceipts)
+  const soakStartedAt = options.soak ? new Date() : null
+  const soakDeadlineMs =
+    options.soak && options.soakDurationMinutes !== null
+      ? soakStartedAt!.getTime() + options.soakDurationMinutes * 60_000
+      : null
+  let soakStopReason: TerminalBenchSoakStopReason | null = options.soak
+    ? 'cycle_limit'
+    : 'single_cycle'
+
+  for (let cycle = 1; cycle <= plannedCycleCount; cycle++) {
+    if (soakDeadlineMs !== null && Date.now() >= soakDeadlineMs) {
+      soakStopReason = 'duration_limit'
+      break
+    }
+
+    const cycleStartedAt = new Date().toISOString()
+    const cycleAttempts: TerminalBenchAttemptReceipt[] = []
+    const cycleTasks: TerminalBenchTaskReceipt[] = []
+
+    for (let attempt = 1; attempt <= options.repeat; attempt++) {
+      const attemptResult = await runHarborAttempt({
+        cycle,
+        attempt,
+        options,
+      })
+      cycleAttempts.push(attemptResult.attemptReceipt)
+      cycleTasks.push(...attemptResult.taskReceipts)
+      attempts.push(attemptResult.attemptReceipt)
+      tasks.push(...attemptResult.taskReceipts)
+    }
+
+    cycles.push(
+      buildCycleReceipt({
+        cycle,
+        startedAt: cycleStartedAt,
+        finishedAt: new Date().toISOString(),
+        attempts: cycleAttempts,
+        tasks: cycleTasks,
+      }),
+    )
+
+    if (!options.soak || cycle === plannedCycleCount) {
+      continue
+    }
+    if (soakDeadlineMs !== null && Date.now() >= soakDeadlineMs) {
+      soakStopReason = 'duration_limit'
+      break
+    }
+    if (options.soakIntervalMs > 0) {
+      const delayMs =
+        soakDeadlineMs === null
+          ? options.soakIntervalMs
+          : Math.min(options.soakIntervalMs, Math.max(0, soakDeadlineMs - Date.now()))
+      if (delayMs <= 0) {
+        soakStopReason = 'duration_limit'
+        break
+      }
+      await sleep(delayMs)
+    }
   }
 
-  const aggregate = buildAggregateSummary(attempts, tasks)
-  const failedAttempts = attempts.filter(attempt => attempt.status === 'failed')
-  const attemptsWithErrors = attempts.filter(
-    attempt => attempt.status === 'completed_with_errors',
-  )
-  const lastAttempt = attempts.at(-1) ?? null
+  const aggregate = buildAggregateSummary(cycles, attempts, tasks)
+  const lastCycle = cycles.at(-1) ?? null
 
+  report.cycles = cycles
   report.aggregate = aggregate
   report.attempts = attempts
   report.tasks = tasks
-  report.exitCode = failedAttempts.length > 0 ? 1 : 0
-  report.jobPathGuess = lastAttempt?.harborJobPath ?? null
-  report.jobResultPath = lastAttempt?.harborJobResultPath ?? null
-  report.jobResultSummary = lastAttempt?.jobResultSummary ?? null
-  report.stdoutTail = lastAttempt?.stdoutTail ?? ''
-  report.stderrTail = lastAttempt?.stderrTail ?? ''
+  report.jobPathGuess = lastCycle?.jobPathGuess ?? null
+  report.jobResultPath = lastCycle?.jobResultPath ?? null
+  report.jobResultSummary = lastCycle?.jobResultSummary ?? null
+  report.stdoutTail = lastCycle?.stdoutTail ?? ''
+  report.stderrTail = lastCycle?.stderrTail ?? ''
+  if (options.soak) {
+    const soakFinishedAt = new Date()
+    report.soak = {
+      enabled: true,
+      maxCycles: options.soakCycles,
+      maxDurationMinutes: options.soakDurationMinutes,
+      cycleDelayMs: options.soakIntervalMs,
+      plannedCycleCount,
+      completedCycleCount: cycles.length,
+      stopReason:
+        cycles.length >= plannedCycleCount && soakStopReason !== 'duration_limit'
+          ? 'cycle_limit'
+          : soakStopReason,
+      startedAt: soakStartedAt?.toISOString() ?? null,
+      finishedAt: soakFinishedAt.toISOString(),
+      durationMs: soakStartedAt
+        ? Math.max(0, soakFinishedAt.getTime() - soakStartedAt.getTime())
+        : null,
+    }
+  }
   if (options.officialSubmission) {
     const agentEnv = collectAgentEnv({
       officialSubmission: options.officialSubmission,
@@ -1460,29 +1859,14 @@ async function main() {
     }
   }
 
-  if (failedAttempts.length > 0) {
-    report.status = 'failed'
-    report.summary =
-      options.repeat > 1
-        ? `Terminal-Bench repeated run failed in ${failedAttempts.length}/${options.repeat} attempt${options.repeat === 1 ? '' : 's'}.`
-        : 'Harbor Terminal-Bench run failed.'
-  } else if (
-    aggregate.executionErrorTrials > 0 ||
-    aggregate.benchmarkFailedTrials > 0 ||
-    attemptsWithErrors.length > 0
-  ) {
-    report.status = 'completed_with_errors'
-    report.summary =
-      options.repeat > 1
-        ? `Terminal-Bench repeated run completed with ${aggregate.executionErrorTrials} execution error trial${aggregate.executionErrorTrials === 1 ? '' : 's'} and ${aggregate.benchmarkFailedTrials} benchmark-failing trial${aggregate.benchmarkFailedTrials === 1 ? '' : 's'} across ${aggregate.totalTrials} total trial${aggregate.totalTrials === 1 ? '' : 's'}.`
-        : `Harbor Terminal-Bench run completed with ${aggregate.executionErrorTrials} execution error trial${aggregate.executionErrorTrials === 1 ? '' : 's'} and ${aggregate.benchmarkFailedTrials} benchmark-failing trial${aggregate.benchmarkFailedTrials === 1 ? '' : 's'}.`
-  } else {
-    report.status = 'completed'
-    report.summary =
-      options.repeat > 1
-        ? `Terminal-Bench repeated run completed with ${aggregate.benchmarkPassedTrials}/${aggregate.totalTrials} passing trial${aggregate.totalTrials === 1 ? '' : 's'} across ${options.repeat} attempt${options.repeat === 1 ? '' : 's'}.`
-        : 'Harbor Terminal-Bench run completed.'
-  }
+  const outcome = buildReportOutcome({
+    options,
+    cycles,
+    aggregate,
+  })
+  report.status = outcome.status
+  report.summary = outcome.summary
+  report.exitCode = outcome.exitCode
 
   const reportPath = join(outputDir, 'terminalbench-report.json')
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
@@ -1512,4 +1896,6 @@ async function main() {
   }
 }
 
-await main()
+if (import.meta.main) {
+  await main()
+}

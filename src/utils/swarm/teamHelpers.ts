@@ -151,12 +151,15 @@ export type TeamFile = {
 
 type TeamFileCacheEntry = {
   mtimeMs: number
+  sizeBytes: number
   teamFile: TeamFile
 }
 
 type TeamFileIndex = {
   terminalContextsById: Map<string, TeamTerminalContext>
   latestTerminalContextByAgentId: Map<string, TeamTerminalContext>
+  activeTerminalContexts: TeamTerminalContext[]
+  phaseReceiptsByRecency: TeamPhaseReceipt[]
   phaseReceiptsById: Map<string, TeamPhaseReceipt>
   phaseReceiptsBySourceAgentId: Map<string, TeamPhaseReceipt[]>
   phaseReceiptsByTargetAgentId: Map<string, TeamPhaseReceipt[]>
@@ -165,6 +168,9 @@ type TeamFileIndex = {
 
 const TEAM_FILE_CACHE = new Map<string, TeamFileCacheEntry>()
 const TEAM_FILE_INDEX_CACHE = new WeakMap<TeamFile, TeamFileIndex>()
+const TEAM_FILE_SHARED_INSTANCES = new WeakSet<TeamFile>()
+
+type TeamFileReadMode = 'clone' | 'shared'
 
 function cloneTeamFile<T extends TeamFile>(teamFile: T): T {
   return structuredClone(teamFile)
@@ -174,11 +180,19 @@ function rememberCachedTeamFile(
   teamName: string,
   teamFile: TeamFile,
   mtimeMs: number,
-): void {
+  sizeBytes: number,
+  options?: {
+    preserveInput?: boolean
+  },
+): TeamFile {
+  const cachedTeamFile = options?.preserveInput ? teamFile : cloneTeamFile(teamFile)
+  TEAM_FILE_SHARED_INSTANCES.add(cachedTeamFile)
   TEAM_FILE_CACHE.set(teamName, {
     mtimeMs,
-    teamFile: cloneTeamFile(teamFile),
+    sizeBytes,
+    teamFile: cachedTeamFile,
   })
+  return cachedTeamFile
 }
 
 function clearCachedTeamFile(teamName: string): void {
@@ -210,13 +224,18 @@ function getTeamFileIndex(teamFile: TeamFile): TeamFileIndex {
     return cached
   }
 
+  const activeAgentIds = new Set(teamFile.members.map(member => member.agentId))
   const terminalContextsById = new Map<string, TeamTerminalContext>()
   const latestTerminalContextByAgentId = new Map<string, TeamTerminalContext>()
+  const activeTerminalContexts: TeamTerminalContext[] = []
   for (const context of teamFile.terminalContexts ?? []) {
     terminalContextsById.set(context.terminalContextId, context)
     const current = latestTerminalContextByAgentId.get(context.agentId)
     if (!current || context.updatedAt > current.updatedAt) {
       latestTerminalContextByAgentId.set(context.agentId, context)
+    }
+    if (activeAgentIds.has(context.agentId)) {
+      activeTerminalContexts.push(context)
     }
   }
 
@@ -224,11 +243,11 @@ function getTeamFileIndex(teamFile: TeamFile): TeamFileIndex {
   const phaseReceiptsBySourceAgentId = new Map<string, TeamPhaseReceipt[]>()
   const phaseReceiptsByTargetAgentId = new Map<string, TeamPhaseReceipt[]>()
   const phaseReceiptsByRelatedAgentId = new Map<string, TeamPhaseReceipt[]>()
-  const sortedReceipts = [...(teamFile.phaseReceipts ?? [])].sort(
+  const phaseReceiptsByRecency = [...(teamFile.phaseReceipts ?? [])].sort(
     (left, right) => right.updatedAt - left.updatedAt,
   )
 
-  for (const receipt of sortedReceipts) {
+  for (const receipt of phaseReceiptsByRecency) {
     phaseReceiptsById.set(receipt.phaseId, receipt)
     pushReceiptToAgentIndex(
       phaseReceiptsBySourceAgentId,
@@ -252,6 +271,8 @@ function getTeamFileIndex(teamFile: TeamFile): TeamFileIndex {
   const index: TeamFileIndex = {
     terminalContextsById,
     latestTerminalContextByAgentId,
+    activeTerminalContexts,
+    phaseReceiptsByRecency,
     phaseReceiptsById,
     phaseReceiptsBySourceAgentId,
     phaseReceiptsByTargetAgentId,
@@ -259,6 +280,18 @@ function getTeamFileIndex(teamFile: TeamFile): TeamFileIndex {
   }
   TEAM_FILE_INDEX_CACHE.set(teamFile, index)
   return index
+}
+
+export function getActiveTeamTerminalContexts(
+  teamFile: TeamFile,
+): TeamTerminalContext[] {
+  return getTeamFileIndex(teamFile).activeTerminalContexts
+}
+
+export function getTeamPhaseReceiptsByRecency(
+  teamFile: TeamFile,
+): TeamPhaseReceipt[] {
+  return getTeamFileIndex(teamFile).phaseReceiptsByRecency
 }
 
 function inferTerminalProvider(model?: string): string | undefined {
@@ -385,7 +418,7 @@ function getMemberByName(teamFile: TeamFile, name: string) {
   return teamFile.members.find(member => member.name === name)
 }
 
-function getLatestTerminalContextForAgent(
+export function getLatestTerminalContextForAgent(
   teamFile: TeamFile,
   agentId: string,
   terminalContextId?: string,
@@ -524,10 +557,7 @@ function createPhaseDelivery(args: {
 }
 
 export function buildTeamTerminalMemoryMarkdown(teamFile: TeamFile): string {
-  const activeAgentIds = new Set(teamFile.members.map(member => member.agentId))
-  const contexts = (teamFile.terminalContexts ?? []).filter(context =>
-    activeAgentIds.has(context.agentId),
-  )
+  const contexts = getActiveTeamTerminalContexts(teamFile)
   const lines = [
     `# Agent Co-Work Terminal Registry: ${teamFile.name}`,
     '',
@@ -875,7 +905,7 @@ export async function recordMailboxPhaseMemory(
 ): Promise<void> {
   const normalizedFromName =
     args.fromName === 'user' ? TEAM_LEAD_NAME : args.fromName
-  const teamFile = await readTeamFileAsync(teamName)
+  const teamFile = await readTeamFileSessionSnapshotAsync(teamName)
   if (!teamFile) {
     return
   }
@@ -952,9 +982,7 @@ export async function recordMailboxPhaseMemory(
 }
 
 export function buildTeamPhaseMemoryMarkdown(teamFile: TeamFile): string {
-  const receipts = [...(teamFile.phaseReceipts ?? [])].sort(
-    (left, right) => right.updatedAt - left.updatedAt,
-  )
+  const receipts = getTeamPhaseReceiptsByRecency(teamFile)
   const lines = [
     `# Agent Co-Work Phase Memory: ${teamFile.name}`,
     '',
@@ -1087,23 +1115,100 @@ export function getTeamFilePath(teamName: string): string {
   return join(getTeamDir(teamName), 'config.json')
 }
 
-/**
- * Reads a team file by name (sync — for sync contexts like React render paths)
- * @internal Exported for team discovery UI
- */
-// sync IO: called from sync context
-export function readTeamFile(teamName: string): TeamFile | null {
+function getCachedTeamFile(
+  teamName: string,
+  currentMtimeMs: number,
+  currentSizeBytes: number,
+  mode: TeamFileReadMode,
+): TeamFile | null {
+  const cached = TEAM_FILE_CACHE.get(teamName)
+  if (
+    !cached ||
+    cached.mtimeMs !== currentMtimeMs ||
+    cached.sizeBytes !== currentSizeBytes
+  ) {
+    return null
+  }
+  return mode === 'shared' ? cached.teamFile : cloneTeamFile(cached.teamFile)
+}
+
+function cacheParsedTeamFile(
+  teamName: string,
+  content: string,
+  mtimeMs: number,
+  sizeBytes: number,
+): TeamFile {
+  return rememberCachedTeamFile(
+    teamName,
+    jsonParse(content) as TeamFile,
+    mtimeMs,
+    sizeBytes,
+    {
+      preserveInput: true,
+    },
+  )
+}
+
+function readTeamFileWithMode(
+  teamName: string,
+  mode: TeamFileReadMode,
+): TeamFile | null {
   const teamFilePath = getTeamFilePath(teamName)
   try {
-    const currentMtimeMs = statSync(teamFilePath).mtimeMs
-    const cached = TEAM_FILE_CACHE.get(teamName)
-    if (cached && cached.mtimeMs === currentMtimeMs) {
-      return cloneTeamFile(cached.teamFile)
+    const currentStat = statSync(teamFilePath)
+    const cached = getCachedTeamFile(
+      teamName,
+      currentStat.mtimeMs,
+      currentStat.size,
+      mode,
+    )
+    if (cached) {
+      return cached
     }
     const content = readFileSync(teamFilePath, 'utf-8')
-    const teamFile = jsonParse(content) as TeamFile
-    rememberCachedTeamFile(teamName, teamFile, currentMtimeMs)
-    return teamFile
+    const teamFile = cacheParsedTeamFile(
+      teamName,
+      content,
+      currentStat.mtimeMs,
+      currentStat.size,
+    )
+    return mode === 'shared' ? teamFile : cloneTeamFile(teamFile)
+  } catch (e) {
+    if (getErrnoCode(e) === 'ENOENT') {
+      clearCachedTeamFile(teamName)
+      return null
+    }
+    logForDebugging(
+      `[TeammateTool] Failed to read team file for ${teamName}: ${errorMessage(e)}`,
+    )
+    return null
+  }
+}
+
+async function readTeamFileWithModeAsync(
+  teamName: string,
+  mode: TeamFileReadMode,
+): Promise<TeamFile | null> {
+  const teamFilePath = getTeamFilePath(teamName)
+  try {
+    const currentStat = await stat(teamFilePath)
+    const cached = getCachedTeamFile(
+      teamName,
+      currentStat.mtimeMs,
+      currentStat.size,
+      mode,
+    )
+    if (cached) {
+      return cached
+    }
+    const content = await readFile(teamFilePath, 'utf-8')
+    const teamFile = cacheParsedTeamFile(
+      teamName,
+      content,
+      currentStat.mtimeMs,
+      currentStat.size,
+    )
+    return mode === 'shared' ? teamFile : cloneTeamFile(teamFile)
   } catch (e) {
     if (getErrnoCode(e) === 'ENOENT') {
       clearCachedTeamFile(teamName)
@@ -1117,32 +1222,39 @@ export function readTeamFile(teamName: string): TeamFile | null {
 }
 
 /**
+ * Reads a team file by name (sync — for sync contexts like React render paths)
+ * @internal Exported for team discovery UI
+ */
+// sync IO: called from sync context
+export function readTeamFile(teamName: string): TeamFile | null {
+  return readTeamFileWithMode(teamName, 'clone')
+}
+
+/**
+ * Reads the session-hot shared snapshot for read-only Agent Co-Work lookups.
+ * Callers must not mutate the returned object.
+ */
+export function readTeamFileSessionSnapshot(teamName: string): TeamFile | null {
+  return readTeamFileWithMode(teamName, 'shared')
+}
+
+/**
  * Reads a team file by name (async — for tool handlers and other async contexts)
  */
 export async function readTeamFileAsync(
   teamName: string,
 ): Promise<TeamFile | null> {
-  const teamFilePath = getTeamFilePath(teamName)
-  try {
-    const currentMtimeMs = (await stat(teamFilePath)).mtimeMs
-    const cached = TEAM_FILE_CACHE.get(teamName)
-    if (cached && cached.mtimeMs === currentMtimeMs) {
-      return cloneTeamFile(cached.teamFile)
-    }
-    const content = await readFile(teamFilePath, 'utf-8')
-    const teamFile = jsonParse(content) as TeamFile
-    rememberCachedTeamFile(teamName, teamFile, currentMtimeMs)
-    return teamFile
-  } catch (e) {
-    if (getErrnoCode(e) === 'ENOENT') {
-      clearCachedTeamFile(teamName)
-      return null
-    }
-    logForDebugging(
-      `[TeammateTool] Failed to read team file for ${teamName}: ${errorMessage(e)}`,
-    )
-    return null
-  }
+  return readTeamFileWithModeAsync(teamName, 'clone')
+}
+
+/**
+ * Reads the session-hot shared snapshot for read-only Agent Co-Work lookups.
+ * Callers must not mutate the returned object.
+ */
+export async function readTeamFileSessionSnapshotAsync(
+  teamName: string,
+): Promise<TeamFile | null> {
+  return readTeamFileWithModeAsync(teamName, 'shared')
 }
 
 /**
@@ -1155,7 +1267,10 @@ function writeTeamFile(teamName: string, teamFile: TeamFile): void {
   mkdirSync(teamDir, { recursive: true })
   const teamFilePath = getTeamFilePath(teamName)
   writeFileSync(teamFilePath, jsonStringify(teamFile, null, 2))
-  rememberCachedTeamFile(teamName, teamFile, statSync(teamFilePath).mtimeMs)
+  const fileStat = statSync(teamFilePath)
+  rememberCachedTeamFile(teamName, teamFile, fileStat.mtimeMs, fileStat.size, {
+    preserveInput: TEAM_FILE_SHARED_INSTANCES.has(teamFile),
+  })
   syncTeamTerminalMemory(teamName, teamFile)
   syncTeamPhaseMemory(teamName, teamFile)
 }
@@ -1172,7 +1287,10 @@ export async function writeTeamFileAsync(
   await mkdir(teamDir, { recursive: true })
   const teamFilePath = getTeamFilePath(teamName)
   await writeFile(teamFilePath, jsonStringify(teamFile, null, 2))
-  rememberCachedTeamFile(teamName, teamFile, (await stat(teamFilePath)).mtimeMs)
+  const fileStat = await stat(teamFilePath)
+  rememberCachedTeamFile(teamName, teamFile, fileStat.mtimeMs, fileStat.size, {
+    preserveInput: TEAM_FILE_SHARED_INSTANCES.has(teamFile),
+  })
   syncTeamTerminalMemory(teamName, teamFile)
   syncTeamPhaseMemory(teamName, teamFile)
 }

@@ -73,6 +73,26 @@ export function BenchmarkSnapshotSection(): React.ReactNode {
         </article>
 
         <article className="benchmark-card">
+          <span className="benchmark-label">TerminalBench Soak</span>
+          <strong>
+            {BENCHMARK_SNAPSHOT.terminalBenchSoak.cycleCount} cycles //
+            {' '}
+            {BENCHMARK_SNAPSHOT.terminalBenchSoak.totalTrials} trials
+          </strong>
+          <p>{BENCHMARK_SNAPSHOT.terminalBenchSoak.summary}</p>
+          <div className="benchmark-card-footnote">
+            <span>Task: {BENCHMARK_SNAPSHOT.terminalBenchSoak.taskName}</span>
+            <span>Status: {BENCHMARK_SNAPSHOT.terminalBenchSoak.status}</span>
+            <span>
+              Runtime errors: {BENCHMARK_SNAPSHOT.terminalBenchSoak.executionErrorTrials}
+            </span>
+            <span>
+              Benchmark failures: {BENCHMARK_SNAPSHOT.terminalBenchSoak.benchmarkFailedTrials}
+            </span>
+          </div>
+        </article>
+
+        <article className="benchmark-card">
           <span className="benchmark-label">W&B</span>
           <strong>{BENCHMARK_SNAPSHOT.wandb.status}</strong>
           <p>{BENCHMARK_SNAPSHOT.wandb.summary}</p>

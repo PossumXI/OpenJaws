@@ -7,7 +7,8 @@ const EXPECTED_SITE_NAME = 'qline-site-20260415022202'
 const EXPECTED_DOMAIN = 'qline.site'
 const REQUIRED_CONTENT_CHECKS = [
   'Agent Co-Work',
-  'official public TerminalBench',
+  'Public TerminalBench',
+  'TerminalBench Soak',
   'circuit-fibsqrt',
   'OpenJaws on GitHub',
 ] as const

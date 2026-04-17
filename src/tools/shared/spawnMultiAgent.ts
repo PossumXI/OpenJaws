@@ -37,6 +37,7 @@ import {
 } from '../../utils/immaculateHarness.js'
 import { createSystemMessage } from '../../utils/messages.js'
 import { parseUserSpecifiedModel } from '../../utils/model/model.js'
+import { resolveOciQRuntime } from '../../utils/ociQRuntime.js'
 import type { PermissionMode } from '../../utils/permissions/PermissionMode.js'
 import { isTmuxAvailable } from '../../utils/swarm/backends/detection.js'
 import {
@@ -89,6 +90,10 @@ import type { CustomAgentDefinition } from '../AgentTool/loadAgentsDir.js'
 import { isCustomAgent } from '../AgentTool/loadAgentsDir.js'
 
 function getDefaultTeammateModel(leaderModel: string | null): string {
+  const qRuntime = resolveOciQRuntime()
+  if (qRuntime.ready) {
+    return 'oci:Q'
+  }
   const configured = getGlobalConfig().teammateDefaultModel
   if (configured === null) {
     // User picked "Default" in the /config picker — follow the leader.

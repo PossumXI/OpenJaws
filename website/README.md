@@ -17,7 +17,7 @@ What it does today:
 - ships the branded one-page frontend with real local 2D and 3D assets
 - surfaces OpenJaws, Q_agents, Agent Co-Work, and the public repo directly on the landing page
 - includes Netlify config
-- includes a benchmark snapshot section generated from checked-in BridgeBench, soak, verified official TerminalBench, and W&B-auth receipts
+- includes a benchmark snapshot section generated from checked-in BridgeBench, soak, official public TerminalBench, repeated TerminalBench soak, and W&B-auth receipts
 - includes server routes that proxy to a real hosted-Q backend when configured
 - includes a local filesystem access ledger for development and self-hosted smoke work
 - fails closed in production unless you attach a real hosted-Q backend

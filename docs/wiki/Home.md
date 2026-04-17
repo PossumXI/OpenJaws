@@ -91,6 +91,7 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 - `bun run q:bridgebench` evaluates audited packs like `all`, `coding`, `agentic`, and `security`
 - `bun run q:curriculum` runs bounded specialization passes and benchmarks the resulting adapters back against those packs
 - `bun run q:soak` runs a bounded repeated-probe soak over native OpenJaws and direct OCI Q under one receipt
+- `bun run q:terminalbench:soak` runs a bounded repeated Harbor / Terminal-Bench soak lane with live `cycles[]` receipts
 - `bun run q:hybrid` keeps one bounded local lane and one Immaculate-routed lane under one explicit receipt
 - the local lane writes `reward.json` and `reward-details.json` so the results are easy to compare with Rewardkit-style tooling
 - `--lineage-id` and optional `--phase-id` now let the local, routed, and follow-up benchmark receipts stay attached to the same intentional work thread
@@ -102,6 +103,7 @@ Honest boundary:
 - the public benchmark source of truth still lives in Immaculate
 - OpenJaws is not yet pretending to be a full Harbor / Terminal-Bench agent adapter
 - the newest official Terminal-Bench public-task receipt is now submitted through the official leaderboard repo discussion flow, but the verifier reward stayed `0.0`, so it is execution proof rather than a strong leaderboard result
+- the newest local repeated Terminal-Bench soak receipt is useful for stability tuning, not a public leaderboard claim
 - the Discord station currently uses scheduled text-channel patrols and optional speech attachments, not full voice-channel presence
 - the private Discord station can search a secret-safe local corpus and run explicit operator-only OpenJaws workflows, but it is not a hidden shell surface
 

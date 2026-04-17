@@ -72,8 +72,10 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 - `bun run q:curriculum` runs bounded specialization passes and benchmarks those adapters back against the audited packs
 - `bun run q:hybrid` coordinates one bounded local lane and one Immaculate-routed lane under one receipt
 - `bun run q:terminalbench` adds a Harbor / Terminal-Bench adapter lane for external terminal-task evaluation
+- `bun run q:terminalbench:soak` adds a bounded repeated Terminal-Bench soak lane above the per-run verification surface
 - `bun run q:soak` adds a 30-minute bounded repeated-probe soak lane for native OpenJaws plus direct OCI Q
 - `q:terminalbench` now supports `--repeat` and writes `attempts[]` plus flattened `tasks[]` receipts, so repeated-run stability and real multi-task concurrency are visible in one JSON artifact
+- `q:terminalbench` now also supports `--soak`, which writes `cycles[]`, a top-level `soak` block, and still keeps flattened `attempts[]` / `tasks[]` receipts for compatibility
 - `q:terminalbench` now scrubs Harbor raw `jobs/.../result.json` env maps in place after a run so the wrapper does not leave plaintext agent env bundles behind in those local artifacts
 - hybrid, curriculum, benchmark, and routed launch receipts can now carry a shared `lineage_id` plus optional `phase_id`, so the local lane, routed lane, and follow-up benchmark reports stay attached to the same intentional work thread
 - `Q` training and benchmark receipts now record W&B readiness so live logging state is visible instead of guessed
@@ -96,6 +98,9 @@ Current April 16, 2026 local snapshot:
   - that same receipt is now packaged and submitted through the official leaderboard discussion flow:
     - `https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard/discussions/141`
   - repeated-attempt stability receipt captured `1` benchmark-failing trial plus `1` execution-error trial across `2` attempts
+  - repeated soak live receipt now exists at `artifacts/q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3/terminalbench-report.json`
+    - result: `completed_with_errors`
+    - truth: `2` cycles produced `2` total trials, `0` runtime errors, and `2` benchmark-failing trials
   - real concurrent receipt captured `2` live tasks at concurrency `2`
   - task outcomes are still variant, so the lane is not ready for strong leaderboard positioning
 
