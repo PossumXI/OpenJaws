@@ -6,6 +6,7 @@ import {
   buildQTrainingRouteManifest,
   evaluateQTrainingPreflight,
   getOpenJawsTrainingModelLabel,
+  peekQTrainingFastPathWindow,
   getQTrainingRouteQueueDisplayStatus,
   getQTrainingRouteQueueStatusSummary,
   getQTrainingRouteQueueEntry,
@@ -17,6 +18,7 @@ import {
   type QTrainingRouteRequest,
   type QTrainingStatus,
   stageQTrainingRouteFile,
+  updateQTrainingFastPathWindow,
   upsertQTrainingRegistryEntry,
   upsertQTrainingRouteQueueEntry,
 } from '../utils/qTraining.js'
@@ -131,6 +133,32 @@ export function isQRouteFailureLike(
       typeof (value as QTrainingRouteFailure).stage === 'string' &&
       typeof (value as QTrainingRouteFailure).code === 'string',
   )
+}
+
+function isTransportRouteFailure(
+  failure: QTrainingRouteFailure | null | undefined,
+): boolean {
+  if (!failure) {
+    return false
+  }
+  if (failure.code === 'fast_path_suppressed') {
+    return false
+  }
+  const detail = `${failure.summary}\n${failure.detail ?? ''}`.toLowerCase()
+  return [
+    'unreachable',
+    'timed out',
+    'timeout',
+    'transport',
+    'network',
+    'socket',
+    'econn',
+    'remote dispatch',
+    'temporarily unavailable',
+    '502',
+    '503',
+    '504',
+  ].some(token => detail.includes(token))
 }
 
 export async function requestImmaculateQRoute(args: {
@@ -522,9 +550,13 @@ export async function launchQTrainingRun(
 
   const forceLocalLaunch =
     options.allowHostRisk && preflight.decision === 'remote_required'
+  const fastPathWindow = peekQTrainingFastPathWindow({ root })
+  const fastPathSuppressed =
+    fastPathWindow.active && options.routeMode !== 'local'
   const wantsImmaculateRoute =
     preflight.decision === 'remote_required' &&
     !forceLocalLaunch &&
+    !fastPathSuppressed &&
     options.routeMode !== 'local'
   const routeAttempt = wantsImmaculateRoute
     ? await requestImmaculateQRoute({
@@ -544,9 +576,35 @@ export async function launchQTrainingRun(
         preflight,
         root,
       })
-    : { routeRequest: null, routeFailure: null }
+    : {
+        routeRequest: null,
+        routeFailure: fastPathSuppressed
+          ? buildQRouteFailure({
+              stage: 'control',
+              code: 'fast_path_suppressed',
+              summary:
+                'Immaculate fast path temporarily suppressed after recent transport failures.',
+              detail: `${fastPathWindow.recentTransportFailureCount} transport failures observed within ${Math.round(
+                fastPathWindow.windowMs / 1000,
+              )}s. The fast path resumes automatically after a clean routed success.`,
+            })
+          : null,
+      }
   const routeRequest = routeAttempt.routeRequest
   const routeFailure = routeAttempt.routeFailure
+  if (routeRequest) {
+    updateQTrainingFastPathWindow({
+      root,
+      success: true,
+      transportFailure: false,
+    })
+  } else if (isTransportRouteFailure(routeFailure)) {
+    updateQTrainingFastPathWindow({
+      root,
+      success: false,
+      transportFailure: true,
+    })
+  }
   const routeQueue = routeRequest
     ? getQTrainingRouteQueueEntry(runId, root)
     : null

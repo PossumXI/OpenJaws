@@ -78,7 +78,8 @@ export default function Page(): React.ReactNode {
             <span>Agent Co-Work live</span>
             <span>Release-checked qline.site</span>
             <span>Public + soak TerminalBench receipts</span>
-            <span>Typed Q + Immaculate traces</span>
+            <span>Typed traces + canonical signed receipts</span>
+            <span>Shared preflight + seeded benches</span>
           </div>
         </div>
 
@@ -180,8 +181,8 @@ export default function Page(): React.ReactNode {
             <p>
               Local tuning plus official public and repeated TerminalBench
               receipts, all checked against one shared OCI Q preflight lane and
-              one typed Immaculate event contract with trace-backed receipt
-              files ready to sign.
+              one typed Immaculate event contract with trace-backed canonical
+              receipts, declared seeds, and reproducible preflight state.
             </p>
           </article>
           <article className="feature-card">

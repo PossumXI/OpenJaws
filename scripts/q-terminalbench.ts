@@ -16,9 +16,12 @@ import {
   createBenchmarkTraceWriter,
 } from '../src/immaculate/benchmarkTrace.js'
 import {
-  runOpenJawsProviderPreflight,
-  type QPreflightCheck as PreflightCheck,
-} from '../src/q/runtime.js'
+  buildBenchmarkSeedEnv,
+  resolveDeterministicSeed,
+  resolveDefaultHarborCommand,
+  runQPreflightChecks,
+} from '../src/q/preflight.js'
+import { type QPreflightCheck as PreflightCheck } from '../src/q/runtime.js'
 import {
   buildAggregateSummary,
   buildAttemptSummary,
@@ -57,6 +60,7 @@ type CliOptions = {
   harborCommand: string
   agent: AgentMode
   model: string | null
+  seed: number
   nTasks: number
   nConcurrent: number
   nAttempts: number
@@ -83,32 +87,6 @@ type CliOptions = {
   officialSubmission: boolean
 }
 
-function resolveDefaultHarborCommand(): string {
-  const configured = process.env.OPENJAWS_HARBOR_COMMAND
-  if (configured) {
-    return configured
-  }
-
-  const localAppData = process.env.LOCALAPPDATA
-  if (localAppData) {
-    const pythonScriptsHarbor = resolve(
-      localAppData,
-      'Packages',
-      'PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0',
-      'LocalCache',
-      'local-packages',
-      'Python313',
-      'Scripts',
-      process.platform === 'win32' ? 'harbor.exe' : 'harbor',
-    )
-    if (existsSync(pythonScriptsHarbor)) {
-      return pythonScriptsHarbor
-    }
-  }
-
-  return 'harbor'
-}
-
 function parseOptionalInt(value: string | undefined): number | null {
   if (!value) {
     return null
@@ -133,6 +111,7 @@ export function parseArgs(argv: string[]): CliOptions {
     harborCommand: resolveDefaultHarborCommand(),
     agent: 'openjaws',
     model: 'oci:Q',
+    seed: resolveDeterministicSeed(),
     nTasks: 1,
     nConcurrent: 1,
     nAttempts: 1,
@@ -190,6 +169,13 @@ export function parseArgs(argv: string[]): CliOptions {
     }
     if (arg === '--no-model') {
       options.model = null
+      continue
+    }
+    if (arg === '--seed' && argv[i + 1]) {
+      const parsed = parseOptionalInt(argv[++i]!)
+      if (parsed !== null) {
+        options.seed = resolveDeterministicSeed(parsed)
+      }
       continue
     }
     if (arg === '--n-tasks' && argv[i + 1]) {
@@ -342,6 +328,7 @@ function printHelpAndExit(): never {
       '  --agent <mode>               openjaws | oracle',
       '  --model <name>               OpenJaws model identifier for the Harbor adapter (default oci:Q)',
       '  --no-model                   Do not pass a model to the OpenJaws agent',
+      '  --seed <n>                   Deterministic benchmark seed emitted into receipts (default 42)',
       '  --n-tasks <n>                Maximum number of tasks to run (default 1)',
       '  --n-concurrent <n>           Harbor concurrency for parallel task execution (default 1)',
       '  --n-attempts, -k <n>         Harbor attempts per trial (default 1)',
@@ -401,29 +388,6 @@ function sanitizeSubmissionSlug(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'submission'
-}
-
-async function runPreflightCheck(
-  name: string,
-  command: string,
-  args: string[],
-  options: { cwd?: string; env?: Record<string, string | undefined> } = {},
-): Promise<PreflightCheck> {
-  const result = await execa(command, args, {
-    cwd: options.cwd,
-    env: options.env,
-    reject: false,
-    windowsHide: true,
-    timeout: 120_000,
-  })
-  return {
-    name,
-    status: result.exitCode === 0 ? 'passed' : 'failed',
-    summary:
-      result.exitCode === 0
-        ? `${name} reachable`
-        : tailText(result.stderr || result.stdout) || `${name} failed`,
-  }
 }
 
 function collectAgentEnv(options?: { officialSubmission?: boolean; model?: string | null }): Record<string, string> {
@@ -551,6 +515,9 @@ function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): s
       args.push('--model', options.model)
     }
     for (const [name, value] of Object.entries(agentEnv)) {
+      args.push('--ae', `${name}=${value}`)
+    }
+    for (const [name, value] of Object.entries(buildBenchmarkSeedEnv(options.seed))) {
       args.push('--ae', `${name}=${value}`)
     }
   }
@@ -1057,6 +1024,7 @@ async function runHarborAttempt(args: {
     reject: false,
     windowsHide: true,
     timeout: args.options.timeoutMs,
+    env: buildBenchmarkSeedEnv(args.options.seed),
   })
 
   const expectedJobName = resolveAttemptJobName(args.options, args.cycle, args.attempt)
@@ -1158,6 +1126,7 @@ function writeSignedBenchmarkArtifacts(args: {
     generatedAt: new Date().toISOString(),
     reportPath,
     reportSha256: sha256File(reportPath),
+    seed: args.report.seed ?? null,
     traceReferences: args.report.traceReferences,
     summary: args.report.summary ?? null,
     status: args.report.status ?? null,
@@ -1200,27 +1169,17 @@ async function main() {
     sessionId: runId,
   })
 
-  const checks: PreflightCheck[] = []
-  checks.push(
-    await runPreflightCheck('harbor', options.harborCommand, ['--help'], {
-      cwd: options.root,
-    }),
-  )
-  checks.push(
-    await runPreflightCheck('docker', 'docker', ['version', '--format', '{{.Server.Version}}'], {
-      cwd: options.root,
-    }),
-  )
-  if (options.agent === 'openjaws') {
-    checks.push(
-      await runOpenJawsProviderPreflight({
-        root: options.root,
-        model: options.model,
-        checkName: 'openjaws-provider-preflight',
-        warnOnFailure: true,
-      }),
-    )
-  }
+  const checks: PreflightCheck[] = await runQPreflightChecks({
+    root: options.root,
+    requirements:
+      options.agent === 'openjaws'
+        ? ['harbor', 'docker', 'openjaws-provider-preflight', 'clock-skew']
+        : ['harbor', 'docker', 'clock-skew'],
+    model: options.model,
+    harborCommand: options.harborCommand,
+    timeoutMs: 30_000,
+    warnOnProviderFailure: true,
+  })
   appendBenchmarkTraceEvent(traceWriter, 'route.dispatched', {
     routeId: `${runId}-preflight`,
     runId,
@@ -1239,6 +1198,7 @@ async function main() {
     dataset: options.dataset,
     agent: options.agent,
     model: options.model,
+    seed: options.seed,
     nTasks: options.nTasks,
     nConcurrent: options.nConcurrent,
     nAttempts: options.nAttempts,

@@ -363,11 +363,15 @@ OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
 - `bun run q:hybrid` coordinates one bounded local `Q` lane plus one Immaculate-routed lane under a shared receipt
 - `bun run q:soak` runs a bounded repeated-probe soak over native OpenJaws plus direct OCI Q
 - `bun run q:terminalbench` wraps Harbor / Terminal-Bench for external terminal-task evaluation when Harbor and Docker are available
+- `bun run q:preflight -- --bench <bridgebench|soak|terminalbench>` now runs the same typed checklist the live benchmark wrappers use, so Harbor, Docker, Python, bundle, provider, and clock checks stop drifting between lanes
 - `q:soak` and `q:terminalbench` now share the same OCI/Q provider probe surface before launch, so preflight receipts stop drifting across the direct soak lane and the Harbor-backed lane
+- the main benchmark lanes now all accept `--seed`, default to `42`, and emit that seed into their signed receipts so local reruns are reproducible instead of implied
+- benchmark receipt signing now uses canonical JSON plus Ed25519, which removes the old re-serialize-and-break verification footgun
 - `q:terminalbench` now supports `--repeat` and writes `attempts[]` plus flattened `tasks[]` receipts so repeated-run stability and real multi-task concurrency are visible in one artifact
 - `q:terminalbench` now also supports `--soak`, and `bun run q:terminalbench:soak` wraps that into repeated live cycles with `cycles[]`, per-cycle aggregates, and one managed jobs lane per run
 - benchmark artifacts now write `bridgebench-report.json` plus `reward.json` and `reward-details.json` in a Rewardkit-style shape so the results are easy to inspect or reuse
 - training and benchmark receipts also record whether W&B logging was enabled, incomplete, or disabled, including the resolved project URL when that lane is actually configured
+- hybrid Q sessions now keep a rolling 3-failures-in-60s transport hysteresis window for the Immaculate fast path, so one transient network miss no longer knocks the whole hybrid lane off course
 - `q:bridgebench`, `q:curriculum`, `q:hybrid`, and routed `launch:q` runs can now carry both `--lineage-id` and optional `--phase-id`, so local, routed, and follow-up benchmark receipts stay attached to one intentional work thread
 - the local Discord `Q_agent` lane now writes a shared receipt file that `/status` can read, so patrol cadence, routing decisions, Discord voice readiness, local knowledge readiness, and the last operator action stay visible to operators
 

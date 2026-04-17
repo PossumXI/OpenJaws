@@ -7,31 +7,57 @@ import {
 type JsonPrimitive = string | number | boolean | null
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
 
-export const OPENJAWS_BENCHMARK_RECEIPT_KEY_ID =
-  'openjaws-benchmark-2026-04'
+export const OPENJAWS_BENCHMARK_RECEIPT_KEY_ID = 'openjaws-benchmark-2026-04'
 
 export type BenchmarkReceiptSignatureBlock = ReleaseManifestSignatureBlock
 
-function sortJsonValue(value: JsonValue): JsonValue {
+function normalizeJsonValue(value: JsonValue): JsonValue {
   if (Array.isArray(value)) {
-    return value.map(item => sortJsonValue(item))
+    return value.map(item => normalizeJsonValue(item))
   }
   if (value && typeof value === 'object') {
-    return Object.keys(value)
+    return Object.fromEntries(
+      Object.keys(value)
       .sort()
-      .reduce<{ [key: string]: JsonValue }>((acc, key) => {
-        acc[key] = sortJsonValue((value as Record<string, JsonValue>)[key]!)
-        return acc
-      }, {})
+      .map(key => [key, normalizeJsonValue((value as Record<string, JsonValue>)[key]!)]),
+    )
+  }
+  if (typeof value === 'number' && Object.is(value, -0)) {
+    return 0
   }
   return value
+}
+
+function serializeCanonicalJson(value: JsonValue): string {
+  if (value === null) {
+    return 'null'
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false'
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      throw new Error('Benchmark receipt payload contains a non-finite number.')
+    }
+    return JSON.stringify(Object.is(value, -0) ? 0 : value)
+  }
+  if (typeof value === 'string') {
+    return JSON.stringify(value)
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(item => serializeCanonicalJson(item)).join(',')}]`
+  }
+  return `{${Object.keys(value)
+    .sort()
+    .map(key => `${JSON.stringify(key)}:${serializeCanonicalJson(value[key]!)}`)
+    .join(',')}}`
 }
 
 export function serializeBenchmarkReceiptPayload(
   receipt: Record<string, unknown>,
 ): string {
   const { signature: _signature, ...unsignedReceipt } = receipt
-  return JSON.stringify(sortJsonValue(unsignedReceipt as JsonValue))
+  return serializeCanonicalJson(normalizeJsonValue(unsignedReceipt as JsonValue))
 }
 
 export function signBenchmarkReceipt(args: {

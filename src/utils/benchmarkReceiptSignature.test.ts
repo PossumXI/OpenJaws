@@ -21,6 +21,15 @@ describe('benchmarkReceiptSignature', () => {
     ).toBe('{"a":{"b":2,"c":3},"z":1}')
   })
 
+  test('canonicalizes arrays and negative zero consistently', () => {
+    expect(
+      serializeBenchmarkReceiptPayload({
+        numbers: [-0, 1.5, 1e3],
+        nested: [{ z: 2, a: 1 }],
+      }),
+    ).toBe('{"nested":[{"a":1,"z":2}],"numbers":[0,1.5,1000]}')
+  })
+
   test('signs and verifies a receipt payload', () => {
     const { publicKey, privateKey } = generateKeyPairSync('ed25519')
     const receipt = {

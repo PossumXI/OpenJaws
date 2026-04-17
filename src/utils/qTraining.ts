@@ -177,6 +177,7 @@ export type QTrainingRouteFailureStage =
 
 export type QTrainingRouteFailureCode =
   | 'harness_unreachable'
+  | 'fast_path_suppressed'
   | 'control_failed'
   | 'control_rejected'
   | 'assignment_failed'
@@ -437,6 +438,15 @@ export type QTrainingHybridSessionStatus =
   | 'failed'
   | 'dry_run'
 
+export type QTrainingHybridFallbackWindow = {
+  active: boolean
+  threshold: number
+  windowMs: number
+  recentTransportFailureCount: number
+  lastTransportFailureAt?: string | null
+  lastSuccessAt?: string | null
+}
+
 export type QTrainingHybridSessionReceipt = {
   sessionId: string
   generatedAt: string
@@ -453,6 +463,7 @@ export type QTrainingHybridSessionReceipt = {
   cloudBaseModel?: string | null
   cloudLane?: QTrainingHybridLaneReceipt | null
   status: QTrainingHybridSessionStatus
+  fallbackWindow?: QTrainingHybridFallbackWindow | null
   honestyBoundary: string
 }
 
@@ -514,11 +525,174 @@ const GIB = 1024 ** 3
 const Q_ROUTE_SECRET_FILE = join('.openjaws', 'q-route-secret')
 const Q_ROUTE_QUEUE_LOCK_FILE = '.route-queue.lock'
 const DEFAULT_Q_ROUTE_QUEUE_LEASE_MS = 45_000
+const Q_TRAINING_FAST_PATH_STATE_FILE = join(
+  'artifacts',
+  'immaculate',
+  'q-fast-path.json',
+)
+export const Q_TRAINING_FAST_PATH_FAILURE_THRESHOLD = 3
+export const Q_TRAINING_FAST_PATH_WINDOW_MS = 60_000
 const Q_ROUTE_QUEUE_LOCK_OPTIONS = {
   realpath: false,
 } as const
 const Q_ROUTE_QUEUE_LOCK_WAIT_MS = 25
 const Q_ROUTE_QUEUE_LOCK_TIMEOUT_MS = 2_500
+
+type QTrainingFastPathStateFile = {
+  failureTimestamps: string[]
+  lastSuccessAt: string | null
+}
+
+function resolveQTrainingFastPathStatePath(root: string): string {
+  return resolve(root, Q_TRAINING_FAST_PATH_STATE_FILE)
+}
+
+function normalizeQTrainingFastPathStateFile(
+  value: unknown,
+): QTrainingFastPathStateFile {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {
+      failureTimestamps: [],
+      lastSuccessAt: null,
+    }
+  }
+  const record = value as Record<string, unknown>
+  return {
+    failureTimestamps: Array.isArray(record.failureTimestamps)
+      ? record.failureTimestamps.filter(
+          (entry): entry is string => typeof entry === 'string',
+        )
+      : [],
+    lastSuccessAt:
+      typeof record.lastSuccessAt === 'string' ? record.lastSuccessAt : null,
+  }
+}
+
+function readQTrainingFastPathStateFile(root: string): QTrainingFastPathStateFile {
+  const statePath = resolveQTrainingFastPathStatePath(root)
+  if (!existsSync(statePath)) {
+    return {
+      failureTimestamps: [],
+      lastSuccessAt: null,
+    }
+  }
+  try {
+    return normalizeQTrainingFastPathStateFile(
+      JSON.parse(readFileSync(statePath, 'utf8')),
+    )
+  } catch {
+    return {
+      failureTimestamps: [],
+      lastSuccessAt: null,
+    }
+  }
+}
+
+function writeQTrainingFastPathStateFile(
+  root: string,
+  state: QTrainingFastPathStateFile,
+): void {
+  const statePath = resolveQTrainingFastPathStatePath(root)
+  mkdirSync(dirname(statePath), { recursive: true })
+  writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8')
+}
+
+function pruneQTrainingFastPathFailures(
+  timestamps: readonly string[],
+  nowMs: number,
+  windowMs: number,
+): string[] {
+  return timestamps.filter(timestamp => {
+    const parsed = Date.parse(timestamp)
+    return Number.isFinite(parsed) && nowMs - parsed <= windowMs
+  })
+}
+
+export function computeQTrainingFastPathWindow(args: {
+  history: QTrainingFastPathStateFile
+  observedAt: string
+  transportFailure: boolean
+  success: boolean
+  threshold?: number
+  windowMs?: number
+}): {
+  history: QTrainingFastPathStateFile
+  fallbackWindow: QTrainingHybridFallbackWindow
+} {
+  const threshold = args.threshold ?? Q_TRAINING_FAST_PATH_FAILURE_THRESHOLD
+  const windowMs = args.windowMs ?? Q_TRAINING_FAST_PATH_WINDOW_MS
+  const observedMs = Date.parse(args.observedAt)
+  const nextHistory: QTrainingFastPathStateFile = {
+    failureTimestamps: pruneQTrainingFastPathFailures(
+      args.history.failureTimestamps,
+      observedMs,
+      windowMs,
+    ),
+    lastSuccessAt: args.history.lastSuccessAt,
+  }
+
+  if (args.success) {
+    nextHistory.failureTimestamps = []
+    nextHistory.lastSuccessAt = args.observedAt
+  } else if (args.transportFailure) {
+    nextHistory.failureTimestamps = [
+      ...nextHistory.failureTimestamps,
+      args.observedAt,
+    ]
+  }
+
+  return {
+    history: nextHistory,
+    fallbackWindow: {
+      active: nextHistory.failureTimestamps.length >= threshold,
+      threshold,
+      windowMs,
+      recentTransportFailureCount: nextHistory.failureTimestamps.length,
+      lastTransportFailureAt: nextHistory.failureTimestamps.at(-1) ?? null,
+      lastSuccessAt: nextHistory.lastSuccessAt,
+    },
+  }
+}
+
+export function peekQTrainingFastPathWindow(args: {
+  root: string
+  observedAt?: string
+  threshold?: number
+  windowMs?: number
+}): QTrainingHybridFallbackWindow {
+  const observedAt = args.observedAt ?? new Date().toISOString()
+  const computed = computeQTrainingFastPathWindow({
+    history: readQTrainingFastPathStateFile(args.root),
+    observedAt,
+    transportFailure: false,
+    success: false,
+    threshold: args.threshold,
+    windowMs: args.windowMs,
+  })
+  writeQTrainingFastPathStateFile(args.root, computed.history)
+  return computed.fallbackWindow
+}
+
+export function updateQTrainingFastPathWindow(args: {
+  root: string
+  observedAt?: string
+  transportFailure: boolean
+  success: boolean
+  threshold?: number
+  windowMs?: number
+}): QTrainingHybridFallbackWindow {
+  const observedAt = args.observedAt ?? new Date().toISOString()
+  const computed = computeQTrainingFastPathWindow({
+    history: readQTrainingFastPathStateFile(args.root),
+    observedAt,
+    transportFailure: args.transportFailure,
+    success: args.success,
+    threshold: args.threshold,
+    windowMs: args.windowMs,
+  })
+  writeQTrainingFastPathStateFile(args.root, computed.history)
+  return computed.fallbackWindow
+}
 
 const Q_UPSTREAM_MODEL_IDS = {
   lite: ['google/', 'ge', 'mma', '-4-E2B-it'].join(''),

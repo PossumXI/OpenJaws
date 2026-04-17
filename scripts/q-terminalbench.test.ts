@@ -10,6 +10,12 @@ import {
 } from '../src/q/terminalBench.js'
 
 describe('q-terminalbench soak options', () => {
+  test('parses a deterministic seed for reproducible receipts', () => {
+    const options = parseArgs(['--seed', '77'])
+
+    expect(options.seed).toBe(77)
+  })
+
   test('parses soak flags as an outer repeated cycle lane', () => {
     const options = parseArgs([
       '--repeat',

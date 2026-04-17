@@ -77,6 +77,7 @@ These are the current live-check lanes OpenJaws can run honestly against its shi
 - `bun run q:terminalbench` for Harbor / Terminal-Bench runs when the external harness is actually installed
 - `bun run q:terminalbench:soak` for repeated bounded Harbor / Terminal-Bench cycles under one soak receipt
 - `bun run q:soak` for a bounded repeated-probe soak over native OpenJaws and direct OCI Q
+- `bun run q:preflight -- --bench <bridgebench|soak|terminalbench>` for the shared typed runnable-check surface used by the benchmark wrappers themselves
 - `bun run q-route:assignment` for `Q` route assignment behavior
 - `bun run q-route:remote-dispatch` for signed remote-dispatch behavior
 - `bun run q-route:remote-completion` for signed remote-result reconciliation
@@ -125,8 +126,10 @@ The local `Q` benchmark lane follows the same broad principles used by Harbor, T
 
 - benchmark work is written to inspectable JSON receipts
 - `bun run q:receipt:sign -- --report <path>` can repackage a benchmark report into one deterministic trace-backed receipt file, with an Ed25519 signature block when a signing key is configured
+- the main Q benchmark lanes now all accept `--seed`, default to `42`, and emit that seed into the report plus signed receipt so reruns have one declared reproducibility anchor
 - local results can emit `reward.json` and `reward-details.json` for downstream comparison
 - hybrid sessions keep local and routed lane outcomes under one receipt instead of forcing you to compare two unrelated folders
+- hybrid sessions now keep a 3-failures-in-60s transport hysteresis window for the Immaculate fast path, so one transient remote miss does not immediately suppress routed execution
 - W&B state is captured in the run receipts with the resolved project URL when available, so it is obvious whether a run really logged live
 - the new bounded `q:soak` lane records repeated-probe latency and error counts for both native OpenJaws and direct OCI Q under one JSON receipt
 - OCI-backed one-shot `Q` surfaces can now use either a user key or an internal IAM project/profile, which keeps the auth boundary explicit instead of hiding shared credentials in the app

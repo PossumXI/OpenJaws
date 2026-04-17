@@ -2,7 +2,10 @@ import { execa } from 'execa'
 import { mkdirSync, writeFileSync } from 'fs'
 import { join, resolve } from 'path'
 import {
+  computeQTrainingFastPathWindow,
+  peekQTrainingFastPathWindow,
   type QTrainingExecutionMode,
+  type QTrainingHybridFallbackWindow,
   type QTrainingHybridLaneKind,
   type QTrainingHybridLaneReceipt,
   type QTrainingHybridSessionReceipt,
@@ -40,6 +43,14 @@ export type QHybridSessionResult = {
   report: QTrainingHybridSessionReceipt
   reportPath: string
 }
+
+export type QHybridFallbackHistory = {
+  failureTimestamps: string[]
+  lastSuccessAt: string | null
+}
+
+export const Q_HYBRID_FALLBACK_FAILURE_THRESHOLD = 3
+export const Q_HYBRID_FALLBACK_WINDOW_MS = 60_000
 
 export function makeHybridSessionId(): string {
   return `q-hybrid-${new Date()
@@ -204,6 +215,64 @@ export function buildHybridLaneReceipt(args: {
   }
 }
 
+export function isHybridTransportFailure(
+  lane: Pick<
+    QTrainingHybridLaneReceipt,
+    'status' | 'stderr' | 'routeQueueSummary' | 'routeQueueDisplayStatus'
+  >,
+): boolean {
+  if (
+    lane.routeQueueDisplayStatus &&
+    ['queued', 'pending_assignment', 'claimed', 'dispatched', 'completed'].includes(
+      lane.routeQueueDisplayStatus,
+    )
+  ) {
+    return false
+  }
+  if (lane.status === 'route_requested') {
+    return false
+  }
+  const summary = `${lane.stderr ?? ''}\n${lane.routeQueueSummary ?? ''}`.toLowerCase()
+  return [
+    'transport',
+    'remote dispatch',
+    'remote http',
+    'connection reset',
+    'econn',
+    'socket',
+    'timed out',
+    'timeout',
+    'unreachable',
+    '503',
+    '502',
+    '504',
+    'temporarily unavailable',
+    'network',
+    'harness is unavailable',
+  ].some(token => summary.includes(token))
+}
+
+export function computeHybridFallbackWindow(args: {
+  history: QHybridFallbackHistory
+  nowIso: string
+  transportFailed: boolean
+  success: boolean
+  threshold?: number
+  windowMs?: number
+}): {
+  history: QHybridFallbackHistory
+  fallbackWindow: QTrainingHybridFallbackWindow
+} {
+  return computeQTrainingFastPathWindow({
+    history: args.history,
+    observedAt: args.nowIso,
+    transportFailure: args.transportFailed,
+    success: args.success,
+    threshold: args.threshold,
+    windowMs: args.windowMs,
+  })
+}
+
 export async function runQHybridSession(
   options: QHybridCliOptions,
 ): Promise<QHybridSessionResult> {
@@ -283,6 +352,15 @@ export async function runQHybridSession(
     phaseId: options.phaseId,
     launch: immaculateLaunch,
   })
+  const fallbackWindow = options.dryRun
+    ? null
+    : peekQTrainingFastPathWindow({ root: options.root })
+  const holdingFastPath =
+    localLane.status === 'launched' &&
+    fallbackWindow !== null &&
+    !fallbackWindow.active &&
+    fallbackWindow.recentTransportFailureCount > 0 &&
+    isHybridTransportFailure(immaculateLane)
 
   const report: QTrainingHybridSessionReceipt = {
     sessionId,
@@ -305,11 +383,14 @@ export async function runQHybridSession(
     status: options.dryRun
       ? 'dry_run'
       : localLane.status === 'launched' &&
-          immaculateLane.status === 'route_requested'
+            (immaculateLane.status === 'route_requested' || holdingFastPath)
         ? 'started'
+        : localLane.status === 'launched'
+          ? 'degraded'
         : localLaunch.exitCode === 0 && immaculateLaunch.exitCode === 0
           ? 'degraded'
           : 'failed',
+    fallbackWindow,
     honestyBoundary:
       'This hybrid session coordinates a local Q lane and an Immaculate-routed Q lane under one receipt. It is not synchronous distributed training or automatic cloud provisioning on its own.',
   }

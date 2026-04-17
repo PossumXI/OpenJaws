@@ -7,6 +7,11 @@ import {
   createBenchmarkTraceWriter,
 } from '../src/immaculate/benchmarkTrace.js'
 import {
+  buildBenchmarkSeedEnv,
+  resolveDeterministicSeed,
+  runQPreflightChecks,
+} from '../src/q/preflight.js'
+import {
   computeQBridgeBenchScore,
   extractQBridgeBenchMetrics,
   getDefaultQBridgeBenchPacks,
@@ -42,6 +47,7 @@ type CliOptions = {
   packs: QBridgeBenchPack[]
   useCpu: boolean
   maxSeqLength: number
+  seed: number
   maxTrainSamples: number | null
   maxEvalSamples: number | null
   timeoutMs: number
@@ -96,6 +102,7 @@ function parseArgs(argv: string[]): CliOptions {
     packs: [],
     useCpu: true,
     maxSeqLength: 512,
+    seed: resolveDeterministicSeed(),
     maxTrainSamples: null,
     maxEvalSamples: null,
     timeoutMs: 1_800_000,
@@ -157,6 +164,13 @@ function parseArgs(argv: string[]): CliOptions {
       }
       continue
     }
+    if (arg === '--seed' && argv[i + 1]) {
+      const parsed = parseOptionalInt(argv[++i]!)
+      if (parsed !== null) {
+        options.seed = resolveDeterministicSeed(parsed)
+      }
+      continue
+    }
     if (arg === '--max-train-samples' && argv[i + 1]) {
       options.maxTrainSamples = parseOptionalInt(argv[++i]!)
       continue
@@ -215,6 +229,7 @@ function printHelpAndExit(): never {
       '  --python <path>            Python runtime to use',
       '  --pack <name>              Benchmark pack: all, coding, agentic, security, general',
       '  --max-seq-length <n>       Sequence length cap passed to the trainer (default 512)',
+      '  --seed <n>                 Deterministic benchmark seed emitted into receipts (default 42)',
       '  --max-train-samples <n>    Optional train-sample cap for each pack',
       '  --max-eval-samples <n>     Optional eval-sample cap for each pack',
       '  --timeout-ms <n>           Per-pack timeout in milliseconds',
@@ -321,10 +336,85 @@ async function main() {
     outputDir,
     sessionId: benchmarkId,
   })
+  const checks = await runQPreflightChecks({
+    root,
+    requirements: ['bundle-manifest', 'python-runtime', 'oci-q-runtime'],
+    model: options.baseModel,
+    bundleDir: options.bundleDir,
+    python: options.python,
+    timeoutMs: Math.min(options.timeoutMs, 30_000),
+  })
   const wandb = resolveWandbConfig({
     project: options.wandbProject,
     entity: options.wandbEntity,
   })
+  const failedChecks = checks.filter(check => check.status === 'failed')
+
+  if (failedChecks.length > 0) {
+    const report = {
+      benchmarkId,
+      generatedAt: new Date().toISOString(),
+      status: 'failed_preflight',
+      bundleDir: options.bundleDir,
+      bundleManifestPath: resolve(options.bundleDir, 'bundle-manifest.json'),
+      outputDir,
+      baseModel: options.baseModel,
+      adapterDir: options.adapterDir,
+      lineageId,
+      phaseId: options.phaseId,
+      python: options.python,
+      packs: options.packs,
+      maxSeqLength: options.maxSeqLength,
+      seed: options.seed,
+      checks,
+      dryRun: options.dryRun,
+      wandb,
+      summary: 'Q BridgeBench blocked by failed preflight checks.',
+      honestyBoundary:
+        'This is a local Q benchmark over audited OpenJaws packs. It is useful for in-repo comparison, but it is not the public Immaculate benchmark source of truth.',
+    }
+    const reportPath = join(outputDir, 'bridgebench-report.json')
+    closeBenchmarkTraceWriter(traceWriter)
+    report.traceReferences = [buildImmaculateTraceReference(traceWriter.path)]
+    writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
+    const receipt: Record<string, unknown> = {
+      kind: 'q_bridgebench_benchmark_receipt',
+      benchmarkId,
+      generatedAt: new Date().toISOString(),
+      reportPath,
+      reportSha256: sha256File(reportPath),
+      seed: options.seed,
+      traceReferences: report.traceReferences,
+      summary: report.summary,
+      status: report.status,
+    }
+    const signingKey = resolveBenchmarkSigningPrivateKey()
+    if (signingKey) {
+      receipt.signature = signBenchmarkReceipt({
+        receipt,
+        privateKeyPem: signingKey,
+      })
+    } else {
+      receipt.signature = null
+    }
+    const receiptPath = join(outputDir, 'bridgebench-receipt.json')
+    writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8')
+    console.log(
+      JSON.stringify(
+        {
+          status: 'failed',
+          benchmarkId,
+          reportPath,
+          receiptPath,
+          summary: report.summary,
+          checks,
+        },
+        null,
+        2,
+      ),
+    )
+    process.exit(1)
+  }
 
   const manifest = loadQBridgeBenchBundleManifest(options.bundleDir)
   const packResults: PackResult[] = []
@@ -407,6 +497,7 @@ async function main() {
       reject: false,
       timeout: options.timeoutMs,
       windowsHide: true,
+      env: buildBenchmarkSeedEnv(options.seed),
     })
 
     if (result.exitCode !== 0) {
@@ -530,10 +621,12 @@ async function main() {
     python: options.python,
     packs: options.packs,
     maxSeqLength: options.maxSeqLength,
+    seed: options.seed,
     maxTrainSamples: options.maxTrainSamples,
     maxEvalSamples: options.maxEvalSamples,
     runNamePrefix: options.runNamePrefix,
     dryRun: options.dryRun,
+    checks,
     wandb,
     scoreMetric: 'eval_mean_token_accuracy_percent',
     results: packResults,
@@ -557,6 +650,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     reportPath,
     reportSha256: sha256File(reportPath),
+    seed: options.seed,
     traceReferences: report.traceReferences,
     summary: report.bestResult ?? null,
   }
@@ -620,6 +714,7 @@ async function main() {
         benchmarkId,
         lineageId,
         phaseId: options.phaseId,
+        seed: options.seed,
         reportPath,
         receiptPath,
         summary: options.dryRun

@@ -10,6 +10,7 @@ import {
   finalizeQTrainingRouteQueueCompletion,
   getLatestQTrainingSnapshot,
   getNextQTrainingRoutePendingRemoteResult,
+  peekQTrainingFastPathWindow,
   getQTrainingRouteQueueDisplayStatus,
   getQTrainingRouteQueueEntry,
   getQTrainingRouteQueueStatusSummary,
@@ -38,6 +39,7 @@ import {
   upsertQTrainingRegistryEntry,
   upsertQTrainingRouteWorker,
   upsertQTrainingRouteWorkerRuntimeStatus,
+  updateQTrainingFastPathWindow,
   verifyQTrainingRouteManifest,
   verifyQTrainingRouteManifestIntegrity,
   verifyQTrainingRouteResultEnvelope,
@@ -706,12 +708,15 @@ export async function dispatchQTrainingRoute(
   const remoteExecution =
     options.executionProfile === 'remote' ||
     claimedRoute.assignment?.executionProfile === 'remote'
+  const fastPathWindow = peekQTrainingFastPathWindow({ root })
   const executionEndpoint =
     options.executionEndpoint?.trim() ||
     claimedRoute.assignment?.executionEndpoint?.trim() ||
     null
   const dispatchTransport: QTrainingRouteDispatchTransport =
-    remoteExecution && executionEndpoint ? 'remote_http' : 'local_process'
+    remoteExecution && !fastPathWindow.active && executionEndpoint
+      ? 'remote_http'
+      : 'local_process'
   const claimedRouteDisplayStatus =
     getQTrainingRouteQueueDisplayStatus(claimedRoute)
   const claimedRouteSummary = getQTrainingRouteQueueStatusSummary(claimedRoute)
@@ -719,8 +724,8 @@ export async function dispatchQTrainingRoute(
   const blocked =
     !routeSecurity.valid ||
     !routeIntegrity.valid ||
-    (remoteExecution && !executionEndpoint) ||
-    (!remoteExecution &&
+    (dispatchTransport === 'remote_http' && !executionEndpoint) ||
+    (dispatchTransport === 'local_process' &&
       localPreflight.decision !== 'allow_local' &&
       !options.allowHostRisk)
   updateQTrainingRouteQueueClaim({
@@ -736,10 +741,12 @@ export async function dispatchQTrainingRoute(
       ? [
           !routeSecurity.valid ? `signature ${routeSecurity.reason}` : null,
           !routeIntegrity.valid ? 'integrity mismatch' : null,
-          remoteExecution && !executionEndpoint
+          dispatchTransport === 'remote_http' && !executionEndpoint
             ? 'remote execution endpoint missing'
             : null,
-          localPreflight.decision !== 'allow_local' && !options.allowHostRisk
+          dispatchTransport === 'local_process' &&
+          localPreflight.decision !== 'allow_local' &&
+          !options.allowHostRisk
             ? `preflight ${localPreflight.decision}`
             : null,
         ]
@@ -765,10 +772,10 @@ export async function dispatchQTrainingRoute(
           ? [
               !routeSecurity.valid ? `signature ${routeSecurity.reason}` : null,
               !routeIntegrity.valid ? 'integrity mismatch' : null,
-              remoteExecution && !executionEndpoint
+              dispatchTransport === 'remote_http' && !executionEndpoint
                 ? 'remote execution endpoint missing'
                 : null,
-              !remoteExecution &&
+              dispatchTransport === 'local_process' &&
               localPreflight.decision !== 'allow_local' &&
               !options.allowHostRisk
                 ? `preflight ${localPreflight.decision}`
@@ -813,6 +820,12 @@ export async function dispatchQTrainingRoute(
       envelope,
     })
     if (!remoteAck.accepted || remoteAck.status >= 400) {
+      updateQTrainingFastPathWindow({
+        root,
+        observedAt: launchedAt,
+        success: false,
+        transportFailure: true,
+      })
       updateQTrainingRouteQueueClaim({
         runId: manifest.runId,
         workerId: options.workerId,
@@ -851,6 +864,12 @@ export async function dispatchQTrainingRoute(
         },
       }
     }
+    updateQTrainingFastPathWindow({
+      root,
+      observedAt: launchedAt,
+      success: true,
+      transportFailure: false,
+    })
   } else {
     const stdoutFd = openSync(stdoutLog, 'a')
     const stderrFd = openSync(stderrLog, 'a')
@@ -1161,6 +1180,19 @@ export async function reconcileRemoteResult(args: {
     pollMs: args.options.pollMs,
     timeoutMs: Math.max(args.options.pollMs * 2, 15_000),
   })
+  if (result.status === 'completed') {
+    updateQTrainingFastPathWindow({
+      root: args.options.root,
+      success: true,
+      transportFailure: false,
+    })
+  } else if (result.status === 'failed') {
+    updateQTrainingFastPathWindow({
+      root: args.options.root,
+      success: false,
+      transportFailure: true,
+    })
+  }
 
   return {
     status:

@@ -6,11 +6,12 @@ import {
   createBenchmarkTraceWriter,
   appendBenchmarkTraceEvent,
 } from '../src/immaculate/benchmarkTrace.js'
+import { type QPreflightCheck as PreflightCheck } from '../src/q/runtime.js'
 import {
-  buildQProviderProbeCheck,
-  probeQProviderModel,
-  type QPreflightCheck as PreflightCheck,
-} from '../src/q/runtime.js'
+  buildBenchmarkSeedEnv,
+  resolveDeterministicSeed,
+  runQPreflightChecks,
+} from '../src/q/preflight.js'
 import {
   buildQSoakSummary,
   type QSoakProbeMode as ProbeMode,
@@ -39,6 +40,7 @@ type CliOptions = {
   openjawsModel: string
   prompt: string
   systemPrompt: string
+  seed: number
   dryRun: boolean
 }
 
@@ -92,6 +94,7 @@ function parseArgs(argv: string[]): CliOptions {
     openjawsModel: 'oci:Q',
     prompt: 'Reply with the single word OK.',
     systemPrompt: 'Reply briefly and operationally.',
+    seed: resolveDeterministicSeed(),
     dryRun: false,
   }
 
@@ -152,6 +155,13 @@ function parseArgs(argv: string[]): CliOptions {
       options.systemPrompt = argv[++i]!
       continue
     }
+    if (arg === '--seed' && argv[i + 1]) {
+      const parsed = parseOptionalInt(argv[++i]!)
+      if (parsed !== null) {
+        options.seed = resolveDeterministicSeed(parsed)
+      }
+      continue
+    }
     if (arg === '--dry-run') {
       options.dryRun = true
       continue
@@ -178,6 +188,7 @@ function printHelpAndExit(): never {
       '  --openjaws-model <name>   Model passed to the OpenJaws binary (default oci:Q)',
       '  --prompt <text>           Prompt used for each probe',
       '  --system-prompt <text>    System prompt used for direct OCI-Q probes',
+      '  --seed <n>                Deterministic benchmark seed emitted into the receipt (default 42)',
       '  --out-dir <path>          Output directory for the report artifact',
       '  --dry-run                 Emit a CI-safe plan/report without launching probes',
       '  -h, --help                Show this help',
@@ -248,6 +259,7 @@ async function probeOpenJaws(args: {
   root: string
   model: string
   prompt: string
+  seed: number
   timeoutMs: number
 }): Promise<Omit<SoakProbeResult, 'index' | 'mode' | 'startedAt' | 'endedAt'>> {
   const { binary, command, argv } = buildOpenJawsCommand({
@@ -273,6 +285,7 @@ async function probeOpenJaws(args: {
     reject: false,
     timeout: args.timeoutMs,
     windowsHide: true,
+    env: buildBenchmarkSeedEnv(args.seed),
   })
   const latencyMs = Date.now() - started
   const stdout = result.stdout.trim()
@@ -311,6 +324,7 @@ async function probeOpenJaws(args: {
 async function probeOciQ(args: {
   prompt: string
   systemPrompt: string
+  seed: number
   timeoutMs: number
 }): Promise<Omit<SoakProbeResult, 'index' | 'mode' | 'startedAt' | 'endedAt'>> {
   const runtime = resolveOciQRuntime()
@@ -322,6 +336,7 @@ async function probeOciQ(args: {
       systemPrompt: args.systemPrompt,
       maxOutputTokens: 64,
       timeoutMs: args.timeoutMs,
+      env: buildBenchmarkSeedEnv(args.seed),
     })
     const latencyMs = Date.now() - started
     return {
@@ -358,28 +373,14 @@ async function main() {
     outputDir,
     sessionId: runId,
   })
-  const checks: PreflightCheck[] = []
-  const openjawsBinary = buildOpenJawsBinary(options.root)
-  checks.push({
-    name: 'openjaws-binary',
-    status: existsSync(openjawsBinary) ? 'passed' : 'warning',
-    summary: existsSync(openjawsBinary)
-      ? `Compiled OpenJaws binary found at ${openjawsBinary}.`
-      : `Compiled OpenJaws binary not found at ${openjawsBinary}.`,
-  })
-  const providerProbe = await probeQProviderModel({
-    preferDirectQ: options.modes.includes('oci-q'),
+  const ociRuntime = resolveOciQRuntime()
+  const checks: PreflightCheck[] = await runQPreflightChecks({
+    root: options.root,
+    requirements: ['openjaws-binary', 'oci-q-runtime'],
     model: options.openjawsModel,
-    timeoutMs: Math.min(options.timeoutMs, 15_000),
+    preferDirectQ: options.modes.includes('oci-q'),
+    timeoutMs: Math.min(options.timeoutMs, 30_000),
   })
-  if (providerProbe) {
-    checks.push(
-      buildQProviderProbeCheck({
-        name: 'oci-q-runtime',
-        result: providerProbe,
-      }),
-    )
-  }
   appendBenchmarkTraceEvent(traceWriter, 'route.dispatched', {
     routeId: `${runId}-preflight`,
     runId,
@@ -405,6 +406,7 @@ async function main() {
     timeoutMs: options.timeoutMs,
     maxProbes: options.maxProbes,
     openjawsModel: options.openjawsModel,
+    seed: options.seed,
     prompt: options.prompt,
     systemPrompt: options.systemPrompt,
     dryRun: options.dryRun,
@@ -455,11 +457,13 @@ async function main() {
                   root: options.root,
                   model: options.openjawsModel,
                   prompt: options.prompt,
+                  seed: options.seed,
                   timeoutMs: probeTimeoutMs,
                 })
               : await probeOciQ({
                   prompt: options.prompt,
                   systemPrompt: options.systemPrompt,
+                  seed: options.seed,
                   timeoutMs: probeTimeoutMs,
                 })
         } catch (error) {
@@ -599,6 +603,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     reportPath,
     reportSha256: sha256File(reportPath),
+    seed: options.seed,
     traceReferences: report.traceReferences,
     summary: report.summary,
   }
@@ -621,6 +626,7 @@ async function main() {
         runId,
         reportPath,
         receiptPath,
+        seed: options.seed,
         summary:
           options.dryRun
             ? `Q soak dry run prepared for ${options.durationMinutes} minute${options.durationMinutes === 1 ? '' : 's'} across ${options.modes.join(', ')}.`

@@ -80,7 +80,11 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 - `q:terminalbench` now supports `--repeat` and writes `attempts[]` plus flattened `tasks[]` receipts, so repeated-run stability and real multi-task concurrency are visible in one JSON artifact
 - `q:terminalbench` now also supports `--soak`, which writes `cycles[]`, a top-level `soak` block, and still keeps flattened `attempts[]` / `tasks[]` receipts for compatibility
 - the direct `q:soak` lane and the Harbor-backed `q:terminalbench` lane now share the same OCI/Q provider probe surface before launch, so the direct and Harbor receipts agree on when the provider path is healthy, failed, or merely forceable
+- the benchmark wrappers now also share one typed `q:preflight` checklist surface, so Harbor, Docker, Python, bundle, provider, and clock checks all come from one source of truth instead of separate script-local logic
+- `q:bridgebench`, `q:soak`, and `q:terminalbench` now all accept `--seed`, default to `42`, and emit that seed into their reports plus signed receipts
+- benchmark receipt signing now uses canonical JSON plus Ed25519, which keeps signature verification stable across reserialization
 - `q:terminalbench` now scrubs Harbor raw `jobs/.../result.json` env maps in place after a run so the wrapper does not leave plaintext agent env bundles behind in those local artifacts
+- hybrid `Q` sessions now keep a rolling 3-failures-in-60s transport hysteresis window for the Immaculate fast path, so a single transient route miss no longer flips the whole hybrid lane into fallback behavior
 - hybrid, curriculum, benchmark, and routed launch receipts can now carry a shared `lineage_id` plus optional `phase_id`, so the local lane, routed lane, and follow-up benchmark reports stay attached to the same intentional work thread
 - `Q` training and benchmark receipts now record W&B readiness so live logging state is visible instead of guessed
 - the Windows OCI bridge now stages larger payloads through temp files so `q:terminalbench --dry-run` can prove Harbor, Docker, and the local OCI-backed OpenJaws lane are actually ready instead of dying on argv length
