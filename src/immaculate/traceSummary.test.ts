@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdirSync, rmSync } from 'fs'
-import { join, resolve } from 'path'
+import { mkdtempSync, mkdirSync, rmSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import {
   appendBenchmarkTraceEvent,
   closeBenchmarkTraceWriter,
@@ -8,14 +9,21 @@ import {
 } from './benchmarkTrace.js'
 import { readImmaculateTraceSummary } from './traceSummary.js'
 
-const tempDir = resolve(process.cwd(), 'artifacts', 'test-trace-summary')
+const cleanupDirs: string[] = []
 
 afterEach(() => {
-  rmSync(tempDir, { recursive: true, force: true })
+  while (cleanupDirs.length > 0) {
+    const dir = cleanupDirs.pop()
+    if (dir) {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
 })
 
 describe('traceSummary', () => {
   test('summarizes typed immaculate traces', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'openjaws-trace-summary-'))
+    cleanupDirs.push(tempDir)
     mkdirSync(tempDir, { recursive: true })
     const writer = createBenchmarkTraceWriter({
       outputDir: tempDir,

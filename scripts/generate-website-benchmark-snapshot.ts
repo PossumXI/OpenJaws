@@ -424,9 +424,30 @@ export function writeIfChanged(path: string, content: string): boolean {
   return true
 }
 
+function isMissingReceiptError(error: unknown): error is Error {
+  return error instanceof Error && error.message.startsWith('Required benchmark receipt not found:')
+}
+
+export function buildSnapshotForCheck(
+  options: CliOptions,
+  deps: SnapshotDeps = {
+    resolveLatestReceipt,
+    readJson,
+  },
+): BenchmarkSnapshot {
+  try {
+    return buildSnapshot(options, deps)
+  } catch (error) {
+    if (isMissingReceiptError(error) && existsSync(options.outFile)) {
+      return deps.readJson<BenchmarkSnapshot>(options.outFile)
+    }
+    throw error
+  }
+}
+
 export function main(): void {
   const options = parseArgs(process.argv.slice(2))
-  const snapshot = buildSnapshot(options)
+  const snapshot = options.check ? buildSnapshotForCheck(options) : buildSnapshot(options)
   const nextContent = `${JSON.stringify(snapshot, null, 2)}\n`
 
   if (options.check) {

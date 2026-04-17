@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import {
   buildSnapshot,
+  buildSnapshotForCheck,
   buildWandbSummary,
   isValidExistingReceiptPath,
   parseArgs,
@@ -241,5 +242,74 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
     expect(writeIfChanged(file, '{"status":"ok"}\n')).toBe(true)
     expect(writeIfChanged(file, '{"status":"ok"}\n')).toBe(false)
     expect(writeIfChanged(file, '{"status":"updated"}\n')).toBe(true)
+  })
+
+  test('buildSnapshotForCheck falls back to the committed snapshot when receipts are unavailable', () => {
+    const dir = makeTempDir('openjaws-snapshot-check-')
+    const outFile = resolve(dir, 'benchmarkSnapshot.generated.json')
+    const fallbackSnapshot = {
+      generatedAt: '2026-04-17T00:00:00.000Z',
+      source: 'checked-in snapshot fallback',
+      bridgeBench: {
+        benchmarkId: 'fallback-bridge',
+        bestPack: 'all',
+        scorePercent: 42.11,
+        summary: 'Fallback bridge summary',
+      },
+      soak: {
+        runId: 'fallback-soak',
+        durationMinutes: 30,
+        totalProbes: 52,
+        successCount: 52,
+        errorCount: 0,
+        summary: 'Fallback soak summary',
+      },
+      terminalBench: {
+        runId: 'fallback-terminal',
+        taskName: 'circuit-fibsqrt',
+        scope: 'Official TerminalBench 2.0 public task',
+        status: 'submitted',
+        agent: 'openjaws',
+        model: 'oci:Q',
+        outcome: 'reward 0.0 // 5 trials',
+        summary: 'Fallback terminal summary',
+        submissionUrl: 'https://example.com/submission',
+      },
+      terminalBenchSoak: {
+        runId: 'fallback-terminal-soak',
+        taskName: 'terminal-bench/circuit-fibsqrt',
+        status: 'completed_with_errors',
+        cycleCount: 2,
+        totalTrials: 2,
+        executionErrorTrials: 0,
+        benchmarkFailedTrials: 2,
+        summary: 'Fallback terminal soak summary',
+      },
+      wandb: {
+        status: 'auth missing',
+        enabled: false,
+        source: 'env',
+        summary: 'Fallback wandb summary',
+      },
+    }
+    writeFileSync(outFile, `${JSON.stringify(fallbackSnapshot, null, 2)}\n`, 'utf8')
+
+    const options = {
+      ...parseArgs([]),
+      check: true,
+      outFile,
+    }
+
+    const snapshot = buildSnapshotForCheck(options, {
+      resolveLatestReceipt: (_patterns, fallbackPath) => fallbackPath,
+      readJson: path => {
+        if (path === outFile) {
+          return fallbackSnapshot
+        }
+        throw new Error(`Required benchmark receipt not found: ${path}`)
+      },
+    })
+
+    expect(snapshot).toEqual(fallbackSnapshot)
   })
 })
