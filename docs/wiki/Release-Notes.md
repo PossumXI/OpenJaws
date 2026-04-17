@@ -86,6 +86,7 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 - `q:terminalbench` now scrubs Harbor raw `jobs/.../result.json` env maps in place after a run so the wrapper does not leave plaintext agent env bundles behind in those local artifacts
 - hybrid `Q` sessions now keep a rolling 3-failures-in-60s transport hysteresis window for the Immaculate fast path, so a single transient route miss no longer flips the whole hybrid lane into fallback behavior
 - the release CI lane now restores the REPL bridge active export, filters invalid Windows glob scan artifacts out of website snapshot generation, and builds the soak sample fixture inside the workflow instead of depending on an untracked local dataset
+- the website snapshot generator now resolves receipt globs through a safe Node glob path, respects live-over-generic receipt priority, and is covered by dedicated script tests so the Windows hosted verification and scripts coverage gates stay honest
 - hybrid, curriculum, benchmark, and routed launch receipts can now carry a shared `lineage_id` plus optional `phase_id`, so the local lane, routed lane, and follow-up benchmark reports stay attached to the same intentional work thread
 - `Q` training and benchmark receipts now record W&B readiness so live logging state is visible instead of guessed
 - the Windows OCI bridge now stages larger payloads through temp files so `q:terminalbench --dry-run` can prove Harbor, Docker, and the local OCI-backed OpenJaws lane are actually ready instead of dying on argv length

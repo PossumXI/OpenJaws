@@ -1,5 +1,7 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from 'fs'
-import { resolve } from 'path'
+import { globSync } from 'glob'
+import { dirname, resolve } from 'path'
+import { fileURLToPath } from 'url'
 
 type CliOptions = {
   check: boolean
@@ -59,41 +61,44 @@ type BenchmarkSnapshot = {
   }
 }
 
-function parseArgs(argv: string[]): CliOptions {
+type SnapshotDeps = {
+  resolveLatestReceipt: typeof resolveLatestReceipt
+  readJson: typeof readJson
+}
+
+const scriptDir = dirname(fileURLToPath(import.meta.url))
+const repoRoot = resolve(scriptDir, '..')
+
+export function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     check: false,
-    outFile: resolve(
-      process.cwd(),
-      'website',
-      'lib',
-      'benchmarkSnapshot.generated.json',
-    ),
+    outFile: resolve(repoRoot, 'website', 'lib', 'benchmarkSnapshot.generated.json'),
     bridgeBenchReportPath: resolve(
-      process.cwd(),
+      repoRoot,
       'artifacts',
       'q-bridgebench-live-20260415-nowandb',
       'bridgebench-report.json',
     ),
     soakReportPath: resolve(
-      process.cwd(),
+      repoRoot,
       'artifacts',
       'q-soak-live-20260416',
       'q-soak-report.json',
     ),
     terminalBenchReportPath: resolve(
-      process.cwd(),
+      repoRoot,
       'artifacts',
       'q-terminalbench-official-public-20260416-circuit-fibsqrt-v2',
       'terminalbench-report.json',
     ),
     terminalBenchSoakReportPath: resolve(
-      process.cwd(),
+      repoRoot,
       'artifacts',
       'q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3',
       'terminalbench-report.json',
     ),
     wandbReportPath: resolve(
-      process.cwd(),
+      repoRoot,
       'artifacts',
       'q-bridgebench-live-20260415',
       'bridgebench-report.json',
@@ -142,11 +147,11 @@ function parseArgs(argv: string[]): CliOptions {
   return options
 }
 
-function normalizeGlobPattern(path: string): string {
+export function normalizeGlobPattern(path: string): string {
   return path.replace(/\\/g, '/')
 }
 
-function isValidExistingReceiptPath(path: string): boolean {
+export function isValidExistingReceiptPath(path: string): boolean {
   if (typeof path !== 'string') {
     return false
   }
@@ -161,35 +166,40 @@ function isValidExistingReceiptPath(path: string): boolean {
   }
 }
 
-function resolveLatestReceipt(patterns: string[], fallbackPath: string): string {
-  const matches = patterns.flatMap(pattern =>
-    Array.from(new Bun.Glob(normalizeGlobPattern(pattern)).scanSync()),
-  )
-  const uniqueMatches = Array.from(new Set(matches)).filter(isValidExistingReceiptPath)
-  if (uniqueMatches.length === 0) {
-    return fallbackPath
+export function resolveLatestReceipt(patterns: string[], fallbackPath: string): string {
+  for (const pattern of patterns) {
+    const matches = globSync(normalizeGlobPattern(pattern), {
+      nodir: true,
+      windowsPathsNoEscape: true,
+    })
+    const uniqueMatches = Array.from(new Set(matches)).filter(isValidExistingReceiptPath)
+    if (uniqueMatches.length === 0) {
+      continue
+    }
+
+    return uniqueMatches
+      .map(path => ({
+        path,
+        mtimeMs: statSync(path).mtimeMs,
+      }))
+      .sort((a, b) => b.mtimeMs - a.mtimeMs || b.path.localeCompare(a.path))[0]!.path
   }
 
-  return uniqueMatches
-    .map(path => ({
-      path,
-      mtimeMs: statSync(path).mtimeMs,
-    }))
-    .sort((a, b) => b.mtimeMs - a.mtimeMs || b.path.localeCompare(a.path))[0]!.path
+  return fallbackPath
 }
 
-function readJson<T>(path: string): T {
+export function readJson<T>(path: string): T {
   if (!existsSync(path)) {
     throw new Error(`Required benchmark receipt not found: ${path}`)
   }
   return JSON.parse(readFileSync(path, 'utf8')) as T
 }
 
-function formatNumber(value: number, digits = 2): number {
+export function formatNumber(value: number, digits = 2): number {
   return Number(value.toFixed(digits))
 }
 
-function buildWandbSummary(wandb: {
+export function buildWandbSummary(wandb: {
   enabled?: boolean
   apiKeyPresent?: boolean
   summary?: string
@@ -229,45 +239,54 @@ function buildWandbSummary(wandb: {
   }
 }
 
-function buildSnapshot(options: CliOptions): BenchmarkSnapshot {
-  const bridgeBenchReportPath = resolveLatestReceipt(
+export function buildSnapshot(
+  options: CliOptions,
+  deps: SnapshotDeps = {
+    resolveLatestReceipt,
+    readJson,
+  },
+): BenchmarkSnapshot {
+  const bridgeBenchReportPath = deps.resolveLatestReceipt(
     [
-      resolve(process.cwd(), 'artifacts', 'q-bridgebench-live-*', 'bridgebench-report.json'),
-      resolve(process.cwd(), 'artifacts', 'q-bridgebench-*', 'bridgebench-report.json'),
+      resolve(repoRoot, 'artifacts', 'q-bridgebench-live-*', 'bridgebench-report.json'),
+      resolve(repoRoot, 'artifacts', 'q-bridgebench-*', 'bridgebench-report.json'),
     ],
     options.bridgeBenchReportPath,
   )
-  const soakReportPath = resolveLatestReceipt(
-    [resolve(process.cwd(), 'artifacts', 'q-soak-*', 'q-soak-report.json')],
+  const soakReportPath = deps.resolveLatestReceipt(
+    [
+      resolve(repoRoot, 'artifacts', 'q-soak-live-*', 'q-soak-report.json'),
+      resolve(repoRoot, 'artifacts', 'q-soak-*', 'q-soak-report.json'),
+    ],
     options.soakReportPath,
   )
-  const terminalBenchReportPath = resolveLatestReceipt(
+  const terminalBenchReportPath = deps.resolveLatestReceipt(
     [
-      resolve(process.cwd(), 'artifacts', 'q-terminalbench-official-public-*', 'terminalbench-report.json'),
-      resolve(process.cwd(), 'artifacts', 'q-terminalbench-public-*', 'terminalbench-report.json'),
-      resolve(process.cwd(), 'artifacts', 'q-terminalbench-live-*', 'terminalbench-report.json'),
+      resolve(repoRoot, 'artifacts', 'q-terminalbench-official-public-*', 'terminalbench-report.json'),
+      resolve(repoRoot, 'artifacts', 'q-terminalbench-public-*', 'terminalbench-report.json'),
+      resolve(repoRoot, 'artifacts', 'q-terminalbench-live-*', 'terminalbench-report.json'),
     ],
     options.terminalBenchReportPath,
   )
-  const terminalBenchSoakReportPath = resolveLatestReceipt(
+  const terminalBenchSoakReportPath = deps.resolveLatestReceipt(
     [
-      resolve(process.cwd(), 'artifacts', 'q-terminalbench-soak-live-*', 'terminalbench-report.json'),
-      resolve(process.cwd(), 'artifacts', 'q-terminalbench-soak-*', 'terminalbench-report.json'),
+      resolve(repoRoot, 'artifacts', 'q-terminalbench-soak-live-*', 'terminalbench-report.json'),
+      resolve(repoRoot, 'artifacts', 'q-terminalbench-soak-*', 'terminalbench-report.json'),
     ],
     options.terminalBenchSoakReportPath,
   )
-  const wandbReportPath = resolveLatestReceipt(
-    [resolve(process.cwd(), 'artifacts', 'q-bridgebench-live-*', 'bridgebench-report.json')],
+  const wandbReportPath = deps.resolveLatestReceipt(
+    [resolve(repoRoot, 'artifacts', 'q-bridgebench-live-*', 'bridgebench-report.json')],
     options.wandbReportPath,
   )
 
-  const bridgeBench = readJson<{
+  const bridgeBench = deps.readJson<{
     benchmarkId: string
     generatedAt: string
     bestResult?: { pack?: string; score?: number; summary?: string } | null
   }>(bridgeBenchReportPath)
 
-  const soak = readJson<{
+  const soak = deps.readJson<{
     runId: string
     generatedAt: string
     durationMinutes: number
@@ -282,7 +301,7 @@ function buildSnapshot(options: CliOptions): BenchmarkSnapshot {
     }
   }>(soakReportPath)
 
-  const terminalBench = readJson<{
+  const terminalBench = deps.readJson<{
     runId: string
     generatedAt: string
     officialSubmission?: boolean
@@ -295,7 +314,7 @@ function buildSnapshot(options: CliOptions): BenchmarkSnapshot {
     agent?: string
     model?: string
   }>(terminalBenchReportPath)
-  const terminalBenchSoak = readJson<{
+  const terminalBenchSoak = deps.readJson<{
     runId: string
     generatedAt: string
     status?: string
@@ -308,7 +327,7 @@ function buildSnapshot(options: CliOptions): BenchmarkSnapshot {
     }
   }>(terminalBenchSoakReportPath)
 
-  const wandbReport = readJson<{
+  const wandbReport = deps.readJson<{
     generatedAt: string
     wandb?: {
       enabled?: boolean
@@ -394,7 +413,7 @@ function buildSnapshot(options: CliOptions): BenchmarkSnapshot {
   }
 }
 
-function writeIfChanged(path: string, content: string): boolean {
+export function writeIfChanged(path: string, content: string): boolean {
   if (existsSync(path)) {
     const current = readFileSync(path, 'utf8')
     if (current === content) {
@@ -405,7 +424,7 @@ function writeIfChanged(path: string, content: string): boolean {
   return true
 }
 
-function main(): void {
+export function main(): void {
   const options = parseArgs(process.argv.slice(2))
   const snapshot = buildSnapshot(options)
   const nextContent = `${JSON.stringify(snapshot, null, 2)}\n`
@@ -451,4 +470,6 @@ function main(): void {
   )
 }
 
-main()
+if (import.meta.main) {
+  main()
+}

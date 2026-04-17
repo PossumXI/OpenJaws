@@ -1,19 +1,19 @@
 {
-  "generatedAt": "2026-04-17T05:46:48.515Z",
-  "source": "Generated from benchmark receipts: D:/openjaws/OpenJaws/artifacts/q-bridgebench-dryrun-seed-smoke\\bridgebench-report.json, D:/openjaws/OpenJaws/artifacts/q-soak-dryrun-seed-smoke\\q-soak-report.json, D:/openjaws/OpenJaws/artifacts/q-terminalbench-official-public-20260416-circuit-fibsqrt-v2\\terminalbench-report.json, D:/openjaws/OpenJaws/artifacts/q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3\\terminalbench-report.json, and D:/openjaws/OpenJaws/artifacts/q-bridgebench-live-20260415-nowandb\\bridgebench-report.json.",
+  "generatedAt": "2026-04-17T00:12:20.163Z",
+  "source": "Generated from benchmark receipts: D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260415-nowandb\\bridgebench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-soak-live-20260416\\q-soak-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-official-public-20260416-circuit-fibsqrt-v2\\terminalbench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3\\terminalbench-report.json, and D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260415-nowandb\\bridgebench-report.json.",
   "bridgeBench": {
-    "benchmarkId": "q-bridgebench-20260417T054645",
-    "bestPack": "unknown",
-    "scorePercent": 0,
-    "summary": "Local audited-pack eval over Q bundle slices."
+    "benchmarkId": "q-bridgebench-20260416T004137",
+    "bestPack": "all",
+    "scorePercent": 42.11,
+    "summary": "All pack · 42.11% mean token accuracy · score 42.11 · 1 eval sample"
   },
   "soak": {
-    "runId": "q-soakbench-20260417T054645",
+    "runId": "q-soakbench-20260416T005306",
     "durationMinutes": 30,
-    "totalProbes": 2,
-    "successCount": 0,
+    "totalProbes": 52,
+    "successCount": 52,
     "errorCount": 0,
-    "summary": "30-minute bounded soak. 0/2 probes succeeded with 0 errors. OpenJaws p95 latency: n/a ms. Direct OCI-Q p95 latency: n/a ms."
+    "summary": "30-minute bounded soak. 52/52 probes succeeded with 0 errors. OpenJaws p95 latency: 8455 ms. Direct OCI-Q p95 latency: 4254 ms."
   },
   "terminalBench": {
     "runId": "q-terminalbench-20260416T160708",
