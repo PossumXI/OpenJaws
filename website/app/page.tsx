@@ -166,14 +166,18 @@ export default function Page(): React.ReactNode {
           <article className="feature-card">
             <span>Immaculate</span>
             <strong>Keep orchestration visible.</strong>
-            <p>Routing, pacing, and worker state stay inspectable instead of implied.</p>
+            <p>
+              Routing, pacing, worker state, and now typed trace receipts stay
+              inspectable instead of implied.
+            </p>
           </article>
           <article className="feature-card">
             <span>Benchmarks</span>
             <strong>BridgeBench, soak, and Harbor receipts.</strong>
             <p>
               Local tuning plus official public and repeated TerminalBench
-              receipts, all checked against one shared OCI Q preflight lane.
+              receipts, all checked against one shared OCI Q preflight lane and
+              one typed Immaculate event contract.
             </p>
           </article>
           <article className="feature-card">

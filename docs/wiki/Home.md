@@ -77,6 +77,7 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 - co-work now keeps a shared phase memory too, so the crew can reopen the request/deliverable thread for a project phase instead of restating the same work every time
 - agents can now continue an exact saved phase on purpose with `phase_id` or direct-message syntax like `@scout [phase:phase-abc12345] keep going`, which avoids accidental fallback to the latest similar receipt
 - the live co-work path now keeps an indexed in-memory team view during a session, which cuts repeated team-file rereads and rescans out of helper handoffs while keeping the file-backed receipts as the durable record
+- the first shared `src/q/*` library layer is now in place too, so provider preflight, soak helpers, and TerminalBench receipt math stop drifting across standalone `q-*` scripts
 
 ## Live Benchmark Record
 
@@ -105,6 +106,7 @@ Honest boundary:
 - OpenJaws is not yet pretending to be a full Harbor / Terminal-Bench agent adapter
 - the newest official Terminal-Bench public-task receipt is now submitted through the official leaderboard repo discussion flow, but the verifier reward stayed `0.0`, so it is execution proof rather than a strong leaderboard result
 - the newest local repeated Terminal-Bench soak receipt is useful for stability tuning, not a public leaderboard claim
+- the Immaculate trace lane now uses a typed event union under `src/immaculate/events.ts`, so session traces and future signed benchmark receipts can share one stable schema
 - the Discord station currently uses scheduled text-channel patrols and optional speech attachments, not full voice-channel presence
 - the private Discord station can search a secret-safe local corpus and run explicit operator-only OpenJaws workflows, but it is not a hidden shell surface
 

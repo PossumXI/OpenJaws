@@ -2,16 +2,18 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join, resolve } from 'path'
 import { execa } from 'execa'
 import {
-  mapExternalProviderProbeToCheckStatus,
-  probeExternalProviderModel,
-  type ExternalProviderProbeResult,
-} from '../src/utils/externalProviderProbe.js'
+  buildQProviderProbeCheck,
+  probeQProviderModel,
+  type QPreflightCheck as PreflightCheck,
+} from '../src/q/runtime.js'
+import {
+  buildQSoakSummary,
+  type QSoakProbeMode as ProbeMode,
+  type QSoakProbeResult as SoakProbeResult,
+  type QSoakProbeStatus as ProbeStatus,
+} from '../src/q/soak.js'
 import { queryOciQViaPython } from '../src/utils/ociQBridge.js'
 import { resolveOciQRuntime } from '../src/utils/ociQRuntime.js'
-
-type ProbeMode = 'openjaws' | 'oci-q'
-type ProbeStatus = 'ok' | 'failed' | 'dry_run'
-type CheckStatus = 'passed' | 'warning' | 'failed'
 
 type CliOptions = {
   root: string
@@ -25,48 +27,6 @@ type CliOptions = {
   prompt: string
   systemPrompt: string
   dryRun: boolean
-}
-
-type PreflightCheck = {
-  name: string
-  status: CheckStatus
-  summary: string
-}
-
-type SoakProbeResult = {
-  index: number
-  mode: ProbeMode
-  status: ProbeStatus
-  startedAt: string
-  endedAt: string
-  latencyMs: number | null
-  command?: string
-  exitCode?: number | null
-  responseText?: string | null
-  error?: string | null
-}
-
-function isOciModelRef(value: string | null | undefined): boolean {
-  return typeof value === 'string' && value.trim().toLowerCase().startsWith('oci:')
-}
-
-export function resolveOciProbeModel(
-  options: Pick<CliOptions, 'modes' | 'openjawsModel'>,
-): string | null {
-  if (options.modes.includes('oci-q')) {
-    return 'oci:Q'
-  }
-  return isOciModelRef(options.openjawsModel) ? options.openjawsModel : null
-}
-
-export function buildOciProbeCheck(
-  result: ExternalProviderProbeResult,
-): PreflightCheck {
-  return {
-    name: 'oci-q-runtime',
-    status: mapExternalProviderProbeToCheckStatus(result),
-    summary: result.summary,
-  }
 }
 
 function parseOptionalInt(value: string | undefined): number | null {
@@ -271,45 +231,6 @@ function buildOpenJawsCommand(args: {
   }
 }
 
-function buildSummary(stats: {
-  total: number
-  ok: number
-  failed: number
-  dryRun: number
-  latencies: number[]
-}): Record<string, unknown> {
-  const sorted = [...stats.latencies].sort((a, b) => a - b)
-  const percentile = (p: number): number | null => {
-    if (sorted.length === 0) {
-      return null
-    }
-    const index = Math.min(
-      sorted.length - 1,
-      Math.max(0, Math.ceil((p / 100) * sorted.length) - 1),
-    )
-    return sorted[index] ?? null
-  }
-
-  const averageLatencyMs =
-    sorted.length > 0
-      ? Math.round(sorted.reduce((sum, value) => sum + value, 0) / sorted.length)
-      : null
-
-  return {
-    totalProbes: stats.total,
-    successCount: stats.ok,
-    errorCount: stats.failed,
-    dryRunCount: stats.dryRun,
-    latencyMs: {
-      average: averageLatencyMs,
-      min: sorted[0] ?? null,
-      p50: percentile(50),
-      p95: percentile(95),
-      max: sorted[sorted.length - 1] ?? null,
-    },
-  }
-}
-
 async function probeOpenJaws(args: {
   root: string
   model: string
@@ -429,14 +350,17 @@ async function main() {
       ? `Compiled OpenJaws binary found at ${openjawsBinary}.`
       : `Compiled OpenJaws binary not found at ${openjawsBinary}.`,
   })
-  const ociProbeModel = resolveOciProbeModel(options)
-  if (ociProbeModel) {
+  const providerProbe = await probeQProviderModel({
+    preferDirectQ: options.modes.includes('oci-q'),
+    model: options.openjawsModel,
+    timeoutMs: Math.min(options.timeoutMs, 15_000),
+  })
+  if (providerProbe) {
     checks.push(
-      buildOciProbeCheck(
-        await probeExternalProviderModel(ociProbeModel, {
-          timeoutMs: Math.min(options.timeoutMs, 15_000),
-        }),
-      ),
+      buildQProviderProbeCheck({
+        name: 'oci-q-runtime',
+        result: providerProbe,
+      }),
     )
   }
 
@@ -587,7 +511,7 @@ async function main() {
   const dryRunCount = results.filter(result => result.status === 'dry_run').length
 
   report.summary = {
-    ...buildSummary({
+    ...buildQSoakSummary({
       total: results.length,
       ok: successCount,
       failed: errorCount,
@@ -595,8 +519,8 @@ async function main() {
       latencies: latencySamples,
     }),
     byMode: {
-      openjaws: buildSummary(modeSummary.openjaws),
-      'oci-q': buildSummary(modeSummary['oci-q']),
+      openjaws: buildQSoakSummary(modeSummary.openjaws),
+      'oci-q': buildQSoakSummary(modeSummary['oci-q']),
     },
   }
   report.results = results

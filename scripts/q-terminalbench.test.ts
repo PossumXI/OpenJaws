@@ -1,11 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 import {
-  buildOpenJawsProviderProbeCheck,
+  parseArgs,
+} from './q-terminalbench.ts'
+import { buildQProviderProbeCheck } from '../src/q/runtime.js'
+import {
   buildAggregateSummary,
   buildCycleReceipt,
-  parseArgs,
   resolveAttemptJobName,
-} from './q-terminalbench.ts'
+} from '../src/q/terminalBench.js'
 
 describe('q-terminalbench soak options', () => {
   test('parses soak flags as an outer repeated cycle lane', () => {
@@ -204,21 +206,25 @@ describe('q-terminalbench soak receipts', () => {
 
 describe('q-terminalbench provider probe checks', () => {
   test('downgrades unhealthy external provider probes to forceable warnings', () => {
-    const check = buildOpenJawsProviderProbeCheck({
-      ok: false,
-      code: 'auth_failed',
-      provider: 'oci',
-      label: 'OCI',
-      model: 'Q',
-      modelRef: 'oci:Q',
-      baseURL: 'https://example.com/openai/v1',
-      baseURLSource: null,
-      apiKeySource: 'Q_API_KEY',
-      endpoint: 'https://example.com/openai/v1/responses',
-      endpointLabel: '/responses',
-      method: 'POST',
-      checkedAt: 0,
-      summary: 'OCI:Q failed · auth rejected (401)',
+    const check = buildQProviderProbeCheck({
+      name: 'openjaws-provider-preflight',
+      warnOnFailure: true,
+      result: {
+        ok: false,
+        code: 'auth_failed',
+        provider: 'oci',
+        label: 'OCI',
+        model: 'Q',
+        modelRef: 'oci:Q',
+        baseURL: 'https://example.com/openai/v1',
+        baseURLSource: null,
+        apiKeySource: 'Q_API_KEY',
+        endpoint: 'https://example.com/openai/v1/responses',
+        endpointLabel: '/responses',
+        method: 'POST',
+        checkedAt: 0,
+        summary: 'OCI:Q failed · auth rejected (401)',
+      },
     })
 
     expect(check).toEqual({

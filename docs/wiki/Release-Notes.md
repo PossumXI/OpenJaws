@@ -30,6 +30,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - agents can now bind new work to an exact saved phase instead of guessing, including direct teammate syntax like `@scout [phase:phase-abc12345] continue`
 - the shared registry is designed for same-owner co-work and path/runtime facts only; it is not a secret dump and does not write credentials into team memory
 - the co-work hot path now keeps an indexed in-memory team view during a live session, so helper handoffs stop rereading and rescanning the same team file on every cross-terminal step
+- the first Phase 1 `src/q/*` split is now live, so shared provider preflight, soak helpers, and TerminalBench receipt math sit behind library surfaces instead of drifting across separate `q-*` scripts
 
 ## Immaculate Integration
 
@@ -38,6 +39,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - crew launch pacing, retry windows, route assignment, and worker health all use the same orchestration layer
 - routed `Q` execution now uses signed manifests, worker assignment, remote dispatch, and signed result reconciliation
 - the Immaculate integration notes now carry the verified hybrid-session, OCI-training, W&B, and benchmark publication contracts that OpenJaws is aligning against
+- the tracing lane now has a typed `src/immaculate/events.ts` schema plus structured session-trace writing, which starts the move toward signed benchmark receipts backed by one stable event contract
 
 ## Provider and First-Run Setup
 

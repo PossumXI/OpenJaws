@@ -11,11 +11,28 @@ import {
 import { dirname, join, resolve } from 'path'
 import { execa } from 'execa'
 import {
-  mapExternalProviderProbeToCheckStatus,
-  probeExternalProviderModel,
-  type ExternalProviderProbeResult,
-} from '../src/utils/externalProviderProbe.js'
-import { resolveExternalModelRef } from '../src/utils/model/externalProviders.js'
+  runOpenJawsProviderPreflight,
+  type QPreflightCheck as PreflightCheck,
+} from '../src/q/runtime.js'
+import {
+  buildAggregateSummary,
+  buildAttemptSummary,
+  buildCycleReceipt,
+  buildDryRunCycles,
+  buildReportOutcome,
+  buildTrialCounts,
+  resolveAttemptJobName,
+  type QTerminalBenchAggregateSummary as TerminalBenchAggregateSummary,
+  type QTerminalBenchAttemptReceipt as TerminalBenchAttemptReceipt,
+  type QTerminalBenchBenchmarkStatus as TerminalBenchBenchmarkStatus,
+  type QTerminalBenchCycleReceipt as TerminalBenchCycleReceipt,
+  type QTerminalBenchCycleStatus as TerminalBenchCycleStatus,
+  type QTerminalBenchExecutionStatus as TerminalBenchExecutionStatus,
+  type QTerminalBenchSoakReceipt as TerminalBenchSoakReceipt,
+  type QTerminalBenchSoakStopReason as TerminalBenchSoakStopReason,
+  type QTerminalBenchTaskReceipt as TerminalBenchTaskReceipt,
+  type QTerminalBenchTrialCounts as TerminalBenchTrialCounts,
+} from '../src/q/terminalBench.js'
 import { resolveOciQRuntime } from '../src/utils/ociQRuntime.js'
 
 type AgentMode = 'openjaws' | 'oracle'
@@ -51,142 +68,6 @@ type CliOptions = {
   soakDurationMinutes: number | null
   soakIntervalMs: number
   officialSubmission: boolean
-}
-
-type CheckStatus = 'passed' | 'failed' | 'warning'
-
-type PreflightCheck = {
-  name: string
-  status: CheckStatus
-  summary: string
-}
-
-type TerminalBenchExecutionStatus = 'completed' | 'error'
-type TerminalBenchBenchmarkStatus = 'passed' | 'failed' | 'unknown'
-
-type TerminalBenchTaskReceipt = {
-  cycle: number
-  attempt: number
-  taskIndex: number
-  taskName: string | null
-  trialName: string | null
-  source: string | null
-  trialUri: string | null
-  harborResultPath: string
-  executionStatus: TerminalBenchExecutionStatus
-  benchmarkStatus: TerminalBenchBenchmarkStatus
-  summary: string
-  startedAt: string | null
-  finishedAt: string | null
-  totalDurationMs: number | null
-  environmentSetupDurationMs: number | null
-  agentSetupDurationMs: number | null
-  agentExecutionDurationMs: number | null
-  verifierDurationMs: number | null
-  rewardTotal: number | null
-  rewardBreakdown: Record<string, number> | null
-  returnCode: number | null
-  isError: boolean | null
-  permissionDenialCount: number | null
-  exceptionType: string | null
-  exceptionMessage: string | null
-}
-
-type TerminalBenchTrialCounts = {
-  total: number
-  executionErrors: number
-  benchmarkPassed: number
-  benchmarkFailed: number
-  benchmarkUnknown: number
-}
-
-type TerminalBenchAttemptReceipt = {
-  cycle: number
-  attempt: number
-  status: 'completed' | 'completed_with_errors' | 'failed'
-  summary: string
-  exitCode: number | null
-  harborJobPath: string | null
-  harborJobResultPath: string | null
-  jobResultSummary: Record<string, unknown> | null
-  stdoutTail: string
-  stderrTail: string
-  trialCounts: TerminalBenchTrialCounts
-}
-
-type TerminalBenchRunSummary = {
-  attemptCount: number
-  completedAttempts: number
-  attemptsWithErrors: number
-  failedAttempts: number
-  totalTrials: number
-  executionErrorTrials: number
-  benchmarkPassedTrials: number
-  benchmarkFailedTrials: number
-  benchmarkUnknownTrials: number
-  avgTrialDurationMs: number
-  p50TrialDurationMs: number
-  p95TrialDurationMs: number
-  avgReward: number
-}
-
-type TerminalBenchCycleStatus = TerminalBenchAttemptReceipt['status'] | 'dry_run'
-
-type TerminalBenchCycleReceipt = {
-  cycle: number
-  status: TerminalBenchCycleStatus
-  summary: string
-  startedAt: string | null
-  finishedAt: string | null
-  durationMs: number | null
-  attemptCount: number
-  aggregate: TerminalBenchRunSummary
-  attempts: readonly TerminalBenchAttemptReceipt[]
-  tasks: readonly TerminalBenchTaskReceipt[]
-  exitCode: number | null
-  jobPathGuess: string | null
-  jobResultPath: string | null
-  jobResultSummary: Record<string, unknown> | null
-  stdoutTail: string
-  stderrTail: string
-}
-
-type TerminalBenchAggregateSummary = TerminalBenchRunSummary & {
-  cycleCount: number
-  completedCycles: number
-  cyclesWithErrors: number
-  failedCycles: number
-}
-
-type TerminalBenchSoakStopReason =
-  | 'dry_run'
-  | 'single_cycle'
-  | 'cycle_limit'
-  | 'duration_limit'
-
-type TerminalBenchSoakReceipt = {
-  enabled: boolean
-  maxCycles: number
-  maxDurationMinutes: number | null
-  cycleDelayMs: number
-  plannedCycleCount: number
-  completedCycleCount: number
-  stopReason: TerminalBenchSoakStopReason | null
-  startedAt: string | null
-  finishedAt: string | null
-  durationMs: number | null
-}
-
-export function buildOpenJawsProviderProbeCheck(
-  result: ExternalProviderProbeResult,
-): PreflightCheck {
-  return {
-    name: 'openjaws-provider-preflight',
-    status: mapExternalProviderProbeToCheckStatus(result, {
-      warnOnFailure: true,
-    }),
-    summary: result.summary,
-  }
 }
 
 function resolveDefaultHarborCommand(): string {
@@ -532,85 +413,6 @@ async function runPreflightCheck(
   }
 }
 
-async function runOpenJawsProviderPreflight(options: CliOptions): Promise<PreflightCheck> {
-  let providerProbeSummary: string | null = null
-  const externalModelRef = options.model
-    ? resolveExternalModelRef(options.model)
-    : null
-  if (externalModelRef) {
-    const providerProbe = await probeExternalProviderModel(externalModelRef, {
-      timeoutMs: 15_000,
-    })
-    if (!providerProbe.ok) {
-      return buildOpenJawsProviderProbeCheck(providerProbe)
-    }
-    providerProbeSummary = providerProbe.summary
-  }
-
-  const binary =
-    process.platform === 'win32'
-      ? resolve(options.root, 'dist', 'openjaws.exe')
-      : resolve(options.root, 'dist', 'openjaws')
-  if (!existsSync(binary)) {
-    return {
-      name: 'openjaws-provider-preflight',
-      status: 'failed',
-      summary: `Compiled OpenJaws binary not found at ${binary}. Run bun run build:native first.`,
-    }
-  }
-
-  const args = [
-    '-p',
-    '--output-format',
-    'json',
-    '--bare',
-    '--max-turns',
-    '1',
-  ]
-  if (options.model) {
-    args.push('--model', options.model)
-  }
-  args.push('Reply with the single word OK.')
-
-  const result = await execa(binary, args, {
-    cwd: options.root,
-    reject: false,
-    windowsHide: true,
-    timeout: 180_000,
-  })
-
-  const stdout = result.stdout.trim()
-  const lastLine = stdout ? stdout.split(/\r?\n/).slice(-1)[0] ?? stdout : ''
-  let payload: Record<string, unknown> | null = null
-  if (lastLine) {
-    try {
-      payload = JSON.parse(lastLine) as Record<string, unknown>
-    } catch {
-      payload = null
-    }
-  }
-
-  if (result.exitCode === 0 && payload && payload.is_error === false) {
-    return {
-      name: 'openjaws-provider-preflight',
-      status: 'passed',
-      summary: providerProbeSummary
-        ? `${providerProbeSummary} · OpenJaws local provider preflight succeeded.`
-        : 'OpenJaws local provider preflight succeeded.',
-    }
-  }
-
-  const summary =
-    (payload && typeof payload.result === 'string' && payload.result) ||
-    tailText(result.stderr || result.stdout) ||
-    'OpenJaws provider preflight failed.'
-  return {
-    name: 'openjaws-provider-preflight',
-    status: 'warning',
-    summary,
-  }
-}
-
 function collectAgentEnv(options?: { officialSubmission?: boolean; model?: string | null }): Record<string, string> {
   const envNames = [
     'Q_API_KEY',
@@ -679,24 +481,6 @@ function normalizeTaskFilter(options: CliOptions, value: string): string {
     return value.startsWith('terminal-bench/') ? value.slice('terminal-bench/'.length) : value
   }
   return value
-}
-
-export function resolveAttemptJobName(
-  options: Pick<CliOptions, 'jobName' | 'repeat' | 'soak'>,
-  cycle: number,
-  attempt: number,
-): string | null {
-  if (!options.jobName) {
-    return null
-  }
-  const suffixes: string[] = []
-  if (options.soak) {
-    suffixes.push(`cycle-${cycle}`)
-  }
-  if (options.repeat > 1) {
-    suffixes.push(`attempt-${attempt}`)
-  }
-  return suffixes.length > 0 ? `${options.jobName}-${suffixes.join('-')}` : options.jobName
 }
 
 function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): string[] {
@@ -1108,18 +892,6 @@ function listHarborTrialResultPaths(jobRoot: string | null): string[] {
     .sort((left, right) => left.localeCompare(right))
 }
 
-function buildTrialCounts(
-  tasks: readonly TerminalBenchTaskReceipt[],
-): TerminalBenchTrialCounts {
-  return {
-    total: tasks.length,
-    executionErrors: tasks.filter(task => task.executionStatus === 'error').length,
-    benchmarkPassed: tasks.filter(task => task.benchmarkStatus === 'passed').length,
-    benchmarkFailed: tasks.filter(task => task.benchmarkStatus === 'failed').length,
-    benchmarkUnknown: tasks.filter(task => task.benchmarkStatus === 'unknown').length,
-  }
-}
-
 function buildTaskSummary(args: {
   taskName: string | null
   executionStatus: TerminalBenchExecutionStatus
@@ -1256,111 +1028,6 @@ function readHarborTaskReceipts(
     .filter((task): task is TerminalBenchTaskReceipt => task !== null)
 }
 
-function percentile(values: readonly number[], fraction: number): number | null {
-  if (values.length === 0) {
-    return null
-  }
-  const sorted = [...values].sort((left, right) => left - right)
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil(sorted.length * fraction) - 1),
-  )
-  return sorted[index] ?? null
-}
-
-export function buildRunSummary(
-  attempts: readonly TerminalBenchAttemptReceipt[],
-  tasks: readonly TerminalBenchTaskReceipt[],
-): TerminalBenchRunSummary {
-  const counts = buildTrialCounts(tasks)
-  const completedAttempts = attempts.filter(attempt => attempt.status === 'completed').length
-  const attemptsWithErrors = attempts.filter(
-    attempt => attempt.status === 'completed_with_errors',
-  ).length
-  const failedAttempts = attempts.filter(attempt => attempt.status === 'failed').length
-  const durationValues = tasks
-    .map(task => task.totalDurationMs)
-    .filter((value): value is number => value !== null)
-  const rewardValues = tasks
-    .map(task => task.rewardTotal)
-    .filter((value): value is number => value !== null)
-
-  return {
-    attemptCount: attempts.length,
-    completedAttempts,
-    attemptsWithErrors,
-    failedAttempts,
-    totalTrials: counts.total,
-    executionErrorTrials: counts.executionErrors,
-    benchmarkPassedTrials: counts.benchmarkPassed,
-    benchmarkFailedTrials: counts.benchmarkFailed,
-    benchmarkUnknownTrials: counts.benchmarkUnknown,
-    avgTrialDurationMs:
-      durationValues.length > 0
-        ? Math.round(
-            durationValues.reduce((sum, value) => sum + value, 0) / durationValues.length,
-          )
-        : 0,
-    p50TrialDurationMs: percentile(durationValues, 0.5) ?? 0,
-    p95TrialDurationMs: percentile(durationValues, 0.95) ?? 0,
-    avgReward:
-      rewardValues.length > 0
-        ? Math.round(
-            (rewardValues.reduce((sum, value) => sum + value, 0) / rewardValues.length) *
-              1000,
-          ) / 1000
-        : 0,
-  }
-}
-
-export function buildAggregateSummary(
-  cycles: readonly Pick<TerminalBenchCycleReceipt, 'status'>[],
-  attempts: readonly TerminalBenchAttemptReceipt[],
-  tasks: readonly TerminalBenchTaskReceipt[],
-): TerminalBenchAggregateSummary {
-  const runSummary = buildRunSummary(attempts, tasks)
-  return {
-    cycleCount: cycles.length,
-    completedCycles: cycles.filter(cycle => cycle.status === 'completed').length,
-    cyclesWithErrors: cycles.filter(cycle => cycle.status === 'completed_with_errors').length,
-    failedCycles: cycles.filter(cycle => cycle.status === 'failed').length,
-    ...runSummary,
-  }
-}
-
-function buildAttemptSummary(args: {
-  attempt: number
-  exitCode: number | null
-  trialCounts: TerminalBenchTrialCounts
-}): { status: TerminalBenchAttemptReceipt['status']; summary: string } {
-  if (args.exitCode !== 0) {
-    return {
-      status: 'failed',
-      summary: `Attempt ${args.attempt} failed to finish the Harbor run.`,
-    }
-  }
-
-  if (args.trialCounts.executionErrors > 0 || args.trialCounts.benchmarkFailed > 0) {
-    const issueParts = [
-      args.trialCounts.executionErrors > 0
-        ? `${args.trialCounts.executionErrors} execution error${args.trialCounts.executionErrors === 1 ? '' : 's'}`
-        : null,
-      args.trialCounts.benchmarkFailed > 0
-        ? `${args.trialCounts.benchmarkFailed} benchmark failure${args.trialCounts.benchmarkFailed === 1 ? '' : 's'}`
-        : null,
-    ].filter(Boolean)
-    return {
-      status: 'completed_with_errors',
-      summary: `Attempt ${args.attempt} completed with ${issueParts.join(' and ')} across ${args.trialCounts.total} trial${args.trialCounts.total === 1 ? '' : 's'}.`,
-    }
-  }
-
-  return {
-    status: 'completed',
-    summary: `Attempt ${args.attempt} completed with ${args.trialCounts.benchmarkPassed}/${args.trialCounts.total} passing trial${args.trialCounts.total === 1 ? '' : 's'}.`,
-  }
-}
-
 async function runHarborAttempt(args: {
   cycle: number
   attempt: number
@@ -1433,140 +1100,6 @@ async function runHarborAttempt(args: {
   }
 }
 
-export function buildCycleReceipt(args: {
-  cycle: number
-  startedAt: string | null
-  finishedAt: string | null
-  attempts: readonly TerminalBenchAttemptReceipt[]
-  tasks: readonly TerminalBenchTaskReceipt[]
-}): TerminalBenchCycleReceipt {
-  const aggregate = buildRunSummary(args.attempts, args.tasks)
-  const failedAttempts = args.attempts.filter(attempt => attempt.status === 'failed')
-  const attemptsWithErrors = args.attempts.filter(
-    attempt => attempt.status === 'completed_with_errors',
-  )
-  const lastAttempt = args.attempts.at(-1) ?? null
-
-  let status: TerminalBenchCycleStatus
-  let summary: string
-  if (args.attempts.length === 0) {
-    status = 'failed'
-    summary = `Cycle ${args.cycle} did not launch any Harbor attempts.`
-  } else if (failedAttempts.length > 0) {
-    status = 'failed'
-    summary =
-      failedAttempts.length === args.attempts.length
-        ? `Cycle ${args.cycle} failed in all ${args.attempts.length} Harbor attempt${args.attempts.length === 1 ? '' : 's'}.`
-        : `Cycle ${args.cycle} failed in ${failedAttempts.length}/${args.attempts.length} Harbor attempt${args.attempts.length === 1 ? '' : 's'}.`
-  } else if (
-    aggregate.executionErrorTrials > 0 ||
-    aggregate.benchmarkFailedTrials > 0 ||
-    attemptsWithErrors.length > 0
-  ) {
-    status = 'completed_with_errors'
-    summary = `Cycle ${args.cycle} completed with ${aggregate.executionErrorTrials} execution error trial${aggregate.executionErrorTrials === 1 ? '' : 's'} and ${aggregate.benchmarkFailedTrials} benchmark-failing trial${aggregate.benchmarkFailedTrials === 1 ? '' : 's'} across ${aggregate.totalTrials} total trial${aggregate.totalTrials === 1 ? '' : 's'}.`
-  } else {
-    status = 'completed'
-    summary = `Cycle ${args.cycle} completed with ${aggregate.benchmarkPassedTrials}/${aggregate.totalTrials} passing trial${aggregate.totalTrials === 1 ? '' : 's'} across ${aggregate.attemptCount} Harbor attempt${aggregate.attemptCount === 1 ? '' : 's'}.`
-  }
-
-  return {
-    cycle: args.cycle,
-    status,
-    summary,
-    startedAt: args.startedAt,
-    finishedAt: args.finishedAt,
-    durationMs: readIsoDurationMs(args.startedAt, args.finishedAt),
-    attemptCount: args.attempts.length,
-    aggregate,
-    attempts: args.attempts,
-    tasks: args.tasks,
-    exitCode: failedAttempts.length > 0 ? 1 : 0,
-    jobPathGuess: lastAttempt?.harborJobPath ?? null,
-    jobResultPath: lastAttempt?.harborJobResultPath ?? null,
-    jobResultSummary: lastAttempt?.jobResultSummary ?? null,
-    stdoutTail: lastAttempt?.stdoutTail ?? '',
-    stderrTail: lastAttempt?.stderrTail ?? '',
-  }
-}
-
-function buildDryRunCycles(options: CliOptions, plannedCycleCount: number): TerminalBenchCycleReceipt[] {
-  const aggregate = buildRunSummary([], [])
-  return Array.from({ length: plannedCycleCount }, (_, index) => ({
-    cycle: index + 1,
-    status: 'dry_run',
-    summary: options.soak
-      ? `Soak cycle ${index + 1} planned but not executed in dry-run mode.`
-      : 'Bounded Terminal-Bench run planned but not executed in dry-run mode.',
-    startedAt: null,
-    finishedAt: null,
-    durationMs: null,
-    attemptCount: options.repeat,
-    aggregate,
-    attempts: [],
-    tasks: [],
-    exitCode: null,
-    jobPathGuess: null,
-    jobResultPath: null,
-    jobResultSummary: null,
-    stdoutTail: '',
-    stderrTail: '',
-  }))
-}
-
-function buildReportOutcome(args: {
-  options: CliOptions
-  cycles: readonly TerminalBenchCycleReceipt[]
-  aggregate: TerminalBenchAggregateSummary
-}): { status: string; summary: string; exitCode: number } {
-  if (args.options.soak && args.cycles.length === 0) {
-    return {
-      status: 'failed',
-      summary: 'Terminal-Bench soak hit its duration ceiling before any bounded cycle launched.',
-      exitCode: 1,
-    }
-  }
-
-  const failedCycles = args.cycles.filter(cycle => cycle.status === 'failed')
-  if (failedCycles.length > 0) {
-    return {
-      status: 'failed',
-      summary: args.options.soak
-        ? `Terminal-Bench soak failed in ${failedCycles.length}/${args.aggregate.cycleCount} cycle${args.aggregate.cycleCount === 1 ? '' : 's'}.`
-        : args.options.repeat > 1
-          ? `Terminal-Bench repeated run failed in ${args.aggregate.failedAttempts}/${args.aggregate.attemptCount} attempt${args.aggregate.attemptCount === 1 ? '' : 's'}.`
-          : 'Harbor Terminal-Bench run failed.',
-      exitCode: 1,
-    }
-  }
-
-  if (
-    args.aggregate.executionErrorTrials > 0 ||
-    args.aggregate.benchmarkFailedTrials > 0 ||
-    args.aggregate.cyclesWithErrors > 0
-  ) {
-    return {
-      status: 'completed_with_errors',
-      summary: args.options.soak
-        ? `Terminal-Bench soak completed with ${args.aggregate.executionErrorTrials} execution error trial${args.aggregate.executionErrorTrials === 1 ? '' : 's'} and ${args.aggregate.benchmarkFailedTrials} benchmark-failing trial${args.aggregate.benchmarkFailedTrials === 1 ? '' : 's'} across ${args.aggregate.totalTrials} total trial${args.aggregate.totalTrials === 1 ? '' : 's'} in ${args.aggregate.cycleCount} cycle${args.aggregate.cycleCount === 1 ? '' : 's'}.`
-        : args.options.repeat > 1
-          ? `Terminal-Bench repeated run completed with ${args.aggregate.executionErrorTrials} execution error trial${args.aggregate.executionErrorTrials === 1 ? '' : 's'} and ${args.aggregate.benchmarkFailedTrials} benchmark-failing trial${args.aggregate.benchmarkFailedTrials === 1 ? '' : 's'} across ${args.aggregate.totalTrials} total trial${args.aggregate.totalTrials === 1 ? '' : 's'}.`
-          : `Harbor Terminal-Bench run completed with ${args.aggregate.executionErrorTrials} execution error trial${args.aggregate.executionErrorTrials === 1 ? '' : 's'} and ${args.aggregate.benchmarkFailedTrials} benchmark-failing trial${args.aggregate.benchmarkFailedTrials === 1 ? '' : 's'}.`,
-      exitCode: 0,
-    }
-  }
-
-  return {
-    status: 'completed',
-    summary: args.options.soak
-      ? `Terminal-Bench soak completed with ${args.aggregate.benchmarkPassedTrials}/${args.aggregate.totalTrials} passing trial${args.aggregate.totalTrials === 1 ? '' : 's'} across ${args.aggregate.cycleCount} cycle${args.aggregate.cycleCount === 1 ? '' : 's'}.`
-      : args.options.repeat > 1
-        ? `Terminal-Bench repeated run completed with ${args.aggregate.benchmarkPassedTrials}/${args.aggregate.totalTrials} passing trial${args.aggregate.totalTrials === 1 ? '' : 's'} across ${args.aggregate.attemptCount} attempt${args.aggregate.attemptCount === 1 ? '' : 's'}.`
-        : 'Harbor Terminal-Bench run completed.',
-    exitCode: 0,
-  }
-}
-
 function validateOfficialSubmissionOptions(options: CliOptions): void {
   if (!options.officialSubmission) {
     return
@@ -1626,7 +1159,14 @@ async function main() {
     }),
   )
   if (options.agent === 'openjaws') {
-    checks.push(await runOpenJawsProviderPreflight(options))
+    checks.push(
+      await runOpenJawsProviderPreflight({
+        root: options.root,
+        model: options.model,
+        checkName: 'openjaws-provider-preflight',
+        warnOnFailure: true,
+      }),
+    )
   }
 
   const representativeHarborArgs = buildHarborArgs(options, 1, 1)
