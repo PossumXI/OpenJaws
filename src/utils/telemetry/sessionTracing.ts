@@ -43,11 +43,21 @@ function sanitizeSessionId(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]+/g, '-')
 }
 
-function clipText(value: string | undefined, maxChars = 400): string | null {
-  if (!value) {
+function clipText(value: unknown, maxChars = 400): string | null {
+  if (value === null || value === undefined) {
     return null
   }
-  const trimmed = value.trim()
+  const raw =
+    typeof value === 'string'
+      ? value
+      : (() => {
+          try {
+            return JSON.stringify(value)
+          } catch {
+            return String(value)
+          }
+        })()
+  const trimmed = raw.trim()
   if (!trimmed) {
     return null
   }
@@ -300,7 +310,7 @@ export function endInteractionSpan(
 
 export function startToolSpan(
   toolName = 'tool',
-  input?: string,
+  input?: unknown,
 ): Span | undefined {
   currentToolSpan = startNamedSpan('tool.started', toolName, {
     inputPreview: clipText(input),
@@ -309,7 +319,7 @@ export function startToolSpan(
 }
 
 export function endToolSpan(
-  output?: string,
+  output?: unknown,
   attributes?: Record<string, unknown>,
 ): void {
   endNamedSpan('tool.completed', currentToolSpan, {

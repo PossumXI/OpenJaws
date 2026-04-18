@@ -3,12 +3,14 @@ import { mkdtempSync, readFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
+  endToolSpan,
   endInteractionSpan,
   endSessionTrace,
   getActiveSessionTracePath,
   logSessionTraceEvent,
   startInteractionSpan,
   startSessionTrace,
+  startToolSpan,
 } from './sessionTracing.js'
 
 const tempDirs: string[] = []
@@ -55,5 +57,28 @@ describe('session tracing', () => {
       'route.dispatched',
       'session.ended',
     ])
+  })
+
+  test('serializes object tool previews without crashing', () => {
+    const traceDir = mkdtempSync(join(tmpdir(), 'openjaws-session-trace-'))
+    tempDirs.push(traceDir)
+    process.env.OPENJAWS_SESSION_TRACE_DIR = traceDir
+
+    startSessionTrace('tool-span-object')
+    const tracePath = getActiveSessionTracePath()
+    startToolSpan('Write', {
+      file_path: 'C:/Users/Knight/Desktop/SEALED/test.txt',
+      content: 'hello',
+    })
+    endToolSpan({ ok: true, bytes: 5 })
+    endSessionTrace()
+
+    const lines = readFileSync(tracePath!, 'utf8')
+      .trim()
+      .split(/\r?\n/)
+      .map(line => JSON.parse(line) as { type: string; inputPreview?: string | null })
+
+    const toolStarted = lines.find(line => line.type === 'tool.started')
+    expect(toolStarted?.inputPreview).toContain('"file_path"')
   })
 })

@@ -7,11 +7,18 @@ import json
 import os
 import sys
 import tempfile
+import warnings
 from pathlib import Path
 
 import httpx
 from openai import OpenAI
 from oci_genai_auth import OciUserPrincipalAuth
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"Pydantic serializer warnings:.*",
+    category=UserWarning,
+)
 
 
 def parse_args() -> argparse.Namespace:
