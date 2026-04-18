@@ -1,5 +1,6 @@
 // biome-ignore-all assist/source/organizeImports: JAWS-ONLY import markers must not be reordered
 import addDir from './commands/add-dir/index.js'
+import apex from './commands/apex/index.js'
 import autofixPr from './commands/autofix-pr/index.js'
 import backfillSessions from './commands/backfill-sessions/index.js'
 import btw from './commands/btw/index.js'
@@ -35,6 +36,7 @@ import mcp from './commands/mcp/index.js'
 import mobile from './commands/mobile/index.js'
 import onboarding from './commands/onboarding/index.js'
 import pr_comments from './commands/pr_comments/index.js'
+import preview from './commands/preview/index.js'
 import releaseNotes from './commands/release-notes/index.js'
 import rename from './commands/rename/index.js'
 import resume from './commands/resume/index.js'
@@ -262,6 +264,7 @@ export const INTERNAL_ONLY_COMMANDS = [
 // since underlying functions read from config, which can't be read at module initialization time
 const COMMANDS = memoize((): Command[] => [
   addDir,
+  apex,
   advisor,
   agents,
   branch,
@@ -298,6 +301,7 @@ const COMMANDS = memoize((): Command[] => [
   note,
   outputStyle,
   power,
+  preview,
   provider,
   remoteEnv,
   plugin,

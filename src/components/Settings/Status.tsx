@@ -9,11 +9,13 @@ import { type AppState, useAppState } from '../../state/AppState.js';
 import { getCwd } from '../../utils/cwd.js';
 import { getCurrentSessionTitle } from '../../utils/sessionStorage.js';
 import { getEnvironmentSelectionInfo } from '../../utils/teleport/environmentSelection.js';
-import { buildAccountProperties, buildAPIProviderProperties, buildAgentCoworkProperties, buildDiscordQAgentProperties, buildExecutionProperties, buildProviderProbeProperties, buildQTraceProperties, buildQTrainingProperties, buildIDEProperties, buildImmaculateDiagnostics, buildImmaculateGuidanceProperties, buildImmaculateProperties, buildImmaculateTraceProperties, buildInstallationDiagnostics, buildInstallationHealthDiagnostics, buildMcpProperties, buildMemoryDiagnostics, buildProviderGuidanceProperties, buildSandboxProperties, buildSessionUsageProperties, buildSettingSourcesProperties, buildStartupHarnessDiagnostics, buildToolchainProperties, buildVoiceProperties, type Diagnostic, getModelDisplayLabel, type Property } from '../../utils/status.js';
+import { buildAccountProperties, buildAPIProviderProperties, buildAgentCoworkProperties, buildApexWorkspaceProperties, buildBrowserPreviewProperties, buildDiscordQAgentProperties, buildExecutionProperties, buildProviderProbeProperties, buildQTraceProperties, buildQTrainingProperties, buildIDEProperties, buildImmaculateDiagnostics, buildImmaculateGuidanceProperties, buildImmaculateProperties, buildImmaculateTraceProperties, buildInstallationDiagnostics, buildInstallationHealthDiagnostics, buildMcpProperties, buildMemoryDiagnostics, buildProviderGuidanceProperties, buildSandboxProperties, buildSessionUsageProperties, buildSettingSourcesProperties, buildStartupHarnessDiagnostics, buildToolchainProperties, buildVoiceProperties, type Diagnostic, getModelDisplayLabel, type Property } from '../../utils/status.js';
 import { getImmaculateHarnessDeckReceipt, getImmaculateHarnessStatus, getImmaculateHarnessWorkers } from '../../utils/immaculateHarness.js';
 import type { ThemeName } from '../../utils/theme.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { resolveExternalModelConfig } from '../../utils/model/externalProviders.js';
+import { getApexWorkspaceHealth, getApexWorkspaceSummary } from '../../utils/apexWorkspace.js';
+import { readBrowserPreviewReceipt } from '../../utils/browserPreview.js';
 type Props = {
   context: LocalJSXCommandContext;
   diagnosticsPromise: Promise<Diagnostic[]>;
@@ -46,6 +48,9 @@ function buildSecondarySection({
   immaculateHarnessStatus,
   immaculateDeckReceipt,
   immaculateWorkers,
+  apexWorkspaceHealth,
+  apexWorkspaceSummary,
+  browserPreviewReceipt,
   externalProviderProbe,
   teamContext,
 }: {
@@ -58,6 +63,9 @@ function buildSecondarySection({
   immaculateHarnessStatus: Awaited<ReturnType<typeof getImmaculateHarnessStatus>> | null;
   immaculateDeckReceipt: Awaited<ReturnType<typeof getImmaculateHarnessDeckReceipt>> | null;
   immaculateWorkers: Awaited<ReturnType<typeof getImmaculateHarnessWorkers>> | null;
+  apexWorkspaceHealth: Awaited<ReturnType<typeof getApexWorkspaceHealth>> | null;
+  apexWorkspaceSummary: Awaited<ReturnType<typeof getApexWorkspaceSummary>> | null;
+  browserPreviewReceipt: Awaited<ReturnType<typeof readBrowserPreviewReceipt>> | null;
   externalProviderProbe: AppState['externalProviderProbe'];
   teamContext: AppState['teamContext'];
 }): Property[] {
@@ -72,7 +80,7 @@ function buildSecondarySection({
     configuredDefaultEnvironmentId: environmentSelection?.configuredDefaultEnvironmentId ?? null,
     missingConfiguredDefaultEnvironment: environmentSelection?.missingConfiguredDefaultEnvironment ?? false,
     suggestedEnvironmentLabel: environmentSelection?.suggestedEnvironment ? `${environmentSelection.suggestedEnvironment.name} (${environmentSelection.suggestedEnvironment.environment_id})` : null
-  }), ...buildProviderProbeProperties(externalModel, externalProviderProbe), ...buildProviderGuidanceProperties(externalModel), ...buildImmaculateProperties(immaculateHarnessStatus, immaculateDeckReceipt, immaculateWorkers), ...buildImmaculateTraceProperties(), ...buildQTraceProperties(), ...buildImmaculateGuidanceProperties(immaculateHarnessStatus), ...buildAgentCoworkProperties(teamContext), ...buildDiscordQAgentProperties(), ...buildIDEProperties(mcp.clients, context.options.ideInstallationStatus, theme), ...buildMcpProperties(mcp.clients, theme), ...buildSandboxProperties(), ...buildToolchainProperties(), ...buildVoiceProperties(), ...buildQTrainingProperties(immaculateWorkers), ...buildSessionUsageProperties(), ...buildSettingSourcesProperties()];
+  }), ...buildProviderProbeProperties(externalModel, externalProviderProbe), ...buildProviderGuidanceProperties(externalModel), ...buildImmaculateProperties(immaculateHarnessStatus, immaculateDeckReceipt, immaculateWorkers), ...buildImmaculateTraceProperties(), ...buildQTraceProperties(), ...buildImmaculateGuidanceProperties(immaculateHarnessStatus), ...buildAgentCoworkProperties(teamContext), ...buildApexWorkspaceProperties(undefined, apexWorkspaceHealth, apexWorkspaceSummary), ...buildBrowserPreviewProperties(browserPreviewReceipt), ...buildDiscordQAgentProperties(), ...buildIDEProperties(mcp.clients, context.options.ideInstallationStatus, theme), ...buildMcpProperties(mcp.clients, theme), ...buildSandboxProperties(), ...buildToolchainProperties(), ...buildVoiceProperties(), ...buildQTrainingProperties(immaculateWorkers), ...buildSessionUsageProperties(), ...buildSettingSourcesProperties()];
 }
 export async function buildDiagnostics(): Promise<Diagnostic[]> {
   return [...(await buildInstallationDiagnostics()), ...(await buildInstallationHealthDiagnostics()), ...(await buildStartupHarnessDiagnostics()), ...(await buildImmaculateDiagnostics()), ...(await buildMemoryDiagnostics())];
@@ -108,10 +116,16 @@ export function Status({
   const [immaculateHarnessStatusPromise] = React.useState(() => getImmaculateHarnessStatus().catch(() => null));
   const [immaculateDeckReceiptPromise] = React.useState(() => getImmaculateHarnessDeckReceipt().catch(() => null));
   const [immaculateWorkersPromise] = React.useState(() => getImmaculateHarnessWorkers().catch(() => null));
+  const [apexWorkspaceHealthPromise] = React.useState(() => getApexWorkspaceHealth().catch(() => null));
+  const [apexWorkspaceSummaryPromise] = React.useState(() => getApexWorkspaceSummary().catch(() => null));
+  const [browserPreviewReceiptPromise] = React.useState(() => readBrowserPreviewReceipt().catch(() => null));
   const environmentSelection = use(environmentSelectionPromise);
   const immaculateHarnessStatus = use(immaculateHarnessStatusPromise);
   const immaculateDeckReceipt = use(immaculateDeckReceiptPromise);
   const immaculateWorkers = use(immaculateWorkersPromise);
+  const apexWorkspaceHealth = use(apexWorkspaceHealthPromise);
+  const apexWorkspaceSummary = use(apexWorkspaceSummaryPromise);
+  const browserPreviewReceipt = use(browserPreviewReceiptPromise);
   const [theme] = useTheme();
 
   const primarySection = React.useMemo(() => buildPrimarySection(), []);
@@ -127,10 +141,13 @@ export function Status({
       immaculateHarnessStatus,
       immaculateDeckReceipt,
       immaculateWorkers,
+      apexWorkspaceHealth,
+      apexWorkspaceSummary,
+      browserPreviewReceipt,
       externalProviderProbe,
       teamContext
     })
-  ], [context, environmentSelection, externalProviderProbe, immaculateDeckReceipt, immaculateHarnessStatus, immaculateWorkers, mainLoopModel, mcp, primarySection, replBridgeStartupIssue, teamContext, theme]);
+  ], [apexWorkspaceHealth, apexWorkspaceSummary, browserPreviewReceipt, context, environmentSelection, externalProviderProbe, immaculateDeckReceipt, immaculateHarnessStatus, immaculateWorkers, mainLoopModel, mcp, primarySection, replBridgeStartupIssue, teamContext, theme]);
   const grow = useIsInsideModal() ? 1 : undefined;
 
   return <Box flexDirection="column" flexGrow={grow}>

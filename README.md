@@ -43,6 +43,8 @@ The Q mark above is sourced from `src/components/LogoV2/qMarkData.ts` and can be
 - [website/README.md](website/README.md)
 - [Release and Update Policy](docs/wiki/Release-and-Update-Policy.md)
 - [Features and Capabilities](docs/wiki/Features-and-Capabilities.md)
+- [Apex Workspace Bridge](docs/wiki/Apex-Workspace.md)
+- [Accountable Browser Preview](docs/wiki/Browser-Preview.md)
 - [Immaculate Integration](docs/wiki/Immaculate-Integration.md)
 - [Benchmark Status](docs/wiki/Benchmark-Status.md)
 - [Release Notes](docs/wiki/Release-Notes.md)
@@ -289,6 +291,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - Flight-deck TUI with compact receipts, task inspection, and crew-pressure summaries.
 - OpenCheek agent orchestration with deferred launch queueing, burst budgets, and Immaculate pacing.
 - Agent Co-Work terminal registry so active crew terminals can reuse workspace, runtime, and routed-Q context across sibling projects on the same machine.
+- A guarded Apex workspace bridge for local mail, chat, store, system, and security summaries plus launcher-backed desktop tools.
 - Tool execution across local shells, PowerShell, files, web fetch, MCP, skills, and remote workers.
 - `Q` local and routed training harness with signed manifests, queue state, remote dispatch, and completion reconciliation.
 - Native `Q` benchmark and curriculum lanes over audited packs so coding, agentic, and security slices can be compared in-repo.
@@ -311,6 +314,29 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - agents can now target an exact saved phase on purpose with `phase_id` or direct-message syntax like `@scout [phase:phase-abc12345] continue the bridge work`, so new work can reuse the right project thread instead of falling back to the latest matching receipt
 - the live co-work hot path now keeps an indexed in-memory team view during a session, which cuts repeated team-file rereads and rescans out of cross-terminal handoffs while keeping the file-backed receipts as the durable source of truth
 - the first Phase 1 runtime split is now in `src/q/*`, and the routed launch / dispatch / worker / poll / hybrid entrypoints now sit behind shared library surfaces too, so `launch-q-train`, `dispatch-q-route`, `process-q-routes`, `poll-q-route-result`, and `run-q-hybrid-session` stop drifting as standalone logic copies
+
+## Apex Workspace Bridge
+
+OpenJaws now has a bounded `/apex` command for a local Apex sidecar and launcher lane.
+
+- `workspace_api` is the typed bridge, not a hidden shell
+- browser, security center, vault, mail, and related Rust UIs stay out of process
+- `/status` now surfaces Apex bridge health and workspace summary when the local Apex roots are configured
+- Apex launches now use a reduced allowlisted environment instead of inheriting the full OpenJaws secret surface
+- the bridge is only trusted when OpenJaws launched it itself, unless the operator explicitly sets `OPENJAWS_APEX_TRUST_LOCALHOST=1`
+
+See [Apex Workspace Bridge](docs/wiki/Apex-Workspace.md) for setup, trust boundaries, and the current “bridge not kernel embed” contract.
+
+## Accountable Browser Preview
+
+OpenJaws now has a bounded `/preview` lane for browser-backed app preview, research, and supervised watch/music sessions.
+
+- browser launches keep an accountability receipt with intent, rationale, requester, and runtime handler
+- Chrome-compatible preview is preferred when available
+- the external Apex browser stays launcher-backed as a desktop shell, not a fake embedded TUI webview
+- `/status` now surfaces the latest accountable browser session
+
+See [Accountable Browser Preview](docs/wiki/Browser-Preview.md) for the exact contract.
 
 ## Immaculate Integration
 

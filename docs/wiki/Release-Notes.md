@@ -32,6 +32,20 @@ This page summarizes the current public OpenJaws surface that is already working
 - the co-work hot path now keeps an indexed in-memory team view during a live session, so helper handoffs stop rereading and rescanning the same team file on every cross-terminal step
 - the first Phase 1 `src/q/*` split is now live, and the routed launch / dispatch / worker / poll / hybrid helpers now sit there too, so shared provider preflight, route dispatch, route processing, result reconcile, and TerminalBench receipt math stop drifting across separate `q-*` scripts
 
+## Apex Workspace Bridge
+
+- `/apex` now gives OpenJaws a bounded local command-center lane for an external Apex workspace
+- the typed `workspace_api` bridge can surface mail, chat, store, system, and security summaries directly into OpenJaws
+- browser, security center, vault, and related Apex desktop apps stay launcher-backed and out of process instead of being hard-embedded into the TUI
+- Apex launches now use a reduced allowlisted environment, and the bridge is only trusted when OpenJaws launched it itself unless the operator explicitly opts into trusting a pre-existing localhost listener
+
+## Accountable Browser Preview
+
+- `/preview` now opens browser-backed app previews and supervised browse/watch/music sessions under one explicit receipt
+- each session keeps intent, rationale, requester, and runtime handler visible instead of letting agents browse without an explanation trail
+- the preview lane prefers the existing Chrome-compatible path when available and treats the external Apex browser honestly as a launcher-backed desktop shell
+- `/status` now surfaces the latest accountable preview session
+
 ## Immaculate Integration
 
 - Immaculate is now part of the default OpenJaws runtime context

@@ -186,6 +186,24 @@ export default function Page(): React.ReactNode {
             </p>
           </article>
           <article className="feature-card">
+            <span>Apex bridge</span>
+            <strong>Bounded local command-center lane.</strong>
+            <p>
+              `/apex` can fuse a trusted local workspace bridge for mail,
+              security, system, and launcher-backed desktop tools without
+              pretending the external Rust shells are native OpenJaws views.
+            </p>
+          </article>
+          <article className="feature-card">
+            <span>Accountable preview</span>
+            <strong>Real browser preview with a reason trail.</strong>
+            <p>
+              `/preview` opens local apps, research, and supervised watch/music
+              sessions through a real browser path while keeping intent,
+              rationale, requester, and handler visible in one receipt.
+            </p>
+          </article>
+          <article className="feature-card">
             <span>Q media boundary</span>
             <strong>Reasoning stays Q. Media stays explicit.</strong>
             <p>

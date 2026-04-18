@@ -57,6 +57,15 @@ import { getElevenLabsConfig } from '../services/voiceOutput.js';
 import type { ExternalProviderProbeResult } from './externalProviderProbe.js';
 import { readDiscordQAgentReceipt, type DiscordQAgentReceipt } from './discordQAgentRuntime.js';
 import {
+  getApexWorkspaceAvailability,
+  getApexWorkspaceHealth,
+  getApexWorkspaceSummary,
+  summarizeApexWorkspace,
+  type ApexWorkspaceAvailability,
+  type ApexWorkspaceHealth,
+  type ApexWorkspaceSummary,
+} from './apexWorkspace.js';
+import {
   getActiveTeamTerminalContexts,
   getTeamPhaseReceiptsByRecency,
   getTeamPhaseRegistryPath,
@@ -75,6 +84,10 @@ import {
   readQTrainingRouteWorkers,
 } from './qTraining.js';
 import { readLatestQTraceSummary, type QTraceSummary } from '../q/traceSummary.js';
+import {
+  summarizeBrowserPreviewReceipt,
+  type BrowserPreviewReceipt,
+} from './browserPreview.js';
 export type Property = {
   label?: string;
   value: React.ReactNode | Array<string>;
@@ -650,6 +663,57 @@ export function buildDiscordQAgentProperties(
     ]
   })
   return properties
+}
+export function buildApexWorkspaceProperties(
+  availability: ApexWorkspaceAvailability = getApexWorkspaceAvailability(),
+  health: ApexWorkspaceHealth | null = null,
+  summary: ApexWorkspaceSummary | null = null,
+): Property[] {
+  if (!availability.configured && !health && !summary) {
+    return []
+  }
+  const workspace = summarizeApexWorkspace(summary)
+  const properties: Property[] = [
+    {
+      label: 'Apex workspace',
+      value: [
+        health?.status === 'ok' ? 'bridge online' : 'bridge offline',
+        `${formatNumber(availability.availableTargetCount)} target${availability.availableTargetCount === 1 ? '' : 's'}`,
+        availability.projectRootExists ? 'kernel/apps ready' : 'kernel/apps missing',
+        availability.notificationsRootExists ? 'notifications ready' : 'notifications missing',
+        availability.argusRootExists ? 'argus ready' : 'argus missing',
+      ],
+    },
+    {
+      label: 'Apex summary',
+      value: [workspace.headline, ...workspace.details.slice(0, 3)],
+    },
+  ]
+  if (!availability.projectRootExists) {
+    properties.push({
+      label: 'Apex setup',
+      value: availability.envHints,
+    })
+  }
+  return properties
+}
+export function buildBrowserPreviewProperties(
+  receipt: BrowserPreviewReceipt | null = null,
+): Property[] {
+  if (!receipt) {
+    return []
+  }
+
+  const summary = summarizeBrowserPreviewReceipt(receipt)
+  return [
+    {
+      label: 'Browser preview',
+      value: [
+        summary.headline,
+        ...summary.details.slice(0, 3),
+      ],
+    },
+  ]
 }
 type AgentCoworkContext = {
   teamName: string

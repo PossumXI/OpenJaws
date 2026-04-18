@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   buildAgentCoworkProperties,
+  buildApexWorkspaceProperties,
+  buildBrowserPreviewProperties,
   buildDiscordQAgentProperties,
   buildImmaculateGuidanceProperties,
   buildImmaculateTraceProperties,
@@ -432,6 +434,130 @@ describe('buildDiscordQAgentProperties', () => {
       {
         label: 'Q operator',
         value: ['PossumX', 'start-openjaws', 'pid 4.2k', 'D:\\repo'],
+      },
+    ])
+  })
+})
+
+describe('buildApexWorkspaceProperties', () => {
+  test('surfaces Apex bridge health, ready roots, and workspace summary', () => {
+    expect(
+      buildApexWorkspaceProperties(
+        {
+          configured: true,
+          projectRootExists: true,
+          notificationsRootExists: true,
+          argusRootExists: false,
+          availableTargetCount: 9,
+          envHints: [
+            'OPENJAWS_APEX_ROOT',
+            'OPENJAWS_APEX_ASGARD_ROOT',
+          ],
+        },
+        {
+          status: 'ok',
+          service: 'apex-workspace-api',
+          version: '0.2.0',
+          timestamp: '2026-04-18T20:00:00.000Z',
+        },
+        {
+          mode: 'live',
+          mail: {
+            accountCount: 2,
+            securityAlertCount: 1,
+            messages: [],
+            outbox: { pending: 0, failed: 0, sent: 2 },
+          },
+          chat: {
+            conversations: [],
+            statistics: {
+              totalSessions: 2,
+              totalContacts: 4,
+              totalMessages: 16,
+              activeSessions: 1,
+            },
+          },
+          store: {
+            featuredCount: 2,
+            installedCount: 5,
+            updateCount: 1,
+            apps: [],
+          },
+          system: {
+            healthScore: 0.83,
+            metrics: {
+              timestamp: '2026-04-18T20:00:00.000Z',
+              cpuUsage: 11.2,
+              memoryUsage: 44.4,
+              processCount: 121,
+              uptime: 10_000,
+            },
+            services: [],
+            alerts: [],
+          },
+          security: {
+            overallHealth: 0.92,
+            activeAlerts: 1,
+            recommendations: [],
+            incidents: [],
+            auditEntries: [],
+          },
+        },
+      ),
+    ).toEqual([
+      {
+        label: 'Apex workspace',
+        value: [
+          'bridge online',
+          '9 targets',
+          'kernel/apps ready',
+          'notifications ready',
+          'argus missing',
+        ],
+      },
+      {
+        label: 'Apex summary',
+        value: [
+          'Workspace mode live · system 83% · security 92%',
+          'Mail 0 messages · 2 accounts · 1 alerts',
+          'Chat 1/2 active sessions · 16 messages',
+          'Store 5 installed · 1 updates',
+        ],
+      },
+    ])
+  })
+})
+
+describe('buildBrowserPreviewProperties', () => {
+  test('surfaces the latest accountable browser session', () => {
+    expect(
+      buildBrowserPreviewProperties({
+        version: 1,
+        updatedAt: '2026-04-18T22:00:00.000Z',
+        lastSessionId: 'session-1',
+        sessions: [
+          {
+            id: 'session-1',
+            action: 'open_url',
+            intent: 'preview',
+            rationale: 'Verify the local dev app in a real browser.',
+            requestedBy: 'user',
+            startedAt: '2026-04-18T22:00:00.000Z',
+            handler: 'chrome',
+            opened: true,
+            note: 'Opened in Chrome-compatible preview lane.',
+            url: 'http://127.0.0.1:3000/',
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        label: 'Browser preview',
+        value: [
+          'preview · chrome · http://127.0.0.1:3000/ · opened',
+          'requested by user · 2026-04-18T22:00:00.000Z',
+          'why Verify the local dev app in a real browser.',
+        ],
       },
     ])
   })

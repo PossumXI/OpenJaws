@@ -43,6 +43,8 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 - [Q Access and Limits](Q-Access-and-Limits.md)
 - [Release and Update Policy](Release-and-Update-Policy.md)
 - [Features and Capabilities](Features-and-Capabilities.md)
+- [Apex Workspace Bridge](Apex-Workspace.md)
+- [Accountable Browser Preview](Browser-Preview.md)
 - [Immaculate Integration](Immaculate-Integration.md)
 - [Benchmark Status](Benchmark-Status.md)
 - [Release Notes](Release-Notes.md)
@@ -78,6 +80,28 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 - agents can now continue an exact saved phase on purpose with `phase_id` or direct-message syntax like `@scout [phase:phase-abc12345] keep going`, which avoids accidental fallback to the latest similar receipt
 - the live co-work path now keeps an indexed in-memory team view during a session, which cuts repeated team-file rereads and rescans out of helper handoffs while keeping the file-backed receipts as the durable record
 - the first shared `src/q/*` library layer is now in place too, and the routed launch / dispatch / worker / poll / hybrid helpers now sit there as well, so provider preflight, route dispatch, worker processing, poll/reconcile, and hybrid receipt math stop drifting across standalone `q-*` scripts
+
+## Apex Workspace Bridge
+
+OpenJaws now has a bounded local `/apex` lane for an external Apex workspace.
+
+- `workspace_api` is the live bridge for mail, chat, store, system, and security summaries
+- browser, security center, vault, and the rest of the Apex Rust desktop apps stay launcher-backed and out of process
+- `/status` now surfaces the Apex bridge directly when the Apex roots are configured
+- the bridge now uses a reduced env plus a trusted-launch contract instead of blindly trusting any localhost listener
+
+See [Apex Workspace Bridge](Apex-Workspace.md) for the full setup and trust boundary.
+
+## Accountable Browser Preview
+
+OpenJaws now has a bounded `/preview` lane for browser-backed app preview and supervised browsing.
+
+- the TUI now records why a user or agent opened a browser session
+- Chrome-compatible preview is preferred when available
+- the external Apex browser is treated honestly as a launcher-backed desktop shell
+- `/status` now surfaces the latest preview receipt
+
+See [Accountable Browser Preview](Browser-Preview.md) for the exact boundary.
 
 ## Live Benchmark Record
 
