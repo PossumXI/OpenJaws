@@ -4,6 +4,7 @@ import {
   buildWindowsApexLaunchCommand,
   getApexLaunchTarget,
   getApexLaunchTargets,
+  summarizeApexChrono,
   summarizeApexWorkspace,
 } from './apexWorkspace.js'
 
@@ -11,6 +12,7 @@ describe('apexWorkspace', () => {
   it('registers the guarded workspace bridge and native app targets', () => {
     const targets = getApexLaunchTargets()
     expect(targets.some(target => target.id === 'workspace_api')).toBe(true)
+    expect(targets.some(target => target.id === 'chrono_bridge')).toBe(true)
     expect(targets.some(target => target.id === 'browser')).toBe(true)
     expect(targets.some(target => target.id === 'notifications')).toBe(true)
   })
@@ -129,5 +131,50 @@ describe('apexWorkspace', () => {
     expect(summary.headline).toContain('Workspace mode live')
     expect(summary.details[0]).toContain('Mail 1 messages')
     expect(summary.details[3]).toContain('12.4% CPU')
+  })
+
+  it('summarizes live chrono state into concise operator strings', () => {
+    const summary = summarizeApexChrono({
+      mode: 'live',
+      stats: {
+        totalJobs: 2,
+        activeJobs: 1,
+        completedJobs: 1,
+        failedJobs: 0,
+        totalBackups: 3,
+        totalBackupBytes: 3 * 1024 * 1024 * 1024,
+      },
+      jobs: [
+        {
+          id: 'job-1',
+          name: 'Workspace Snapshot',
+          status: 'running',
+          createdAt: '2026-04-18T00:00:00Z',
+          lastRun: '2026-04-18T01:00:00Z',
+          sourcePaths: ['C:\\repo'],
+          destinationPath: 'D:\\backups',
+          encryptionEnabled: true,
+          compressionEnabled: true,
+          retentionDays: 14,
+          scheduleIntervalHours: 12,
+          maxBackupSizeGb: 100,
+          backups: [
+            {
+              id: 'backup-1',
+              timestamp: '2026-04-18T01:00:00Z',
+              sizeBytes: 1024,
+              fileCount: 42,
+              checksum: 'abc',
+              status: 'completed',
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(summary.headline).toContain('Chrono 1/2 active jobs')
+    expect(summary.headline).toContain('3.0 GB')
+    expect(summary.details[0]).toContain('Workspace Snapshot')
+    expect(summary.details[1]).toContain('every 12h')
   })
 })

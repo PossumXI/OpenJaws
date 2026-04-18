@@ -86,12 +86,14 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 OpenJaws now has a bounded local `/apex` lane for an external Apex workspace.
 
 - `workspace_api` is the live bridge for mail, chat, store, system, and security summaries
-- `/apex` can now send Aegis Mail drafts, seal messages into Shadow Chat sessions, and install Store apps through that trusted bridge
+- `chrono-bridge` is now a dedicated backup bridge around the Chrono library instead of a pretend embedded backup pane
+- `/apex` can now send Aegis Mail drafts, move / delete / flag bounded mail items, create Shadow Chat sessions, seal messages into those sessions, and install Store apps with a structured receipt through the same trusted bridge
 - browser, security center, vault, and the rest of the Apex Rust desktop apps stay launcher-backed and out of process
-- `/apex` now exposes dedicated `Mail`, `Chat`, `Store`, `System`, and `Security` tabs instead of flattening everything into one generic overview
-- `browser` and `chrono` remain honest launcher-only tools today; OpenJaws does not fake an embedded browser or backup pane that does not exist
-- `/status` now surfaces the Apex bridge directly when the Apex roots are configured
+- `/apex` now exposes dedicated `Mail`, `Chat`, `Store`, `System`, `Chrono`, and `Security` tabs instead of flattening everything into one generic overview
+- `browser` remains an honest launcher-only tool today; OpenJaws does not fake an embedded browser pane that does not exist
+- `/status` now surfaces both the Apex workspace bridge and the Chrono bridge directly when the Apex roots are configured
 - the bridge now uses a reduced env plus a trusted-launch contract instead of blindly trusting any localhost listener
+- `Notifications` and `argus` stay out of agent control until they get their own narrow localhost bridges plus explicit confirmation and audit ladders
 
 See [Apex Workspace Bridge](Apex-Workspace.md) for the full setup and trust boundary.
 

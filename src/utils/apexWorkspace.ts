@@ -1,4 +1,12 @@
-import { existsSync, openSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import {
+  existsSync,
+  openSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve, sep } from 'path'
 import { spawn } from 'child_process'
@@ -30,9 +38,14 @@ export const APEX_ARGUS_ROOT = resolve(
 export const APEX_WORKSPACE_API_URL =
   process.env.OPENJAWS_APEX_WORKSPACE_API_URL?.trim() ||
   'http://127.0.0.1:8797'
+export const APEX_CHRONO_API_URL =
+  process.env.OPENJAWS_APEX_CHRONO_API_URL?.trim() ||
+  'http://127.0.0.1:8798'
 const APEX_RUNTIME_DIR = join(tmpdir(), 'openjaws-apex')
 const APEX_WORKSPACE_API_LOG = join(APEX_RUNTIME_DIR, 'workspace-api.log')
 const APEX_WORKSPACE_API_STATE = join(APEX_RUNTIME_DIR, 'workspace-api-state.json')
+const APEX_CHRONO_API_LOG = join(APEX_RUNTIME_DIR, 'chrono-bridge.log')
+const APEX_CHRONO_API_STATE = join(APEX_RUNTIME_DIR, 'chrono-bridge-state.json')
 const APEX_TRUST_LOCALHOST =
   process.env.OPENJAWS_APEX_TRUST_LOCALHOST?.trim() === '1'
 const APEX_AUTH_HEADER = 'x-openjaws-apex-token'
@@ -42,6 +55,7 @@ export type ApexLaunchMode = 'sidecar' | 'native-app' | 'source-root'
 export type ApexLaunchTarget = {
   id:
     | 'workspace_api'
+    | 'chrono_bridge'
     | 'browser'
     | 'aegis_mail'
     | 'security_center'
@@ -108,6 +122,44 @@ export type ApexWorkspaceStoreApp = {
   version: string
   developer: string
   featured: boolean
+}
+
+export type ApexChronoBackup = {
+  id: string
+  timestamp: string
+  sizeBytes: number
+  fileCount: number
+  checksum: string
+  status: string
+}
+
+export type ApexChronoJob = {
+  id: string
+  name: string
+  status: string
+  createdAt: string
+  lastRun: string | null
+  sourcePaths: string[]
+  destinationPath: string
+  encryptionEnabled: boolean
+  compressionEnabled: boolean
+  retentionDays: number
+  scheduleIntervalHours: number
+  maxBackupSizeGb: number
+  backups: ApexChronoBackup[]
+}
+
+export type ApexChronoSummary = {
+  mode: string
+  stats: {
+    totalJobs: number
+    activeJobs: number
+    completedJobs: number
+    failedJobs: number
+    totalBackups: number
+    totalBackupBytes: number
+  }
+  jobs: ApexChronoJob[]
 }
 
 export type ApexWorkspaceSummary = {
@@ -194,6 +246,12 @@ export type ApexActionResult = {
   message: string
 }
 
+export type ApexStructuredActionResult<T extends object = Record<string, unknown>> = {
+  ok: boolean
+  message: string
+  data: T | null
+}
+
 export type ApexWorkspaceAvailability = {
   configured: boolean
   projectRootExists: boolean
@@ -221,6 +279,17 @@ const APEX_TARGETS: ApexLaunchTarget[] = [
     path: resolve(join(APEX_APPS_ROOT, 'workspace_api')),
     manifestPath: resolve(join(APEX_APPS_ROOT, 'workspace_api', 'Cargo.toml')),
     commandHint: 'cargo run --manifest-path apps/workspace_api/Cargo.toml',
+  },
+  {
+    id: 'chrono_bridge',
+    label: 'Chrono Bridge',
+    mode: 'sidecar',
+    category: 'bridge',
+    description:
+      'Typed localhost bridge for Chrono backup jobs on 127.0.0.1:8798.',
+    path: resolve(join(APEX_APPS_ROOT, 'chrono')),
+    manifestPath: resolve(join(APEX_APPS_ROOT, 'chrono', 'Cargo.toml')),
+    commandHint: 'cargo run --manifest-path apps/chrono/Cargo.toml --bin chrono-bridge',
   },
   {
     id: 'browser',
@@ -345,9 +414,9 @@ function quotePowerShellLiteral(value: string): string {
   return `'${value.replace(/'/g, "''")}'`
 }
 
-function parseApexWorkspaceApiUrl(): { host: string; port: string } | null {
+function parseApexSocketUrl(baseUrl: string): { host: string; port: string } | null {
   try {
-    const url = new URL(APEX_WORKSPACE_API_URL)
+    const url = new URL(baseUrl)
     return {
       host: url.hostname,
       port: url.port || (url.protocol === 'https:' ? '443' : '80'),
@@ -374,6 +443,7 @@ function buildApexLaunchEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
     'TMPDIR',
     'APPDATA',
     'LOCALAPPDATA',
+    'LIBCLANG_PATH',
     'PROGRAMDATA',
     'ProgramData',
     'CARGO_HOME',
@@ -397,27 +467,25 @@ function buildApexLaunchEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
   }
 }
 
-function readApexWorkspaceApiState(): ApexWorkspaceApiState | null {
+function readApexSidecarState(statePath: string): ApexWorkspaceApiState | null {
   try {
-    if (!existsSync(APEX_WORKSPACE_API_STATE)) {
+    if (!existsSync(statePath)) {
       return null
     }
-    return JSON.parse(
-      readFileSync(APEX_WORKSPACE_API_STATE, 'utf8'),
-    ) as ApexWorkspaceApiState
+    return JSON.parse(readFileSync(statePath, 'utf8')) as ApexWorkspaceApiState
   } catch {
     return null
   }
 }
 
-function writeApexWorkspaceApiState(state: ApexWorkspaceApiState): void {
+function writeApexSidecarState(statePath: string, state: ApexWorkspaceApiState): void {
   mkdirSync(APEX_RUNTIME_DIR, { recursive: true })
-  writeFileSync(APEX_WORKSPACE_API_STATE, JSON.stringify(state, null, 2), 'utf8')
+  writeFileSync(statePath, JSON.stringify(state, null, 2), 'utf8')
 }
 
-function clearApexWorkspaceApiState(): void {
+function clearApexSidecarState(statePath: string): void {
   try {
-    rmSync(APEX_WORKSPACE_API_STATE, { force: true })
+    rmSync(statePath, { force: true })
   } catch {}
 }
 
@@ -430,23 +498,29 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
-function getTrustedApexWorkspaceApiState(): ApexWorkspaceApiState | null {
+function getTrustedApexSidecarState(
+  statePath: string,
+  baseUrl: string,
+): ApexWorkspaceApiState | null {
   if (APEX_TRUST_LOCALHOST) {
     return null
   }
-  const state = readApexWorkspaceApiState()
+  const state = readApexSidecarState(statePath)
   if (!state) {
     return null
   }
-  if (state.workspaceApiUrl !== APEX_WORKSPACE_API_URL || !isPidAlive(state.pid)) {
-    clearApexWorkspaceApiState()
+  if (state.workspaceApiUrl !== baseUrl || !isPidAlive(state.pid)) {
+    clearApexSidecarState(statePath)
     return null
   }
   return state
 }
 
-function getApexRequestHeaders(): Record<string, string> | null {
-  const trustedState = getTrustedApexWorkspaceApiState()
+function getApexRequestHeaders(
+  statePath: string,
+  baseUrl: string,
+): Record<string, string> | null {
+  const trustedState = getTrustedApexSidecarState(statePath, baseUrl)
   if (!APEX_TRUST_LOCALHOST && !trustedState) {
     return null
   }
@@ -473,18 +547,105 @@ async function resolveCargoBinary(): Promise<string | null> {
   return null
 }
 
+function hasLibclangBinary(directory: string): boolean {
+  return existsSync(resolve(directory, 'libclang.dll'))
+}
+
+function resolvePythonSitePackagesLibclang(): string | null {
+  const userRoot =
+    process.env.USERPROFILE?.trim() || process.env.HOME?.trim() || null
+  if (!userRoot) {
+    return null
+  }
+
+  const versionDirs = ['Python313', 'Python312', 'Python311']
+  const candidates = [
+    ...versionDirs.flatMap(version => [
+      resolve(
+        userRoot,
+        'AppData',
+        'Roaming',
+        'Python',
+        version,
+        'site-packages',
+        'clang',
+        'native',
+      ),
+      resolve(
+        userRoot,
+        'AppData',
+        'Local',
+        'Packages',
+        'PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0',
+        'LocalCache',
+        'local-packages',
+        version,
+        'site-packages',
+        'clang',
+        'native',
+      ),
+    ]),
+  ]
+
+  const packagesRoot = resolve(userRoot, 'AppData', 'Local', 'Packages')
+  if (existsSync(packagesRoot)) {
+    try {
+      for (const entry of readdirSync(packagesRoot, { withFileTypes: true })) {
+        if (
+          entry.isDirectory() &&
+          entry.name.startsWith('PythonSoftwareFoundation.Python.')
+        ) {
+          for (const version of versionDirs) {
+            candidates.push(
+              resolve(
+                packagesRoot,
+                entry.name,
+                'LocalCache',
+                'local-packages',
+                version,
+                'site-packages',
+                'clang',
+                'native',
+              ),
+            )
+          }
+        }
+      }
+    } catch {}
+  }
+
+  for (const candidate of candidates) {
+    if (hasLibclangBinary(candidate)) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
+function resolveLibclangPath(): string | null {
+  const configured = process.env.LIBCLANG_PATH?.trim()
+  if (configured && hasLibclangBinary(configured)) {
+    return configured
+  }
+
+  return resolvePythonSitePackagesLibclang()
+}
+
 async function fetchApexJson<T>(
+  baseUrl: string,
+  statePath: string,
   pathname: string,
   timeoutMs: number,
 ): Promise<T | null> {
-  const headers = getApexRequestHeaders()
+  const headers = getApexRequestHeaders(statePath, baseUrl)
   if (headers === null) {
     return null
   }
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const response = await fetch(new URL(pathname, `${APEX_WORKSPACE_API_URL}/`), {
+    const response = await fetch(new URL(pathname, `${baseUrl}/`), {
       signal: controller.signal,
       headers,
     })
@@ -499,12 +660,43 @@ async function fetchApexJson<T>(
   }
 }
 
+async function isApexSidecarHealthy(baseUrl: string): Promise<boolean> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 1000)
+  try {
+    const response = await fetch(new URL('/health', `${baseUrl}/`), {
+      signal: controller.signal,
+    })
+    return response.ok
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function waitForApexSidecarReady(
+  baseUrl: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await isApexSidecarHealthy(baseUrl)) {
+      return true
+    }
+    await new Promise(resolve => setTimeout(resolve, 750))
+  }
+  return false
+}
+
 async function postApexAction(
+  baseUrl: string,
+  statePath: string,
   pathname: string,
   body: Record<string, unknown>,
   actionLabel: string,
 ): Promise<ApexActionResult> {
-  const headers = getApexRequestHeaders()
+  const headers = getApexRequestHeaders(statePath, baseUrl)
   if (headers === null) {
     return {
       ok: false,
@@ -516,7 +708,7 @@ async function postApexAction(
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 4000)
   try {
-    const response = await fetch(new URL(pathname, `${APEX_WORKSPACE_API_URL}/`), {
+    const response = await fetch(new URL(pathname, `${baseUrl}/`), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -587,11 +779,18 @@ export function getApexWorkspaceAvailability(): ApexWorkspaceAvailability {
 }
 
 export async function getApexWorkspaceHealth(): Promise<ApexWorkspaceHealth | null> {
-  return fetchApexJson<ApexWorkspaceHealth>('/health', 1500)
+  return fetchApexJson<ApexWorkspaceHealth>(
+    APEX_WORKSPACE_API_URL,
+    APEX_WORKSPACE_API_STATE,
+    '/health',
+    1500,
+  )
 }
 
 export async function getApexWorkspaceSummary(): Promise<ApexWorkspaceSummary | null> {
   const payload = await fetchApexJson<ApexApiEnvelope<ApexWorkspaceSummary>>(
+    APEX_WORKSPACE_API_URL,
+    APEX_WORKSPACE_API_STATE,
     '/api/v1/workspace/summary',
     2500,
   )
@@ -636,6 +835,8 @@ export async function composeApexMail(input: {
     }
   }
   return postApexAction(
+    APEX_WORKSPACE_API_URL,
+    APEX_WORKSPACE_API_STATE,
     '/api/v1/mail/compose',
     {
       recipients,
@@ -666,6 +867,8 @@ export async function sendApexChatMessage(input: {
   }
 
   return postApexAction(
+    APEX_WORKSPACE_API_URL,
+    APEX_WORKSPACE_API_STATE,
     '/api/v1/chat/send',
     {
       session_id: sessionId,
@@ -687,11 +890,362 @@ export async function installApexStoreApp(input: {
   }
 
   return postApexAction(
+    APEX_WORKSPACE_API_URL,
+    APEX_WORKSPACE_API_STATE,
     '/api/v1/store/install',
     {
       app_id: appId,
     },
     'App Store install',
+  )
+}
+
+async function postApexStructuredAction<T extends { message?: string }>(
+  baseUrl: string,
+  statePath: string,
+  pathname: string,
+  body: Record<string, unknown>,
+  actionLabel: string,
+): Promise<ApexStructuredActionResult<T>> {
+  const headers = getApexRequestHeaders(statePath, baseUrl)
+  if (headers === null) {
+    return {
+      ok: false,
+      message:
+        'Apex bridge is not trusted yet. Start the bridge from /apex or set OPENJAWS_APEX_TRUST_LOCALHOST=1 before sending actions.',
+      data: null,
+    }
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 4000)
+  try {
+    const response = await fetch(new URL(pathname, `${baseUrl}/`), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    const payload = (await response.json()) as
+      | ApexApiEnvelope<T>
+      | { success?: false; error?: string }
+    if (!response.ok || !('success' in payload) || payload.success !== true) {
+      const error =
+        'error' in payload && typeof payload.error === 'string'
+          ? payload.error
+          : `Bridge returned ${response.status}`
+      return {
+        ok: false,
+        message: `${actionLabel} failed: ${error}`,
+        data: null,
+      }
+    }
+    return {
+      ok: true,
+      message:
+        typeof payload.data.message === 'string'
+          ? payload.data.message
+          : `${actionLabel} complete`,
+      data: payload.data,
+    }
+  } catch {
+    return {
+      ok: false,
+      message: `Bridge is offline. Start it before ${actionLabel.toLowerCase()}.`,
+      data: null,
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export async function moveApexMailMessage(input: {
+  folder: string
+  messageId: string
+  targetFolder: string
+}): Promise<ApexActionResult> {
+  const folder = input.folder.trim()
+  const messageId = input.messageId.trim()
+  const targetFolder = input.targetFolder.trim()
+  if (!folder || !messageId || !targetFolder) {
+    return {
+      ok: false,
+      message: 'Mail move requires folder, message id, and target folder.',
+    }
+  }
+
+  return postApexAction(
+    APEX_WORKSPACE_API_URL,
+    APEX_WORKSPACE_API_STATE,
+    '/api/v1/mail/move',
+    {
+      folder,
+      message_id: messageId,
+      target_folder: targetFolder,
+    },
+    'Aegis Mail move',
+  )
+}
+
+export async function deleteApexMailMessage(input: {
+  folder: string
+  messageId: string
+}): Promise<ApexActionResult> {
+  const folder = input.folder.trim()
+  const messageId = input.messageId.trim()
+  if (!folder || !messageId) {
+    return {
+      ok: false,
+      message: 'Mail delete requires folder and message id.',
+    }
+  }
+
+  return postApexAction(
+    APEX_WORKSPACE_API_URL,
+    APEX_WORKSPACE_API_STATE,
+    '/api/v1/mail/delete',
+    {
+      folder,
+      message_id: messageId,
+    },
+    'Aegis Mail delete',
+  )
+}
+
+export async function flagApexMailMessage(input: {
+  folder: string
+  messageId: string
+  flagged: boolean
+}): Promise<ApexActionResult> {
+  const folder = input.folder.trim()
+  const messageId = input.messageId.trim()
+  if (!folder || !messageId) {
+    return {
+      ok: false,
+      message: 'Mail flag requires folder and message id.',
+    }
+  }
+
+  return postApexAction(
+    APEX_WORKSPACE_API_URL,
+    APEX_WORKSPACE_API_STATE,
+    '/api/v1/mail/flag',
+    {
+      folder,
+      message_id: messageId,
+      flagged: input.flagged,
+    },
+    'Aegis Mail flag',
+  )
+}
+
+export async function createApexChatSession(input: {
+  participants: string[]
+}): Promise<ApexStructuredActionResult<{ message: string; sessionId: string }>> {
+  const participants = input.participants
+    .map(value => value.trim())
+    .filter(Boolean)
+  if (participants.length === 0) {
+    return {
+      ok: false,
+      message: 'Shadow Chat session creation requires at least one participant.',
+      data: null,
+    }
+  }
+
+  return postApexStructuredAction<{ message: string; sessionId: string }>(
+    APEX_WORKSPACE_API_URL,
+    APEX_WORKSPACE_API_STATE,
+    '/api/v1/chat/session/create',
+    {
+      participants,
+    },
+    'Shadow Chat session create',
+  )
+}
+
+export async function installApexStoreAppWithReceipt(input: {
+  appId: string
+}): Promise<
+  ApexStructuredActionResult<{
+    message: string
+    appId: string
+    name: string
+    version: string
+    installedAt: string
+    sizeBytes: number
+    source: string
+    permissions: string[]
+  }>
+> {
+  const appId = input.appId.trim()
+  if (!appId) {
+    return {
+      ok: false,
+      message: 'App Store install requires an app id.',
+      data: null,
+    }
+  }
+
+  return postApexStructuredAction(
+    APEX_WORKSPACE_API_URL,
+    APEX_WORKSPACE_API_STATE,
+    '/api/v1/store/install',
+    {
+      app_id: appId,
+    },
+    'App Store install',
+  )
+}
+
+export async function getApexChronoHealth(): Promise<ApexWorkspaceHealth | null> {
+  return fetchApexJson<ApexWorkspaceHealth>(
+    APEX_CHRONO_API_URL,
+    APEX_CHRONO_API_STATE,
+    '/health',
+    1500,
+  )
+}
+
+export async function getApexChronoSummary(): Promise<ApexChronoSummary | null> {
+  const payload = await fetchApexJson<ApexApiEnvelope<ApexChronoSummary>>(
+    APEX_CHRONO_API_URL,
+    APEX_CHRONO_API_STATE,
+    '/api/v1/chrono/summary',
+    2500,
+  )
+  if (!payload?.success) {
+    return null
+  }
+  return payload.data
+}
+
+export async function createApexChronoJob(input: {
+  name: string
+  sourcePaths: string[]
+  destinationPath: string
+  encryptionEnabled?: boolean
+  compressionEnabled?: boolean
+  retentionDays?: number
+  scheduleIntervalHours?: number
+  maxBackupSizeGb?: number
+}): Promise<ApexStructuredActionResult<{ message: string; jobId: string | null }>> {
+  const name = input.name.trim()
+  const sourcePaths = input.sourcePaths.map(value => value.trim()).filter(Boolean)
+  const destinationPath = input.destinationPath.trim()
+  if (!name || sourcePaths.length === 0 || !destinationPath) {
+    return {
+      ok: false,
+      message: 'Chrono job creation requires a name, source path, and destination path.',
+      data: null,
+    }
+  }
+
+  return postApexStructuredAction(
+    APEX_CHRONO_API_URL,
+    APEX_CHRONO_API_STATE,
+    '/api/v1/chrono/job/create',
+    {
+      name,
+      sourcePaths,
+      destinationPath,
+      encryptionEnabled: input.encryptionEnabled ?? true,
+      compressionEnabled: input.compressionEnabled ?? true,
+      retentionDays: input.retentionDays ?? 30,
+      scheduleIntervalHours: input.scheduleIntervalHours ?? 24,
+      maxBackupSizeGb: input.maxBackupSizeGb ?? 100,
+    },
+    'Chrono job create',
+  )
+}
+
+export async function startApexChronoJob(input: {
+  jobId: string
+}): Promise<ApexStructuredActionResult<{ message: string; jobId: string | null }>> {
+  const jobId = input.jobId.trim()
+  if (!jobId) {
+    return {
+      ok: false,
+      message: 'Chrono start requires a job id.',
+      data: null,
+    }
+  }
+
+  return postApexStructuredAction(
+    APEX_CHRONO_API_URL,
+    APEX_CHRONO_API_STATE,
+    '/api/v1/chrono/job/start',
+    {
+      jobId,
+    },
+    'Chrono job start',
+  )
+}
+
+export async function restoreApexChronoJob(input: {
+  jobId: string
+  backupId: string
+  restorePath: string
+}): Promise<
+  ApexStructuredActionResult<{ message: string; jobId: string | null; backupId: string | null }>
+> {
+  const jobId = input.jobId.trim()
+  const backupId = input.backupId.trim()
+  const restorePath = input.restorePath.trim()
+  if (!jobId || !backupId || !restorePath) {
+    return {
+      ok: false,
+      message: 'Chrono restore requires a job id, backup id, and restore path.',
+      data: null,
+    }
+  }
+
+  return postApexStructuredAction(
+    APEX_CHRONO_API_URL,
+    APEX_CHRONO_API_STATE,
+    '/api/v1/chrono/job/restore',
+    {
+      jobId,
+      backupId,
+      restorePath,
+    },
+    'Chrono restore',
+  )
+}
+
+export async function deleteApexChronoJob(input: {
+  jobId: string
+}): Promise<ApexStructuredActionResult<{ message: string; jobId: string | null }>> {
+  const jobId = input.jobId.trim()
+  if (!jobId) {
+    return {
+      ok: false,
+      message: 'Chrono delete requires a job id.',
+      data: null,
+    }
+  }
+
+  return postApexStructuredAction(
+    APEX_CHRONO_API_URL,
+    APEX_CHRONO_API_STATE,
+    '/api/v1/chrono/job/delete',
+    {
+      jobId,
+    },
+    'Chrono delete',
+  )
+}
+
+export async function cleanupApexChronoBackups(): Promise<ApexActionResult> {
+  return postApexAction(
+    APEX_CHRONO_API_URL,
+    APEX_CHRONO_API_STATE,
+    '/api/v1/chrono/cleanup',
+    {},
+    'Chrono cleanup',
   )
 }
 
@@ -710,22 +1264,12 @@ export async function startApexWorkspaceApi(): Promise<ApexActionResult> {
         'Workspace API source is unavailable. Set OPENJAWS_APEX_ROOT or OPENJAWS_APEX_ASGARD_ROOT to the Apex workspace before launching.',
     }
   }
-  const trustedState = getTrustedApexWorkspaceApiState()
+  const trustedState = getTrustedApexSidecarState(
+    APEX_WORKSPACE_API_STATE,
+    APEX_WORKSPACE_API_URL,
+  )
   if (!trustedState) {
-    const existingHealth = await (async () => {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 1000)
-      try {
-        const response = await fetch(new URL('/health', `${APEX_WORKSPACE_API_URL}/`), {
-          signal: controller.signal,
-        })
-        return response.ok
-      } catch {
-        return false
-      } finally {
-        clearTimeout(timer)
-      }
-    })()
+    const existingHealth = await isApexSidecarHealthy(APEX_WORKSPACE_API_URL)
     if (existingHealth) {
       return {
         ok: false,
@@ -734,8 +1278,7 @@ export async function startApexWorkspaceApi(): Promise<ApexActionResult> {
       }
     }
   }
-  const health = await getApexWorkspaceHealth()
-  if (health?.status === 'ok') {
+  if (await isApexSidecarHealthy(APEX_WORKSPACE_API_URL)) {
     return {
       ok: true,
       message: `Workspace API already running at ${APEX_WORKSPACE_API_URL}`,
@@ -750,7 +1293,8 @@ export async function startApexWorkspaceApi(): Promise<ApexActionResult> {
   }
   mkdirSync(APEX_RUNTIME_DIR, { recursive: true })
   const logFd = openSync(APEX_WORKSPACE_API_LOG, 'a')
-  const workspaceApiSocket = parseApexWorkspaceApiUrl()
+  const workspaceApiSocket = parseApexSocketUrl(APEX_WORKSPACE_API_URL)
+  const libclangPath = resolveLibclangPath()
   const token = randomUUID()
   const child = spawn(cargoPath, ['run', '--manifest-path', target.manifestPath], {
     cwd: APEX_PROJECT_ROOT,
@@ -765,6 +1309,7 @@ export async function startApexWorkspaceApi(): Promise<ApexActionResult> {
             APEX_WORKSPACE_API_PORT: workspaceApiSocket.port,
           }
         : {}),
+      ...(libclangPath ? { LIBCLANG_PATH: libclangPath } : {}),
       APEX_WORKSPACE_API_TOKEN: token,
     }),
   })
@@ -778,16 +1323,111 @@ export async function startApexWorkspaceApi(): Promise<ApexActionResult> {
           : `Workspace API exited early with code ${child.exitCode}. Check ${APEX_WORKSPACE_API_LOG}.`,
     }
   }
-  writeApexWorkspaceApiState({
+  writeApexSidecarState(APEX_WORKSPACE_API_STATE, {
     pid: child.pid ?? 0,
     startedAt: new Date().toISOString(),
     token,
     workspaceApiUrl: APEX_WORKSPACE_API_URL,
   })
   child.unref()
+  const ready = await waitForApexSidecarReady(APEX_WORKSPACE_API_URL, 15_000)
   return {
     ok: true,
-    message: `Started Workspace API from source. Logs: ${APEX_WORKSPACE_API_LOG}`,
+    message: ready
+      ? `Started Workspace API from source${libclangPath ? ` with libclang ${libclangPath}` : ''}. Logs: ${APEX_WORKSPACE_API_LOG}`
+      : `Workspace API launch started${libclangPath ? ` with libclang ${libclangPath}` : ''} and is still booting or compiling. Logs: ${APEX_WORKSPACE_API_LOG}`,
+  }
+}
+
+export async function startApexChronoBridge(): Promise<ApexActionResult> {
+  const target = getApexLaunchTarget('chrono_bridge')
+  if (!target?.manifestPath) {
+    return {
+      ok: false,
+      message: 'Chrono bridge target is not configured correctly.',
+    }
+  }
+  if (!existsSync(target.path) || !existsSync(target.manifestPath)) {
+    return {
+      ok: false,
+      message:
+        'Chrono source is unavailable. Set OPENJAWS_APEX_ROOT or OPENJAWS_APEX_ASGARD_ROOT to the Apex workspace before launching.',
+    }
+  }
+  const trustedState = getTrustedApexSidecarState(
+    APEX_CHRONO_API_STATE,
+    APEX_CHRONO_API_URL,
+  )
+  if (!trustedState) {
+    const existingHealth = await isApexSidecarHealthy(APEX_CHRONO_API_URL)
+    if (existingHealth) {
+      return {
+        ok: false,
+        message:
+          'A listener is already bound to the Chrono bridge URL, but it was not launched by this OpenJaws session. Stop it or set OPENJAWS_APEX_TRUST_LOCALHOST=1 to trust that listener explicitly.',
+      }
+    }
+  }
+  if (await isApexSidecarHealthy(APEX_CHRONO_API_URL)) {
+    return {
+      ok: true,
+      message: `Chrono bridge already running at ${APEX_CHRONO_API_URL}`,
+    }
+  }
+  const cargoPath = await resolveCargoBinary()
+  if (!cargoPath) {
+    return {
+      ok: false,
+      message: 'Cargo is not available on PATH, so Chrono sidecars cannot launch.',
+    }
+  }
+  mkdirSync(APEX_RUNTIME_DIR, { recursive: true })
+  const logFd = openSync(APEX_CHRONO_API_LOG, 'a')
+  const chronoSocket = parseApexSocketUrl(APEX_CHRONO_API_URL)
+  const token = randomUUID()
+  const child = spawn(
+    cargoPath,
+    ['run', '--manifest-path', target.manifestPath, '--bin', 'chrono-bridge'],
+    {
+      cwd: APEX_PROJECT_ROOT,
+      detached: true,
+      windowsHide: true,
+      stdio: ['ignore', logFd, logFd],
+      env: buildApexLaunchEnv({
+        RUST_LOG: process.env.RUST_LOG ?? 'warn',
+        ...(chronoSocket
+          ? {
+              APEX_CHRONO_API_HOST: chronoSocket.host,
+              APEX_CHRONO_API_PORT: chronoSocket.port,
+            }
+          : {}),
+        APEX_CHRONO_API_TOKEN: token,
+      }),
+    },
+  )
+  await new Promise(resolve => setTimeout(resolve, 1200))
+  if (child.exitCode !== null) {
+    return {
+      ok: false,
+      message:
+        child.exitCode === 0
+          ? 'Chrono bridge process exited before the bridge became healthy.'
+          : `Chrono bridge exited early with code ${child.exitCode}. Check ${APEX_CHRONO_API_LOG}.`,
+    }
+  }
+  writeApexSidecarState(APEX_CHRONO_API_STATE, {
+    pid: child.pid ?? 0,
+    startedAt: new Date().toISOString(),
+    token,
+    workspaceApiUrl: APEX_CHRONO_API_URL,
+  })
+  child.unref()
+  const ready = await waitForApexSidecarReady(APEX_CHRONO_API_URL, 15_000)
+  return {
+    ok: true,
+    message: ready
+      ? `Started Chrono bridge from source. Logs: ${APEX_CHRONO_API_LOG}`
+      : `Chrono bridge launch started and is still booting or compiling. Logs: ${APEX_CHRONO_API_LOG}`,
   }
 }
 
@@ -893,7 +1533,12 @@ export async function runApexAction(
     }
   }
   if (target.mode === 'sidecar') {
-    return startApexWorkspaceApi()
+    if (target.id === 'workspace_api') {
+      return startApexWorkspaceApi()
+    }
+    if (target.id === 'chrono_bridge') {
+      return startApexChronoBridge()
+    }
   }
   return launchVisibleApexApp(target)
 }
@@ -919,4 +1564,44 @@ export function summarizeApexWorkspace(summary: ApexWorkspaceSummary | null): {
       `Host ${summary.system.metrics.cpuUsage.toFixed(1)}% CPU · ${summary.system.metrics.memoryUsage.toFixed(1)}% memory · ${summary.system.metrics.processCount} processes`,
     ],
   }
+}
+
+export function summarizeApexChrono(summary: ApexChronoSummary | null): {
+  headline: string
+  details: string[]
+} {
+  if (!summary) {
+    return {
+      headline: 'Chrono bridge offline',
+      details: [
+        'Start the Chrono bridge sidecar to stream backup jobs and run bounded backup actions into OpenJaws.',
+      ],
+    }
+  }
+
+  const latestJob = summary.jobs[0]
+  return {
+    headline: `Chrono ${summary.stats.activeJobs}/${summary.stats.totalJobs} active jobs · ${formatBytes(summary.stats.totalBackupBytes)} across ${summary.stats.totalBackups} backups`,
+    details: latestJob
+      ? [
+          `${latestJob.name} · ${latestJob.status} · ${latestJob.destinationPath}`,
+          `${latestJob.backups.length} backup${latestJob.backups.length === 1 ? '' : 's'} · every ${latestJob.scheduleIntervalHours}h · retain ${latestJob.retentionDays}d`,
+          `${latestJob.sourcePaths[0] ?? 'no source path'}${latestJob.sourcePaths.length > 1 ? ` +${latestJob.sourcePaths.length - 1} more` : ''}`,
+        ]
+      : ['No Chrono jobs are defined yet.'],
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) {
+    return '0 B'
+  }
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let size = bytes
+  let unitIndex = 0
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex += 1
+  }
+  return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
 }

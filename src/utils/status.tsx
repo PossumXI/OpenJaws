@@ -57,10 +57,14 @@ import { getElevenLabsConfig } from '../services/voiceOutput.js';
 import type { ExternalProviderProbeResult } from './externalProviderProbe.js';
 import { readDiscordQAgentReceipt, type DiscordQAgentReceipt } from './discordQAgentRuntime.js';
 import {
+  getApexChronoHealth,
+  getApexChronoSummary,
   getApexWorkspaceAvailability,
   getApexWorkspaceHealth,
   getApexWorkspaceSummary,
+  summarizeApexChrono,
   summarizeApexWorkspace,
+  type ApexChronoSummary,
   type ApexWorkspaceAvailability,
   type ApexWorkspaceHealth,
   type ApexWorkspaceSummary,
@@ -668,11 +672,14 @@ export function buildApexWorkspaceProperties(
   availability: ApexWorkspaceAvailability = getApexWorkspaceAvailability(),
   health: ApexWorkspaceHealth | null = null,
   summary: ApexWorkspaceSummary | null = null,
+  chronoHealth: ApexWorkspaceHealth | null = null,
+  chronoSummary: ApexChronoSummary | null = null,
 ): Property[] {
-  if (!availability.configured && !health && !summary) {
+  if (!availability.configured && !health && !summary && !chronoHealth && !chronoSummary) {
     return []
   }
   const workspace = summarizeApexWorkspace(summary)
+  const chrono = summarizeApexChrono(chronoSummary)
   const properties: Property[] = [
     {
       label: 'Apex workspace',
@@ -687,6 +694,14 @@ export function buildApexWorkspaceProperties(
     {
       label: 'Apex summary',
       value: [workspace.headline, ...workspace.details.slice(0, 3)],
+    },
+    {
+      label: 'Apex chrono',
+      value: [
+        chronoHealth?.status === 'ok' ? 'bridge online' : 'bridge offline',
+        chrono.headline,
+        ...chrono.details.slice(0, 2),
+      ],
     },
   ]
   if (!availability.projectRootExists) {

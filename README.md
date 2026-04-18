@@ -321,11 +321,17 @@ If you have both a clone and an installed binary on the same machine, use `openj
 OpenJaws now has a bounded `/apex` command for a local Apex sidecar and launcher lane.
 
 - `workspace_api` is the typed bridge, not a hidden shell
+- `chrono-bridge` is now a dedicated backup sidecar around `apps/chrono/src/lib.rs`, not a fake embedded backup pane
 - browser, security center, vault, mail, and related Rust UIs stay out of process
-- `/apex` now has live `Overview`, `Launch`, `Mail`, `Chat`, `Store`, `System`, and `Security` tabs over the bridge-backed workspace summary
-- `/status` now surfaces Apex bridge health and workspace summary when the local Apex roots are configured
+- `/apex` now has live `Overview`, `Launch`, `Mail`, `Chat`, `Store`, `System`, `Chrono`, and `Security` tabs over the bridge-backed workspace summary
+- `/status` now surfaces Apex bridge health, workspace summary, and Chrono bridge state when the local Apex roots are configured
+- Aegis Mail now has bounded move / delete / flag actions over the trusted bridge
+- Shadow Chat can now create bridged sessions in addition to sending into existing ones
+- Store installs now return a structured install receipt instead of a bare success string
 - Apex launches now use a reduced allowlisted environment instead of inheriting the full OpenJaws secret surface
+- the workspace bridge launcher now auto-discovers a local `libclang` runtime when the upstream Rust workspace needs it on Windows
 - the bridge is only trusted when OpenJaws launched it itself, unless the operator explicitly sets `OPENJAWS_APEX_TRUST_LOCALHOST=1`
+- `Notifications` and `argus` still stay out of agent control until they have their own narrow localhost bridges plus explicit confirmation and audit ladders
 
 See [Apex Workspace Bridge](docs/wiki/Apex-Workspace.md) for setup, trust boundaries, and the current “bridge not kernel embed” contract.
 

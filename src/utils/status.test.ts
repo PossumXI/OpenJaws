@@ -503,6 +503,49 @@ describe('buildApexWorkspaceProperties', () => {
             auditEntries: [],
           },
         },
+        {
+          status: 'ok',
+          service: 'chrono-bridge',
+          version: '0.2.0',
+          timestamp: '2026-04-18T20:00:00.000Z',
+        },
+        {
+          mode: 'live',
+          stats: {
+            totalJobs: 3,
+            activeJobs: 1,
+            completedJobs: 2,
+            failedJobs: 0,
+            totalBackups: 5,
+            totalBackupBytes: 2 * 1024 * 1024 * 1024,
+          },
+          jobs: [
+            {
+              id: 'job-1',
+              name: 'Workspace Snapshot',
+              status: 'running',
+              createdAt: '2026-04-18T19:00:00.000Z',
+              lastRun: '2026-04-18T20:00:00.000Z',
+              sourcePaths: ['D:\\openjaws\\OpenJaws'],
+              destinationPath: 'D:\\backups',
+              encryptionEnabled: true,
+              compressionEnabled: true,
+              retentionDays: 30,
+              scheduleIntervalHours: 24,
+              maxBackupSizeGb: 100,
+              backups: [
+                {
+                  id: 'backup-1',
+                  timestamp: '2026-04-18T20:00:00.000Z',
+                  sizeBytes: 1024,
+                  fileCount: 12,
+                  checksum: 'abc',
+                  status: 'completed',
+                },
+              ],
+            },
+          ],
+        },
       ),
     ).toEqual([
       {
@@ -522,6 +565,15 @@ describe('buildApexWorkspaceProperties', () => {
           'Mail 0 messages · 2 accounts · 1 alerts',
           'Chat 1/2 active sessions · 16 messages',
           'Store 5 installed · 1 updates',
+        ],
+      },
+      {
+        label: 'Apex chrono',
+        value: [
+          'bridge online',
+          'Chrono 1/3 active jobs · 2.0 GB across 5 backups',
+          'Workspace Snapshot · running · D:\\backups',
+          '1 backup · every 24h · retain 30d',
         ],
       },
     ])

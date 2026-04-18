@@ -14,7 +14,12 @@ import { getImmaculateHarnessDeckReceipt, getImmaculateHarnessStatus, getImmacul
 import type { ThemeName } from '../../utils/theme.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { resolveExternalModelConfig } from '../../utils/model/externalProviders.js';
-import { getApexWorkspaceHealth, getApexWorkspaceSummary } from '../../utils/apexWorkspace.js';
+import {
+  getApexChronoHealth,
+  getApexChronoSummary,
+  getApexWorkspaceHealth,
+  getApexWorkspaceSummary,
+} from '../../utils/apexWorkspace.js';
 import { readBrowserPreviewReceipt } from '../../utils/browserPreview.js';
 type Props = {
   context: LocalJSXCommandContext;
@@ -50,6 +55,8 @@ function buildSecondarySection({
   immaculateWorkers,
   apexWorkspaceHealth,
   apexWorkspaceSummary,
+  apexChronoHealth,
+  apexChronoSummary,
   browserPreviewReceipt,
   externalProviderProbe,
   teamContext,
@@ -65,6 +72,8 @@ function buildSecondarySection({
   immaculateWorkers: Awaited<ReturnType<typeof getImmaculateHarnessWorkers>> | null;
   apexWorkspaceHealth: Awaited<ReturnType<typeof getApexWorkspaceHealth>> | null;
   apexWorkspaceSummary: Awaited<ReturnType<typeof getApexWorkspaceSummary>> | null;
+  apexChronoHealth: Awaited<ReturnType<typeof getApexChronoHealth>> | null;
+  apexChronoSummary: Awaited<ReturnType<typeof getApexChronoSummary>> | null;
   browserPreviewReceipt: Awaited<ReturnType<typeof readBrowserPreviewReceipt>> | null;
   externalProviderProbe: AppState['externalProviderProbe'];
   teamContext: AppState['teamContext'];
@@ -80,7 +89,7 @@ function buildSecondarySection({
     configuredDefaultEnvironmentId: environmentSelection?.configuredDefaultEnvironmentId ?? null,
     missingConfiguredDefaultEnvironment: environmentSelection?.missingConfiguredDefaultEnvironment ?? false,
     suggestedEnvironmentLabel: environmentSelection?.suggestedEnvironment ? `${environmentSelection.suggestedEnvironment.name} (${environmentSelection.suggestedEnvironment.environment_id})` : null
-  }), ...buildProviderProbeProperties(externalModel, externalProviderProbe), ...buildProviderGuidanceProperties(externalModel), ...buildImmaculateProperties(immaculateHarnessStatus, immaculateDeckReceipt, immaculateWorkers), ...buildImmaculateTraceProperties(), ...buildQTraceProperties(), ...buildImmaculateGuidanceProperties(immaculateHarnessStatus), ...buildAgentCoworkProperties(teamContext), ...buildApexWorkspaceProperties(undefined, apexWorkspaceHealth, apexWorkspaceSummary), ...buildBrowserPreviewProperties(browserPreviewReceipt), ...buildDiscordQAgentProperties(), ...buildIDEProperties(mcp.clients, context.options.ideInstallationStatus, theme), ...buildMcpProperties(mcp.clients, theme), ...buildSandboxProperties(), ...buildToolchainProperties(), ...buildVoiceProperties(), ...buildQTrainingProperties(immaculateWorkers), ...buildSessionUsageProperties(), ...buildSettingSourcesProperties()];
+  }), ...buildProviderProbeProperties(externalModel, externalProviderProbe), ...buildProviderGuidanceProperties(externalModel), ...buildImmaculateProperties(immaculateHarnessStatus, immaculateDeckReceipt, immaculateWorkers), ...buildImmaculateTraceProperties(), ...buildQTraceProperties(), ...buildImmaculateGuidanceProperties(immaculateHarnessStatus), ...buildAgentCoworkProperties(teamContext), ...buildApexWorkspaceProperties(undefined, apexWorkspaceHealth, apexWorkspaceSummary, apexChronoHealth, apexChronoSummary), ...buildBrowserPreviewProperties(browserPreviewReceipt), ...buildDiscordQAgentProperties(), ...buildIDEProperties(mcp.clients, context.options.ideInstallationStatus, theme), ...buildMcpProperties(mcp.clients, theme), ...buildSandboxProperties(), ...buildToolchainProperties(), ...buildVoiceProperties(), ...buildQTrainingProperties(immaculateWorkers), ...buildSessionUsageProperties(), ...buildSettingSourcesProperties()];
 }
 export async function buildDiagnostics(): Promise<Diagnostic[]> {
   return [...(await buildInstallationDiagnostics()), ...(await buildInstallationHealthDiagnostics()), ...(await buildStartupHarnessDiagnostics()), ...(await buildImmaculateDiagnostics()), ...(await buildMemoryDiagnostics())];
@@ -118,6 +127,8 @@ export function Status({
   const [immaculateWorkersPromise] = React.useState(() => getImmaculateHarnessWorkers().catch(() => null));
   const [apexWorkspaceHealthPromise] = React.useState(() => getApexWorkspaceHealth().catch(() => null));
   const [apexWorkspaceSummaryPromise] = React.useState(() => getApexWorkspaceSummary().catch(() => null));
+  const [apexChronoHealthPromise] = React.useState(() => getApexChronoHealth().catch(() => null));
+  const [apexChronoSummaryPromise] = React.useState(() => getApexChronoSummary().catch(() => null));
   const [browserPreviewReceiptPromise] = React.useState(() => readBrowserPreviewReceipt().catch(() => null));
   const environmentSelection = use(environmentSelectionPromise);
   const immaculateHarnessStatus = use(immaculateHarnessStatusPromise);
@@ -125,6 +136,8 @@ export function Status({
   const immaculateWorkers = use(immaculateWorkersPromise);
   const apexWorkspaceHealth = use(apexWorkspaceHealthPromise);
   const apexWorkspaceSummary = use(apexWorkspaceSummaryPromise);
+  const apexChronoHealth = use(apexChronoHealthPromise);
+  const apexChronoSummary = use(apexChronoSummaryPromise);
   const browserPreviewReceipt = use(browserPreviewReceiptPromise);
   const [theme] = useTheme();
 
@@ -143,11 +156,13 @@ export function Status({
       immaculateWorkers,
       apexWorkspaceHealth,
       apexWorkspaceSummary,
+      apexChronoHealth,
+      apexChronoSummary,
       browserPreviewReceipt,
       externalProviderProbe,
       teamContext
     })
-  ], [apexWorkspaceHealth, apexWorkspaceSummary, browserPreviewReceipt, context, environmentSelection, externalProviderProbe, immaculateDeckReceipt, immaculateHarnessStatus, immaculateWorkers, mainLoopModel, mcp, primarySection, replBridgeStartupIssue, teamContext, theme]);
+  ], [apexChronoHealth, apexChronoSummary, apexWorkspaceHealth, apexWorkspaceSummary, browserPreviewReceipt, context, environmentSelection, externalProviderProbe, immaculateDeckReceipt, immaculateHarnessStatus, immaculateWorkers, mainLoopModel, mcp, primarySection, replBridgeStartupIssue, teamContext, theme]);
   const grow = useIsInsideModal() ? 1 : undefined;
 
   return <Box flexDirection="column" flexGrow={grow}>

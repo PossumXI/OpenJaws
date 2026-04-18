@@ -16,10 +16,13 @@ The current OpenJaws side exposes:
 - `/apex` for a compact command-center view
 - bridge health and summary in `/status`
 - trusted Aegis Mail compose from inside `/apex`
-- trusted Shadow Chat send from inside `/apex`
-- trusted Store install from inside `/apex`
+- trusted Aegis Mail move / delete / flag actions from inside `/apex`
+- trusted Shadow Chat send plus chat-session creation from inside `/apex`
+- trusted Store install with structured install receipts from inside `/apex`
+- dedicated `chrono-bridge` health, summary, and bounded backup actions from inside `/apex`
 - guarded launchers for:
   - `workspace_api`
+  - `chrono-bridge`
   - `browser`
   - `aegis_mail`
   - `security_center`
@@ -28,7 +31,6 @@ The current OpenJaws side exposes:
   - `vault`
   - `chrono`
   - source roots for `kernel`, `Notifications`, and `argus`
-- Aegis Mail compose through the bridge
 
 The important boundary is: OpenJaws does not attempt to embed the Rust Apex GUIs directly into the TUI process.
 
@@ -50,6 +52,7 @@ The bridge now fails more safely than the first exploratory slice:
 
 - Apex launches do **not** inherit the full OpenJaws environment anymore
 - only a reduced allowlisted env reaches Apex processes
+- the workspace bridge launcher now auto-discovers a local `libclang` runtime on Windows when the upstream Rust workspace needs it to compile
 - OpenJaws trusts the Apex bridge only when:
   - it launched that bridge itself, or
   - the operator explicitly sets `OPENJAWS_APEX_TRUST_LOCALHOST=1`
@@ -57,6 +60,13 @@ The bridge now fails more safely than the first exploratory slice:
 - mail compose is bounded with recipient and size caps before it leaves OpenJaws
 
 This is still a local advanced-operator lane, not a public remote service surface.
+
+Two source trees remain deliberately excluded from generic agent control:
+
+- `Notifications`
+- `argus`
+
+They stay source-root-only until they each have their own narrow localhost bridge plus explicit confirmation and audit ladders.
 
 ## Setup
 
@@ -74,7 +84,8 @@ Typical local operator path:
 2. start OpenJaws
 3. run `/apex`
 4. launch `Workspace API`
-5. use `/status` to confirm the bridge is visible
+5. optionally launch `Chrono Bridge`
+6. use `/status` to confirm both bridges are visible
 
 This lane assumes the external Apex checkout is present and that its `workspace_api` sidecar can build or already exists on the local machine. OpenJaws does not vendor the Apex Rust toolchain for you.
 
@@ -87,4 +98,4 @@ The cleaner next steps are:
 - richer `/status` fusion for `system_monitor` and `security_center`
 - more bounded mail/chat/store operator actions over `workspace_api`
 - launcher-backed browser/security/vault actions with better receipts
-- if Chrono or the browser need deeper OpenJaws integration, add stable bridge endpoints first instead of pretending the external GUI is native Ink UI
+- if the browser needs deeper OpenJaws integration, add stable bridge endpoints first instead of pretending the external GUI is native Ink UI

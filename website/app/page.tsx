@@ -190,9 +190,18 @@ export default function Page(): React.ReactNode {
             <strong>Bounded local command-center lane.</strong>
             <p>
               `/apex` can fuse a trusted local workspace bridge for mail,
-              chat, store, security, and system actions, while browser and
-              Chrono stay honest launcher-backed desktop tools instead of fake
-              embedded panes.
+              chat, store, security, and system actions, plus a dedicated
+              Chrono backup bridge for job creation, run, restore, and cleanup
+              without pretending the desktop GUI is a fake embedded pane.
+            </p>
+          </article>
+          <article className="feature-card">
+            <span>Apex guardrails</span>
+            <strong>Bridges where the seams are real.</strong>
+            <p>
+              Notifications and Argus stay outside generic agent control until
+              they have their own narrow localhost bridges, confirmation steps,
+              and audit ladders.
             </p>
           </article>
           <article className="feature-card">

@@ -36,11 +36,14 @@ This page summarizes the current public OpenJaws surface that is already working
 
 - `/apex` now gives OpenJaws a bounded local command-center lane for an external Apex workspace
 - the typed `workspace_api` bridge can surface mail, chat, store, system, and security summaries directly into OpenJaws
-- the `/apex` deck now exposes those bridge-backed surfaces through dedicated `Mail`, `Chat`, `Store`, `System`, and `Security` tabs
-- `/apex` can now send Aegis Mail drafts, post into Shadow Chat sessions, and install Store apps through the same trusted bridge contract
+- the new dedicated `chrono-bridge` wraps `apps/chrono/src/lib.rs` into a bounded localhost backup surface instead of pretending the desktop GUI is native TUI UI
+- the `/apex` deck now exposes those bridge-backed surfaces through dedicated `Mail`, `Chat`, `Store`, `System`, `Chrono`, and `Security` tabs
+- `/apex` can now send Aegis Mail drafts, move/delete/flag selected mail items, create Shadow Chat sessions, post into those sessions, and install Store apps with a structured receipt through the same trusted bridge contract
 - browser, security center, vault, and related Apex desktop apps stay launcher-backed and out of process instead of being hard-embedded into the TUI
-- browser and Chrono still stay launcher-only today; deeper integration needs new bridge endpoints first
+- browser still stays launcher-only today; deeper browser integration still needs new bridge endpoints first
 - Apex launches now use a reduced allowlisted environment, and the bridge is only trusted when OpenJaws launched it itself unless the operator explicitly opts into trusting a pre-existing localhost listener
+- the workspace bridge launcher now auto-discovers a local `libclang` runtime on Windows when the upstream Apex workspace needs it to compile
+- `Notifications` and `argus` remain intentionally outside agent control until they have their own narrow localhost bridges plus confirmation and audit ladders
 
 ## Accountable Browser Preview
 

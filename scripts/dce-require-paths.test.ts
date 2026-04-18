@@ -5,13 +5,35 @@ import { relative, resolve } from 'path'
 const rootDir = resolve(import.meta.dir, '..')
 const srcDir = resolve(rootDir, 'src')
 
-function scanFilesWithGlob(): string[] {
-  const patterns = ['**/*.ts', '**/*.tsx']
-  return patterns.flatMap(pattern =>
-    Array.from(new Bun.Glob(pattern).scanSync({ cwd: srcDir })).map(file =>
-      resolve(srcDir, file),
-    ),
-  )
+function scanTrackedSourceFiles(): string[] {
+  const result = Bun.spawnSync({
+    cmd: ['git', 'ls-files', '--cached', '--others', '--exclude-standard', '--', 'src'],
+    cwd: rootDir,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `git ls-files scan failed: ${Buffer.from(result.stderr).toString('utf8').trim() || `exit ${result.exitCode}`}`,
+    )
+  }
+
+  const output = Buffer.from(result.stdout).toString('utf8').trim()
+  if (!output) {
+    return []
+  }
+
+  return output
+    .split(/\r?\n/)
+    .map(file => resolve(rootDir, file))
+    .filter(
+      file =>
+        file.startsWith(srcDir) &&
+        /\.[cm]?[jt]sx?$/.test(file) &&
+        !/\.test\.[cm]?[jt]sx?$/.test(file) &&
+        !/\.spec\.[cm]?[jt]sx?$/.test(file),
+    )
 }
 
 function scanFilesWithRipgrep(): Array<{ file: string; matches: string[] }> {
@@ -72,7 +94,7 @@ function scanOffendersWithFallback(): Array<{ file: string; matches: string[] }>
   try {
     return scanFilesWithRipgrep()
   } catch {
-    return scanFilesWithGlob()
+    return scanTrackedSourceFiles()
       .map(file => {
         const content = readFileSync(file, 'utf8')
         const matches = Array.from(

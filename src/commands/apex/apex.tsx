@@ -8,18 +8,32 @@ import {
   Select,
 } from '../../components/CustomSelect/select.js'
 import {
+  type ApexChronoSummary,
   type ApexLaunchTarget,
   type ApexWorkspaceHealth,
   type ApexWorkspaceSummary,
+  cleanupApexChronoBackups,
   composeApexMail,
+  createApexChatSession,
+  createApexChronoJob,
+  deleteApexChronoJob,
+  deleteApexMailMessage,
+  flagApexMailMessage,
+  getApexChronoHealth,
+  getApexChronoSummary,
   getApexLaunchTarget,
   getApexLaunchTargets,
   getApexWorkspaceHealth,
   getApexWorkspaceSummary,
-  installApexStoreApp,
+  installApexStoreAppWithReceipt,
+  moveApexMailMessage,
+  restoreApexChronoJob,
   runApexAction,
   sendApexChatMessage,
+  startApexChronoBridge,
+  startApexChronoJob,
   startApexWorkspaceApi,
+  summarizeApexChrono,
   summarizeApexWorkspace,
 } from '../../utils/apexWorkspace.js'
 import { formatNumber } from '../../utils/format.js'
@@ -33,11 +47,43 @@ const REFRESH_INTERVAL_MS = 15_000
 type LaunchAction =
   | 'refresh'
   | 'start-workspace-api'
+  | 'start-chrono-bridge'
   | ApexLaunchTarget['id']
 
-type MailAction = 'mail-to' | 'mail-subject' | 'mail-body' | 'mail-send' | 'mail-refresh'
-type ChatAction = 'chat-session' | 'chat-message' | 'chat-send' | 'chat-refresh' | `chat-use-${string}`
+type MailAction =
+  | 'mail-to'
+  | 'mail-subject'
+  | 'mail-body'
+  | 'mail-selected'
+  | 'mail-target-folder'
+  | 'mail-send'
+  | 'mail-move'
+  | 'mail-delete'
+  | 'mail-flag'
+  | 'mail-unflag'
+  | 'mail-refresh'
+  | `mail-use-${string}`
+type ChatAction =
+  | 'chat-session'
+  | 'chat-message'
+  | 'chat-participants'
+  | 'chat-send'
+  | 'chat-create-session'
+  | 'chat-refresh'
+  | `chat-use-${string}`
 type StoreAction = 'store-app' | 'store-install' | 'store-refresh' | `store-use-${string}`
+type ChronoAction =
+  | 'chrono-job-name'
+  | 'chrono-source-path'
+  | 'chrono-destination-path'
+  | 'chrono-restore-path'
+  | 'chrono-create-job'
+  | 'chrono-start-job'
+  | 'chrono-restore-latest'
+  | 'chrono-delete-job'
+  | 'chrono-cleanup'
+  | 'chrono-refresh'
+  | `chrono-use-${string}`
 
 function SectionTitle({
   children,
@@ -67,6 +113,10 @@ function DetailList({
   )
 }
 
+function truncateLine(value: string, limit = 120): string {
+  return value.length > limit ? `${value.slice(0, limit - 1)}…` : value
+}
+
 function ApexLaunchTab({
   selectedAction,
   onFocusAction,
@@ -80,7 +130,9 @@ function ApexLaunchTab({
 }): React.ReactNode {
   const { headerFocused, focusHeader } = useTabHeaderFocus()
   const selectedTarget =
-    selectedAction === 'refresh' || selectedAction === 'start-workspace-api'
+    selectedAction === 'refresh' ||
+    selectedAction === 'start-workspace-api' ||
+    selectedAction === 'start-chrono-bridge'
       ? null
       : getApexLaunchTarget(selectedAction)
 
@@ -97,6 +149,12 @@ function ApexLaunchTab({
         value: 'start-workspace-api',
         description:
           'Launch apex-workspace-api as a guarded sidecar on 127.0.0.1:8797.',
+      },
+      {
+        label: 'Start Chrono bridge',
+        value: 'start-chrono-bridge',
+        description:
+          'Launch the guarded Chrono backup bridge on 127.0.0.1:8798.',
       },
       ...getApexLaunchTargets().map(target => ({
         label: target.label,
@@ -139,6 +197,14 @@ function ApexLaunchTab({
               system, and security state into OpenJaws.
             </Text>
           </Box>
+        ) : selectedAction === 'start-chrono-bridge' ? (
+          <Box flexDirection="column">
+            <Text>Chrono Bridge</Text>
+            <Text dimColor>
+              Boots the typed localhost bridge that surfaces Chrono backup jobs
+              and bounded backup actions into OpenJaws.
+            </Text>
+          </Box>
         ) : (
           <Text dimColor>
             Refresh the bridge when the external Apex surface changes.
@@ -159,10 +225,18 @@ function ApexMailTab({
   mailTo,
   mailSubject,
   mailBody,
+  selectedMailMessageId,
+  mailTargetFolder,
   setMailTo,
   setMailSubject,
   setMailBody,
+  setSelectedMailMessageId,
+  setMailTargetFolder,
   onSend,
+  onMove,
+  onDelete,
+  onFlag,
+  onUnflag,
   onRefresh,
   actionMessage,
   summary,
@@ -170,18 +244,35 @@ function ApexMailTab({
   mailTo: string
   mailSubject: string
   mailBody: string
+  selectedMailMessageId: string
+  mailTargetFolder: string
   setMailTo: (value: string) => void
   setMailSubject: (value: string) => void
   setMailBody: (value: string) => void
+  setSelectedMailMessageId: (value: string) => void
+  setMailTargetFolder: (value: string) => void
   onSend: () => void
+  onMove: () => void
+  onDelete: () => void
+  onFlag: () => void
+  onUnflag: () => void
   onRefresh: () => void
   actionMessage: string | null
   summary: ApexWorkspaceSummary | null
 }): React.ReactNode {
   const { headerFocused, focusHeader } = useTabHeaderFocus()
+  const selectedMessage =
+    summary?.mail.messages.find(message => message.id === selectedMailMessageId) ?? null
 
-  const options = useMemo<OptionWithDescription<MailAction>[]>(
-    () => [
+  const options = useMemo<OptionWithDescription<MailAction>[]>(() => {
+    const messageOptions =
+      summary?.mail.messages.slice(0, 8).map(message => ({
+        label: `Use ${truncateLine(message.subject || message.sender, 28)}`,
+        value: `mail-use-${message.id}` as MailAction,
+        description: `${message.folder} · ${message.unread ? 'unread' : 'read'} · ${truncateLine(message.preview, 60)}`,
+      })) ?? []
+
+    return [
       {
         label: 'To',
         value: 'mail-to',
@@ -207,19 +298,67 @@ function ApexMailTab({
         allowEmptySubmitToCancel: true,
       },
       {
+        label: 'Selected message id',
+        value: 'mail-selected',
+        type: 'input',
+        initialValue: selectedMailMessageId,
+        onChange: setSelectedMailMessageId,
+        allowEmptySubmitToCancel: true,
+      },
+      {
+        label: 'Target folder',
+        value: 'mail-target-folder',
+        type: 'input',
+        initialValue: mailTargetFolder,
+        onChange: setMailTargetFolder,
+        allowEmptySubmitToCancel: true,
+      },
+      ...messageOptions,
+      {
         label: 'Send through Aegis Mail',
         value: 'mail-send',
         description:
           'Queues the current draft into the Apex mail runtime over workspace_api.',
       },
       {
+        label: 'Move selected message',
+        value: 'mail-move',
+        description: 'Move the selected message into the chosen folder through the trusted bridge.',
+      },
+      {
+        label: 'Delete selected message',
+        value: 'mail-delete',
+        description: 'Delete the selected message through the trusted bridge.',
+      },
+      {
+        label: 'Flag selected message',
+        value: 'mail-flag',
+        description: 'Mark the selected message as flagged through the trusted bridge.',
+      },
+      {
+        label: 'Unflag selected message',
+        value: 'mail-unflag',
+        description: 'Remove the flagged mark from the selected message.',
+      },
+      {
         label: 'Refresh mail feed',
         value: 'mail-refresh',
         description: 'Pull the latest inbound mail summary from the bridge.',
       },
-    ],
-    [mailBody, mailSubject, mailTo, setMailBody, setMailSubject, setMailTo],
-  )
+    ]
+  }, [
+    mailBody,
+    mailSubject,
+    mailTargetFolder,
+    mailTo,
+    selectedMailMessageId,
+    setMailBody,
+    setMailSubject,
+    setMailTargetFolder,
+    setMailTo,
+    setSelectedMailMessageId,
+    summary,
+  ])
 
   const recentMail =
     summary?.mail.messages.slice(0, 5).map(message => {
@@ -233,11 +372,31 @@ function ApexMailTab({
         <Select
           options={options}
           layout="compact-vertical"
-          visibleOptionCount={8}
+          visibleOptionCount={10}
           defaultFocusValue="mail-to"
           onChange={value => {
+            if (value.startsWith('mail-use-')) {
+              setSelectedMailMessageId(value.slice('mail-use-'.length))
+              return
+            }
             if (value === 'mail-send') {
               onSend()
+              return
+            }
+            if (value === 'mail-move') {
+              onMove()
+              return
+            }
+            if (value === 'mail-delete') {
+              onDelete()
+              return
+            }
+            if (value === 'mail-flag') {
+              onFlag()
+              return
+            }
+            if (value === 'mail-unflag') {
+              onUnflag()
               return
             }
             if (value === 'mail-refresh') {
@@ -254,6 +413,23 @@ function ApexMailTab({
         <Text wrap="wrap">To: {mailTo || 'not set'}</Text>
         <Text wrap="wrap">Subject: {mailSubject || 'not set'}</Text>
         <Text wrap="wrap">Body: {mailBody || 'not set'}</Text>
+
+        <SectionTitle>Selected message</SectionTitle>
+        {selectedMessage ? (
+          <Box flexDirection="column">
+            <Text wrap="wrap">
+              {selectedMessage.subject} · {selectedMessage.sender} · {selectedMessage.folder}
+            </Text>
+            <Text dimColor wrap="wrap">
+              {selectedMessage.id} · {selectedMessage.unread ? 'unread' : 'read'} · {selectedMessage.timestamp}
+            </Text>
+            <Text dimColor wrap="wrap">target folder: {mailTargetFolder || 'not set'}</Text>
+          </Box>
+        ) : (
+          <Text dimColor wrap="wrap">
+            Choose a bridged message on the left to move, delete, or flag it.
+          </Text>
+        )}
 
         <SectionTitle>Mail runtime</SectionTitle>
         <DetailList
@@ -285,7 +461,7 @@ function ApexMailTab({
         <SectionTitle>Delivery result</SectionTitle>
         <Text wrap="wrap">
           {actionMessage ??
-            'Tab into the input fields on the left to edit the draft, then choose “Send through Aegis Mail”.'}
+            'Edit the draft, send mail, or select a bridged message for move/delete/flag actions.'}
         </Text>
       </Box>
     </Box>
@@ -345,18 +521,24 @@ function ApexChatTab({
   summary,
   chatSessionId,
   chatMessage,
+  chatParticipants,
   setChatSessionId,
   setChatMessage,
+  setChatParticipants,
   onSend,
+  onCreateSession,
   onRefresh,
   actionMessage,
 }: {
   summary: ApexWorkspaceSummary | null
   chatSessionId: string
   chatMessage: string
+  chatParticipants: string
   setChatSessionId: (value: string) => void
   setChatMessage: (value: string) => void
+  setChatParticipants: (value: string) => void
   onSend: () => void
+  onCreateSession: () => void
   onRefresh: () => void
   actionMessage: string | null
 }): React.ReactNode {
@@ -405,7 +587,20 @@ function ApexChatTab({
         onChange: setChatMessage,
         allowEmptySubmitToCancel: true,
       },
+      {
+        label: 'Participants',
+        value: 'chat-participants',
+        type: 'input',
+        initialValue: chatParticipants,
+        onChange: setChatParticipants,
+        allowEmptySubmitToCancel: true,
+      },
       ...sessionOptions,
+      {
+        label: 'Create Shadow Chat session',
+        value: 'chat-create-session',
+        description: 'Create a new bridged Shadow Chat session from the participants list.',
+      },
       {
         label: 'Send to Shadow Chat',
         value: 'chat-send',
@@ -417,7 +612,7 @@ function ApexChatTab({
         description: 'Reload the latest Shadow Chat summary from the bridge.',
       },
     ]
-  }, [chatMessage, chatSessionId, setChatMessage, setChatSessionId, summary])
+  }, [chatMessage, chatParticipants, chatSessionId, setChatMessage, setChatParticipants, setChatSessionId, summary])
 
   return (
     <Box flexDirection="row" gap={3}>
@@ -430,6 +625,10 @@ function ApexChatTab({
           onChange={value => {
             if (value.startsWith('chat-use-')) {
               setChatSessionId(value.slice('chat-use-'.length))
+              return
+            }
+            if (value === 'chat-create-session') {
+              onCreateSession()
               return
             }
             if (value === 'chat-send') {
@@ -464,6 +663,7 @@ function ApexChatTab({
         <SectionTitle>Current draft</SectionTitle>
         <Text wrap="wrap">Session: {chatSessionId || 'not set'}</Text>
         <Text wrap="wrap">Message: {chatMessage || 'not set'}</Text>
+        <Text wrap="wrap">Participants: {chatParticipants || 'not set'}</Text>
         {selectedConversation ? (
           <Text dimColor wrap="wrap">
             {selectedConversation.name} · {selectedConversation.role} · {selectedConversation.status} · {selectedConversation.encryption}
@@ -485,7 +685,7 @@ function ApexChatTab({
         <SectionTitle>Delivery result</SectionTitle>
         <Text wrap="wrap">
           {actionMessage ??
-            'Choose a conversation, draft a message, then send through the trusted Shadow Chat bridge.'}
+            'Choose a conversation, create a new session, or draft a message to send through the trusted Shadow Chat bridge.'}
         </Text>
       </Box>
     </Box>
@@ -674,6 +874,232 @@ function ApexSystemTab({
   )
 }
 
+function ApexChronoTab({
+  summary,
+  chronoJobName,
+  chronoSourcePath,
+  chronoDestinationPath,
+  chronoRestorePath,
+  selectedChronoJobId,
+  setChronoJobName,
+  setChronoSourcePath,
+  setChronoDestinationPath,
+  setChronoRestorePath,
+  setSelectedChronoJobId,
+  onCreateJob,
+  onStartJob,
+  onRestoreLatest,
+  onDeleteJob,
+  onCleanup,
+  onRefresh,
+  actionMessage,
+}: {
+  summary: ApexChronoSummary | null
+  chronoJobName: string
+  chronoSourcePath: string
+  chronoDestinationPath: string
+  chronoRestorePath: string
+  selectedChronoJobId: string
+  setChronoJobName: (value: string) => void
+  setChronoSourcePath: (value: string) => void
+  setChronoDestinationPath: (value: string) => void
+  setChronoRestorePath: (value: string) => void
+  setSelectedChronoJobId: (value: string) => void
+  onCreateJob: () => void
+  onStartJob: () => void
+  onRestoreLatest: () => void
+  onDeleteJob: () => void
+  onCleanup: () => void
+  onRefresh: () => void
+  actionMessage: string | null
+}): React.ReactNode {
+  const { headerFocused, focusHeader } = useTabHeaderFocus()
+  const selectedJob =
+    summary?.jobs.find(job => job.id === selectedChronoJobId) ?? null
+  const latestBackup = selectedJob?.backups[0] ?? null
+  const chronoSummary = summarizeApexChrono(summary)
+  const options = useMemo<OptionWithDescription<ChronoAction>[]>(() => {
+    const jobOptions =
+      summary?.jobs.slice(0, 8).map(job => ({
+        label: `Use ${job.name}`,
+        value: `chrono-use-${job.id}` as ChronoAction,
+        description: `${job.status} · ${job.destinationPath}`,
+      })) ?? []
+
+    return [
+      {
+        label: 'Job name',
+        value: 'chrono-job-name',
+        type: 'input',
+        initialValue: chronoJobName,
+        onChange: setChronoJobName,
+        allowEmptySubmitToCancel: true,
+      },
+      {
+        label: 'Source path',
+        value: 'chrono-source-path',
+        type: 'input',
+        initialValue: chronoSourcePath,
+        onChange: setChronoSourcePath,
+        allowEmptySubmitToCancel: true,
+      },
+      {
+        label: 'Destination path',
+        value: 'chrono-destination-path',
+        type: 'input',
+        initialValue: chronoDestinationPath,
+        onChange: setChronoDestinationPath,
+        allowEmptySubmitToCancel: true,
+      },
+      {
+        label: 'Restore path',
+        value: 'chrono-restore-path',
+        type: 'input',
+        initialValue: chronoRestorePath,
+        onChange: setChronoRestorePath,
+        allowEmptySubmitToCancel: true,
+      },
+      ...jobOptions,
+      {
+        label: 'Create Chrono job',
+        value: 'chrono-create-job',
+        description: 'Create a new backup job in the trusted Chrono bridge.',
+      },
+      {
+        label: 'Start selected job',
+        value: 'chrono-start-job',
+        description: 'Run the selected backup job through the Chrono bridge.',
+      },
+      {
+        label: 'Restore latest backup',
+        value: 'chrono-restore-latest',
+        description: 'Restore the latest backup for the selected job into the restore path.',
+      },
+      {
+        label: 'Delete selected job',
+        value: 'chrono-delete-job',
+        description: 'Delete the selected Chrono job and its tracked backups.',
+      },
+      {
+        label: 'Cleanup expired backups',
+        value: 'chrono-cleanup',
+        description: 'Apply the retention policy to the live Chrono backup set.',
+      },
+      {
+        label: 'Refresh Chrono bridge',
+        value: 'chrono-refresh',
+        description: 'Reload the latest Chrono summary from the bridge.',
+      },
+    ]
+  }, [
+    chronoDestinationPath,
+    chronoJobName,
+    chronoRestorePath,
+    chronoSourcePath,
+    onCleanup,
+    onCreateJob,
+    onDeleteJob,
+    onRefresh,
+    onRestoreLatest,
+    onStartJob,
+    setChronoDestinationPath,
+    setChronoJobName,
+    setChronoRestorePath,
+    setChronoSourcePath,
+    summary,
+  ])
+
+  return (
+    <Box flexDirection="row" gap={3}>
+      <Box width={38} flexDirection="column">
+        <Select
+          options={options}
+          layout="compact-vertical"
+          visibleOptionCount={10}
+          defaultFocusValue="chrono-job-name"
+          onChange={value => {
+            if (value.startsWith('chrono-use-')) {
+              setSelectedChronoJobId(value.slice('chrono-use-'.length))
+              return
+            }
+            if (value === 'chrono-create-job') {
+              onCreateJob()
+              return
+            }
+            if (value === 'chrono-start-job') {
+              onStartJob()
+              return
+            }
+            if (value === 'chrono-restore-latest') {
+              onRestoreLatest()
+              return
+            }
+            if (value === 'chrono-delete-job') {
+              onDeleteJob()
+              return
+            }
+            if (value === 'chrono-cleanup') {
+              onCleanup()
+              return
+            }
+            if (value === 'chrono-refresh') {
+              onRefresh()
+            }
+          }}
+          isDisabled={headerFocused}
+          onUpFromFirstItem={focusHeader}
+        />
+      </Box>
+
+      <Box flexDirection="column" flexGrow={1} gap={1}>
+        <SectionTitle>Chrono bridge</SectionTitle>
+        <Text wrap="wrap">{chronoSummary.headline}</Text>
+        <DetailList items={chronoSummary.details} />
+
+        <SectionTitle>Draft</SectionTitle>
+        <Text wrap="wrap">Job: {chronoJobName || 'not set'}</Text>
+        <Text wrap="wrap">Source: {chronoSourcePath || 'not set'}</Text>
+        <Text wrap="wrap">Destination: {chronoDestinationPath || 'not set'}</Text>
+        <Text wrap="wrap">Restore path: {chronoRestorePath || 'not set'}</Text>
+
+        <SectionTitle>Selected job</SectionTitle>
+        {selectedJob ? (
+          <Box flexDirection="column">
+            <Text wrap="wrap">
+              {selectedJob.name} · {selectedJob.status} · {selectedJob.destinationPath}
+            </Text>
+            <Text dimColor wrap="wrap">
+              {selectedJob.id} · every {selectedJob.scheduleIntervalHours}h · retain {selectedJob.retentionDays}d
+            </Text>
+            <Text dimColor wrap="wrap">
+              latest backup: {latestBackup ? `${latestBackup.timestamp} · ${formatNumber(latestBackup.fileCount)} files` : 'none yet'}
+            </Text>
+          </Box>
+        ) : (
+          <Text dimColor>Choose a Chrono job on the left to start, restore, or delete it.</Text>
+        )}
+
+        <SectionTitle>Recent jobs</SectionTitle>
+        <DetailList
+          items={
+            summary?.jobs.slice(0, 6).map(job => {
+              const latest = job.backups[0]
+              return `${job.name} · ${job.status} · ${job.destinationPath}${latest ? ` · latest ${latest.timestamp}` : ''}`
+            }) ?? []
+          }
+          empty="No Chrono jobs are visible until the bridge is online."
+        />
+
+        <SectionTitle>Action result</SectionTitle>
+        <Text wrap="wrap">
+          {actionMessage ??
+            'Create a Chrono job, start the selected backup, or restore the latest backup through the trusted bridge.'}
+        </Text>
+      </Box>
+    </Box>
+  )
+}
+
 function ApexSecurityTab({
   summary,
 }: {
@@ -729,16 +1155,27 @@ function ApexCommandCenter({
   const [loading, setLoading] = useState(true)
   const [health, setHealth] = useState<ApexWorkspaceHealth | null>(null)
   const [summary, setSummary] = useState<ApexWorkspaceSummary | null>(null)
+  const [chronoHealth, setChronoHealth] = useState<ApexWorkspaceHealth | null>(null)
+  const [chronoSummary, setChronoSummary] = useState<ApexChronoSummary | null>(null)
   const [launchMessage, setLaunchMessage] = useState<string | null>(null)
   const [mailMessage, setMailMessage] = useState<string | null>(null)
   const [mailTo, setMailTo] = useState('')
   const [mailSubject, setMailSubject] = useState('')
   const [mailBody, setMailBody] = useState('')
+  const [selectedMailMessageId, setSelectedMailMessageId] = useState('')
+  const [mailTargetFolder, setMailTargetFolder] = useState('Archive')
   const [chatSessionId, setChatSessionId] = useState('')
   const [chatMessageDraft, setChatMessageDraft] = useState('')
+  const [chatParticipants, setChatParticipants] = useState('')
   const [chatActionMessage, setChatActionMessage] = useState<string | null>(null)
   const [selectedStoreAppId, setSelectedStoreAppId] = useState('')
   const [storeActionMessage, setStoreActionMessage] = useState<string | null>(null)
+  const [chronoJobName, setChronoJobName] = useState('Chrono Workspace Snapshot')
+  const [chronoSourcePath, setChronoSourcePath] = useState('')
+  const [chronoDestinationPath, setChronoDestinationPath] = useState('')
+  const [chronoRestorePath, setChronoRestorePath] = useState('')
+  const [selectedChronoJobId, setSelectedChronoJobId] = useState('')
+  const [chronoActionMessage, setChronoActionMessage] = useState<string | null>(null)
   const insideModal = useIsInsideModal()
   const { rows } = useModalOrTerminalSize(useTerminalSize())
   const contentHeight = insideModal
@@ -749,19 +1186,23 @@ function ApexCommandCenter({
     if (!silent) {
       setLoading(true)
     }
-    const [nextHealth, nextSummary] = await Promise.all([
+    const [nextHealth, nextSummary, nextChronoHealth, nextChronoSummary] = await Promise.all([
       getApexWorkspaceHealth(),
       getApexWorkspaceSummary(),
+      getApexChronoHealth(),
+      getApexChronoSummary(),
     ])
     setHealth(nextHealth)
     setSummary(nextSummary)
+    setChronoHealth(nextChronoHealth)
+    setChronoSummary(nextChronoSummary)
     setLoading(false)
     return {
-      ok: nextHealth !== null,
-      message:
-        nextHealth !== null
-          ? 'Apex workspace bridge refreshed.'
-          : 'Apex workspace bridge is offline.',
+      ok: nextHealth !== null || nextChronoHealth !== null,
+      message: [
+        nextHealth !== null ? 'workspace bridge ready' : 'workspace bridge offline',
+        nextChronoHealth !== null ? 'chrono bridge ready' : 'chrono bridge offline',
+      ].join(' · '),
     }
   }, [])
 
@@ -775,17 +1216,44 @@ function ApexCommandCenter({
 
   useEffect(() => {
     if (!summary) {
-      return
+      if (!chronoSummary) {
+        return
+      }
     }
-    if (!chatSessionId && summary.chat.conversations.length > 0) {
-      setChatSessionId(summary.chat.conversations[0]!.id)
+    if (summary) {
+      if (!selectedMailMessageId && summary.mail.messages.length > 0) {
+        const preferredMessage = summary.mail.messages[0]
+        setSelectedMailMessageId(preferredMessage?.id ?? '')
+        setMailTargetFolder(
+          preferredMessage?.folder === 'Sent' ? 'Archive' : 'Sent',
+        )
+      }
+      if (!chatSessionId && summary.chat.conversations.length > 0) {
+        setChatSessionId(summary.chat.conversations[0]!.id)
+      }
+      if (!selectedStoreAppId && summary.store.apps.length > 0) {
+        const preferredApp =
+          summary.store.apps.find(app => !app.installed) ?? summary.store.apps[0]
+        setSelectedStoreAppId(preferredApp?.id ?? '')
+      }
     }
-    if (!selectedStoreAppId && summary.store.apps.length > 0) {
-      const preferredApp =
-        summary.store.apps.find(app => !app.installed) ?? summary.store.apps[0]
-      setSelectedStoreAppId(preferredApp?.id ?? '')
+    if (chronoSummary) {
+      if (!selectedChronoJobId && chronoSummary.jobs.length > 0) {
+        setSelectedChronoJobId(chronoSummary.jobs[0]!.id)
+      }
+      if (!chronoDestinationPath && chronoSummary.jobs.length > 0) {
+        setChronoDestinationPath(chronoSummary.jobs[0]!.destinationPath)
+      }
     }
-  }, [chatSessionId, selectedStoreAppId, summary])
+  }, [
+    chatSessionId,
+    chronoDestinationPath,
+    chronoSummary,
+    selectedChronoJobId,
+    selectedMailMessageId,
+    selectedStoreAppId,
+    summary,
+  ])
 
   useKeybinding(
     'confirm:no',
@@ -806,6 +1274,16 @@ function ApexCommandCenter({
       }
       if (value === 'start-workspace-api') {
         const result = await startApexWorkspaceApi()
+        setLaunchMessage(result.message)
+        if (result.ok) {
+          setTimeout(() => {
+            void refreshWorkspace(true)
+          }, 1500)
+        }
+        return
+      }
+      if (value === 'start-chrono-bridge') {
+        const result = await startApexChronoBridge()
         setLaunchMessage(result.message)
         if (result.ok) {
           setTimeout(() => {
@@ -847,6 +1325,56 @@ function ApexCommandCenter({
     }
   }, [mailBody, mailSubject, mailTo, refreshWorkspace])
 
+  const handleMailMove = useCallback(async () => {
+    const result = await moveApexMailMessage({
+      folder:
+        summary?.mail.messages.find(message => message.id === selectedMailMessageId)?.folder ??
+        '',
+      messageId: selectedMailMessageId,
+      targetFolder: mailTargetFolder,
+    })
+    setMailMessage(result.message)
+    if (result.ok) {
+      setTimeout(() => {
+        void refreshWorkspace(true)
+      }, 750)
+    }
+  }, [mailTargetFolder, refreshWorkspace, selectedMailMessageId, summary])
+
+  const handleMailDelete = useCallback(async () => {
+    const result = await deleteApexMailMessage({
+      folder:
+        summary?.mail.messages.find(message => message.id === selectedMailMessageId)?.folder ??
+        '',
+      messageId: selectedMailMessageId,
+    })
+    setMailMessage(result.message)
+    if (result.ok) {
+      setTimeout(() => {
+        void refreshWorkspace(true)
+      }, 750)
+    }
+  }, [refreshWorkspace, selectedMailMessageId, summary])
+
+  const handleMailFlag = useCallback(
+    async (flagged: boolean) => {
+      const result = await flagApexMailMessage({
+        folder:
+          summary?.mail.messages.find(message => message.id === selectedMailMessageId)?.folder ??
+          '',
+        messageId: selectedMailMessageId,
+        flagged,
+      })
+      setMailMessage(result.message)
+      if (result.ok) {
+        setTimeout(() => {
+          void refreshWorkspace(true)
+        }, 750)
+      }
+    },
+    [refreshWorkspace, selectedMailMessageId, summary],
+  )
+
   const handleChatSend = useCallback(async () => {
     const result = await sendApexChatMessage({
       sessionId: chatSessionId,
@@ -861,6 +1389,23 @@ function ApexCommandCenter({
     }
   }, [chatMessageDraft, chatSessionId, refreshWorkspace])
 
+  const handleChatCreateSession = useCallback(async () => {
+    const participants = chatParticipants
+      .split(/[;,]/)
+      .map(value => value.trim())
+      .filter(Boolean)
+    const result = await createApexChatSession({
+      participants,
+    })
+    setChatActionMessage(result.message)
+    if (result.ok && result.data?.sessionId) {
+      setChatSessionId(result.data.sessionId)
+      setTimeout(() => {
+        void refreshWorkspace(true)
+      }, 750)
+    }
+  }, [chatParticipants, refreshWorkspace])
+
   const handleStoreInstall = useCallback(async () => {
     const selectedApp =
       summary?.store.apps.find(app => app.id === selectedStoreAppId) ?? null
@@ -872,16 +1417,89 @@ function ApexCommandCenter({
       setStoreActionMessage(`${selectedApp.name} is already installed.`)
       return
     }
-    const result = await installApexStoreApp({
+    const result = await installApexStoreAppWithReceipt({
       appId: selectedStoreAppId,
     })
-    setStoreActionMessage(result.message)
+    setStoreActionMessage(
+      result.ok && result.data
+        ? `${result.message} · ${result.data.sizeBytes} bytes · ${result.data.permissions.join(', ')}`
+        : result.message,
+    )
     if (result.ok) {
       setTimeout(() => {
         void refreshWorkspace(true)
       }, 900)
     }
   }, [refreshWorkspace, selectedStoreAppId, summary])
+
+  const handleChronoCreateJob = useCallback(async () => {
+    const result = await createApexChronoJob({
+      name: chronoJobName,
+      sourcePaths: chronoSourcePath
+        .split(/[;,]/)
+        .map(value => value.trim())
+        .filter(Boolean),
+      destinationPath: chronoDestinationPath,
+    })
+    setChronoActionMessage(result.message)
+    if (result.ok && result.data?.jobId) {
+      setSelectedChronoJobId(result.data.jobId)
+      setTimeout(() => {
+        void refreshWorkspace(true)
+      }, 900)
+    }
+  }, [chronoDestinationPath, chronoJobName, chronoSourcePath, refreshWorkspace])
+
+  const handleChronoStart = useCallback(async () => {
+    const result = await startApexChronoJob({
+      jobId: selectedChronoJobId,
+    })
+    setChronoActionMessage(result.message)
+    if (result.ok) {
+      setTimeout(() => {
+        void refreshWorkspace(true)
+      }, 900)
+    }
+  }, [refreshWorkspace, selectedChronoJobId])
+
+  const handleChronoRestore = useCallback(async () => {
+    const selectedJob =
+      chronoSummary?.jobs.find(job => job.id === selectedChronoJobId) ?? null
+    const latestBackup = selectedJob?.backups[0] ?? null
+    if (!latestBackup) {
+      setChronoActionMessage('Choose a Chrono job with at least one backup before restoring.')
+      return
+    }
+    const result = await restoreApexChronoJob({
+      jobId: selectedChronoJobId,
+      backupId: latestBackup.id,
+      restorePath: chronoRestorePath,
+    })
+    setChronoActionMessage(result.message)
+  }, [chronoRestorePath, chronoSummary, selectedChronoJobId])
+
+  const handleChronoDelete = useCallback(async () => {
+    const result = await deleteApexChronoJob({
+      jobId: selectedChronoJobId,
+    })
+    setChronoActionMessage(result.message)
+    if (result.ok) {
+      setSelectedChronoJobId('')
+      setTimeout(() => {
+        void refreshWorkspace(true)
+      }, 900)
+    }
+  }, [refreshWorkspace, selectedChronoJobId])
+
+  const handleChronoCleanup = useCallback(async () => {
+    const result = await cleanupApexChronoBackups()
+    setChronoActionMessage(result.message)
+    if (result.ok) {
+      setTimeout(() => {
+        void refreshWorkspace(true)
+      }, 900)
+    }
+  }, [refreshWorkspace])
 
   const banner = (
     <Box flexDirection="row" gap={2}>
@@ -893,9 +1511,17 @@ function ApexCommandCenter({
           <Text color="warning">offline</Text>
         )}
       </Text>
+      <Text>
+        Chrono:{' '}
+        {chronoHealth ? (
+          <Text color="success">{chronoHealth.status}</Text>
+        ) : (
+          <Text color="warning">offline</Text>
+        )}
+      </Text>
       <Text dimColor>
         Guardrails: allowlisted Apex roots only · Esc closes · Workspace API
-        feeds mail/chat/store/system/security into OpenJaws
+        feeds mail/chat/store/system/security · Chrono bridge handles backup jobs
       </Text>
     </Box>
   )
@@ -928,11 +1554,27 @@ function ApexCommandCenter({
             mailTo={mailTo}
             mailSubject={mailSubject}
             mailBody={mailBody}
+            selectedMailMessageId={selectedMailMessageId}
+            mailTargetFolder={mailTargetFolder}
             setMailTo={setMailTo}
             setMailSubject={setMailSubject}
             setMailBody={setMailBody}
+            setSelectedMailMessageId={setSelectedMailMessageId}
+            setMailTargetFolder={setMailTargetFolder}
             onSend={() => {
               void handleMailSend()
+            }}
+            onMove={() => {
+              void handleMailMove()
+            }}
+            onDelete={() => {
+              void handleMailDelete()
+            }}
+            onFlag={() => {
+              void handleMailFlag(true)
+            }}
+            onUnflag={() => {
+              void handleMailFlag(false)
             }}
             onRefresh={() => {
               void refreshWorkspace()
@@ -946,10 +1588,15 @@ function ApexCommandCenter({
             summary={summary}
             chatSessionId={chatSessionId}
             chatMessage={chatMessageDraft}
+            chatParticipants={chatParticipants}
             setChatSessionId={setChatSessionId}
             setChatMessage={setChatMessageDraft}
+            setChatParticipants={setChatParticipants}
             onSend={() => {
               void handleChatSend()
+            }}
+            onCreateSession={() => {
+              void handleChatCreateSession()
             }}
             onRefresh={() => {
               void refreshWorkspace()
@@ -973,6 +1620,40 @@ function ApexCommandCenter({
         </Tab>
         <Tab title="System">
           <ApexSystemTab summary={summary} />
+        </Tab>
+        <Tab title="Chrono">
+          <ApexChronoTab
+            summary={chronoSummary}
+            chronoJobName={chronoJobName}
+            chronoSourcePath={chronoSourcePath}
+            chronoDestinationPath={chronoDestinationPath}
+            chronoRestorePath={chronoRestorePath}
+            selectedChronoJobId={selectedChronoJobId}
+            setChronoJobName={setChronoJobName}
+            setChronoSourcePath={setChronoSourcePath}
+            setChronoDestinationPath={setChronoDestinationPath}
+            setChronoRestorePath={setChronoRestorePath}
+            setSelectedChronoJobId={setSelectedChronoJobId}
+            onCreateJob={() => {
+              void handleChronoCreateJob()
+            }}
+            onStartJob={() => {
+              void handleChronoStart()
+            }}
+            onRestoreLatest={() => {
+              void handleChronoRestore()
+            }}
+            onDeleteJob={() => {
+              void handleChronoDelete()
+            }}
+            onCleanup={() => {
+              void handleChronoCleanup()
+            }}
+            onRefresh={() => {
+              void refreshWorkspace()
+            }}
+            actionMessage={chronoActionMessage}
+          />
         </Tab>
         <Tab title="Security">
           <ApexSecurityTab summary={summary} />
