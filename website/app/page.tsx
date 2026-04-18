@@ -190,8 +190,9 @@ export default function Page(): React.ReactNode {
             <strong>Bounded local command-center lane.</strong>
             <p>
               `/apex` can fuse a trusted local workspace bridge for mail,
-              security, system, and launcher-backed desktop tools without
-              pretending the external Rust shells are native OpenJaws views.
+              chat, store, security, and system actions, while browser and
+              Chrono stay honest launcher-backed desktop tools instead of fake
+              embedded panes.
             </p>
           </article>
           <article className="feature-card">

@@ -61,6 +61,7 @@ The Q mark above is sourced from `src/components/LogoV2/qMarkData.ts` and can be
 - Starts new public installs on `Q` with `OCI`, but still lets you switch providers and models on purpose.
 - Supports both local and remote execution, including signed `Q` training routes and worker assignment.
 - Gives you practical controls like `/status`, `/immaculate`, `/provider`, `/voice`, and `/remote-env`.
+- Adds a bounded `/apex` command center for trusted local mail, chat, store, system, security, and browser-preview lanes without pretending external Rust GUIs are native Ink views.
 - Includes built-in dataset and training tools for improving `Q` over time.
 
 ## Live Immaculate Benchmarks
@@ -321,6 +322,7 @@ OpenJaws now has a bounded `/apex` command for a local Apex sidecar and launcher
 
 - `workspace_api` is the typed bridge, not a hidden shell
 - browser, security center, vault, mail, and related Rust UIs stay out of process
+- `/apex` now has live `Overview`, `Launch`, `Mail`, `Chat`, `Store`, `System`, and `Security` tabs over the bridge-backed workspace summary
 - `/status` now surfaces Apex bridge health and workspace summary when the local Apex roots are configured
 - Apex launches now use a reduced allowlisted environment instead of inheriting the full OpenJaws secret surface
 - the bridge is only trusted when OpenJaws launched it itself, unless the operator explicitly sets `OPENJAWS_APEX_TRUST_LOCALHOST=1`

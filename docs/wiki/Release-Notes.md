@@ -36,7 +36,10 @@ This page summarizes the current public OpenJaws surface that is already working
 
 - `/apex` now gives OpenJaws a bounded local command-center lane for an external Apex workspace
 - the typed `workspace_api` bridge can surface mail, chat, store, system, and security summaries directly into OpenJaws
+- the `/apex` deck now exposes those bridge-backed surfaces through dedicated `Mail`, `Chat`, `Store`, `System`, and `Security` tabs
+- `/apex` can now send Aegis Mail drafts, post into Shadow Chat sessions, and install Store apps through the same trusted bridge contract
 - browser, security center, vault, and related Apex desktop apps stay launcher-backed and out of process instead of being hard-embedded into the TUI
+- browser and Chrono still stay launcher-only today; deeper integration needs new bridge endpoints first
 - Apex launches now use a reduced allowlisted environment, and the bridge is only trusted when OpenJaws launched it itself unless the operator explicitly opts into trusting a pre-existing localhost listener
 
 ## Accountable Browser Preview

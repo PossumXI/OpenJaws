@@ -84,6 +84,32 @@ export type ApexWorkspaceMailMessage = {
   tags: string[]
 }
 
+export type ApexWorkspaceConversation = {
+  id: string
+  name: string
+  role: string
+  status: string
+  unread: number
+  tone: string
+  encryption: string
+  lastMessage: string
+  lastSeen: string
+}
+
+export type ApexWorkspaceStoreApp = {
+  id: string
+  name: string
+  category: string
+  description: string
+  permissions: string[]
+  installed: boolean
+  rating: number
+  tone: string
+  version: string
+  developer: string
+  featured: boolean
+}
+
 export type ApexWorkspaceSummary = {
   mode: string
   mail: {
@@ -97,14 +123,17 @@ export type ApexWorkspaceSummary = {
     }
   }
   chat: {
-    conversations: Array<{
-      id: string
-      name: string
-      status: string
-      unread: number
-      lastMessage: string
-      lastSeen: string
-    }>
+    conversations: ApexWorkspaceConversation[]
+    messages: Record<
+      string,
+      Array<{
+        id: string
+        sender: string
+        content: string
+        timestamp: string
+        sealed: boolean
+      }>
+    >
     statistics: {
       totalSessions: number
       totalContacts: number
@@ -116,15 +145,7 @@ export type ApexWorkspaceSummary = {
     featuredCount: number
     installedCount: number
     updateCount: number
-    apps: Array<{
-      id: string
-      name: string
-      category: string
-      installed: boolean
-      featured: boolean
-      version: string
-      developer: string
-    }>
+    apps: ApexWorkspaceStoreApp[]
   }
   system: {
     healthScore: number
@@ -424,6 +445,18 @@ function getTrustedApexWorkspaceApiState(): ApexWorkspaceApiState | null {
   return state
 }
 
+function getApexRequestHeaders(): Record<string, string> | null {
+  const trustedState = getTrustedApexWorkspaceApiState()
+  if (!APEX_TRUST_LOCALHOST && !trustedState) {
+    return null
+  }
+  return trustedState
+    ? {
+        [APEX_AUTH_HEADER]: trustedState.token,
+      }
+    : {}
+}
+
 async function resolveCargoBinary(): Promise<string | null> {
   const discovered =
     (await which(process.platform === 'win32' ? 'cargo.exe' : 'cargo')) ??
@@ -444,8 +477,8 @@ async function fetchApexJson<T>(
   pathname: string,
   timeoutMs: number,
 ): Promise<T | null> {
-  const trustedState = getTrustedApexWorkspaceApiState()
-  if (!APEX_TRUST_LOCALHOST && !trustedState) {
+  const headers = getApexRequestHeaders()
+  if (headers === null) {
     return null
   }
   const controller = new AbortController()
@@ -453,11 +486,7 @@ async function fetchApexJson<T>(
   try {
     const response = await fetch(new URL(pathname, `${APEX_WORKSPACE_API_URL}/`), {
       signal: controller.signal,
-      headers: trustedState
-        ? {
-            [APEX_AUTH_HEADER]: trustedState.token,
-          }
-        : undefined,
+      headers,
     })
     if (!response.ok) {
       return null
@@ -465,6 +494,59 @@ async function fetchApexJson<T>(
     return (await response.json()) as T
   } catch {
     return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function postApexAction(
+  pathname: string,
+  body: Record<string, unknown>,
+  actionLabel: string,
+): Promise<ApexActionResult> {
+  const headers = getApexRequestHeaders()
+  if (headers === null) {
+    return {
+      ok: false,
+      message:
+        'Apex Workspace API is not trusted yet. Start the bridge from /apex or set OPENJAWS_APEX_TRUST_LOCALHOST=1 before sending actions.',
+    }
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 4000)
+  try {
+    const response = await fetch(new URL(pathname, `${APEX_WORKSPACE_API_URL}/`), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    const payload = (await response.json()) as
+      | ApexApiEnvelope<{ message: string }>
+      | { success?: false; error?: string }
+    if (!response.ok || !('success' in payload) || payload.success !== true) {
+      const error =
+        'error' in payload && typeof payload.error === 'string'
+          ? payload.error
+          : `Workspace API returned ${response.status}`
+      return {
+        ok: false,
+        message: `${actionLabel} failed: ${error}`,
+      }
+    }
+    return {
+      ok: true,
+      message: payload.data.message,
+    }
+  } catch {
+    return {
+      ok: false,
+      message: `Apex Workspace API is offline. Start the bridge before ${actionLabel.toLowerCase()}.`,
+    }
   } finally {
     clearTimeout(timer)
   }
@@ -553,63 +635,64 @@ export async function composeApexMail(input: {
       message: 'Aegis Mail bodies must be between 1 and 8000 characters.',
     }
   }
-  const trustedState = getTrustedApexWorkspaceApiState()
-  if (!APEX_TRUST_LOCALHOST && !trustedState) {
+  return postApexAction(
+    '/api/v1/mail/compose',
+    {
+      recipients,
+      subject,
+      content,
+    },
+    'Aegis Mail compose',
+  )
+}
+
+export async function sendApexChatMessage(input: {
+  sessionId: string
+  content: string
+}): Promise<ApexActionResult> {
+  const sessionId = input.sessionId.trim()
+  const content = input.content.trim()
+  if (!sessionId) {
     return {
       ok: false,
-      message:
-        'Apex Workspace API is not trusted yet. Start the bridge from /apex or set OPENJAWS_APEX_TRUST_LOCALHOST=1 before sending mail.',
+      message: 'Shadow Chat requires a session id before sending.',
     }
   }
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 4000)
-  try {
-    const response = await fetch(
-      new URL('/api/v1/mail/compose', `${APEX_WORKSPACE_API_URL}/`),
-      {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...(trustedState
-            ? {
-                [APEX_AUTH_HEADER]: trustedState.token,
-              }
-            : {}),
-        },
-        body: JSON.stringify({
-          recipients,
-          subject,
-          content,
-        }),
-        signal: controller.signal,
-      },
-    )
-    const payload = (await response.json()) as
-      | ApexApiEnvelope<{ message: string }>
-      | { success?: false; error?: string }
-    if (!response.ok || !('success' in payload) || payload.success !== true) {
-      const error =
-        'error' in payload && typeof payload.error === 'string'
-          ? payload.error
-          : `Workspace API returned ${response.status}`
-      return {
-        ok: false,
-        message: `Aegis Mail rejected the compose request: ${error}`,
-      }
-    }
-    return {
-      ok: true,
-      message: payload.data.message,
-    }
-  } catch {
+  if (!content || content.length > 4_000) {
     return {
       ok: false,
-      message:
-        'Apex Workspace API is offline. Start the bridge before composing mail.',
+      message: 'Shadow Chat messages must be between 1 and 4000 characters.',
     }
-  } finally {
-    clearTimeout(timer)
   }
+
+  return postApexAction(
+    '/api/v1/chat/send',
+    {
+      session_id: sessionId,
+      content,
+    },
+    'Shadow Chat send',
+  )
+}
+
+export async function installApexStoreApp(input: {
+  appId: string
+}): Promise<ApexActionResult> {
+  const appId = input.appId.trim()
+  if (!appId) {
+    return {
+      ok: false,
+      message: 'App Store install requires an app id.',
+    }
+  }
+
+  return postApexAction(
+    '/api/v1/store/install',
+    {
+      app_id: appId,
+    },
+    'App Store install',
+  )
 }
 
 export async function startApexWorkspaceApi(): Promise<ApexActionResult> {

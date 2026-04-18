@@ -15,6 +15,9 @@ The current OpenJaws side exposes:
 
 - `/apex` for a compact command-center view
 - bridge health and summary in `/status`
+- trusted Aegis Mail compose from inside `/apex`
+- trusted Shadow Chat send from inside `/apex`
+- trusted Store install from inside `/apex`
 - guarded launchers for:
   - `workspace_api`
   - `browser`
@@ -82,6 +85,6 @@ The high-value follow-up is not “embed every Rust app.”
 The cleaner next steps are:
 
 - richer `/status` fusion for `system_monitor` and `security_center`
-- a tighter mail/chat operator lane over `workspace_api`
+- more bounded mail/chat/store operator actions over `workspace_api`
 - launcher-backed browser/security/vault actions with better receipts
-- TUI panels around the bridge summaries instead of pretending the external GUI is native Ink UI
+- if Chrono or the browser need deeper OpenJaws integration, add stable bridge endpoints first instead of pretending the external GUI is native Ink UI

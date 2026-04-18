@@ -54,7 +54,30 @@ describe('apexWorkspace', () => {
         },
       },
       chat: {
-        conversations: [],
+        conversations: [
+          {
+            id: 'chat-1',
+            name: 'Ops',
+            role: 'operator',
+            status: 'active',
+            unread: 1,
+            tone: 'cyan',
+            encryption: 'quantum',
+            lastMessage: 'Keep moving',
+            lastSeen: '2026-04-18T00:00:00Z',
+          },
+        ],
+        messages: {
+          'chat-1': [
+            {
+              id: 'msg-1',
+              sender: 'ops',
+              content: 'Keep moving',
+              timestamp: '2026-04-18T00:00:00Z',
+              sealed: true,
+            },
+          ],
+        },
         statistics: {
           totalSessions: 2,
           totalContacts: 3,
@@ -66,7 +89,21 @@ describe('apexWorkspace', () => {
         featuredCount: 2,
         installedCount: 4,
         updateCount: 1,
-        apps: [],
+        apps: [
+          {
+            id: 'store-1',
+            name: 'Chrono',
+            category: 'ops',
+            description: 'Backup client',
+            permissions: ['filesystem'],
+            installed: true,
+            featured: true,
+            rating: 4.8,
+            tone: 'amber',
+            version: '1.0.0',
+            developer: 'Arobi',
+          },
+        ],
       },
       system: {
         healthScore: 0.82,
