@@ -4,6 +4,7 @@ import base64
 import configparser
 import io
 import json
+import os
 import shlex
 import shutil
 import subprocess
@@ -12,10 +13,11 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from harbor.agents.installed.base import BaseInstalledAgent
+from harbor.agents.installed.base import BaseInstalledAgent, ExecInput
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 from harbor.models.trajectories import Agent, FinalMetrics, Metrics, Step, Trajectory
+from harbor.utils.env import resolve_env_vars
 from harbor.utils.trajectory_utils import format_trajectory_json
 
 
@@ -41,6 +43,32 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
     _DEFAULT_BUN_VERSION = "1.3.11"
     _OCI_REFERENCED_PATH_KEYS = ("key_file", "security_token_file", "cert_bundle")
     _EMBEDDED_OCI_BUNDLE_ENV = "OPENJAWS_OCI_CONFIG_BUNDLE_B64"
+    _HOST_ENV_NAMES = (
+        "Q_API_KEY",
+        "Q_BASE_URL",
+        "Q_MODEL",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "OPENAI_MODEL",
+        "OPENAI_ORG_ID",
+        "OPENAI_ORGANIZATION",
+        "OPENROUTER_API_KEY",
+        "OPENROUTER_BASE_URL",
+        "OCI_CONFIG_FILE",
+        "OCI_COMPARTMENT_ID",
+        "OCI_GENAI_API_KEY",
+        "OCI_GENAI_PROJECT_ID",
+        "OCI_GENAI_ENDPOINT",
+        "OCI_PROFILE",
+        "OCI_REGION",
+        "OCI_BASE_URL",
+        "OCI_MODEL",
+        "OCI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
+        "GEMINI_API_KEY",
+        "HF_TOKEN",
+    )
 
     def __init__(
         self,
@@ -69,6 +97,39 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
     @staticmethod
     def name() -> str:
         return "openjaws-harbor"
+
+    @property
+    def _install_agent_template_path(self) -> Path:
+        # Harbor requires this property on installed agents, but this adapter
+        # performs its own imperative setup via setup()/install().
+        return Path(__file__)
+
+    def resolve_env_vars(self) -> dict[str, str]:
+        host_env = {
+            name: value
+            for name in self._HOST_ENV_NAMES
+            if (value := os.environ.get(name))
+        }
+        return resolve_env_vars(host_env)
+
+    async def exec_as_root(
+        self,
+        environment: BaseEnvironment,
+        command: str,
+        timeout_sec: int | None = None,
+    ) -> None:
+        result = await environment.exec(command=command, timeout_sec=timeout_sec)
+        if result.return_code != 0:
+            raise RuntimeError(
+                f"OpenJaws Harbor setup command failed with exit code {result.return_code}. "
+                f"Stdout: {result.stdout or ''}\nStderr: {result.stderr or ''}"
+            )
+
+    async def setup(self, environment: BaseEnvironment) -> None:
+        await environment.exec(
+            command="echo 'PS1=1 . ~/.bashrc 2>/dev/null; unset PS1' >> ~/.bash_profile"
+        )
+        await self.install(environment)
 
     def get_version_command(self) -> str | None:
         return f"{self._CONTAINER_BINARY_PATH} --version"
@@ -312,7 +373,6 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
 
     async def install(self, environment: BaseEnvironment) -> None:
         bun_archive = self._resolve_host_bun_archive_path()
-        resolved_env = self.resolve_env_vars()
         stage_dir = self._stage_source_tree()
         await self.exec_as_root(
             environment,
@@ -362,6 +422,53 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
             ),
             timeout_sec=self._build_timeout_sec,
         )
+
+    def _build_runtime_env(self) -> dict[str, str]:
+        env = self.resolve_env_vars()
+        env.update(getattr(self, "_extra_env", {}))
+        env.setdefault(
+            "OPENJAWS_OCI_BRIDGE_SCRIPT",
+            f"{self._CONTAINER_SOURCE_DIR}/scripts/oci-q-response.py",
+        )
+        host_oci_config_file = env.get("OCI_CONFIG_FILE")
+        if host_oci_config_file:
+            env.update(
+                self._build_oci_embedded_env(
+                    host_oci_config_file,
+                    env.get("OCI_PROFILE"),
+                )
+            )
+            env["OCI_CONFIG_FILE"] = self._CONTAINER_OCI_CONFIG_PATH
+        return env
+
+    def _build_run_command(self, instruction: str) -> str:
+        command_parts = [
+            self._CONTAINER_BINARY_PATH,
+            "-p",
+            "--output-format",
+            "json",
+            "--bare",
+            "--max-turns",
+            str(self._max_turns),
+        ]
+        if self._skip_permissions:
+            command_parts.append("--dangerously-skip-permissions")
+        if self.model_name:
+            command_parts.extend(["--model", self.model_name])
+        if self._extra_openjaws_args:
+            command_parts.append(self._extra_openjaws_args)
+        command_parts.append(shlex.quote(instruction))
+        return " ".join(command_parts)
+
+    def create_run_agent_commands(self, instruction: str) -> list[ExecInput]:
+        return [
+            ExecInput(
+                command=self._build_run_command(instruction),
+                cwd=self._WORKSPACE_DIR,
+                env=self._build_runtime_env() or None,
+                timeout_sec=self._run_timeout_sec,
+            )
+        ]
 
     def _write_host_log(self, filename: str, content: str | None) -> Path:
         path = self.logs_dir / filename
@@ -511,39 +618,8 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
         environment: BaseEnvironment,
         context: AgentContext,
     ) -> None:
-        command_parts = [
-            self._CONTAINER_BINARY_PATH,
-            "-p",
-            "--output-format",
-            "json",
-            "--bare",
-            "--max-turns",
-            str(self._max_turns),
-        ]
-        if self._skip_permissions and environment.default_user not in (None, "root", 0):
-            command_parts.append("--dangerously-skip-permissions")
-        if self.model_name:
-            command_parts.extend(["--model", self.model_name])
-        if self._extra_openjaws_args:
-            command_parts.append(self._extra_openjaws_args)
-        command_parts.append(shlex.quote(instruction))
-        command = " ".join(command_parts)
-
-        env = self.resolve_env_vars()
-        env.update(getattr(self, "_extra_env", {}))
-        env.setdefault(
-            "OPENJAWS_OCI_BRIDGE_SCRIPT",
-            f"{self._CONTAINER_SOURCE_DIR}/scripts/oci-q-response.py",
-        )
-        host_oci_config_file = env.get("OCI_CONFIG_FILE")
-        if host_oci_config_file:
-            env.update(
-                self._build_oci_embedded_env(
-                    host_oci_config_file,
-                    env.get("OCI_PROFILE"),
-                )
-            )
-            env["OCI_CONFIG_FILE"] = self._CONTAINER_OCI_CONFIG_PATH
+        command = self._build_run_command(instruction)
+        env = self._build_runtime_env()
         result = await environment.exec(
             command=command,
             env=env or None,

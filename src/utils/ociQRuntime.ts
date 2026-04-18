@@ -60,10 +60,23 @@ export function resolveEffectiveOciBaseUrl(args: {
   baseURLSource?: string | null
   env?: NodeJS.ProcessEnv
 } = {}): string {
-  if (args.baseURLSource && args.baseURL?.trim()) {
-    return args.baseURL.trim()
+  const runtime = resolveOciQRuntime(args.env)
+  const runtimeBaseURL = runtime.baseURL.trim()
+  const source = args.baseURLSource?.trim() ?? null
+  const configuredBaseURL = args.baseURL?.trim() ?? null
+
+  if (
+    source === 'settings.llmProviders.oci.baseURL' &&
+    runtimeBaseURL.length > 0 &&
+    configuredBaseURL &&
+    configuredBaseURL !== runtimeBaseURL
+  ) {
+    return runtimeBaseURL
   }
-  return resolveOciQRuntime(args.env).baseURL
+  if (source && configuredBaseURL) {
+    return configuredBaseURL
+  }
+  return runtimeBaseURL
 }
 
 function resolveDefaultOciConfigFile(): string | null {

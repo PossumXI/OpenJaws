@@ -3,9 +3,11 @@ import {
   buildSnapshot,
   buildSnapshotForCheck,
   buildWandbSummary,
+  collectMatchingReceiptPaths,
   isValidExistingReceiptPath,
   parseArgs,
   resolveLatestReceipt,
+  resolveLatestPreferredReceipt,
   writeIfChanged,
 } from './generate-website-benchmark-snapshot.ts'
 import {
@@ -76,6 +78,25 @@ describe('generate-website-benchmark-snapshot helpers', () => {
     expect(resolved).toBe(newerReceipt)
   })
 
+  test('collectMatchingReceiptPaths returns newest-first matches for a pattern tier', () => {
+    const dir = makeTempDir('openjaws-snapshot-collect-')
+    const olderDir = resolve(dir, 'q-soak-live-older')
+    const newerDir = resolve(dir, 'q-soak-live-newer')
+    mkdirSync(olderDir, { recursive: true })
+    mkdirSync(newerDir, { recursive: true })
+
+    const olderReceipt = resolve(olderDir, 'q-soak-report.json')
+    const newerReceipt = resolve(newerDir, 'q-soak-report.json')
+    writeFileSync(olderReceipt, '{}\n', 'utf8')
+    writeFileSync(newerReceipt, '{}\n', 'utf8')
+    utimesSync(olderReceipt, new Date('2026-04-16T00:00:00.000Z'), new Date('2026-04-16T00:00:00.000Z'))
+    utimesSync(newerReceipt, new Date('2026-04-17T00:00:00.000Z'), new Date('2026-04-17T00:00:00.000Z'))
+
+    expect(
+      collectMatchingReceiptPaths([resolve(dir, 'q-soak-live-*', 'q-soak-report.json')]),
+    ).toEqual([newerReceipt, olderReceipt])
+  })
+
   test('prefers the first matching pattern over newer lower-priority matches', () => {
     const dir = makeTempDir('openjaws-snapshot-priority-')
     const preferredDir = resolve(dir, 'q-bridgebench-live-priority')
@@ -118,6 +139,42 @@ describe('generate-website-benchmark-snapshot helpers', () => {
         'A live W&B project target was configured for this benchmark pass, but no local WANDB login/API key was available, so the receipts stayed local only.',
     })
   })
+
+  test('resolveLatestPreferredReceipt prefers the newest receipt that matches the predicate', () => {
+    const dir = makeTempDir('openjaws-snapshot-preferred-')
+    const newestFailedDir = resolve(dir, 'q-soak-live-newest-failed')
+    const olderPassedDir = resolve(dir, 'q-soak-live-older-passed')
+    mkdirSync(newestFailedDir, { recursive: true })
+    mkdirSync(olderPassedDir, { recursive: true })
+
+    const newestFailedReceipt = resolve(newestFailedDir, 'q-soak-report.json')
+    const olderPassedReceipt = resolve(olderPassedDir, 'q-soak-report.json')
+    writeFileSync(newestFailedReceipt, '{}\n', 'utf8')
+    writeFileSync(olderPassedReceipt, '{}\n', 'utf8')
+    utimesSync(
+      newestFailedReceipt,
+      new Date('2026-04-17T00:00:00.000Z'),
+      new Date('2026-04-17T00:00:00.000Z'),
+    )
+    utimesSync(
+      olderPassedReceipt,
+      new Date('2026-04-16T00:00:00.000Z'),
+      new Date('2026-04-16T00:00:00.000Z'),
+    )
+
+    const resolved = resolveLatestPreferredReceipt(
+      [resolve(dir, 'q-soak-live-*', 'q-soak-report.json')],
+      newestFailedReceipt,
+      patterns => collectMatchingReceiptPaths(patterns),
+      path =>
+        path === olderPassedReceipt
+          ? ({ summary: { successCount: 52, errorCount: 0 } } as const)
+          : ({ summary: { successCount: 2, errorCount: 2 } } as const),
+      receipt => receipt.summary.successCount > 0 && receipt.summary.errorCount === 0,
+    )
+
+    expect(resolved).toBe(olderPassedReceipt)
+  })
 })
 
 describe('generate-website-benchmark-snapshot integration helpers', () => {
@@ -135,24 +192,31 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
       wandb: 'fake://wandb',
     }
 
-    let callIndex = 0
     const snapshot = buildSnapshot(options, {
-      resolveLatestReceipt: (_patterns, fallbackPath) => {
-        callIndex += 1
-        switch (callIndex) {
-          case 1:
-            return fakePaths.bridge
-          case 2:
-            return fakePaths.soak
-          case 3:
-            return fakePaths.terminal
-          case 4:
-            return fakePaths.terminalSoak
-          case 5:
-            return fakePaths.wandb
-          default:
-            return fallbackPath
+      resolveLatestReceipt: (patterns, fallbackPath) => {
+        if (patterns.some(pattern => pattern.includes('q-terminalbench-official-public-'))) {
+          return fakePaths.terminal
         }
+        if (patterns.some(pattern => pattern.includes('q-terminalbench-soak-live-'))) {
+          return fakePaths.terminalSoak
+        }
+        return fallbackPath
+      },
+      collectMatchingReceiptPaths: patterns => {
+        const first = patterns[0] ?? ''
+        if (first.includes('q-bridgebench-live-')) {
+          return [fakePaths.bridge, fakePaths.wandb]
+        }
+        if (first.includes('q-soak-live-')) {
+          return [fakePaths.soak]
+        }
+        if (first.includes('q-terminalbench-official-public-')) {
+          return [fakePaths.terminal]
+        }
+        if (first.includes('q-terminalbench-soak-live-')) {
+          return [fakePaths.terminalSoak]
+        }
+        return []
       },
       readJson: path => {
         switch (path) {
@@ -235,6 +299,132 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
     expect(snapshot.source).toContain(fakePaths.bridge)
   })
 
+  test('buildSnapshot prefers the latest clean soak and the latest authful W&B receipt', () => {
+    const options = parseArgs([])
+
+    const fakePaths = {
+      bridgePreferred: 'fake://bridgebench-preferred',
+      bridgeWandb: 'fake://bridgebench-wandb',
+      soakPreferred: 'fake://soak-preferred',
+      soakFailed: 'fake://soak-failed',
+      terminal: 'fake://terminalbench',
+      terminalSoak: 'fake://terminalbench-soak',
+    }
+
+    const snapshot = buildSnapshot(options, {
+      resolveLatestReceipt: (patterns, fallbackPath) => {
+        if (patterns.some(pattern => pattern.includes('q-terminalbench-official-public-'))) {
+          return fakePaths.terminal
+        }
+        if (patterns.some(pattern => pattern.includes('q-terminalbench-soak-live-'))) {
+          return fakePaths.terminalSoak
+        }
+        return fallbackPath
+      },
+      collectMatchingReceiptPaths: patterns => {
+        const first = patterns[0] ?? ''
+        if (first.includes('q-bridgebench-live-')) {
+          return [fakePaths.bridgePreferred, fakePaths.bridgeWandb]
+        }
+        if (first.includes('q-soak-live-')) {
+          return [fakePaths.soakFailed, fakePaths.soakPreferred]
+        }
+        return []
+      },
+      readJson: path => {
+        switch (path) {
+          case fakePaths.bridgePreferred:
+            return {
+              benchmarkId: 'bridge-preferred',
+              generatedAt: '2026-04-18T01:12:14.192Z',
+              bestResult: {
+                pack: 'all',
+                score: 42.11,
+                summary: 'All pack · 42.11% mean token accuracy · score 42.11 · 1 eval sample',
+              },
+              wandb: {
+                enabled: false,
+                source: 'none',
+              },
+            }
+          case fakePaths.bridgeWandb:
+            return {
+              benchmarkId: 'bridge-wandb',
+              generatedAt: '2026-04-16T00:41:13.181Z',
+              bestResult: null,
+              wandb: {
+                enabled: true,
+                apiKeyPresent: false,
+                source: 'cli',
+                url: 'https://wandb.ai/example/project',
+              },
+            }
+          case fakePaths.soakPreferred:
+            return {
+              runId: 'soak-clean',
+              generatedAt: '2026-04-16T00:53:06.000Z',
+              durationMinutes: 30,
+              summary: {
+                totalProbes: 52,
+                successCount: 52,
+                errorCount: 0,
+                byMode: {
+                  openjaws: { latencyMs: { p95: 8455 } },
+                  'oci-q': { latencyMs: { p95: 4254 } },
+                },
+              },
+            }
+          case fakePaths.soakFailed:
+            return {
+              runId: 'soak-failed',
+              generatedAt: '2026-04-18T01:10:33.420Z',
+              durationMinutes: 5,
+              summary: {
+                totalProbes: 4,
+                successCount: 2,
+                errorCount: 2,
+              },
+            }
+          case fakePaths.terminal:
+            return {
+              runId: 'terminal-1',
+              generatedAt: '2026-04-16T16:07:08.000Z',
+              officialSubmission: true,
+              tasks: [{ taskName: 'circuit-fibsqrt' }],
+              aggregate: {
+                totalTrials: 5,
+                executionErrorTrials: 0,
+                avgReward: 0,
+              },
+              agent: 'openjaws',
+              model: 'oci:Q',
+            }
+          case fakePaths.terminalSoak:
+            return {
+              runId: 'terminal-soak-1',
+              generatedAt: '2026-04-17T00:11:59.000Z',
+              status: 'completed_with_errors',
+              tasks: [{ taskName: 'terminal-bench/circuit-fibsqrt' }],
+              cycles: [{}, {}],
+              aggregate: {
+                totalTrials: 2,
+                executionErrorTrials: 0,
+                benchmarkFailedTrials: 2,
+              },
+            }
+          default:
+            throw new Error(`Unexpected path ${path}`)
+        }
+      },
+    })
+
+    expect(snapshot.bridgeBench.benchmarkId).toBe('bridge-preferred')
+    expect(snapshot.soak.runId).toBe('soak-clean')
+    expect(snapshot.soak.summary).toContain('30-minute bounded soak.')
+    expect(snapshot.wandb.status).toBe('auth missing')
+    expect(snapshot.wandb.url).toBe('https://wandb.ai/example/project')
+  })
+
   test('writeIfChanged only touches disk when the content changes', () => {
     const dir = makeTempDir('openjaws-snapshot-write-')
     const file = resolve(dir, 'benchmarkSnapshot.generated.json')
@@ -302,6 +492,7 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
 
     const snapshot = buildSnapshotForCheck(options, {
       resolveLatestReceipt: (_patterns, fallbackPath) => fallbackPath,
+      collectMatchingReceiptPaths: () => [],
       readJson: path => {
         if (path === outFile) {
           return fallbackSnapshot

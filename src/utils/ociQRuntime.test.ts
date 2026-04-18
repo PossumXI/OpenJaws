@@ -5,6 +5,7 @@ import { tmpdir } from 'os'
 import {
   buildOciOpenAIBaseUrl,
   DEFAULT_OCI_Q_UPSTREAM_MODEL,
+  resolveEffectiveOciBaseUrl,
   resolveOciQRuntime,
 } from './ociQRuntime.js'
 
@@ -95,5 +96,19 @@ describe('ociQRuntime', () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true })
     }
+  })
+
+  it('prefers the live OCI runtime base URL over a stale saved provider base URL', () => {
+    process.env.Q_BASE_URL =
+      'https://inference.generativeai.us-ashburn-1.oci.oraclecloud.com/openai/v1'
+
+    expect(
+      resolveEffectiveOciBaseUrl({
+        baseURL: 'https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1',
+        baseURLSource: 'settings.llmProviders.oci.baseURL',
+      }),
+    ).toBe(
+      'https://inference.generativeai.us-ashburn-1.oci.oraclecloud.com/openai/v1',
+    )
   })
 })

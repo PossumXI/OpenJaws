@@ -380,6 +380,12 @@ Current local benchmark snapshot from this workspace:
 - BridgeBench best pack: `all` at `42.11`
 - 30-minute soak: `52/52` successful probes with `0` errors
 - local W&B lane: attempted, but no local auth was configured so the pass stayed receipt-only
+- April 18, 2026 direct Q reasoning validation:
+  - direct OCI `Q` answered the fallback-hysteresis check correctly: `t = 70s`
+- April 18, 2026 direct Q media validation:
+  - the current OCI `Q` runtime does not expose native image/video generation on this surface (`404` on the direct image endpoint)
+  - explicit image/video requests should stay on a separate media lane instead of silently replacing `Q` as the active mind
+  - the dedicated Gemini media lane is restored for that purpose, but the current Gemini project on this machine is still quota-blocked
 - local Harbor / Terminal-Bench lane:
   - single-task live receipt now reaches clean Harbor completion under OCI `Q`
   - official public-task five-attempt receipt now exists at `artifacts/q-terminalbench-official-public-20260416-circuit-fibsqrt-v2/terminalbench-report.json`
@@ -392,6 +398,7 @@ Current local benchmark snapshot from this workspace:
     - result: `completed_with_errors`
     - truth: `2` cycles produced `2` total trials, `0` runtime errors, and `2` benchmark-failing trials under one managed jobs lane
   - real concurrent receipt captured `2` live tasks at concurrency `2`
+  - a fresh bounded April 18 wrapper proof now reaches Harbor execution on the current code path, but the Windows Harbor/Docker environment still throws `NotImplementedError` during trial environment startup, so the official five-attempt public receipt above remains the truthful published TerminalBench record
 
 Important boundary:
 

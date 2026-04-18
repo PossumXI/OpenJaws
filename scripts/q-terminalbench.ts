@@ -107,7 +107,7 @@ export function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     root: process.cwd(),
     outputDir: null,
-    dataset: 'terminal-bench/terminal-bench-2',
+    dataset: 'terminal-bench@2.0',
     harborCommand: resolveDefaultHarborCommand(),
     agent: 'openjaws',
     model: 'oci:Q',
@@ -324,7 +324,7 @@ function printHelpAndExit(): never {
       'Usage: bun scripts/q-terminalbench.ts [options]',
       '',
       'Options:',
-      '  --dataset <name>             Harbor dataset name (default terminal-bench/terminal-bench-2)',
+      '  --dataset <name>             Harbor dataset name (default terminal-bench@2.0)',
       '  --agent <mode>               openjaws | oracle',
       '  --model <name>               OpenJaws model identifier for the Harbor adapter (default oci:Q)',
       '  --no-model                   Do not pass a model to the OpenJaws agent',
@@ -454,7 +454,7 @@ function collectAgentEnv(options?: { officialSubmission?: boolean; model?: strin
 }
 
 function normalizeTaskFilter(options: CliOptions, value: string): string {
-  if (options.officialSubmission && options.dataset === 'terminal-bench@2.0') {
+  if (options.dataset.startsWith('terminal-bench@')) {
     return value.startsWith('terminal-bench/') ? value.slice('terminal-bench/'.length) : value
   }
   return value
@@ -478,7 +478,6 @@ function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): s
     options.env,
     '--n-concurrent',
     String(options.nConcurrent),
-    '--yes',
   ]
   if (options.jobsDir) {
     args.push('--jobs-dir', options.jobsDir)
@@ -488,13 +487,13 @@ function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): s
   }
   if (options.agentSetupTimeoutMultiplier !== null) {
     args.push(
-      '--agent-setup-timeout-multiplier',
+      '--timeout-multiplier',
       String(options.agentSetupTimeoutMultiplier),
     )
   }
 
   for (const includeTaskName of options.includeTaskNames) {
-    args.push('--include-task-name', normalizeTaskFilter(options, includeTaskName))
+    args.push('--task-name', normalizeTaskFilter(options, includeTaskName))
   }
   for (const excludeTaskName of options.excludeTaskNames) {
     args.push('--exclude-task-name', normalizeTaskFilter(options, excludeTaskName))
@@ -515,10 +514,10 @@ function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): s
       args.push('--model', options.model)
     }
     for (const [name, value] of Object.entries(agentEnv)) {
-      args.push('--ae', `${name}=${value}`)
+      args.push('--ek', `${name}=${value}`)
     }
     for (const [name, value] of Object.entries(buildBenchmarkSeedEnv(options.seed))) {
-      args.push('--ae', `${name}=${value}`)
+      args.push('--ek', `${name}=${value}`)
     }
   }
 
@@ -540,7 +539,7 @@ function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): s
 
 function redactHarborArgs(args: string[]): string[] {
   return args.map((value, index) => {
-    if (index > 0 && args[index - 1] === '--ae') {
+    if (index > 0 && (args[index - 1] === '--ae' || args[index - 1] === '--ek')) {
       const splitIndex = value.indexOf('=')
       if (splitIndex > 0) {
         return `${value.slice(0, splitIndex)}=<redacted>`
@@ -1024,7 +1023,14 @@ async function runHarborAttempt(args: {
     reject: false,
     windowsHide: true,
     timeout: args.options.timeoutMs,
-    env: buildBenchmarkSeedEnv(args.options.seed),
+    env: {
+      ...buildBenchmarkSeedEnv(args.options.seed),
+      PYTHONUTF8: '1',
+      PYTHONIOENCODING: 'utf-8',
+      NO_COLOR: '1',
+      FORCE_COLOR: '0',
+      TERM: 'dumb',
+    },
   })
 
   const expectedJobName = resolveAttemptJobName(args.options, args.cycle, args.attempt)
@@ -1374,8 +1380,9 @@ async function main() {
         cycle,
         attempt,
       )
+      const traceRouteId = routeId ?? `${runId}-cycle-${cycle}-attempt-${attempt}`
       appendBenchmarkTraceEvent(traceWriter, 'route.dispatched', {
-        routeId,
+        routeId: traceRouteId,
         runId,
         provider: options.agent,
         model: options.model,
@@ -1394,7 +1401,7 @@ async function main() {
       for (const task of attemptResult.taskReceipts) {
         appendBenchmarkTraceEvent(traceWriter, 'turn.complete', {
           turnId: task.trialName,
-          routeId,
+          routeId: traceRouteId,
           workerId: task.taskName,
           status:
             task.executionStatus === 'error'

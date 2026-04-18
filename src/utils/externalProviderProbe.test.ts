@@ -300,6 +300,42 @@ describe('externalProviderProbe', () => {
       rmSync(configDir, { recursive: true, force: true })
     }
   })
+
+  test('prefers the live Q runtime base URL over a stale saved OCI provider URL', async () => {
+    process.env.Q_BASE_URL =
+      'https://inference.generativeai.us-ashburn-1.oci.oraclecloud.com/openai/v1'
+    process.env.OCI_CONFIG_FILE = join(tmpdir(), 'nonexistent-config')
+    process.env.OCI_COMPARTMENT_ID = 'ocid1.compartment.oc1..example'
+    process.env.OCI_GENAI_PROJECT_ID = 'ocid1.generativeaiendpoint.oc1..example'
+
+    const result = await probeResolvedExternalProvider(
+      makeConfig({
+        apiKey: null,
+        apiKeySource: null,
+        baseURL:
+          'https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1',
+        baseURLSource: 'settings.llmProviders.oci.baseURL',
+      }),
+      {
+        ociQueryFn: async args => ({
+          ok: true,
+          text: 'OK',
+          model: args.runtimeOverride?.model ?? 'openai.gpt-oss-120b',
+          base_url: args.runtimeOverride?.baseURL ?? 'unknown',
+          auth_mode: 'iam',
+          profile: 'DEFAULT',
+        }),
+      },
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.baseURL).toBe(
+      'https://inference.generativeai.us-ashburn-1.oci.oraclecloud.com/openai/v1',
+    )
+    expect(result.endpoint).toBe(
+      'https://inference.generativeai.us-ashburn-1.oci.oraclecloud.com/openai/v1/responses',
+    )
+  })
 })
 
 describe('resolveProviderProbeModelRef', () => {

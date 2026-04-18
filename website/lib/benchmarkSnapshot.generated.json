@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-04-17T00:12:20.163Z",
-  "source": "Generated from benchmark receipts: D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260415-nowandb\\bridgebench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-soak-live-20260416\\q-soak-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-official-public-20260416-circuit-fibsqrt-v2\\terminalbench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3\\terminalbench-report.json, and D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260415-nowandb\\bridgebench-report.json.",
+  "generatedAt": "2026-04-18T01:12:14.192Z",
+  "source": "Generated from benchmark receipts: D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260418-proof\\bridgebench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-soak-live-20260416\\q-soak-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-official-public-20260416-circuit-fibsqrt-v2\\terminalbench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3\\terminalbench-report.json, and D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260415\\bridgebench-report.json.",
   "bridgeBench": {
-    "benchmarkId": "q-bridgebench-20260416T004137",
+    "benchmarkId": "q-bridgebench-20260418T011029",
     "bestPack": "all",
     "scorePercent": 42.11,
     "summary": "All pack · 42.11% mean token accuracy · score 42.11 · 1 eval sample"
@@ -37,9 +37,10 @@
     "summary": "Repeated TerminalBench soak over terminal-bench/circuit-fibsqrt. 2 cycles produced 2 total trials, 0 runtime errors, and 2 benchmark-failing trials."
   },
   "wandb": {
-    "status": "disabled",
+    "status": "auth missing",
     "enabled": false,
-    "source": "none",
-    "summary": "disabled"
+    "source": "cli",
+    "url": "https://wandb.ai/arobi-arobi-technology-alliance/immaculate",
+    "summary": "A live W&B project target was configured for this benchmark pass, but no local WANDB login/API key was available, so the receipts stayed local only."
   }
 }

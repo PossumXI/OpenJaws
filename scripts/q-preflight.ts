@@ -64,7 +64,7 @@ function parseArgs(argv: string[]): CliOptions {
     root: process.cwd(),
     bench: defaultBench,
     requirements: [...resolveQPreflightRequirementsForBench(defaultBench)],
-    model: defaultBench === 'terminalbench' ? 'oci:Q' : null,
+    model: 'oci:Q',
     preferDirectQ: defaultBench === 'soak',
     bundleDir: null,
     python: null,
@@ -82,7 +82,7 @@ function parseArgs(argv: string[]): CliOptions {
     if (arg === '--bench' && argv[index + 1]) {
       options.bench = parseBench(argv[++index]!)
       options.requirements = [...resolveQPreflightRequirementsForBench(options.bench)]
-      options.model = options.bench === 'terminalbench' ? 'oci:Q' : options.model
+      options.model = options.model ?? 'oci:Q'
       options.preferDirectQ = options.bench === 'soak'
       continue
     }

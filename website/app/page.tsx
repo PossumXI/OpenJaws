@@ -186,6 +186,15 @@ export default function Page(): React.ReactNode {
             </p>
           </article>
           <article className="feature-card">
+            <span>Q media boundary</span>
+            <strong>Reasoning stays Q. Media stays explicit.</strong>
+            <p>
+              OCI Q owns chat, reasoning, and orchestration. When image or
+              video generation is needed, it stays on a separate explicit media
+              lane instead of silently swapping the mind behind the session.
+            </p>
+          </article>
+          <article className="feature-card">
             <span>Release hardening</span>
             <strong>Ship checks fail closed.</strong>
             <p>

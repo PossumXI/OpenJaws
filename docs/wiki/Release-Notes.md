@@ -102,6 +102,9 @@ Current April 16, 2026 local snapshot:
 - BridgeBench best pack: `all` at `42.11`
 - 30-minute soak: `52/52` successful probes, `0` errors
 - local W&B lane: attempted, but no local auth was configured so the run stayed receipt-only
+- April 18 direct OCI `Q` reasoning validation answered the fallback-hysteresis check correctly with `t = 70s`
+- April 18 direct OCI `Q` media validation returned `404` on the native image endpoint, so image/video stays on a separate explicit media lane instead of silently replacing `Q` as the session mind
+- the dedicated Gemini media lane is restored for explicit image/video work, but the configured Gemini project on this machine is still quota-blocked
 - local Harbor / Terminal-Bench lane:
   - single-task live receipt now reaches clean Harbor completion under OCI `Q`
   - official public-task five-attempt receipt now exists for `circuit-fibsqrt`, with `0` runtime errors, reward `0.0`, and Harbor raw env bundles scrubbed in place
@@ -112,6 +115,7 @@ Current April 16, 2026 local snapshot:
     - result: `completed_with_errors`
     - truth: `2` cycles produced `2` total trials, `0` runtime errors, and `2` benchmark-failing trials
   - real concurrent receipt captured `2` live tasks at concurrency `2`
+  - a fresh bounded April 18 wrapper proof now reaches Harbor execution on the current code path, but the Windows Harbor/Docker environment still throws `NotImplementedError` during trial environment startup, so the official five-attempt public receipt above remains the truthful published TerminalBench record
   - task outcomes are still variant, so the lane is not ready for strong leaderboard positioning
 
 This pass also tightens the public `Q` runtime story:

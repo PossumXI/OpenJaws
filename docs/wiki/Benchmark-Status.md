@@ -82,20 +82,27 @@ These are the current live-check lanes OpenJaws can run honestly against its shi
 - `bun run q-route:remote-dispatch` for signed remote-dispatch behavior
 - `bun run q-route:remote-completion` for signed remote-result reconciliation
 
-## April 16, 2026 Local Q Snapshot
+## April 18, 2026 Local Q Snapshot
 
 These are the newest local OpenJaws receipts from this repo workspace. They are useful for honest in-repo tuning and shipping decisions. They are not a public leaderboard claim.
 
 - BridgeBench:
-  - artifact: `artifacts/q-bridgebench-live-20260415-nowandb/bridgebench-report.json`
+  - artifact: `artifacts/q-bridgebench-live-20260418-proof/bridgebench-report.json`
   - best pack: `all`
   - score: `42.11`
-  - bounded eval note: `agentic` matched the same score on the same small audited smoke bundle
+  - bounded eval note: this fresh proof kept the same audited-pack score while moving onto the new typed trace + signed receipt lane
 - 30-minute soak:
   - artifact: `artifacts/q-soak-live-20260416/q-soak-report.json`
   - result: `52/52` successful probes, `0` errors
   - OpenJaws latency: average `7573 ms`, p95 `8455 ms`
   - direct OCI-Q latency: average `3282 ms`, p95 `4254 ms`
+- direct Q reasoning validation:
+  - artifact: local OCI bridge smoke on `April 18, 2026`
+  - result: direct OCI `Q` answered the fallback-hysteresis timing check correctly with `t = 70s`
+- direct Q media validation:
+  - artifact: direct OCI image-endpoint smoke on `April 18, 2026`
+  - result: the current OCI `Q` runtime returned `404` for native image generation, so image/video belongs on a separate explicit media lane instead of silently swapping the active reasoning model
+  - current media-lane state: the dedicated Gemini media lane is restored for explicit image/video work, but the configured Gemini project on this machine is still quota-blocked
 - Harbor / Terminal-Bench:
   - single-task live receipt: `artifacts/q-terminalbench-live-20260416-ociq-fixed19/terminalbench-report.json`
   - state: Harbor, Docker, and provider preflight all passed, and the OCI IAM container bridge now reaches real execution
@@ -118,6 +125,9 @@ These are the newest local OpenJaws receipts from this repo workspace. They are 
   - real concurrent receipt: `artifacts/q-terminalbench-concurrent-smoke-20260416/terminalbench-report.json`
     - result: `completed_with_errors`
     - aggregate: `2` tasks at concurrency `2`, with `1` benchmark-failing trial and `1` execution-error trial
+  - fresh bounded wrapper proof: `artifacts/q-terminalbench-live-20260418-proof9/terminalbench-report.json`
+    - result: `completed_with_errors`
+    - truth: the current wrapper reached Harbor execution on the new code path, but the Windows Harbor/Docker environment still threw `NotImplementedError` during trial environment startup, so the official five-attempt public receipt above remains the truthful published TerminalBench record
 - W&B:
   - state: attempted for the same local benchmark pass, but no local `WANDB_API_KEY` / login was configured
   - result: receipts stayed local only, and there is no truthful W&B URL to publish for this pass

@@ -97,6 +97,7 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 - `bun run q:preflight -- --bench <bridgebench|soak|terminalbench>` runs the same typed runnable-check surface the benchmark wrappers now use
 - the direct soak lane and the Harbor-backed lane now share the same OCI/Q provider probe surface before launch, so blocked vs. forceable preflight behavior stays consistent
 - the main Q benchmark lanes now all accept `--seed`, default to `42`, and emit that seed into their reports plus signed receipts
+- direct April 18 validation confirmed OCI `Q` handles reasoning on the current runtime, but does not expose native image/video generation on this surface, so media stays on a separate explicit lane instead of silently replacing `Q`; that dedicated Gemini media lane is restored, but the current Gemini project here is still quota-blocked
 - the local lane writes `reward.json` and `reward-details.json` so the results are easy to compare with Rewardkit-style tooling
 - `--lineage-id` and optional `--phase-id` now let the local, routed, and follow-up benchmark receipts stay attached to the same intentional work thread
 - hybrid sessions now keep a rolling 3-failures-in-60s transport hysteresis window for the Immaculate fast path, so one transient route miss does not instantly suppress routed execution

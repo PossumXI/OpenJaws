@@ -63,6 +63,7 @@ type BenchmarkSnapshot = {
 
 type SnapshotDeps = {
   resolveLatestReceipt: typeof resolveLatestReceipt
+  collectMatchingReceiptPaths: typeof collectMatchingReceiptPaths
   readJson: typeof readJson
 }
 
@@ -167,6 +168,11 @@ export function isValidExistingReceiptPath(path: string): boolean {
 }
 
 export function resolveLatestReceipt(patterns: string[], fallbackPath: string): string {
+  const matches = collectMatchingReceiptPaths(patterns)
+  return matches[0] ?? fallbackPath
+}
+
+export function collectMatchingReceiptPaths(patterns: string[]): string[] {
   for (const pattern of patterns) {
     const matches = globSync(normalizeGlobPattern(pattern), {
       nodir: true,
@@ -182,10 +188,36 @@ export function resolveLatestReceipt(patterns: string[], fallbackPath: string): 
         path,
         mtimeMs: statSync(path).mtimeMs,
       }))
-      .sort((a, b) => b.mtimeMs - a.mtimeMs || b.path.localeCompare(a.path))[0]!.path
+      .sort((a, b) => b.mtimeMs - a.mtimeMs || b.path.localeCompare(a.path))
+      .map(entry => entry.path)
   }
 
-  return fallbackPath
+  return []
+}
+
+export function resolveLatestPreferredReceipt<T>(
+  patterns: string[],
+  fallbackPath: string,
+  collectPaths: (patterns: string[]) => string[],
+  readJson: (path: string) => T,
+  isPreferred: (receipt: T) => boolean,
+): string {
+  const matches = collectPaths(patterns)
+  if (matches.length === 0) {
+    return fallbackPath
+  }
+
+  for (const path of matches) {
+    try {
+      if (isPreferred(readJson(path))) {
+        return path
+      }
+    } catch {
+      // Skip unreadable or malformed receipts and keep walking older candidates.
+    }
+  }
+
+  return matches[0] ?? fallbackPath
 }
 
 export function readJson<T>(path: string): T {
@@ -243,22 +275,42 @@ export function buildSnapshot(
   options: CliOptions,
   deps: SnapshotDeps = {
     resolveLatestReceipt,
+    collectMatchingReceiptPaths,
     readJson,
   },
 ): BenchmarkSnapshot {
-  const bridgeBenchReportPath = deps.resolveLatestReceipt(
+  const bridgeBenchReportPath = resolveLatestPreferredReceipt(
     [
       resolve(repoRoot, 'artifacts', 'q-bridgebench-live-*', 'bridgebench-report.json'),
       resolve(repoRoot, 'artifacts', 'q-bridgebench-*', 'bridgebench-report.json'),
     ],
     options.bridgeBenchReportPath,
+    deps.collectMatchingReceiptPaths,
+    deps.readJson,
+    receipt =>
+      typeof (receipt as { bestResult?: { score?: unknown } }).bestResult?.score ===
+        'number' &&
+      Number.isFinite((receipt as { bestResult?: { score?: number } }).bestResult?.score),
   )
-  const soakReportPath = deps.resolveLatestReceipt(
+  const soakReportPath = resolveLatestPreferredReceipt(
     [
       resolve(repoRoot, 'artifacts', 'q-soak-live-*', 'q-soak-report.json'),
       resolve(repoRoot, 'artifacts', 'q-soak-*', 'q-soak-report.json'),
     ],
     options.soakReportPath,
+    deps.collectMatchingReceiptPaths,
+    deps.readJson,
+    receipt => {
+      const summary = (receipt as {
+        summary?: { successCount?: unknown; errorCount?: unknown }
+      }).summary
+      return (
+        typeof summary?.successCount === 'number' &&
+        summary.successCount > 0 &&
+        typeof summary?.errorCount === 'number' &&
+        summary.errorCount === 0
+      )
+    },
   )
   const terminalBenchReportPath = deps.resolveLatestReceipt(
     [
@@ -275,9 +327,20 @@ export function buildSnapshot(
     ],
     options.terminalBenchSoakReportPath,
   )
-  const wandbReportPath = deps.resolveLatestReceipt(
+  const wandbReportPath = resolveLatestPreferredReceipt(
     [resolve(repoRoot, 'artifacts', 'q-bridgebench-live-*', 'bridgebench-report.json')],
     options.wandbReportPath,
+    deps.collectMatchingReceiptPaths,
+    deps.readJson,
+    receipt => {
+      const wandb = (receipt as {
+        wandb?: { enabled?: unknown; source?: unknown }
+      }).wandb
+      return (
+        wandb?.enabled === true ||
+        (typeof wandb?.source === 'string' && wandb.source !== 'none')
+      )
+    },
   )
 
   const bridgeBench = deps.readJson<{
@@ -381,7 +444,7 @@ export function buildSnapshot(
       totalProbes: soak.summary.totalProbes,
       successCount: soak.summary.successCount,
       errorCount: soak.summary.errorCount,
-      summary: `30-minute bounded soak. ${soak.summary.successCount}/${soak.summary.totalProbes} probes succeeded with ${soak.summary.errorCount} errors. OpenJaws p95 latency: ${openjawsP95 ?? 'n/a'} ms. Direct OCI-Q p95 latency: ${ociQP95 ?? 'n/a'} ms.`,
+      summary: `${soak.durationMinutes}-minute bounded soak. ${soak.summary.successCount}/${soak.summary.totalProbes} probes succeeded with ${soak.summary.errorCount} errors. OpenJaws p95 latency: ${openjawsP95 ?? 'n/a'} ms. Direct OCI-Q p95 latency: ${ociQP95 ?? 'n/a'} ms.`,
     },
     terminalBench: {
       runId: terminalBench.runId,
@@ -432,6 +495,7 @@ export function buildSnapshotForCheck(
   options: CliOptions,
   deps: SnapshotDeps = {
     resolveLatestReceipt,
+    collectMatchingReceiptPaths,
     readJson,
   },
 ): BenchmarkSnapshot {
