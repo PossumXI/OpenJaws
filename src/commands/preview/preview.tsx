@@ -112,7 +112,9 @@ function PreviewOverview({
       <SectionTitle>Runtime</SectionTitle>
       <Text>{runtimeStatus}</Text>
       <Text dimColor>
-        The browser stays inside the OpenJaws TUI. User browsing history is not
+        Use /preview to keep browsing inside the OpenJaws TUI. The desktop Apex
+        browser stays out of process and is only the fallback when you
+        explicitly need an external window. User browsing history is not
         persisted by default; only Q or agent-led browsing on the user&apos;s
         behalf lands in accountable receipts.
       </Text>
@@ -140,7 +142,7 @@ function PreviewSession({
         <SectionTitle>Session view</SectionTitle>
         <Text dimColor>
           No active browser session yet. Open a URL from the Controls tab to
-          render it here inside the TUI.
+          render it here inside the native OpenJaws TUI browser lane.
         </Text>
       </Box>
     )
@@ -343,7 +345,7 @@ function PreviewLaunch({
         <SectionTitle>Last action</SectionTitle>
         <Text wrap="wrap">
           {actionMessage ??
-            'Open a session to render the web inside OpenJaws. User browsing stays private by default.'}
+            'Open a session to render the web inside OpenJaws. Use /preview for the native lane; the desktop Apex browser is the explicit out-of-process fallback.'}
         </Text>
       </Box>
     </Box>

@@ -627,7 +627,8 @@ describe('buildBrowserPreviewProperties', () => {
           version: '0.2.0',
           timestamp: '2026-04-18T22:05:03.000Z',
         },
-        message: 'OpenJaws browser bridge ready with SEALED demo in the TUI lane.',
+        message:
+          'OpenJaws browser bridge ready with SEALED demo in the native TUI preview lane.',
         summary: {
           mode: 'live',
           renderMode: 'tui',
@@ -671,8 +672,8 @@ describe('buildBrowserPreviewProperties', () => {
       {
         label: 'Browser runtime',
         value: [
-          'SEALED demo · ready · tui',
-          'OpenJaws browser bridge ready with SEALED demo in the TUI lane.',
+          'SEALED demo · ready · native tui preview',
+          'OpenJaws browser bridge ready with SEALED demo in the native TUI preview lane.',
           'preview · user · http://127.0.0.1:3000/',
           '200 · 92ms · 3 images · 0 links',
         ],

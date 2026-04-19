@@ -364,7 +364,7 @@ const APEX_TARGETS: ApexLaunchTarget[] = [
     mode: 'native-app',
     category: 'ui',
     description:
-      'Rust desktop browser shell with WebView/WebKit bindings. Best launched out of process.',
+      'Rust desktop browser shell with WebView/WebKit bindings. Prefer /preview for native in-TUI browsing; launch this only when you explicitly need the external window.',
     path: resolve(join(APEX_APPS_ROOT, 'browser')),
     manifestPath: resolve(join(APEX_APPS_ROOT, 'browser', 'Cargo.toml')),
     binName: 'flowspace-browser',
@@ -1899,7 +1899,7 @@ export function summarizeApexBrowser(summary: ApexBrowserSummary | null): {
     return {
       headline: 'Browser bridge offline',
       details: [
-        'Start the browser bridge to keep web previews inside the OpenJaws TUI instead of launching an external browser.',
+        'Start the browser bridge to keep native web previews inside the OpenJaws TUI instead of launching an external browser.',
       ],
     }
   }
@@ -1909,7 +1909,7 @@ export function summarizeApexBrowser(summary: ApexBrowserSummary | null): {
     summary.sessions[0]
   if (!activeSession) {
     return {
-      headline: 'Browser bridge online · no active sessions',
+      headline: 'Browser bridge online · native TUI preview ready',
       details: [
         summary.privacy.userHistoryPersisted
           ? 'User browsing history is currently persisted.'
@@ -1919,7 +1919,7 @@ export function summarizeApexBrowser(summary: ApexBrowserSummary | null): {
   }
 
   return {
-    headline: `${activeSession.title} · ${activeSession.state} · ${summary.renderMode}`,
+    headline: `${activeSession.title} · ${activeSession.state} · native ${summary.renderMode} preview`,
     details: [
       `${activeSession.intent} · ${activeSession.requestedBy} · ${activeSession.url}`,
       `${activeSession.statusCode} · ${activeSession.loadTimeMs}ms · ${activeSession.imageCount} images · ${activeSession.links.length} links`,

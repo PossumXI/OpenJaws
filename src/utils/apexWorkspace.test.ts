@@ -222,7 +222,7 @@ describe('apexWorkspace', () => {
     })
 
     expect(summary.headline).toContain('Clock Demo')
-    expect(summary.headline).toContain('tui')
+    expect(summary.headline).toContain('native tui preview')
     expect(summary.details[2]).toContain('not persisted')
   })
 })

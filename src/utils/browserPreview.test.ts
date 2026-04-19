@@ -6,6 +6,7 @@ import {
   getBrowserPreviewReceiptPath,
   readBrowserPreviewReceipt,
   summarizeBrowserPreviewReceipt,
+  summarizeBrowserPreviewRuntime,
 } from './browserPreview.js'
 
 const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
@@ -76,5 +77,64 @@ describe('browserPreview', () => {
     expect(
       summary.details.some(item => item.includes('watch · openjaws-browser')),
     ).toBe(true)
+  })
+
+  test('summarizes the native in-TUI browser runtime distinctly from the external shell', () => {
+    const summary = summarizeBrowserPreviewRuntime({
+      configured: true,
+      bridgePath: 'C:\\Apex\\browser',
+      bridgeReady: true,
+      launchReady: true,
+      health: {
+        status: 'ok',
+        service: 'browser-bridge',
+        version: '0.2.0',
+        timestamp: '2026-04-18T22:05:03.000Z',
+      },
+      message:
+        'OpenJaws browser bridge ready with SEALED demo in the native TUI preview lane.',
+      summary: {
+        mode: 'live',
+        renderMode: 'tui',
+        activeSessionId: 'session-1',
+        sessionCount: 1,
+        privacy: {
+          doNotTrack: true,
+          blockThirdPartyCookies: true,
+          clearOnExit: true,
+          userHistoryPersisted: false,
+          agentHistoryPersisted: true,
+        },
+        sessions: [
+          {
+            id: 'session-1',
+            intent: 'preview',
+            rationale: 'Check the local app in the native browser lane.',
+            requestedBy: 'user',
+            recordHistory: false,
+            title: 'SEALED demo',
+            url: 'http://127.0.0.1:3000/',
+            state: 'ready',
+            openedAt: '2026-04-18T22:05:00.000Z',
+            updatedAt: '2026-04-18T22:05:03.000Z',
+            excerpt: 'Digital clock preview',
+            statusCode: 200,
+            loadTimeMs: 92,
+            imageCount: 3,
+            metadata: {
+              description: 'Clock preview',
+              keywords: ['clock', 'preview'],
+              author: null,
+              contentType: 'text/html',
+            },
+            links: [],
+          },
+        ],
+      },
+    })
+
+    expect(summary.headline).toContain('native tui preview')
+    expect(summary.details[0]).toContain('native TUI preview lane')
+    expect(summary.details[1]).toContain('preview · user · http://127.0.0.1:3000/')
   })
 })

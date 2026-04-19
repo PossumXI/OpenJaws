@@ -266,17 +266,17 @@ function buildBrowserRuntimeMessage(args: {
       args.summary.sessions[0] ??
       null
     return activeSession
-      ? `OpenJaws browser bridge ready with ${activeSession.title} in the TUI lane.`
-      : 'OpenJaws browser bridge ready for in-TUI rendering.'
+      ? `OpenJaws browser bridge ready with ${activeSession.title} in the native TUI preview lane.`
+      : 'OpenJaws browser bridge ready for native in-TUI preview rendering.'
   }
   if (args.health) {
-    return 'OpenJaws browser bridge online and waiting for the first TUI session.'
+    return 'OpenJaws browser bridge online and waiting for the first native TUI preview session.'
   }
   if (args.startupMessage?.trim()) {
     return args.startupMessage.trim()
   }
   return args.configured
-    ? 'Browser bridge offline. Opening a session will boot it if the Apex browser source is available.'
+    ? 'Browser bridge offline. Opening a /preview session will boot it if the Apex browser source is available.'
     : 'Browser source is unavailable. Configure OPENJAWS_APEX_ROOT / OPENJAWS_APEX_ASGARD_ROOT first.'
 }
 

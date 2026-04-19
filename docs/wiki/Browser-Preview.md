@@ -6,6 +6,7 @@ This is the current contract:
 
 - `/preview` uses the dedicated Apex browser bridge and keeps the session inside the OpenJaws cockpit.
 - It does **not** hand normal preview work to Chrome or a third-party browser.
+- `/preview` is the preferred native lane; `/apex launch browser` remains the explicit out-of-process fallback when you need the external Flowspace window.
 - User browsing history stays out of persistent receipts by default.
 - Q or agent-led browsing on the user’s behalf is the only lane that lands in accountable receipts.
 

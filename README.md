@@ -343,6 +343,7 @@ OpenJaws now has a bounded `/preview` lane for native in-TUI app preview, resear
 
 - browser launches keep an accountability receipt with intent, rationale, requester, and runtime handler
 - the browser bridge renders through the OpenJaws browser lane instead of handing preview work to Chrome
+- `/preview` is the native in-TUI path; `/apex launch browser` stays an explicit out-of-process fallback when you need the external Flowspace window
 - user browsing history stays private by default; only Q or agent-led browsing is persisted as an accountable handoff
 - `/status` now surfaces the live in-TUI browser bridge session first and the latest accountable browser handoff only as fallback context
 
