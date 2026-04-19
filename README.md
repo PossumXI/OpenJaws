@@ -60,7 +60,8 @@ The Q mark above is sourced from `src/components/LogoV2/qMarkData.ts` and can be
 - Keeps provider, model, routing, and remote-worker state visible so the app does not quietly drift into a different setup.
 - Starts new public installs on `Q` with `OCI`, but still lets you switch providers and models on purpose.
 - Supports both local and remote execution, including signed `Q` training routes and worker assignment.
-- Gives you practical controls like `/status`, `/immaculate`, `/provider`, `/voice`, and `/remote-env`.
+- Gives you practical controls like `/help`, `/config`, `/theme`, `/privacy-settings`, `/status`, `/immaculate`, `/provider`, `/voice`, and `/remote-env`.
+- Keeps Settings readable with dedicated `Appearance` and `Privacy` tabs, including a local Privacy mode for telemetry/nonessential-traffic policy and clearer `auto` / `dark` / `light` theme behavior.
 - Adds a bounded `/apex` command center for trusted local mail, chat, store, system, security, and browser-preview lanes without pretending external Rust GUIs are native Ink views.
 - Normalizes task, tool, co-work, and delivery summaries so final handoffs read the same way across the TUI instead of drifting between different vocabularies.
 - Probes Gemini media lanes explicitly so Discord media bots can tell the difference between a listed model and a Google-side quota block, then fall back cleanly instead of stalling.
@@ -175,6 +176,10 @@ OpenJaws currently ships as source plus native local builds.
 
 Useful first-run operator commands:
 
+- `/help` to rediscover the public command surface without guessing
+- `/config` to open the main Settings deck with dedicated `Appearance` and `Privacy` tabs
+- `/theme` to change theme mode directly when you already know you want `auto`, `dark`, or `light`
+- `/privacy-settings` to jump straight to the local privacy controls
 - `/login` to use the built-in browser login for the managed Anthropic/OpenJaws account lane
 - `/provider` to choose provider/model wiring or rotate keys later
 - `/provider connect oci` or `/provider connect openai` to open the provider key/setup page in your browser

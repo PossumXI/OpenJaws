@@ -62,6 +62,10 @@ export function usePromptInputPlaceholder({
       promptSuggestionEnabled &&
       !proactiveModule?.isProactiveActive()
     ) {
+      return 'Try /help, /config, /theme, or /privacy-settings'
+    }
+
+    if (promptSuggestionEnabled && !proactiveModule?.isProactiveActive()) {
       return getExampleCommandFromCache()
     }
   }, [

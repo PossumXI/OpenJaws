@@ -614,6 +614,90 @@ describe('buildBrowserPreviewProperties', () => {
     ])
   })
 
+  test('surfaces private-history defaults when the native browser lane is idle', () => {
+    expect(
+      buildBrowserPreviewProperties(null, {
+        configured: true,
+        bridgePath: 'C:\\Apex\\browser',
+        bridgeReady: true,
+        launchReady: true,
+        health: {
+          status: 'ok',
+          service: 'browser-bridge',
+          version: '0.2.0',
+          timestamp: '2026-04-18T22:05:03.000Z',
+        },
+        message:
+          'OpenJaws browser bridge ready for local in-TUI previews.',
+        summary: {
+          mode: 'live',
+          renderMode: 'tui',
+          activeSessionId: null,
+          sessionCount: 0,
+          privacy: {
+            doNotTrack: true,
+            blockThirdPartyCookies: true,
+            clearOnExit: true,
+            userHistoryPersisted: false,
+            agentHistoryPersisted: true,
+          },
+          sessions: [],
+        },
+      }),
+    ).toEqual([
+      {
+        label: 'Browser runtime',
+        value: [
+          'Browser bridge online · native TUI preview ready',
+          'OpenJaws browser bridge ready for local in-TUI previews.',
+          'User browsing history stays out of persistent receipts by default.',
+        ],
+      },
+    ])
+  })
+
+  test('surfaces when browser history persistence is enabled in the native lane', () => {
+    expect(
+      buildBrowserPreviewProperties(null, {
+        configured: true,
+        bridgePath: 'C:\\Apex\\browser',
+        bridgeReady: true,
+        launchReady: true,
+        health: {
+          status: 'ok',
+          service: 'browser-bridge',
+          version: '0.2.0',
+          timestamp: '2026-04-18T22:05:03.000Z',
+        },
+        message:
+          'OpenJaws browser bridge ready, but browser history persistence is enabled.',
+        summary: {
+          mode: 'live',
+          renderMode: 'tui',
+          activeSessionId: null,
+          sessionCount: 0,
+          privacy: {
+            doNotTrack: true,
+            blockThirdPartyCookies: true,
+            clearOnExit: true,
+            userHistoryPersisted: true,
+            agentHistoryPersisted: true,
+          },
+          sessions: [],
+        },
+      }),
+    ).toEqual([
+      {
+        label: 'Browser runtime',
+        value: [
+          'Browser bridge online · native TUI preview ready',
+          'OpenJaws browser bridge ready, but browser history persistence is enabled.',
+          'User browsing history is currently persisted.',
+        ],
+      },
+    ])
+  })
+
   test('surfaces the live in-TUI browser runtime separately from accountable receipts', () => {
     expect(
       buildBrowserPreviewProperties(null, {

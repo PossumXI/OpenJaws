@@ -764,6 +764,12 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Probability (0–1) that the session quality survey appears when eligible. 0.05 is a reasonable starting point.',
         ),
+      privacyMode: z
+        .enum(['default', 'no-telemetry', 'essential-traffic'])
+        .optional()
+        .describe(
+          'Local privacy mode for telemetry and nonessential network traffic. "default" allows all supported traffic, "no-telemetry" disables telemetry and surveys, and "essential-traffic" blocks nonessential network traffic entirely.',
+        ),
       spinnerTipsEnabled: z
         .boolean()
         .optional()

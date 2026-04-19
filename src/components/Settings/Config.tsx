@@ -42,8 +42,10 @@ import { isEnvTruthy, isRunningOnHomespace } from 'src/utils/envUtils.js';
 import type { LocalJSXCommandContext, CommandResultDisplay } from '../../commands.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
+import type { PrivacyLevel } from '../../utils/privacyLevel.js';
 import { getCliTeammateModeOverride, clearCliTeammateModeOverride } from '../../utils/swarm/backends/teammateModeSnapshot.js';
 import { getHardcodedTeammateModelFallback } from '../../utils/swarm/teammateModel.js';
+import { describeThemeSetting } from '../../utils/themeSummary.js';
 import { useSearchInput } from '../../hooks/useSearchInput.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { clearFastModeCooldown, FAST_MODE_MODEL_DISPLAY, isFastModeAvailable, isFastModeEnabled, getFastModeModel, isFastModeSupportedByModel } from '../../utils/fastMode.js';
@@ -56,6 +58,7 @@ type Props = {
   setTabsHidden: (hidden: boolean) => void;
   onIsSearchModeChange?: (inSearchMode: boolean) => void;
   contentHeight?: number;
+  visibleSettingIds?: readonly string[];
 };
 type SettingBase = {
   id: string;
@@ -82,19 +85,59 @@ type Setting = (SettingBase & {
   type: 'managedEnum';
 });
 type SubMenu = 'Theme' | 'Model' | 'TeammateModel' | 'ExternalIncludes' | 'OutputStyle' | 'ChannelDowngrade' | 'Language' | 'EnableAutoUpdates';
+export const APPEARANCE_SETTING_IDS = [
+  'prefersReducedMotion',
+  'theme',
+  'outputStyle',
+  'language',
+  'editorMode',
+] as const;
+export const PRIVACY_SETTING_IDS = ['privacyMode'] as const;
+const PRIVACY_MODE_OPTIONS = [
+  'Default',
+  'No telemetry',
+  'Essential traffic only',
+] as const;
+
+function privacyModeToLabel(
+  privacyMode: PrivacyLevel | undefined,
+): (typeof PRIVACY_MODE_OPTIONS)[number] {
+  switch (privacyMode) {
+    case 'no-telemetry':
+      return 'No telemetry';
+    case 'essential-traffic':
+      return 'Essential traffic only';
+    default:
+      return 'Default';
+  }
+}
+
+function labelToPrivacyMode(
+  label: (typeof PRIVACY_MODE_OPTIONS)[number],
+): PrivacyLevel | undefined {
+  switch (label) {
+    case 'No telemetry':
+      return 'no-telemetry';
+    case 'Essential traffic only':
+      return 'essential-traffic';
+    default:
+      return undefined;
+  }
+}
 export function Config({
   onClose,
   context,
   setTabsHidden,
   onIsSearchModeChange,
-  contentHeight
+  contentHeight,
+  visibleSettingIds,
 }: Props): React.ReactNode {
   const {
     headerFocused,
     focusHeader
   } = useTabHeaderFocus();
   const insideModal = useIsInsideModal();
-  const [, setTheme] = useTheme();
+  const [currentTheme, setTheme] = useTheme();
   const themeSetting = useThemeSetting();
   const [globalConfig, setGlobalConfig] = useState(getGlobalConfig());
   const initialConfig = React.useRef(getGlobalConfig());
@@ -339,6 +382,36 @@ export function Config({
       });
       logEvent('jaws_thinking_toggled', {
         enabled
+      });
+    }
+  }, {
+    id: 'privacyMode',
+    label: 'Privacy mode',
+    value: privacyModeToLabel(settingsData?.privacyMode),
+    options: [...PRIVACY_MODE_OPTIONS],
+    type: 'enum' as const,
+    onChange(selected: (typeof PRIVACY_MODE_OPTIONS)[number]) {
+      const privacyMode = labelToPrivacyMode(selected);
+      updateSettingsForSource('userSettings', {
+        privacyMode
+      });
+      setSettingsData(prev_6 => ({
+        ...prev_6,
+        privacyMode
+      }));
+      setAppState(prev_7 => ({
+        ...prev_7,
+        settings: {
+          ...prev_7.settings,
+          privacyMode
+        }
+      }));
+      setChanges(prev_8 => ({
+        ...prev_8,
+        'Privacy mode': selected
+      }));
+      logEvent('jaws_privacy_mode_changed', {
+        value: (privacyMode ?? 'default') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
     }
   },
@@ -650,7 +723,7 @@ export function Config({
   }, {
     id: 'theme',
     label: 'Theme',
-    value: themeSetting,
+    value: describeThemeSetting(themeSetting, currentTheme),
     type: 'managedEnum',
     onChange: setTheme
   }, {
@@ -1044,16 +1117,24 @@ export function Config({
     }
   }] : [])];
 
+  const scopedSettingsItems = React.useMemo(() => {
+    if (!visibleSettingIds || visibleSettingIds.length === 0) {
+      return settingsItems;
+    }
+    const visibleIds = new Set(visibleSettingIds);
+    return settingsItems.filter(setting => visibleIds.has(setting.id));
+  }, [settingsItems, visibleSettingIds]);
+
   // Filter settings based on search query
   const filteredSettingsItems = React.useMemo(() => {
-    if (!searchQuery) return settingsItems;
+    if (!searchQuery) return scopedSettingsItems;
     const lowerQuery = searchQuery.toLowerCase();
-    return settingsItems.filter(setting => {
+    return scopedSettingsItems.filter(setting => {
       if (setting.id.toLowerCase().includes(lowerQuery)) return true;
       const searchableText = 'searchText' in setting ? setting.searchText : setting.label;
       return searchableText.toLowerCase().includes(lowerQuery);
     });
-  }, [settingsItems, searchQuery]);
+  }, [scopedSettingsItems, searchQuery]);
 
   // Adjust selected index when filtered list shrinks, and keep the selected
   // item visible when maxVisible changes (e.g., terminal resize).

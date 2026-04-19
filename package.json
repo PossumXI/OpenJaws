@@ -32,7 +32,7 @@
     "qmark:export": "bun scripts/export-q-mark.ts",
     "test": "bun scripts/run-unit-tests.ts",
     "test:coverage:scripts": "bun scripts/run-unit-tests.ts --scope scripts --coverage --min-line-coverage 15",
-    "audit:knip": "knip --config knip.json --include files",
+    "audit:knip": "bun scripts/run-knip-audit.ts",
     "verify:ci": "bun run audit:knip && bun run test:coverage:scripts && bun run test && bun run build && bun run website:verify",
     "verify:public": "bun run test && bun run build && bun run build:native && bun run website:verify",
     "verify:release": "bun run test && bun run build && bun run build:native && bun run website:verify && bun run system:check",

@@ -2,10 +2,23 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
     "scripts/**/*.ts",
-    "scripts/**/*.tsx"
+    "scripts/**/*.tsx",
+    "!scripts/artifacts/**"
   ],
   "project": [
     "scripts/**/*.ts",
-    "scripts/**/*.tsx"
+    "scripts/**/*.tsx",
+    "!scripts/artifacts/**"
+  ],
+  "ignoreFiles": [
+    "jobs/**",
+    "artifacts/**",
+    "**/jobs/**",
+    "**/artifacts/**",
+    "scripts/artifacts/**",
+    ".coverage/**",
+    "Doc/**",
+    "audit/**",
+    "docs/examples/**"
   ]
 }

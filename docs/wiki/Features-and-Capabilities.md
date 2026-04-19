@@ -5,9 +5,10 @@
 - flight-deck TUI with compact receipts, status pills, and background task inspection
 - `/status` with startup harness, route queue, worker health, voice/runtime wiring, and active-run-aware Immaculate/Q trace selection
 - `/immaculate` for live topology, execution load, control pulses, and worker visibility
-- `/provider`, `/theme`, `/voice`, `/remote-env`, `/caveman`, and `/power` configuration paths
+- `/help`, `/config`, `/provider`, `/theme`, `/privacy-settings`, `/voice`, `/remote-env`, `/caveman`, and `/power` configuration paths
 - `/preview` for the live bridge-backed in-TUI browser lane, `/chrome` for optional Chrome automation, and `/mcp` for server inventory and auth state
 - explicit runtime receipts so installed users can verify what is really active instead of relying on hidden fallbacks
+- dedicated `Appearance` and `Privacy` tabs inside Settings, including a local Privacy mode for telemetry/nonessential-traffic policy and clearer `auto` / `dark` / `light` theme behavior
 
 ## OpenCheek Agents
 
@@ -71,6 +72,8 @@
 ## How Users Discover These Capabilities
 
 - start with `/status` for live wiring, harness state, and queue visibility
+- use `/help` to rediscover the command surface without guessing
+- use `/config` for the main Settings deck, `/theme` for direct theme changes, and `/privacy-settings` for the local privacy lane
 - use `/immaculate` when you need orchestration topology, control pulses, or worker health
 - use `/provider` and `/remote-env` when switching execution strategy
 - use `/preview` for in-TUI browsing, `/chrome` for optional Chrome automation, and `/voice` for speech surfaces

@@ -68,6 +68,9 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 - worker health checks instead of silent failures
 - safer public update and release verification
 - clearer status for everyday installed users
+- a clearer Settings deck with dedicated `Appearance` and `Privacy` tabs instead of mixed toggles
+- a local Privacy mode for telemetry/nonessential-traffic policy plus clearer `auto` / `dark` / `light` theme behavior for installed users
+- easier command rediscovery through `/help`, `/config`, `/theme`, and `/privacy-settings`
 
 ## Agent Co-Work
 
@@ -167,6 +170,7 @@ The CI lane now also enforces a bounded Phase 0 hygiene gate: a `scripts/` dead-
 - Tagged installs update from the official release policy, not from every `main` push.
 - Use `/status` when you want the plain truth about what is active: provider, runtime, sandbox, routed work, and worker health.
 - Use `/provider` and `/remote-env` on purpose. OpenJaws is built to show setup changes, not hide them.
+- Use `/help` when you need to rediscover the command surface, `/config` for the main Settings deck, `/theme` for direct theme selection, and `/privacy-settings` for the local privacy lane.
 - Fresh installs start on `Q` in the picker, which maps to `oci:Q`; use `/provider` when you want to rotate keys, change the base URL, or switch providers.
 - Public installs should bring their own `OCI` / `Q` key. Internal operator surfaces can use OCI IAM with a local project/profile when that is the intended trust boundary.
 

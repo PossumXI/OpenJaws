@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import figures from 'figures';
 import * as React from 'react';
 import { getIsRemoteMode } from '../bootstrap/state.js';
+import { isAnalyticsRuntimeAvailable } from '../services/analytics/config.js';
 import {
   formatCost,
   getTotalAPIDuration,
@@ -51,6 +52,12 @@ import { getEnabledSettingSources, getSettingSourceDisplayNameCapitalized, getSe
 import { getManagedFileSettingsPresence, getPolicySettingsOrigin, getSettings_DEPRECATED, getSettingsForSource } from './settings/settings.js';
 import { getEnvironmentSelectionInfo, isConfiguredDefaultEnvironmentOverridable } from './teleport/environmentSelection.js';
 import type { ThemeName } from './theme.js';
+import {
+  getPrivacyLevel,
+  getPrivacyLevelReason,
+  isEssentialTrafficOnly,
+  isTelemetryDisabled,
+} from './privacyLevel.js';
 import { getGitBashStatus } from './windowsPaths.js';
 import { evaluateStartupHarness, summarizeStartupHarness } from './startupHarness.js';
 import { getElevenLabsConfig } from '../services/voiceOutput.js';
@@ -239,6 +246,23 @@ export function buildToolchainProperties(): Property[] {
     }
   }
   return properties;
+}
+export function buildPrivacyProperties(): Property[] {
+  const privacyLevel = getPrivacyLevel()
+  const reason = getPrivacyLevelReason()
+  const telemetryStatus = isAnalyticsRuntimeAvailable()
+    ? `telemetry ${isTelemetryDisabled() ? 'off' : 'on'}`
+    : 'telemetry unavailable in this build'
+
+  return [{
+    label: 'Privacy',
+    value: [
+      privacyLevel,
+      telemetryStatus,
+      `nonessential traffic ${isEssentialTrafficOnly() ? 'off' : 'on'}`,
+      ...(reason ? [`source ${reason}`] : []),
+    ]
+  }]
 }
 export function buildImmaculateProperties(
   harnessStatus: ImmaculateHarnessStatus | null = null,
