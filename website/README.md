@@ -1,8 +1,20 @@
 # Q Website
 
-This is a one-page Next.js shell for the public Q surface.
+This copy of the site is now a legacy mirror inside the OpenJaws repo.
 
-Production target: `https://qline.site`
+Canonical live website repo:
+
+- `https://github.com/PossumXI/q-s-unfolding-story`
+
+Important boundary:
+
+- do not publish `https://qline.site` from this OpenJaws repo anymore
+- OpenJaws can still build this site locally for reference and compatibility work
+- production deploys for `qline.site` must happen only from the canonical website repo above
+- the guarded publish script in this repo now fails closed unless an explicit emergency override env var is set
+- read-only live checks from this repo are still allowed
+
+Domain target for the canonical repo: `https://qline.site`
 
 It is designed to front:
 
@@ -93,7 +105,19 @@ code itself is clean.
 
 ## Netlify Deploy
 
-Use the guarded repo command instead of ad hoc Netlify CLI calls:
+Legacy note:
+
+- `bun run website:deploy:check`
+- `bun run website:deploy:safe`
+
+now split cleanly in this repo:
+
+- `website:deploy:check` is read-only and can still verify the live site
+- `website:deploy:safe` fails closed unless `OPENJAWS_ALLOW_LEGACY_QLINE_DEPLOY=1` is set deliberately for an emergency one-off publish
+
+Use the canonical website repo for live deploys instead of these OpenJaws commands.
+
+Historical guarded deploy behavior from this repo used to be:
 
 ```powershell
 bun run website:deploy:check

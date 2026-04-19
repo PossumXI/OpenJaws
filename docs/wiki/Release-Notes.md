@@ -4,6 +4,13 @@
 
 This page summarizes the current public OpenJaws surface that is already working in the repository and shipped build.
 
+## Publishing Guardrail
+
+- the OpenJaws repo is no longer allowed to publish the live `qline.site` production site
+- the canonical live website repo is now `https://github.com/PossumXI/q-s-unfolding-story`
+- the legacy deploy helper in OpenJaws now fails closed unless `OPENJAWS_ALLOW_LEGACY_QLINE_DEPLOY=1` is set explicitly for an emergency override
+- this guardrail exists because the old OpenJaws website copy drifted from the new live website codebase and should not be treated as the production source of truth anymore
+
 ## TUI and Branding
 
 - FIGlet-style `OPENJAWS` banner now uses a six-row ANSI-shadow treatment with the `OPENCHEEKS // ANSI-SHADOW FLIGHT DECK // IMMACULATE` deck line across the startup TUI

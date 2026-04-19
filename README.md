@@ -40,7 +40,7 @@ The Q mark above is sourced from `src/components/LogoV2/qMarkData.ts` and can be
 - [Install and Updates](docs/wiki/Install-and-Updates.md)
 - [Q and OCI Setup](docs/wiki/Q-and-OCI-Setup.md)
 - [Q Access and Limits](docs/wiki/Q-Access-and-Limits.md)
-- [website/README.md](website/README.md)
+- [website/README.md](website/README.md) - legacy mirror only; live `qline.site` publishing moved to `q-s-unfolding-story`
 - [Release and Update Policy](docs/wiki/Release-and-Update-Policy.md)
 - [Features and Capabilities](docs/wiki/Features-and-Capabilities.md)
 - [Apex Workspace Bridge](docs/wiki/Apex-Workspace.md)
@@ -454,6 +454,8 @@ Public hosted-Q website target:
 - the CI lane now enforces a bounded Phase 0 hygiene gate too: `scripts/` dead-file scan via `knip` plus a `15%` non-test line-coverage floor for `scripts/` before the main verify sweep runs
 - Stripe webhook target for that hosted lane is `https://qline.site/api/webhooks/stripe`
 - `https://aura-genesis.org` stays the company path, not the hosted-Q checkout surface
+- the live `qline.site` source of truth is no longer this OpenJaws repo; production publishing now belongs to `https://github.com/PossumXI/q-s-unfolding-story`
+- the guarded deploy script in this repo now fails closed unless `OPENJAWS_ALLOW_LEGACY_QLINE_DEPLOY=1` is set deliberately for a one-off emergency override
 
 See [Benchmark Status](docs/wiki/Benchmark-Status.md) for the detailed record and why those numbers matter to OpenJaws.
 

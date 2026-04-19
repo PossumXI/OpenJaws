@@ -151,6 +151,7 @@ OpenJaws now also carries a Netlify-ready Next.js surface for public `Q` access 
 The intended public hosted-Q surface is `https://qline.site`. `https://aura-genesis.org` remains the broader company path.
 `https://qline.site` now resolves over valid HTTPS and is the canonical public shell for hosted-Q signup and checkout.
 `https://qline.site` now also foregrounds OpenJaws, Q_agents, Agent Co-Work, the public GitHub repo, and the latest verified benchmark snapshot instead of looking like a billing-only landing page.
+The canonical live website source is now `https://github.com/PossumXI/q-s-unfolding-story`; the `website/` folder in OpenJaws is a legacy mirror and must not be used for routine production publishes anymore.
 That public benchmark snapshot is now generated from checked-in benchmark receipts and validated during CI instead of being left as hand-maintained copy.
 The local release sweep now also includes a live same-site `qline.site` smoke, so the published Netlify handler/runtime/content state is checked alongside the repo build before a local ship pass is called clean.
 The release sweep now also fails closed on real `system:check` failures, and the unit-test lane is scoped to the live repo `src/` and `scripts/` trees so mirrored benchmark artifacts cannot quietly contaminate a public ship pass.

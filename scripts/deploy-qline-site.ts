@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 import { execa } from 'execa'
 
+const LEGACY_DEPLOY_OVERRIDE_ENV = 'OPENJAWS_ALLOW_LEGACY_QLINE_DEPLOY'
+const CANONICAL_Q_REPO = 'https://github.com/PossumXI/q-s-unfolding-story'
 const EXPECTED_SITE_ID = 'edde15e1-bf1f-4986-aef3-5803fdce7406'
 const EXPECTED_SITE_NAME = 'qline-site-20260415022202'
 const EXPECTED_DOMAIN = 'qline.site'
@@ -327,6 +329,17 @@ async function promoteDeploy(siteId: string, deployId: string, token: string): P
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2))
+
+  if (options.promote && process.env[LEGACY_DEPLOY_OVERRIDE_ENV] !== '1') {
+    throw new Error(
+      [
+        'Legacy qline.site production publishes from the OpenJaws repository are disabled.',
+        `Publish the live site only from the canonical website repo: ${CANONICAL_Q_REPO}`,
+        `Read-only live checks are still allowed here. If you intentionally need a one-off emergency legacy publish override, set ${LEGACY_DEPLOY_OVERRIDE_ENV}=1 for that single command.`,
+      ].join(' '),
+    )
+  }
+
   const repoRoot = resolve(process.cwd())
   const token = readNetlifyAuthToken(repoRoot)
 
