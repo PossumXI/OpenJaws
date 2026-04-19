@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   APEX_PROJECT_ROOT,
   buildWindowsApexLaunchCommand,
+  summarizeApexBrowser,
   getApexLaunchTarget,
   getApexLaunchTargets,
   summarizeApexChrono,
@@ -13,6 +14,7 @@ describe('apexWorkspace', () => {
     const targets = getApexLaunchTargets()
     expect(targets.some(target => target.id === 'workspace_api')).toBe(true)
     expect(targets.some(target => target.id === 'chrono_bridge')).toBe(true)
+    expect(targets.some(target => target.id === 'browser_bridge')).toBe(true)
     expect(targets.some(target => target.id === 'browser')).toBe(true)
     expect(targets.some(target => target.id === 'notifications')).toBe(true)
   })
@@ -29,6 +31,7 @@ describe('apexWorkspace', () => {
     expect(launch.args.join(' ')).toContain('powershell.exe')
     expect(launch.args.join(' ')).toContain(APEX_PROJECT_ROOT)
     expect(launch.args.join(' ')).toContain('apps\\browser\\Cargo.toml')
+    expect(launch.args.join(' ')).toContain('flowspace-browser')
   })
 
   it('summarizes live workspace state into concise operator strings', () => {
@@ -176,5 +179,50 @@ describe('apexWorkspace', () => {
     expect(summary.headline).toContain('3.0 GB')
     expect(summary.details[0]).toContain('Workspace Snapshot')
     expect(summary.details[1]).toContain('every 12h')
+  })
+
+  it('summarizes browser bridge state into concise operator strings', () => {
+    const summary = summarizeApexBrowser({
+      mode: 'live',
+      renderMode: 'tui',
+      activeSessionId: 'session-1',
+      sessionCount: 1,
+      privacy: {
+        doNotTrack: true,
+        blockThirdPartyCookies: true,
+        clearOnExit: true,
+        userHistoryPersisted: false,
+        agentHistoryPersisted: true,
+      },
+      sessions: [
+        {
+          id: 'session-1',
+          intent: 'preview',
+          rationale: 'Check the app',
+          requestedBy: 'user',
+          recordHistory: false,
+          title: 'Clock Demo',
+          url: 'http://127.0.0.1:3000',
+          state: 'complete',
+          openedAt: '2026-04-18T00:00:00Z',
+          updatedAt: '2026-04-18T00:00:01Z',
+          excerpt: 'A clean clock preview.',
+          statusCode: 200,
+          loadTimeMs: 24,
+          imageCount: 0,
+          metadata: {
+            description: 'Clock app',
+            keywords: ['clock'],
+            author: null,
+            contentType: 'text/html',
+          },
+          links: [],
+        },
+      ],
+    })
+
+    expect(summary.headline).toContain('Clock Demo')
+    expect(summary.headline).toContain('tui')
+    expect(summary.details[2]).toContain('not persisted')
   })
 })

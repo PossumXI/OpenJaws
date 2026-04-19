@@ -99,12 +99,12 @@ See [Apex Workspace Bridge](Apex-Workspace.md) for the full setup and trust boun
 
 ## Accountable Browser Preview
 
-OpenJaws now has a bounded `/preview` lane for browser-backed app preview and supervised browsing.
+OpenJaws now has a bounded `/preview` lane for native in-TUI app preview and supervised browsing.
 
 - the TUI now records why a user or agent opened a browser session
-- Chrome-compatible preview is preferred when available
-- the external Apex browser is treated honestly as a launcher-backed desktop shell
-- `/status` now surfaces the latest preview receipt
+- the browser bridge keeps preview work inside OpenJaws instead of handing it off to Chrome
+- user browsing history stays private by default; only agent-led browsing is persisted for accountability
+- `/status` now surfaces the live browser runtime and the latest preview receipt
 
 See [Accountable Browser Preview](Browser-Preview.md) for the exact boundary.
 

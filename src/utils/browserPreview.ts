@@ -2,12 +2,17 @@ import { randomUUID } from 'crypto'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { getOpenJawsConfigHomeDir } from './envUtils.js'
-import { openBrowser } from './browser.js'
-import { runApexAction } from './apexWorkspace.js'
 import {
-  detectAvailableBrowser,
-  openInChrome,
-} from './openjawsInChrome/common.js'
+  closeApexBrowserSession,
+  getApexBrowserHealth,
+  getApexBrowserSummary,
+  navigateApexBrowserSession,
+  openApexBrowserSession,
+  startApexBrowserBridge,
+  summarizeApexBrowser,
+  type ApexBrowserSession,
+  type ApexBrowserSummary,
+} from './apexWorkspace.js'
 
 export type BrowserPreviewIntent =
   | 'preview'
@@ -16,9 +21,17 @@ export type BrowserPreviewIntent =
   | 'watch'
   | 'music'
 
-export type BrowserPreviewHandler = 'chrome' | 'system' | 'apex-browser'
+export type BrowserPreviewHandler =
+  | 'openjaws-browser'
+  | 'chrome'
+  | 'system'
+  | 'apex-browser'
 
-export type BrowserPreviewAction = 'open_url' | 'launch_apex_browser'
+export type BrowserPreviewAction =
+  | 'open_url'
+  | 'navigate_session'
+  | 'close_session'
+  | 'launch_apex_browser'
 
 export type BrowserPreviewSession = {
   id: string
@@ -107,12 +120,16 @@ function isBrowserPreviewSession(value: unknown): value is BrowserPreviewSession
   const record = value as Partial<BrowserPreviewSession>
   return (
     typeof record.id === 'string' &&
-    (record.action === 'open_url' || record.action === 'launch_apex_browser') &&
+    (record.action === 'open_url' ||
+      record.action === 'navigate_session' ||
+      record.action === 'close_session' ||
+      record.action === 'launch_apex_browser') &&
     typeof record.intent === 'string' &&
     typeof record.rationale === 'string' &&
     (record.requestedBy === 'user' || record.requestedBy === 'agent') &&
     typeof record.startedAt === 'string' &&
-    (record.handler === 'chrome' ||
+    (record.handler === 'openjaws-browser' ||
+      record.handler === 'chrome' ||
       record.handler === 'system' ||
       record.handler === 'apex-browser') &&
     typeof record.opened === 'boolean' &&
@@ -126,21 +143,20 @@ function normalizeBrowserPreviewUrl(url: string): string {
   if (!trimmed) {
     throw new Error('A preview URL is required.')
   }
-
-  let parsed: URL
+  if (trimmed.startsWith('localhost')) {
+    return `http://${trimmed}`
+  }
   try {
-    parsed = new URL(trimmed)
+    const parsed = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error(
+        `Unsupported preview URL protocol: ${parsed.protocol}. Use http:// or https://.`,
+      )
+    }
+    return parsed.toString()
   } catch {
     throw new Error(`Invalid preview URL: ${trimmed}`)
   }
-
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error(
-      `Unsupported preview URL protocol: ${parsed.protocol}. Use http:// or https://.`,
-    )
-  }
-
-  return parsed.toString()
 }
 
 function normalizeRationale(rationale: string): string {
@@ -155,10 +171,7 @@ function normalizeRationale(rationale: string): string {
 }
 
 function summarizeSession(session: BrowserPreviewSession): string {
-  const target =
-    session.action === 'launch_apex_browser'
-      ? 'Apex browser shell'
-      : session.url ?? 'browser session'
+  const target = session.url ?? 'browser session'
   return `${session.intent} · ${session.handler} · ${target}`
 }
 
@@ -207,6 +220,75 @@ export async function readBrowserPreviewReceipt(): Promise<BrowserPreviewReceipt
   }
 }
 
+async function ensureApexBrowserRuntime(): Promise<{
+  ok: boolean
+  message: string
+  summary: ApexBrowserSummary | null
+}> {
+  const health = await getApexBrowserHealth()
+  if (health) {
+    return {
+      ok: true,
+      message: `Browser bridge ready at ${health.service}.`,
+      summary: await getApexBrowserSummary(),
+    }
+  }
+
+  const start = await startApexBrowserBridge()
+  return {
+    ok: start.ok,
+    message: start.message,
+    summary: await getApexBrowserSummary(),
+  }
+}
+
+function createPreviewSession(
+  action: BrowserPreviewAction,
+  input: {
+    intent: BrowserPreviewIntent
+    rationale: string
+    requestedBy: 'user' | 'agent'
+    opened: boolean
+    note: string
+    url?: string
+  },
+): BrowserPreviewSession {
+  return {
+    id: randomUUID(),
+    action,
+    intent: input.intent,
+    rationale: input.rationale,
+    requestedBy: input.requestedBy,
+    startedAt: new Date().toISOString(),
+    handler: 'openjaws-browser',
+    opened: input.opened,
+    note: input.note,
+    url: input.url,
+  }
+}
+
+function shouldPersistSession(requestedBy: 'user' | 'agent'): boolean {
+  return requestedBy === 'agent'
+}
+
+function buildOpenMessage(
+  requestedBy: 'user' | 'agent',
+  session: ApexBrowserSession | null,
+): string {
+  if (!session) {
+    return requestedBy === 'agent'
+      ? 'Opened a Q-directed browser session.'
+      : 'Opened an in-TUI browser session.'
+  }
+  return requestedBy === 'agent'
+    ? `Opened ${session.url} in the OpenJaws browser and recorded the accountable handoff.`
+    : `Opened ${session.url} in the OpenJaws browser. User browsing history is not persisted.`
+}
+
+export async function readBrowserPreviewRuntime(): Promise<ApexBrowserSummary | null> {
+  return getApexBrowserSummary()
+}
+
 export async function openAccountableBrowserPreview(args: {
   url: string
   intent: BrowserPreviewIntent
@@ -217,50 +299,139 @@ export async function openAccountableBrowserPreview(args: {
   message: string
   session: BrowserPreviewSession
   receipt: BrowserPreviewReceipt
+  runtime: ApexBrowserSummary | null
 }> {
   const url = normalizeBrowserPreviewUrl(args.url)
   const rationale = normalizeRationale(args.rationale)
   const requestedBy = args.requestedBy ?? 'user'
-
-  let handler: BrowserPreviewHandler = 'system'
-  let opened = false
-  const detectedBrowser = await detectAvailableBrowser().catch(() => null)
-
-  if (detectedBrowser) {
-    handler = 'chrome'
-    opened = await openInChrome(url)
+  const runtime = await ensureApexBrowserRuntime()
+  if (!runtime.ok) {
+    const session = createPreviewSession('open_url', {
+      intent: coerceIntent(args.intent),
+      rationale,
+      requestedBy,
+      opened: false,
+      note: runtime.message,
+      url,
+    })
+    return {
+      ok: false,
+      message: runtime.message,
+      session,
+      receipt: await readBrowserPreviewReceipt(),
+      runtime: runtime.summary,
+    }
   }
 
-  if (!opened) {
-    handler = 'system'
-    opened = await openBrowser(url)
-  }
-
-  const note = opened
-    ? `Opened in ${handler === 'chrome' ? 'Chrome-compatible preview lane' : 'the system browser'}.`
-    : 'Failed to open the preview URL.'
-
-  const session: BrowserPreviewSession = {
-    id: randomUUID(),
-    action: 'open_url',
+  const result = await openApexBrowserSession({
+    url,
     intent: coerceIntent(args.intent),
     rationale,
     requestedBy,
-    startedAt: new Date().toISOString(),
-    handler,
-    opened,
-    note,
-    url,
-  }
-
-  const receipt = await appendSession(session)
+    recordHistory: requestedBy === 'agent',
+  })
+  const session = createPreviewSession('open_url', {
+    intent: coerceIntent(args.intent),
+    rationale,
+    requestedBy,
+    opened: result.ok,
+    note: result.message,
+    url: result.data?.session?.url ?? url,
+  })
+  const receipt = shouldPersistSession(requestedBy)
+    ? await appendSession(session)
+    : await readBrowserPreviewReceipt()
+  const nextRuntime = await getApexBrowserSummary()
   return {
-    ok: opened,
-    message: opened
-      ? `Opened ${url} for ${session.intent} via ${handler}.`
-      : `Failed to open ${url}.`,
+    ok: result.ok,
+    message:
+      result.ok && result.data?.session
+        ? buildOpenMessage(requestedBy, result.data.session)
+        : result.message,
     session,
     receipt,
+    runtime: nextRuntime,
+  }
+}
+
+export async function navigateBrowserPreviewSession(args: {
+  sessionId: string
+  url: string
+  requestedBy?: 'user' | 'agent'
+  intent?: BrowserPreviewIntent
+  rationale?: string
+}): Promise<{
+  ok: boolean
+  message: string
+  session: BrowserPreviewSession
+  receipt: BrowserPreviewReceipt
+  runtime: ApexBrowserSummary | null
+}> {
+  const sessionId = args.sessionId.trim()
+  if (!sessionId) {
+    throw new Error('A browser session id is required.')
+  }
+  const url = normalizeBrowserPreviewUrl(args.url)
+  const requestedBy = args.requestedBy ?? 'user'
+  const rationale = normalizeRationale(
+    args.rationale ?? 'Continue the active browser session in the TUI lane.',
+  )
+  const result = await navigateApexBrowserSession({
+    sessionId,
+    url,
+  })
+  const session = createPreviewSession('navigate_session', {
+    intent: coerceIntent(args.intent),
+    rationale,
+    requestedBy,
+    opened: result.ok,
+    note: result.message,
+    url: result.data?.session?.url ?? url,
+  })
+  const receipt = shouldPersistSession(requestedBy)
+    ? await appendSession(session)
+    : await readBrowserPreviewReceipt()
+  return {
+    ok: result.ok,
+    message: result.message,
+    session,
+    receipt,
+    runtime: await getApexBrowserSummary(),
+  }
+}
+
+export async function closeBrowserPreviewSession(args: {
+  sessionId: string
+  requestedBy?: 'user' | 'agent'
+}): Promise<{
+  ok: boolean
+  message: string
+  session: BrowserPreviewSession
+  receipt: BrowserPreviewReceipt
+  runtime: ApexBrowserSummary | null
+}> {
+  const sessionId = args.sessionId.trim()
+  if (!sessionId) {
+    throw new Error('A browser session id is required.')
+  }
+  const requestedBy = args.requestedBy ?? 'user'
+  const result = await closeApexBrowserSession({ sessionId })
+  const session = createPreviewSession('close_session', {
+    intent: 'preview',
+    rationale: 'Close the in-TUI browser session.',
+    requestedBy,
+    opened: result.ok,
+    note: result.message,
+  })
+  const receipt = shouldPersistSession(requestedBy)
+    ? await appendSession(session)
+    : await readBrowserPreviewReceipt()
+  return {
+    ok: result.ok,
+    message: result.message,
+    session,
+    receipt,
+    runtime: await getApexBrowserSummary(),
   }
 }
 
@@ -273,29 +444,27 @@ export async function launchApexBrowserShell(args: {
   message: string
   session: BrowserPreviewSession
   receipt: BrowserPreviewReceipt
+  runtime: ApexBrowserSummary | null
 }> {
   const rationale = normalizeRationale(args.rationale)
   const requestedBy = args.requestedBy ?? 'user'
-  const result = await runApexAction('browser')
-
-  const session: BrowserPreviewSession = {
-    id: randomUUID(),
-    action: 'launch_apex_browser',
+  const runtime = await ensureApexBrowserRuntime()
+  const session = createPreviewSession('launch_apex_browser', {
     intent: coerceIntent(args.intent),
     rationale,
     requestedBy,
-    startedAt: new Date().toISOString(),
-    handler: 'apex-browser',
-    opened: result.ok,
-    note: result.message,
-  }
-
-  const receipt = await appendSession(session)
+    opened: runtime.ok,
+    note: runtime.message,
+  })
+  const receipt = shouldPersistSession(requestedBy)
+    ? await appendSession(session)
+    : await readBrowserPreviewReceipt()
   return {
-    ok: result.ok,
-    message: result.message,
+    ok: runtime.ok,
+    message: runtime.message,
     session,
     receipt,
+    runtime: runtime.summary,
   }
 }
 
@@ -304,9 +473,10 @@ export function summarizeBrowserPreviewReceipt(
 ): BrowserPreviewSummary {
   if (!receipt || receipt.sessions.length === 0) {
     return {
-      headline: 'No accountable browser sessions recorded yet.',
+      headline: 'No accountable browser handoffs recorded yet.',
       details: [
-        'Use /preview to open a local app, research URL, or chill/watch lane with an explicit rationale.',
+        'User browser sessions stay inside the TUI and do not persist browsing history by default.',
+        'Q or agent-led browsing on the user’s behalf is the only lane that lands in accountable receipts.',
       ],
     }
   }
@@ -320,4 +490,10 @@ export function summarizeBrowserPreviewReceipt(
       ...rest.slice(0, 4).map(summarizeSession),
     ],
   }
+}
+
+export function summarizeBrowserPreviewRuntime(
+  summary: ApexBrowserSummary | null,
+): BrowserPreviewSummary {
+  return summarizeApexBrowser(summary)
 }

@@ -595,9 +595,9 @@ describe('buildBrowserPreviewProperties', () => {
             rationale: 'Verify the local dev app in a real browser.',
             requestedBy: 'user',
             startedAt: '2026-04-18T22:00:00.000Z',
-            handler: 'chrome',
+            handler: 'openjaws-browser',
             opened: true,
-            note: 'Opened in Chrome-compatible preview lane.',
+            note: 'Opened in the OpenJaws browser lane.',
             url: 'http://127.0.0.1:3000/',
           },
         ],
@@ -606,9 +606,62 @@ describe('buildBrowserPreviewProperties', () => {
       {
         label: 'Browser preview',
         value: [
-          'preview · chrome · http://127.0.0.1:3000/ · opened',
+          'preview · openjaws-browser · http://127.0.0.1:3000/ · opened',
           'requested by user · 2026-04-18T22:00:00.000Z',
           'why Verify the local dev app in a real browser.',
+        ],
+      },
+    ])
+  })
+
+  test('surfaces the live in-TUI browser runtime separately from accountable receipts', () => {
+    expect(
+      buildBrowserPreviewProperties(null, {
+        mode: 'live',
+        renderMode: 'tui',
+        activeSessionId: 'session-1',
+        sessionCount: 1,
+        privacy: {
+          doNotTrack: true,
+          blockThirdPartyCookies: true,
+          clearOnExit: true,
+          userHistoryPersisted: false,
+          agentHistoryPersisted: true,
+        },
+        sessions: [
+          {
+            id: 'session-1',
+            intent: 'preview',
+            rationale: 'Check the local app in the native browser lane.',
+            requestedBy: 'user',
+            recordHistory: false,
+            title: 'SEALED demo',
+            url: 'http://127.0.0.1:3000/',
+            state: 'ready',
+            openedAt: '2026-04-18T22:05:00.000Z',
+            updatedAt: '2026-04-18T22:05:03.000Z',
+            excerpt: 'Digital clock preview',
+            statusCode: 200,
+            loadTimeMs: 92,
+            imageCount: 3,
+            metadata: {
+              description: 'Clock preview',
+              keywords: ['clock', 'preview'],
+              author: null,
+              contentType: 'text/html',
+            },
+            links: [],
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        label: 'Browser runtime',
+        value: [
+          'SEALED demo · ready · tui',
+          'preview · user · http://127.0.0.1:3000/',
+          '200 · 92ms · 3 images · 0 links',
+          'User browsing history is not persisted; agent-led browsing stays accountable.',
         ],
       },
     ])

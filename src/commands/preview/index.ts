@@ -5,7 +5,7 @@ const preview = {
   name: 'preview',
   aliases: ['browser-preview', 'browse'],
   description:
-    'Open an accountable browser preview lane for local apps, research, or chill sessions',
+    'Open the native in-TUI browser for local apps, research, or accountable agent browsing',
   argumentHint: '[url]',
   load: () => import('./preview.js'),
 } satisfies Command

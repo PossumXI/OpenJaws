@@ -6,7 +6,7 @@
 - `/status` with startup harness, route queue, worker health, and voice/runtime wiring
 - `/immaculate` for live topology, execution load, control pulses, and worker visibility
 - `/provider`, `/theme`, `/voice`, `/remote-env`, `/caveman`, and `/power` configuration paths
-- `/chrome` for browser bridge setup and `/mcp` for server inventory and auth state
+- `/preview` for native in-TUI browser preview, `/chrome` for optional Chrome automation, and `/mcp` for server inventory and auth state
 - explicit runtime receipts so installed users can verify what is really active instead of relying on hidden fallbacks
 
 ## OpenCheek Agents
@@ -23,7 +23,8 @@
 - file read/write/edit and notebook edit tools
 - web fetch and Firecrawl dataset generation
 - MCP server integration
-- OpenJaws in Chrome browser automation when the bridge is installed
+- native in-TUI browser preview through the Apex browser bridge
+- optional OpenJaws in Chrome browser automation when the Chrome bridge is installed
 - permission prompts and allow-session shaping
 - local and remote execution paths
 
@@ -72,6 +73,6 @@
 - start with `/status` for live wiring, harness state, and queue visibility
 - use `/immaculate` when you need orchestration topology, control pulses, or worker health
 - use `/provider` and `/remote-env` when switching execution strategy
-- use `/chrome` and `/voice` when enabling browser or speech surfaces
+- use `/preview` for in-TUI browsing, `/chrome` for optional Chrome automation, and `/voice` for speech surfaces
 - open the background task dialog to inspect crews, deferred launches, and route pressure
 - use the safe install/update guidance in `Install and Updates` before replacing binaries or moving to a newer dynamic release

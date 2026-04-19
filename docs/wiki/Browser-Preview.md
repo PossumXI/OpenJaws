@@ -1,41 +1,41 @@
 # Accountable Browser Preview
 
-OpenJaws now has a bounded `/preview` command for browser-backed app preview, research, and supervised chill/watch sessions.
+OpenJaws now has a bounded `/preview` command for native in-TUI app preview, research, and supervised chill/watch sessions.
 
-This is the honest contract:
+This is the current contract:
 
-- OpenJaws does **not** claim to embed the external Apex browser engine directly into the TUI.
-- The fast real seam is a launcher-backed browser lane with accountability receipts.
-- Chrome-compatible launches are preferred when available.
-- The Apex browser app remains an external desktop shell that OpenJaws can launch on purpose.
+- `/preview` uses the dedicated Apex browser bridge and keeps the session inside the OpenJaws cockpit.
+- It does **not** hand normal preview work to Chrome or a third-party browser.
+- User browsing history stays out of persistent receipts by default.
+- Q or agent-led browsing on the user’s behalf is the only lane that lands in accountable receipts.
 
 ## What `/preview` does
 
-- opens `http://` or `https://` URLs through a real browser path
+- opens `http://` or `https://` URLs through the native OpenJaws browser lane
 - records:
   - intent (`preview`, `research`, `browse`, `watch`, `music`)
   - rationale (`why this session exists`)
   - requester (`user` or `agent`)
-  - handler (`chrome`, `system`, or `apex-browser`)
-- surfaces the latest receipt back into `/status`
+  - handler (`openjaws-browser`)
+- surfaces the live browser runtime plus the latest accountable receipt back into `/status`
 
 ## Why this design
 
-The external Apex browser under `ignite/apex-os-project/apps/browser` is a native Rust GUI app with its own event loop and platform webview stack. That makes it a good launcher target, but not a clean TUI-embedded surface.
+The Apex browser under `ignite/apex-os-project/apps/browser` is now bridged into OpenJaws through a narrow localhost runtime instead of being treated like a launcher-only shell. That keeps preview inside the TUI while still respecting a bounded trust surface.
 
-For OpenJaws, the best bounded production seam is:
+For OpenJaws, the production seam is now:
 
 - OpenJaws TUI command for accountable launches
-- existing Chrome/browser utilities for live preview
-- external Apex browser shell when an operator explicitly wants that desktop app
+- Apex browser bridge for page load, metadata, link capture, and excerpt rendering
+- persistent receipts only when Q or an agent is acting on the user’s behalf
 
 ## Accountability
 
-Each `/preview` launch keeps a receipt under the OpenJaws config home so operators can answer:
+Each accountable `/preview` launch keeps a receipt under the OpenJaws config home so operators can answer:
 
-- why did this agent open the browser
+- why did an agent open the browser
 - what kind of session was it
 - which runtime handled it
-- did it actually open
+- what page was rendered
 
-That keeps supervised preview and unsupervised browsing on the same visible contract.
+That keeps supervised preview and accountable agent browsing on the same visible contract without storing private user browsing history.

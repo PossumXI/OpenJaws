@@ -47,17 +47,18 @@ This page summarizes the current public OpenJaws surface that is already working
 - the `/apex` deck now exposes those bridge-backed surfaces through dedicated `Mail`, `Chat`, `Store`, `System`, `Chrono`, and `Security` tabs
 - `/apex` can now send Aegis Mail drafts, move/delete/flag selected mail items, create Shadow Chat sessions, post into those sessions, and install Store apps with a structured receipt through the same trusted bridge contract
 - browser, security center, vault, and related Apex desktop apps stay launcher-backed and out of process instead of being hard-embedded into the TUI
-- browser still stays launcher-only today; deeper browser integration still needs new bridge endpoints first
+- the browser now has a dedicated bridge-backed preview lane inside OpenJaws; launcher-only desktop apps remain outside the TUI
 - Apex launches now use a reduced allowlisted environment, and the bridge is only trusted when OpenJaws launched it itself unless the operator explicitly opts into trusting a pre-existing localhost listener
 - the workspace bridge launcher now auto-discovers a local `libclang` runtime on Windows when the upstream Apex workspace needs it to compile
 - `Notifications` and `argus` remain intentionally outside agent control until they have their own narrow localhost bridges plus confirmation and audit ladders
 
 ## Accountable Browser Preview
 
-- `/preview` now opens browser-backed app previews and supervised browse/watch/music sessions under one explicit receipt
+- `/preview` now opens native in-TUI app previews and supervised browse/watch/music sessions under one explicit receipt
 - each session keeps intent, rationale, requester, and runtime handler visible instead of letting agents browse without an explanation trail
-- the preview lane prefers the existing Chrome-compatible path when available and treats the external Apex browser honestly as a launcher-backed desktop shell
-- `/status` now surfaces the latest accountable preview session
+- the preview lane now uses the dedicated Apex browser bridge instead of preferring Chrome-compatible preview for normal session rendering
+- user browsing history stays private by default; only Q or agent-led browsing is persisted for accountability
+- `/status` now surfaces the live browser runtime and the latest accountable preview session
 
 ## Immaculate Integration
 

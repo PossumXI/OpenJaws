@@ -48,9 +48,9 @@ describe('browserPreview', () => {
           rationale: 'Verify the local app after the latest edit.',
           requestedBy: 'user',
           startedAt: '2026-04-18T22:00:00.000Z',
-          handler: 'chrome',
+          handler: 'openjaws-browser',
           opened: true,
-          note: 'Opened in Chrome-compatible preview lane.',
+          note: 'Opened in the OpenJaws browser lane.',
           url: 'http://127.0.0.1:3000/',
         },
         {
@@ -60,19 +60,21 @@ describe('browserPreview', () => {
           rationale: 'Need a longer unsupervised session for a stream.',
           requestedBy: 'agent',
           startedAt: '2026-04-18T21:00:00.000Z',
-          handler: 'apex-browser',
+          handler: 'openjaws-browser',
           opened: true,
-          note: 'Opened the Apex browser shell.',
+          note: 'Opened the native browser lane.',
         },
       ],
     })
 
-    expect(summary.headline).toContain('preview · chrome · http://127.0.0.1:3000/')
+    expect(summary.headline).toContain(
+      'preview · openjaws-browser · http://127.0.0.1:3000/',
+    )
     expect(summary.details).toContain(
       'why Verify the local app after the latest edit.',
     )
-    expect(summary.details.some(item => item.includes('watch · apex-browser'))).toBe(
-      true,
-    )
+    expect(
+      summary.details.some(item => item.includes('watch · openjaws-browser')),
+    ).toBe(true)
   })
 })

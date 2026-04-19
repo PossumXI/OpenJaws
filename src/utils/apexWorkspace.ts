@@ -41,11 +41,17 @@ export const APEX_WORKSPACE_API_URL =
 export const APEX_CHRONO_API_URL =
   process.env.OPENJAWS_APEX_CHRONO_API_URL?.trim() ||
   'http://127.0.0.1:8798'
+export const APEX_BROWSER_API_URL =
+  process.env.OPENJAWS_APEX_BROWSER_API_URL?.trim() ||
+  'http://127.0.0.1:8799'
 const APEX_RUNTIME_DIR = join(tmpdir(), 'openjaws-apex')
 const APEX_WORKSPACE_API_LOG = join(APEX_RUNTIME_DIR, 'workspace-api.log')
 const APEX_WORKSPACE_API_STATE = join(APEX_RUNTIME_DIR, 'workspace-api-state.json')
 const APEX_CHRONO_API_LOG = join(APEX_RUNTIME_DIR, 'chrono-bridge.log')
 const APEX_CHRONO_API_STATE = join(APEX_RUNTIME_DIR, 'chrono-bridge-state.json')
+const APEX_BROWSER_API_LOG = join(APEX_RUNTIME_DIR, 'browser-bridge.log')
+const APEX_BROWSER_API_STATE = join(APEX_RUNTIME_DIR, 'browser-bridge-state.json')
+const APEX_BROWSER_BOOT_TIMEOUT_MS = 60_000
 const APEX_TRUST_LOCALHOST =
   process.env.OPENJAWS_APEX_TRUST_LOCALHOST?.trim() === '1'
 const APEX_AUTH_HEADER = 'x-openjaws-apex-token'
@@ -56,6 +62,7 @@ export type ApexLaunchTarget = {
   id:
     | 'workspace_api'
     | 'chrono_bridge'
+    | 'browser_bridge'
     | 'browser'
     | 'aegis_mail'
     | 'security_center'
@@ -72,6 +79,7 @@ export type ApexLaunchTarget = {
   description: string
   path: string
   manifestPath?: string
+  binName?: string
   commandHint: string
 }
 
@@ -241,6 +249,52 @@ export type ApexWorkspaceSummary = {
   }
 }
 
+export type ApexBrowserLink = {
+  url: string
+  text: string
+  rel: string | null
+  linkType: string
+}
+
+export type ApexBrowserSession = {
+  id: string
+  intent: string
+  rationale: string
+  requestedBy: 'user' | 'agent'
+  recordHistory: boolean
+  title: string
+  url: string
+  state: string
+  openedAt: string
+  updatedAt: string
+  excerpt: string
+  statusCode: number
+  loadTimeMs: number
+  imageCount: number
+  metadata: {
+    description: string | null
+    keywords: string[]
+    author: string | null
+    contentType: string | null
+  }
+  links: ApexBrowserLink[]
+}
+
+export type ApexBrowserSummary = {
+  mode: string
+  renderMode: string
+  activeSessionId: string | null
+  sessionCount: number
+  privacy: {
+    doNotTrack: boolean
+    blockThirdPartyCookies: boolean
+    clearOnExit: boolean
+    userHistoryPersisted: boolean
+    agentHistoryPersisted: boolean
+  }
+  sessions: ApexBrowserSession[]
+}
+
 export type ApexActionResult = {
   ok: boolean
   message: string
@@ -289,7 +343,20 @@ const APEX_TARGETS: ApexLaunchTarget[] = [
       'Typed localhost bridge for Chrono backup jobs on 127.0.0.1:8798.',
     path: resolve(join(APEX_APPS_ROOT, 'chrono')),
     manifestPath: resolve(join(APEX_APPS_ROOT, 'chrono', 'Cargo.toml')),
+    binName: 'chrono-bridge',
     commandHint: 'cargo run --manifest-path apps/chrono/Cargo.toml --bin chrono-bridge',
+  },
+  {
+    id: 'browser_bridge',
+    label: 'Browser Bridge',
+    mode: 'sidecar',
+    category: 'bridge',
+    description:
+      'Typed localhost bridge for the native Flowspace browser engine on 127.0.0.1:8799.',
+    path: resolve(join(APEX_APPS_ROOT, 'browser')),
+    manifestPath: resolve(join(APEX_APPS_ROOT, 'browser', 'Cargo.toml')),
+    binName: 'browser-bridge',
+    commandHint: 'cargo run --manifest-path apps/browser/Cargo.toml --bin browser-bridge',
   },
   {
     id: 'browser',
@@ -300,6 +367,7 @@ const APEX_TARGETS: ApexLaunchTarget[] = [
       'Rust desktop browser shell with WebView/WebKit bindings. Best launched out of process.',
     path: resolve(join(APEX_APPS_ROOT, 'browser')),
     manifestPath: resolve(join(APEX_APPS_ROOT, 'browser', 'Cargo.toml')),
+    binName: 'flowspace-browser',
     commandHint: 'cargo run --manifest-path apps/browser/Cargo.toml --bin flowspace-browser',
   },
   {
@@ -424,6 +492,18 @@ function parseApexSocketUrl(baseUrl: string): { host: string; port: string } | n
   } catch {
     return null
   }
+}
+
+function buildCargoRunArgs(target: ApexLaunchTarget): string[] {
+  if (!target.manifestPath) {
+    throw new Error(`Launch target ${target.id} does not have a manifest path`)
+  }
+  return [
+    'run',
+    '--manifest-path',
+    target.manifestPath,
+    ...(target.binName ? ['--bin', target.binName] : []),
+  ]
 }
 
 function buildApexLaunchEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
@@ -1123,6 +1203,130 @@ export async function getApexChronoSummary(): Promise<ApexChronoSummary | null> 
   return payload.data
 }
 
+export async function getApexBrowserHealth(): Promise<ApexWorkspaceHealth | null> {
+  return fetchApexJson<ApexWorkspaceHealth>(
+    APEX_BROWSER_API_URL,
+    APEX_BROWSER_API_STATE,
+    '/health',
+    1500,
+  )
+}
+
+export async function getApexBrowserSummary(): Promise<ApexBrowserSummary | null> {
+  const payload = await fetchApexJson<ApexApiEnvelope<ApexBrowserSummary>>(
+    APEX_BROWSER_API_URL,
+    APEX_BROWSER_API_STATE,
+    '/api/v1/browser/summary',
+    2500,
+  )
+  if (!payload?.success) {
+    return null
+  }
+  return payload.data
+}
+
+export async function openApexBrowserSession(input: {
+  url: string
+  intent: string
+  rationale: string
+  requestedBy?: 'user' | 'agent'
+  recordHistory?: boolean
+}): Promise<
+  ApexStructuredActionResult<{
+    message: string
+    sessionId: string | null
+    session: ApexBrowserSession | null
+  }>
+> {
+  const url = input.url.trim()
+  const intent = input.intent.trim()
+  const rationale = input.rationale.trim()
+  if (!url || !intent || !rationale) {
+    return {
+      ok: false,
+      message:
+        'Browser open requires a URL, intent, and rationale.',
+      data: null,
+    }
+  }
+
+  return postApexStructuredAction(
+    APEX_BROWSER_API_URL,
+    APEX_BROWSER_API_STATE,
+    '/api/v1/browser/session/open',
+    {
+      url,
+      intent,
+      rationale,
+      requestedBy: input.requestedBy ?? 'user',
+      recordHistory:
+        input.recordHistory ?? (input.requestedBy ?? 'user') === 'agent',
+    },
+    'Browser session open',
+  )
+}
+
+export async function navigateApexBrowserSession(input: {
+  sessionId: string
+  url: string
+}): Promise<
+  ApexStructuredActionResult<{
+    message: string
+    sessionId: string | null
+    session: ApexBrowserSession | null
+  }>
+> {
+  const sessionId = input.sessionId.trim()
+  const url = input.url.trim()
+  if (!sessionId || !url) {
+    return {
+      ok: false,
+      message: 'Browser navigate requires a session id and URL.',
+      data: null,
+    }
+  }
+
+  return postApexStructuredAction(
+    APEX_BROWSER_API_URL,
+    APEX_BROWSER_API_STATE,
+    '/api/v1/browser/session/navigate',
+    {
+      sessionId,
+      url,
+    },
+    'Browser session navigate',
+  )
+}
+
+export async function closeApexBrowserSession(input: {
+  sessionId: string
+}): Promise<
+  ApexStructuredActionResult<{
+    message: string
+    sessionId: string | null
+    session: ApexBrowserSession | null
+  }>
+> {
+  const sessionId = input.sessionId.trim()
+  if (!sessionId) {
+    return {
+      ok: false,
+      message: 'Browser close requires a session id.',
+      data: null,
+    }
+  }
+
+  return postApexStructuredAction(
+    APEX_BROWSER_API_URL,
+    APEX_BROWSER_API_STATE,
+    '/api/v1/browser/session/close',
+    {
+      sessionId,
+    },
+    'Browser session close',
+  )
+}
+
 export async function createApexChronoJob(input: {
   name: string
   sourcePaths: string[]
@@ -1296,7 +1500,7 @@ export async function startApexWorkspaceApi(): Promise<ApexActionResult> {
   const workspaceApiSocket = parseApexSocketUrl(APEX_WORKSPACE_API_URL)
   const libclangPath = resolveLibclangPath()
   const token = randomUUID()
-  const child = spawn(cargoPath, ['run', '--manifest-path', target.manifestPath], {
+  const child = spawn(cargoPath, buildCargoRunArgs(target), {
     cwd: APEX_PROJECT_ROOT,
     detached: true,
     windowsHide: true,
@@ -1385,26 +1589,22 @@ export async function startApexChronoBridge(): Promise<ApexActionResult> {
   const logFd = openSync(APEX_CHRONO_API_LOG, 'a')
   const chronoSocket = parseApexSocketUrl(APEX_CHRONO_API_URL)
   const token = randomUUID()
-  const child = spawn(
-    cargoPath,
-    ['run', '--manifest-path', target.manifestPath, '--bin', 'chrono-bridge'],
-    {
-      cwd: APEX_PROJECT_ROOT,
-      detached: true,
-      windowsHide: true,
-      stdio: ['ignore', logFd, logFd],
-      env: buildApexLaunchEnv({
-        RUST_LOG: process.env.RUST_LOG ?? 'warn',
-        ...(chronoSocket
-          ? {
-              APEX_CHRONO_API_HOST: chronoSocket.host,
-              APEX_CHRONO_API_PORT: chronoSocket.port,
-            }
-          : {}),
-        APEX_CHRONO_API_TOKEN: token,
-      }),
-    },
-  )
+  const child = spawn(cargoPath, buildCargoRunArgs(target), {
+    cwd: APEX_PROJECT_ROOT,
+    detached: true,
+    windowsHide: true,
+    stdio: ['ignore', logFd, logFd],
+    env: buildApexLaunchEnv({
+      RUST_LOG: process.env.RUST_LOG ?? 'warn',
+      ...(chronoSocket
+        ? {
+            APEX_CHRONO_API_HOST: chronoSocket.host,
+            APEX_CHRONO_API_PORT: chronoSocket.port,
+          }
+        : {}),
+      APEX_CHRONO_API_TOKEN: token,
+    }),
+  })
   await new Promise(resolve => setTimeout(resolve, 1200))
   if (child.exitCode !== null) {
     return {
@@ -1431,6 +1631,99 @@ export async function startApexChronoBridge(): Promise<ApexActionResult> {
   }
 }
 
+export async function startApexBrowserBridge(): Promise<ApexActionResult> {
+  const target = getApexLaunchTarget('browser_bridge')
+  if (!target?.manifestPath) {
+    return {
+      ok: false,
+      message: 'Browser bridge target is not configured correctly.',
+    }
+  }
+  if (!existsSync(target.path) || !existsSync(target.manifestPath)) {
+    return {
+      ok: false,
+      message:
+        'Browser source is unavailable. Set OPENJAWS_APEX_ROOT or OPENJAWS_APEX_ASGARD_ROOT to the Apex workspace before launching.',
+    }
+  }
+  const trustedState = getTrustedApexSidecarState(
+    APEX_BROWSER_API_STATE,
+    APEX_BROWSER_API_URL,
+  )
+  if (!trustedState) {
+    const existingHealth = await isApexSidecarHealthy(APEX_BROWSER_API_URL)
+    if (existingHealth) {
+      return {
+        ok: false,
+        message:
+          'A listener is already bound to the browser bridge URL, but it was not launched by this OpenJaws session. Stop it or set OPENJAWS_APEX_TRUST_LOCALHOST=1 to trust that listener explicitly.',
+      }
+    }
+  }
+  if (await isApexSidecarHealthy(APEX_BROWSER_API_URL)) {
+    return {
+      ok: true,
+      message: `Browser bridge already running at ${APEX_BROWSER_API_URL}`,
+    }
+  }
+  const cargoPath = await resolveCargoBinary()
+  if (!cargoPath) {
+    return {
+      ok: false,
+      message: 'Cargo is not available on PATH, so browser sidecars cannot launch.',
+    }
+  }
+  mkdirSync(APEX_RUNTIME_DIR, { recursive: true })
+  const logFd = openSync(APEX_BROWSER_API_LOG, 'a')
+  const browserSocket = parseApexSocketUrl(APEX_BROWSER_API_URL)
+  const libclangPath = resolveLibclangPath()
+  const token = randomUUID()
+  const child = spawn(cargoPath, buildCargoRunArgs(target), {
+    cwd: APEX_PROJECT_ROOT,
+    detached: true,
+    windowsHide: true,
+    stdio: ['ignore', logFd, logFd],
+    env: buildApexLaunchEnv({
+      RUST_LOG: process.env.RUST_LOG ?? 'warn',
+      ...(browserSocket
+        ? {
+            APEX_BROWSER_API_HOST: browserSocket.host,
+            APEX_BROWSER_API_PORT: browserSocket.port,
+          }
+        : {}),
+      ...(libclangPath ? { LIBCLANG_PATH: libclangPath } : {}),
+      APEX_BROWSER_API_TOKEN: token,
+    }),
+  })
+  await new Promise(resolve => setTimeout(resolve, 1200))
+  if (child.exitCode !== null) {
+    return {
+      ok: false,
+      message:
+        child.exitCode === 0
+          ? 'Browser bridge process exited before the bridge became healthy.'
+          : `Browser bridge exited early with code ${child.exitCode}. Check ${APEX_BROWSER_API_LOG}.`,
+    }
+  }
+  writeApexSidecarState(APEX_BROWSER_API_STATE, {
+    pid: child.pid ?? 0,
+    startedAt: new Date().toISOString(),
+    token,
+    workspaceApiUrl: APEX_BROWSER_API_URL,
+  })
+  child.unref()
+  const ready = await waitForApexSidecarReady(
+    APEX_BROWSER_API_URL,
+    APEX_BROWSER_BOOT_TIMEOUT_MS,
+  )
+  return {
+    ok: true,
+    message: ready
+      ? `Started browser bridge from source${libclangPath ? ` with libclang ${libclangPath}` : ''}. Logs: ${APEX_BROWSER_API_LOG}`
+      : `Browser bridge launch started${libclangPath ? ` with libclang ${libclangPath}` : ''} and is still compiling or booting. Logs: ${APEX_BROWSER_API_LOG}`,
+  }
+}
+
 export function buildWindowsApexLaunchCommand(
   target: ApexLaunchTarget,
   cargoPath: string,
@@ -1438,9 +1731,12 @@ export function buildWindowsApexLaunchCommand(
   if (!target.manifestPath) {
     throw new Error(`Launch target ${target.id} does not have a manifest path`)
   }
+  const cargoArgs = buildCargoRunArgs(target)
+    .map(arg => quotePowerShellLiteral(arg))
+    .join(' ')
   const command = [
     `Set-Location -LiteralPath ${quotePowerShellLiteral(APEX_PROJECT_ROOT)}`,
-    `& ${quotePowerShellLiteral(cargoPath)} run --manifest-path ${quotePowerShellLiteral(target.manifestPath)}`,
+    `& ${quotePowerShellLiteral(cargoPath)} ${cargoArgs}`,
   ].join('; ')
   return {
     file: 'cmd.exe',
@@ -1475,7 +1771,7 @@ async function launchVisibleApexApp(
     }
   }
   if (process.platform !== 'win32') {
-    const child = spawn(cargoPath, ['run', '--manifest-path', target.manifestPath], {
+    const child = spawn(cargoPath, buildCargoRunArgs(target), {
       cwd: APEX_PROJECT_ROOT,
       detached: true,
       stdio: 'ignore',
@@ -1539,6 +1835,9 @@ export async function runApexAction(
     if (target.id === 'chrono_bridge') {
       return startApexChronoBridge()
     }
+    if (target.id === 'browser_bridge') {
+      return startApexBrowserBridge()
+    }
   }
   return launchVisibleApexApp(target)
 }
@@ -1589,6 +1888,45 @@ export function summarizeApexChrono(summary: ApexChronoSummary | null): {
           `${latestJob.sourcePaths[0] ?? 'no source path'}${latestJob.sourcePaths.length > 1 ? ` +${latestJob.sourcePaths.length - 1} more` : ''}`,
         ]
       : ['No Chrono jobs are defined yet.'],
+  }
+}
+
+export function summarizeApexBrowser(summary: ApexBrowserSummary | null): {
+  headline: string
+  details: string[]
+} {
+  if (!summary) {
+    return {
+      headline: 'Browser bridge offline',
+      details: [
+        'Start the browser bridge to keep web previews inside the OpenJaws TUI instead of launching an external browser.',
+      ],
+    }
+  }
+
+  const activeSession =
+    summary.sessions.find(session => session.id === summary.activeSessionId) ??
+    summary.sessions[0]
+  if (!activeSession) {
+    return {
+      headline: 'Browser bridge online · no active sessions',
+      details: [
+        summary.privacy.userHistoryPersisted
+          ? 'User browsing history is currently persisted.'
+          : 'User browsing history stays out of persistent receipts by default.',
+      ],
+    }
+  }
+
+  return {
+    headline: `${activeSession.title} · ${activeSession.state} · ${summary.renderMode}`,
+    details: [
+      `${activeSession.intent} · ${activeSession.requestedBy} · ${activeSession.url}`,
+      `${activeSession.statusCode} · ${activeSession.loadTimeMs}ms · ${activeSession.imageCount} images · ${activeSession.links.length} links`,
+      summary.privacy.userHistoryPersisted
+        ? 'User browsing history is currently persisted.'
+        : 'User browsing history is not persisted; agent-led browsing stays accountable.',
+    ],
   }
 }
 

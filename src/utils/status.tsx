@@ -64,6 +64,7 @@ import {
   getApexWorkspaceSummary,
   summarizeApexChrono,
   summarizeApexWorkspace,
+  type ApexBrowserSummary,
   type ApexChronoSummary,
   type ApexWorkspaceAvailability,
   type ApexWorkspaceHealth,
@@ -89,6 +90,7 @@ import {
 } from './qTraining.js';
 import { readLatestQTraceSummary, type QTraceSummary } from '../q/traceSummary.js';
 import {
+  summarizeBrowserPreviewRuntime,
   summarizeBrowserPreviewReceipt,
   type BrowserPreviewReceipt,
 } from './browserPreview.js';
@@ -714,21 +716,28 @@ export function buildApexWorkspaceProperties(
 }
 export function buildBrowserPreviewProperties(
   receipt: BrowserPreviewReceipt | null = null,
+  runtime: ApexBrowserSummary | null = null,
 ): Property[] {
-  if (!receipt) {
+  if (!receipt && !runtime) {
     return []
   }
 
-  const summary = summarizeBrowserPreviewReceipt(receipt)
-  return [
-    {
+  const properties: Property[] = []
+  if (runtime) {
+    const runtimeSummary = summarizeBrowserPreviewRuntime(runtime)
+    properties.push({
+      label: 'Browser runtime',
+      value: [runtimeSummary.headline, ...runtimeSummary.details.slice(0, 3)],
+    })
+  }
+  if (receipt) {
+    const summary = summarizeBrowserPreviewReceipt(receipt)
+    properties.push({
       label: 'Browser preview',
-      value: [
-        summary.headline,
-        ...summary.details.slice(0, 3),
-      ],
-    },
-  ]
+      value: [summary.headline, ...summary.details.slice(0, 3)],
+    })
+  }
+  return properties
 }
 type AgentCoworkContext = {
   teamName: string

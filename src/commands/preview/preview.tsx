@@ -8,20 +8,26 @@ import {
   Select,
 } from '../../components/CustomSelect/select.js'
 import { Box, Text } from '../../ink.js'
-import { useIsInsideModal, useModalOrTerminalSize } from '../../context/modalContext.js'
+import {
+  useIsInsideModal,
+  useModalOrTerminalSize,
+} from '../../context/modalContext.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
+import type { ApexBrowserSummary } from '../../utils/apexWorkspace.js'
+import { getApexLaunchTarget } from '../../utils/apexWorkspace.js'
 import type {
   BrowserPreviewIntent,
   BrowserPreviewReceipt,
 } from '../../utils/browserPreview.js'
 import {
-  launchApexBrowserShell,
+  closeBrowserPreviewSession,
+  navigateBrowserPreviewSession,
   openAccountableBrowserPreview,
   readBrowserPreviewReceipt,
+  readBrowserPreviewRuntime,
   summarizeBrowserPreviewReceipt,
+  summarizeBrowserPreviewRuntime,
 } from '../../utils/browserPreview.js'
-import { getApexLaunchTarget } from '../../utils/apexWorkspace.js'
-import { detectAvailableBrowser } from '../../utils/openjawsInChrome/common.js'
 
 const REFRESH_INTERVAL_MS = 15_000
 
@@ -34,7 +40,8 @@ type PreviewAction =
   | 'intent-watch'
   | 'intent-music'
   | 'open-preview'
-  | 'launch-apex-browser'
+  | 'navigate-preview'
+  | 'close-preview'
   | 'refresh'
 
 function getIntentFromAction(action: PreviewAction): BrowserPreviewIntent | null {
@@ -76,7 +83,9 @@ function DetailList({
   return (
     <Box flexDirection="column">
       {items.map(item => (
-        <Text key={item}>• {item}</Text>
+        <Text key={item} wrap="wrap">
+          • {item}
+        </Text>
       ))}
     </Box>
   )
@@ -84,24 +93,100 @@ function DetailList({
 
 function PreviewOverview({
   receipt,
-  browserAvailability,
+  runtime,
+  runtimeStatus,
 }: {
   receipt: BrowserPreviewReceipt | null
-  browserAvailability: string
+  runtime: ApexBrowserSummary | null
+  runtimeStatus: string
 }): React.ReactNode {
-  const summary = summarizeBrowserPreviewReceipt(receipt)
+  const runtimeSummary = summarizeBrowserPreviewRuntime(runtime)
+  const receiptSummary = summarizeBrowserPreviewReceipt(receipt)
+
   return (
     <Box flexDirection="column" gap={1}>
-      <SectionTitle>Preview lane</SectionTitle>
-      <Text>{summary.headline}</Text>
-      <DetailList items={summary.details} />
+      <SectionTitle>OpenJaws browser</SectionTitle>
+      <Text>{runtimeSummary.headline}</Text>
+      <DetailList items={runtimeSummary.details} />
 
       <SectionTitle>Runtime</SectionTitle>
-      <Text>{browserAvailability}</Text>
+      <Text>{runtimeStatus}</Text>
       <Text dimColor>
-        OpenJaws keeps the accountability record in its config home. Chrome/system
-        URL opens stay supervised; the Apex browser remains a launcher-backed shell.
+        The browser stays inside the OpenJaws TUI. User browsing history is not
+        persisted by default; only Q or agent-led browsing on the user&apos;s
+        behalf lands in accountable receipts.
       </Text>
+
+      <SectionTitle>Accountable receipts</SectionTitle>
+      <Text>{receiptSummary.headline}</Text>
+      <DetailList items={receiptSummary.details} />
+    </Box>
+  )
+}
+
+function PreviewSession({
+  runtime,
+}: {
+  runtime: ApexBrowserSummary | null
+}): React.ReactNode {
+  const activeSession =
+    runtime?.sessions.find(session => session.id === runtime.activeSessionId) ??
+    runtime?.sessions[0]
+
+  if (!activeSession) {
+    return (
+      <Box flexDirection="column" gap={1}>
+        <SectionTitle>Session view</SectionTitle>
+        <Text dimColor>
+          No active browser session yet. Open a URL from the Controls tab to
+          render it here inside the TUI.
+        </Text>
+      </Box>
+    )
+  }
+
+  const metadata = [
+    activeSession.metadata.description
+      ? `description ${activeSession.metadata.description}`
+      : null,
+    activeSession.metadata.author
+      ? `author ${activeSession.metadata.author}`
+      : null,
+    activeSession.metadata.contentType
+      ? `content ${activeSession.metadata.contentType}`
+      : null,
+    activeSession.metadata.keywords.length > 0
+      ? `keywords ${activeSession.metadata.keywords.join(', ')}`
+      : null,
+  ].filter(Boolean) as string[]
+
+  const links = activeSession.links
+    .slice(0, 10)
+    .map(link => `${link.text} · ${link.linkType} · ${link.url}`)
+
+  return (
+    <Box flexDirection="column" gap={1}>
+      <SectionTitle>{activeSession.title}</SectionTitle>
+      <Text wrap="wrap">{activeSession.url}</Text>
+      <Text wrap="wrap">
+        {activeSession.statusCode} · {activeSession.loadTimeMs}ms ·{' '}
+        {activeSession.imageCount} images · {activeSession.links.length} links
+      </Text>
+
+      <SectionTitle>Excerpt</SectionTitle>
+      <Text wrap="wrap">{activeSession.excerpt}</Text>
+
+      <SectionTitle>Metadata</SectionTitle>
+      <DetailList
+        items={metadata}
+        empty="No page metadata was exposed by the current page."
+      />
+
+      <SectionTitle>Links</SectionTitle>
+      <DetailList
+        items={links}
+        empty="No links were captured for the active page."
+      />
     </Box>
   )
 }
@@ -110,6 +195,7 @@ function PreviewLaunch({
   url,
   rationale,
   intent,
+  runtime,
   receipt,
   actionMessage,
   onSetUrl,
@@ -120,6 +206,7 @@ function PreviewLaunch({
   url: string
   rationale: string
   intent: BrowserPreviewIntent
+  runtime: ApexBrowserSummary | null
   receipt: BrowserPreviewReceipt | null
   actionMessage: string | null
   onSetUrl: (value: string) => void
@@ -128,6 +215,10 @@ function PreviewLaunch({
   onRunAction: (value: PreviewAction) => void
 }): React.ReactNode {
   const { headerFocused, focusHeader } = useTabHeaderFocus()
+  const activeSession =
+    runtime?.sessions.find(session => session.id === runtime.activeSessionId) ??
+    runtime?.sessions[0] ??
+    null
   const options = useMemo<OptionWithDescription<PreviewAction>[]>(
     () => [
       {
@@ -147,12 +238,6 @@ function PreviewLaunch({
         allowEmptySubmitToCancel: true,
       },
       {
-        label: `Intent: ${intent}`,
-        value: `intent-${intent}` as PreviewAction,
-        description:
-          'Switch the browser lane between app preview, research, browse, watch, or music.',
-      },
-      {
         label: 'Intent: preview',
         value: 'intent-preview',
         description: 'Local app preview, QA, UI verification, or dev review.',
@@ -165,45 +250,44 @@ function PreviewLaunch({
       {
         label: 'Intent: browse',
         value: 'intent-browse',
-        description: 'General supervised browsing outside the dev loop.',
+        description: 'General supervised browsing without persisting user history.',
       },
       {
         label: 'Intent: watch',
         value: 'intent-watch',
-        description: 'Video, streams, or long-form watch sessions.',
+        description: 'Video or long-form viewing inside the TUI browser lane.',
       },
       {
         label: 'Intent: music',
         value: 'intent-music',
-        description: 'Music or audio sessions that still need accountability.',
+        description: 'Audio or music sessions that still render inside OpenJaws.',
       },
       {
-        label: 'Open accountable session',
+        label: 'Open in-TUI browser session',
         value: 'open-preview',
-        description: 'Open the URL in the real browser path and persist the why/intent.',
+        description: 'Open the URL inside the native OpenJaws browser lane.',
       },
       {
-        label: 'Launch Apex browser shell',
-        value: 'launch-apex-browser',
+        label: 'Navigate active session',
+        value: 'navigate-preview',
         description:
-          'Start the external Flowspace/Apex browser app as a desktop shell.',
+          'Reuse the active session and navigate it to the current URL.',
       },
       {
-        label: 'Refresh session history',
+        label: 'Close active session',
+        value: 'close-preview',
+        description: 'Clear the current in-TUI browser session.',
+      },
+      {
+        label: 'Refresh browser state',
         value: 'refresh',
-        description: 'Reload the latest accountable browser sessions from disk.',
+        description: 'Reload the live browser bridge state and accountable receipts.',
       },
     ],
-    [intent, onSetRationale, onSetUrl, rationale, url],
+    [onSetRationale, onSetUrl, rationale, url],
   )
 
-  const recent = receipt?.sessions.slice(0, 5).map(session => {
-    const target =
-      session.action === 'launch_apex_browser'
-        ? 'Apex browser shell'
-        : session.url ?? 'browser session'
-    return `${session.intent} · ${session.handler} · ${target}`
-  }) ?? []
+  const recent = receipt?.sessions.slice(0, 5).map(summarizeReceiptLine) ?? []
 
   return (
     <Box flexDirection="row" gap={3}>
@@ -232,20 +316,40 @@ function PreviewLaunch({
         <Text wrap="wrap">Intent: {intent}</Text>
         <Text wrap="wrap">Why: {rationale || 'not set'}</Text>
 
-        <SectionTitle>Recent sessions</SectionTitle>
+        <SectionTitle>Active session</SectionTitle>
+        <DetailList
+          items={
+            activeSession
+              ? [
+                  `${activeSession.title} · ${activeSession.state}`,
+                  `${activeSession.url}`,
+                  activeSession.recordHistory
+                    ? 'Accountable agent session'
+                    : 'Private user session',
+                ]
+              : []
+          }
+          empty="No active browser session yet."
+        />
+
+        <SectionTitle>Recent accountable handoffs</SectionTitle>
         <DetailList
           items={recent}
-          empty="No accountable sessions recorded yet. Open one from the menu on the left."
+          empty="Only Q or agent-led browsing appears here."
         />
 
         <SectionTitle>Last action</SectionTitle>
         <Text wrap="wrap">
           {actionMessage ??
-            'Set the URL, keep the rationale explicit, then open the preview lane or launch the Apex browser shell.'}
+            'Open a session to render the web inside OpenJaws. User browsing stays private by default.'}
         </Text>
       </Box>
     </Box>
   )
+}
+
+function summarizeReceiptLine(session: BrowserPreviewReceipt['sessions'][number]): string {
+  return `${session.intent} · ${session.requestedBy} · ${session.url ?? session.note}`
 }
 
 function PreviewCommand({
@@ -263,25 +367,27 @@ function PreviewCommand({
   const [selectedTab, setSelectedTab] = useState('overview')
   const [url, setUrl] = useState(initialUrl)
   const [rationale, setRationale] = useState(
-    'Preview the current surface with an accountable browser session.',
+    'Preview the current surface inside the OpenJaws browser lane.',
   )
   const [intent, setIntent] = useState<BrowserPreviewIntent>('preview')
   const [receipt, setReceipt] = useState<BrowserPreviewReceipt | null>(null)
+  const [runtime, setRuntime] = useState<ApexBrowserSummary | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
-  const [browserAvailability, setBrowserAvailability] = useState(
-    'Checking browser availability…',
+  const [runtimeStatus, setRuntimeStatus] = useState(
+    'Checking the OpenJaws browser bridge…',
   )
 
   const refresh = useCallback(async () => {
-    const [nextReceipt, browser] = await Promise.all([
+    const [nextReceipt, nextRuntime] = await Promise.all([
       readBrowserPreviewReceipt(),
-      detectAvailableBrowser().catch(() => null),
+      readBrowserPreviewRuntime(),
     ])
     setReceipt(nextReceipt)
-    setBrowserAvailability(
-      browser
-        ? `Chrome-compatible browser detected (${browser}).`
-        : 'Chrome-compatible browser not detected. System browser fallback will be used.',
+    setRuntime(nextRuntime)
+    setRuntimeStatus(
+      nextRuntime
+        ? 'OpenJaws browser bridge ready for in-TUI rendering.'
+        : 'Browser bridge offline. Opening a session will boot it if the Apex browser source is available.',
     )
   }, [])
 
@@ -297,7 +403,7 @@ function PreviewCommand({
     async (action: PreviewAction) => {
       if (action === 'refresh') {
         await refresh()
-        setActionMessage('Reloaded the accountable browser session history.')
+        setActionMessage('Reloaded the in-TUI browser state and accountable receipts.')
         return
       }
 
@@ -309,27 +415,61 @@ function PreviewCommand({
         })
         setActionMessage(result.message)
         setReceipt(result.receipt)
+        setRuntime(result.runtime)
+        setRuntimeStatus(
+          result.runtime
+            ? 'OpenJaws browser bridge ready for in-TUI rendering.'
+            : result.message,
+        )
+        setSelectedTab('session')
         return
       }
 
-      if (action === 'launch-apex-browser') {
-        const result = await launchApexBrowserShell({
+      if (action === 'navigate-preview') {
+        const sessionId =
+          runtime?.activeSessionId ?? runtime?.sessions[0]?.id ?? null
+        if (!sessionId) {
+          setActionMessage(
+            'There is no active browser session to navigate yet. Open one first.',
+          )
+          return
+        }
+        const result = await navigateBrowserPreviewSession({
+          sessionId,
+          url,
           intent,
           rationale,
         })
         setActionMessage(result.message)
         setReceipt(result.receipt)
+        setRuntime(result.runtime)
+        setSelectedTab('session')
+        return
+      }
+
+      if (action === 'close-preview') {
+        const sessionId =
+          runtime?.activeSessionId ?? runtime?.sessions[0]?.id ?? null
+        if (!sessionId) {
+          setActionMessage('There is no active browser session to close.')
+          return
+        }
+        const result = await closeBrowserPreviewSession({ sessionId })
+        setActionMessage(result.message)
+        setReceipt(result.receipt)
+        setRuntime(result.runtime)
+        return
       }
     },
-    [intent, rationale, refresh, url],
+    [intent, rationale, refresh, runtime, url],
   )
 
-  const apexBrowser = getApexLaunchTarget('browser')
+  const apexBrowserBridge = getApexLaunchTarget('browser_bridge')
   const banner = (
     <Box flexDirection="row" gap={2}>
-      <Text>{browserAvailability}</Text>
+      <Text>{runtimeStatus}</Text>
       <Text dimColor>
-        Apex browser shell: {apexBrowser?.path ?? 'not configured'} · Esc closes
+        Bridge: {apexBrowserBridge?.path ?? 'not configured'} · Esc closes
       </Text>
     </Box>
   )
@@ -342,19 +482,26 @@ function PreviewCommand({
         selectedTab={selectedTab}
         onTabChange={setSelectedTab}
         banner={banner}
-        contentHeight={insideModal ? undefined : Math.min(contentHeight, modalSize.height)}
+        contentHeight={
+          insideModal ? undefined : Math.min(contentHeight, modalSize.height)
+        }
       >
         <Tab title="Overview">
           <PreviewOverview
             receipt={receipt}
-            browserAvailability={browserAvailability}
+            runtime={runtime}
+            runtimeStatus={runtimeStatus}
           />
         </Tab>
-        <Tab title="Launch">
+        <Tab title="Session">
+          <PreviewSession runtime={runtime} />
+        </Tab>
+        <Tab title="Controls">
           <PreviewLaunch
             url={url}
             rationale={rationale}
             intent={intent}
+            runtime={runtime}
             receipt={receipt}
             actionMessage={actionMessage}
             onSetUrl={setUrl}
