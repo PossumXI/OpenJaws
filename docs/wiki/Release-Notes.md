@@ -25,6 +25,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - coordinator, footer, and background-task surfaces now share one pressure vocabulary
 - queued launches, retry pressure, approval pressure, and routed work are visible before they fail
 - task, tool, co-work, and delivery surfaces now share one compact output vocabulary too, so completed / waiting / retry states and handoff summaries stop drifting between different parts of the app
+- the Gemini media helper now exposes a direct probe plus structured quota/auth/model classification, so Discord media bots can fall back cleanly when Google blocks media generation upstream
 
 ## Agent Co-Work
 

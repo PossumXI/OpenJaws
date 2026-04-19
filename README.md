@@ -63,6 +63,7 @@ The Q mark above is sourced from `src/components/LogoV2/qMarkData.ts` and can be
 - Gives you practical controls like `/status`, `/immaculate`, `/provider`, `/voice`, and `/remote-env`.
 - Adds a bounded `/apex` command center for trusted local mail, chat, store, system, security, and browser-preview lanes without pretending external Rust GUIs are native Ink views.
 - Normalizes task, tool, co-work, and delivery summaries so final handoffs read the same way across the TUI instead of drifting between different vocabularies.
+- Probes Gemini media lanes explicitly so Discord media bots can tell the difference between a listed model and a Google-side quota block, then fall back cleanly instead of stalling.
 - Includes built-in dataset and training tools for improving `Q` over time.
 
 ## Live Immaculate Benchmarks
