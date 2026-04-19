@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   buildRouteDispatchPythonArgs,
   getWorkerLeaseDurationMs,
+  validateRemoteExecutionEndpoint,
 } from './routing.js'
 
 describe('q routing helpers', () => {
@@ -104,5 +105,42 @@ describe('q routing helpers', () => {
       '--language',
       'ts',
     ])
+  })
+
+  test('allows https remote execution endpoints by default', () => {
+    expect(
+      validateRemoteExecutionEndpoint({
+        endpoint: 'https://remote-gpu-box.example/execute',
+        allowHostRisk: false,
+      }),
+    ).toEqual({
+      ok: true,
+      endpoint: 'https://remote-gpu-box.example/execute',
+    })
+  })
+
+  test('blocks insecure public remote execution endpoints without host-risk override', () => {
+    expect(
+      validateRemoteExecutionEndpoint({
+        endpoint: 'http://remote-gpu-box.example/execute',
+        allowHostRisk: false,
+      }),
+    ).toEqual({
+      ok: false,
+      error:
+        'remote execution endpoint must use https unless it targets a trusted local host or allow-host-risk is enabled',
+    })
+  })
+
+  test('allows insecure loopback endpoints for local routed execution', () => {
+    expect(
+      validateRemoteExecutionEndpoint({
+        endpoint: 'http://127.0.0.1:8787/execute',
+        allowHostRisk: false,
+      }),
+    ).toEqual({
+      ok: true,
+      endpoint: 'http://127.0.0.1:8787/execute',
+    })
   })
 })

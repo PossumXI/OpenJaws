@@ -221,8 +221,9 @@ describe('apexWorkspace', () => {
       ],
     })
 
-    expect(summary.headline).toContain('Clock Demo')
+    expect(summary.headline).toContain('Private user session')
     expect(summary.headline).toContain('native tui preview')
-    expect(summary.details[2]).toContain('not persisted')
+    expect(summary.details[0]).toContain('redacted from shared status surfaces')
+    expect(summary.details[2]).toContain('200')
   })
 })

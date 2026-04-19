@@ -756,10 +756,10 @@ describe('buildBrowserPreviewProperties', () => {
       {
         label: 'Browser runtime',
         value: [
-          'SEALED demo · ready · native tui preview',
+          'Private user session · ready · native tui preview',
           'OpenJaws browser bridge ready with SEALED demo in the native TUI preview lane.',
-          'preview · user · http://127.0.0.1:3000/',
-          '200 · 92ms · 3 images · 0 links',
+          'Private user browsing stays inside the TUI and is redacted from shared status surfaces.',
+          'preview · private user session',
         ],
       },
     ])

@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdir, rm } from 'fs/promises'
-import { join } from 'path'
+import { mkdir, rm, writeFile } from 'fs/promises'
+import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import {
   getBrowserPreviewReceiptPath,
+  normalizeBrowserPreviewUrl,
   readBrowserPreviewReceipt,
   summarizeBrowserPreviewReceipt,
   summarizeBrowserPreviewRuntime,
@@ -47,7 +48,7 @@ describe('browserPreview', () => {
           action: 'open_url',
           intent: 'preview',
           rationale: 'Verify the local app after the latest edit.',
-          requestedBy: 'user',
+          requestedBy: 'agent',
           startedAt: '2026-04-18T22:00:00.000Z',
           handler: 'openjaws-browser',
           opened: true,
@@ -77,6 +78,55 @@ describe('browserPreview', () => {
     expect(
       summary.details.some(item => item.includes('watch · openjaws-browser')),
     ).toBe(true)
+  })
+
+  test('filters non-accountable user sessions out of persisted receipts', async () => {
+    const receiptPath = getBrowserPreviewReceiptPath()
+    await mkdir(dirname(receiptPath), { recursive: true })
+    await writeFile(
+      receiptPath,
+      JSON.stringify(
+        {
+          version: 1,
+          updatedAt: '2026-04-18T22:00:00.000Z',
+          lastSessionId: 'session-1',
+          sessions: [
+            {
+              id: 'session-1',
+              action: 'open_url',
+              intent: 'preview',
+              rationale: 'User opened a local app preview.',
+              requestedBy: 'user',
+              startedAt: '2026-04-18T22:00:00.000Z',
+              handler: 'openjaws-browser',
+              opened: true,
+              note: 'Opened in the OpenJaws browser lane.',
+              url: 'http://127.0.0.1:3000/',
+            },
+            {
+              id: 'session-0',
+              action: 'open_url',
+              intent: 'research',
+              rationale: 'Agent checked deployment docs.',
+              requestedBy: 'agent',
+              startedAt: '2026-04-18T21:00:00.000Z',
+              handler: 'openjaws-browser',
+              opened: true,
+              note: 'Opened in the OpenJaws browser lane.',
+              url: 'https://docs.example.com/',
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const receipt = await readBrowserPreviewReceipt()
+    expect(receipt.sessions).toHaveLength(1)
+    expect(receipt.sessions[0]?.requestedBy).toBe('agent')
+    expect(receipt.sessions[0]?.url).toBe('https://docs.example.com/')
   })
 
   test('summarizes the native in-TUI browser runtime distinctly from the external shell', () => {
@@ -133,8 +183,25 @@ describe('browserPreview', () => {
       },
     })
 
-    expect(summary.headline).toContain('native tui preview')
+    expect(summary.headline).toBe('Private user session · ready · native tui preview')
     expect(summary.details[0]).toContain('native TUI preview lane')
-    expect(summary.details[1]).toContain('preview · user · http://127.0.0.1:3000/')
+    expect(summary.details[1]).toContain(
+      'Private user browsing stays inside the TUI and is redacted from shared status surfaces.',
+    )
+    expect(summary.details[2]).toContain('preview · private user session')
+  })
+
+  test('allows private-network URLs for preview intent', () => {
+    expect(
+      normalizeBrowserPreviewUrl('http://127.0.0.1:3000/', 'preview'),
+    ).toBe('http://127.0.0.1:3000/')
+  })
+
+  test('blocks private-network URLs for non-preview intents', () => {
+    expect(() =>
+      normalizeBrowserPreviewUrl('http://127.0.0.1:3000/', 'watch'),
+    ).toThrow(
+      'Private-network browser targets are only allowed for preview intent.',
+    )
   })
 })

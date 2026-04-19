@@ -65,6 +65,8 @@ This page summarizes the current public OpenJaws surface that is already working
 - each session keeps intent, rationale, requester, and runtime handler visible instead of letting agents browse without an explanation trail
 - the preview lane now uses the dedicated Apex browser bridge instead of preferring Chrome-compatible preview for normal session rendering
 - user browsing history stays private by default; only Q or agent-led browsing is persisted for accountability
+- localhost/private-network targets are now reserved for explicit `preview` sessions so the general browse/watch/music lanes stay on public URLs
+- private user sessions are now redacted from shared `/status` surfaces unless the session is an accountable Q or agent handoff
 - `/status` now reports the live bridge-backed preview session first and only uses the last accountable receipt as fallback context
 
 ## Immaculate Integration
@@ -170,6 +172,7 @@ This pass also tightens the public `Q` runtime story:
 - the CI lane now adds a bounded Phase 0 hygiene gate too: `scripts/` dead-file scan via `knip` plus a `15%` non-test scripts coverage floor before the main verify sweep runs
 - the website snapshot checker now fails closed on local drift while still falling back to the committed generated snapshot on runners that do not have private live benchmark receipts checked out, and the typed trace-summary tests now isolate their temp output so parallel CI runs do not collide
 - the Windows website build wrapper now provisions `website/` dependencies on demand when CI runners do not have a prebuilt nested `node_modules` tree, so `verify:ci` and `verify:public` no longer depend on local install layout quirks
+- routed Q dispatch now rejects insecure public `http://` execution endpoints unless the target is trusted local infrastructure or the operator explicitly accepts host risk
 
 ## What Is Planned Next
 

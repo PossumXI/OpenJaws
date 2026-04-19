@@ -189,6 +189,7 @@ Useful first-run operator commands:
 - `/status` to inspect harness, route queue, worker health, and runtime wiring
 - `/immaculate` to inspect live orchestration topology and control state
 - `/chrome` and `/voice` to configure browser and speech surfaces when available
+- `/preview` to keep local app previews inside the native OpenJaws browser lane, with private-network URLs reserved for explicit preview work instead of the general browse/watch/music paths
 
 Fresh installs also get a first-run setup flow inside the TUI. It helps you pick a provider, store a key, test that the provider is actually reachable, and confirm Immaculate is online before you start heavier work.
 

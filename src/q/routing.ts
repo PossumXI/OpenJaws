@@ -1,5 +1,6 @@
 import { closeSync, existsSync, openSync, writeFileSync } from 'fs'
 import { spawn } from 'child_process'
+import { isIP } from 'net'
 import { dirname, join, resolve } from 'path'
 import { execa } from 'execa'
 import {
@@ -125,6 +126,91 @@ export type QCliOutcome<T = unknown> = {
 
 export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function isTrustedRouteExecutionHost(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase()
+  if (!normalized) {
+    return false
+  }
+  if (
+    normalized === 'localhost' ||
+    normalized === 'host.docker.internal' ||
+    normalized.endsWith('.local') ||
+    normalized === '::1'
+  ) {
+    return true
+  }
+  const ipVersion = isIP(normalized)
+  if (ipVersion === 4) {
+    const [a, b] = normalized.split('.').map(Number)
+    return (
+      a === 10 ||
+      a === 127 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 169 && b === 254)
+    )
+  }
+  if (ipVersion === 6) {
+    return (
+      normalized.startsWith('fc') ||
+      normalized.startsWith('fd') ||
+      normalized.startsWith('fe80:')
+    )
+  }
+  return false
+}
+
+export function validateRemoteExecutionEndpoint(args: {
+  endpoint: string
+  allowHostRisk: boolean
+}):
+  | { ok: true; endpoint: string }
+  | { ok: false; error: string } {
+  const trimmed = args.endpoint.trim()
+  if (!trimmed) {
+    return {
+      ok: false,
+      error: 'remote execution endpoint missing',
+    }
+  }
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    return {
+      ok: false,
+      error: `remote execution endpoint is invalid: ${trimmed}`,
+    }
+  }
+  if (parsed.username || parsed.password) {
+    return {
+      ok: false,
+      error: 'remote execution endpoint must not include URL credentials',
+    }
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    return {
+      ok: false,
+      error: `remote execution endpoint must use http or https, received ${parsed.protocol}`,
+    }
+  }
+  if (
+    parsed.protocol === 'http:' &&
+    !args.allowHostRisk &&
+    !isTrustedRouteExecutionHost(parsed.hostname)
+  ) {
+    return {
+      ok: false,
+      error:
+        'remote execution endpoint must use https unless it targets a trusted local host or allow-host-risk is enabled',
+    }
+  }
+  return {
+    ok: true,
+    endpoint: parsed.toString(),
+  }
 }
 
 export async function postRemoteDispatchEnvelope(args: {
@@ -709,10 +795,20 @@ export async function dispatchQTrainingRoute(
     options.executionProfile === 'remote' ||
     claimedRoute.assignment?.executionProfile === 'remote'
   const fastPathWindow = peekQTrainingFastPathWindow({ root })
-  const executionEndpoint =
+  const rawExecutionEndpoint =
     options.executionEndpoint?.trim() ||
     claimedRoute.assignment?.executionEndpoint?.trim() ||
     null
+  const executionEndpointValidation = rawExecutionEndpoint
+    ? validateRemoteExecutionEndpoint({
+        endpoint: rawExecutionEndpoint,
+        allowHostRisk: options.allowHostRisk,
+      })
+    : null
+  const executionEndpoint =
+    executionEndpointValidation?.ok === true
+      ? executionEndpointValidation.endpoint
+      : null
   const dispatchTransport: QTrainingRouteDispatchTransport =
     remoteExecution && !fastPathWindow.active && executionEndpoint
       ? 'remote_http'
@@ -724,6 +820,7 @@ export async function dispatchQTrainingRoute(
   const blocked =
     !routeSecurity.valid ||
     !routeIntegrity.valid ||
+    (rawExecutionEndpoint !== null && executionEndpointValidation?.ok === false) ||
     (dispatchTransport === 'remote_http' && !executionEndpoint) ||
     (dispatchTransport === 'local_process' &&
       localPreflight.decision !== 'allow_local' &&
@@ -741,6 +838,9 @@ export async function dispatchQTrainingRoute(
       ? [
           !routeSecurity.valid ? `signature ${routeSecurity.reason}` : null,
           !routeIntegrity.valid ? 'integrity mismatch' : null,
+          executionEndpointValidation?.ok === false
+            ? executionEndpointValidation.error
+            : null,
           dispatchTransport === 'remote_http' && !executionEndpoint
             ? 'remote execution endpoint missing'
             : null,
@@ -772,6 +872,9 @@ export async function dispatchQTrainingRoute(
           ? [
               !routeSecurity.valid ? `signature ${routeSecurity.reason}` : null,
               !routeIntegrity.valid ? 'integrity mismatch' : null,
+              executionEndpointValidation?.ok === false
+                ? executionEndpointValidation.error
+                : null,
               dispatchTransport === 'remote_http' && !executionEndpoint
                 ? 'remote execution endpoint missing'
                 : null,

@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { mkdir, readFile, writeFile } from 'fs/promises'
+import { isIP } from 'net'
 import { join } from 'path'
 import { getOpenJawsConfigHomeDir } from './envUtils.js'
 import {
@@ -109,7 +110,9 @@ function parseReceipt(raw: string): BrowserPreviewReceipt {
 
   const record = parsed as Partial<BrowserPreviewReceipt>
   const sessions = Array.isArray(record.sessions)
-    ? record.sessions.filter(isBrowserPreviewSession)
+    ? record.sessions
+        .filter(isBrowserPreviewSession)
+        .filter(isAccountableBrowserPreviewSession)
     : []
 
   return {
@@ -150,7 +153,50 @@ function isBrowserPreviewSession(value: unknown): value is BrowserPreviewSession
   )
 }
 
-function normalizeBrowserPreviewUrl(url: string): string {
+function isAccountableBrowserPreviewSession(
+  session: BrowserPreviewSession,
+): boolean {
+  return session.requestedBy === 'agent'
+}
+
+function isPrivateBrowserPreviewHost(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase()
+  if (!normalized) {
+    return false
+  }
+  if (
+    normalized === 'localhost' ||
+    normalized === 'host.docker.internal' ||
+    normalized.endsWith('.local') ||
+    normalized === '::1'
+  ) {
+    return true
+  }
+  const ipVersion = isIP(normalized)
+  if (ipVersion === 4) {
+    const [a, b] = normalized.split('.').map(Number)
+    return (
+      a === 10 ||
+      a === 127 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 169 && b === 254)
+    )
+  }
+  if (ipVersion === 6) {
+    return (
+      normalized.startsWith('fc') ||
+      normalized.startsWith('fd') ||
+      normalized.startsWith('fe80:')
+    )
+  }
+  return false
+}
+
+export function normalizeBrowserPreviewUrl(
+  url: string,
+  intent: BrowserPreviewIntent = 'preview',
+): string {
   const trimmed = url.trim()
   if (!trimmed) {
     throw new Error('A preview URL is required.')
@@ -158,17 +204,23 @@ function normalizeBrowserPreviewUrl(url: string): string {
   if (trimmed.startsWith('localhost')) {
     return `http://${trimmed}`
   }
+  let parsed: URL
   try {
-    const parsed = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`)
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      throw new Error(
-        `Unsupported preview URL protocol: ${parsed.protocol}. Use http:// or https://.`,
-      )
-    }
-    return parsed.toString()
+    parsed = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`)
   } catch {
     throw new Error(`Invalid preview URL: ${trimmed}`)
   }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(
+      `Unsupported preview URL protocol: ${parsed.protocol}. Use http:// or https://.`,
+    )
+  }
+  if (intent !== 'preview' && isPrivateBrowserPreviewHost(parsed.hostname)) {
+    throw new Error(
+      'Private-network browser targets are only allowed for preview intent. Use preview for local apps and reserve browse/watch/music for public URLs.',
+    )
+  }
+  return parsed.toString()
 }
 
 function normalizeRationale(rationale: string): string {
@@ -364,13 +416,14 @@ export async function openAccountableBrowserPreview(args: {
   receipt: BrowserPreviewReceipt
   runtime: BrowserPreviewRuntime
 }> {
-  const url = normalizeBrowserPreviewUrl(args.url)
+  const intent = coerceIntent(args.intent)
+  const url = normalizeBrowserPreviewUrl(args.url, intent)
   const rationale = normalizeRationale(args.rationale)
   const requestedBy = args.requestedBy ?? 'user'
   const runtime = await ensureApexBrowserRuntime()
   if (!runtime.ok) {
     const session = createPreviewSession('open_url', {
-      intent: coerceIntent(args.intent),
+      intent,
       rationale,
       requestedBy,
       opened: false,
@@ -388,13 +441,13 @@ export async function openAccountableBrowserPreview(args: {
 
   const result = await openApexBrowserSession({
     url,
-    intent: coerceIntent(args.intent),
+    intent,
     rationale,
     requestedBy,
     recordHistory: requestedBy === 'agent',
   })
   const session = createPreviewSession('open_url', {
-    intent: coerceIntent(args.intent),
+    intent,
     rationale,
     requestedBy,
     opened: result.ok,
@@ -434,7 +487,8 @@ export async function navigateBrowserPreviewSession(args: {
   if (!sessionId) {
     throw new Error('A browser session id is required.')
   }
-  const url = normalizeBrowserPreviewUrl(args.url)
+  const intent = coerceIntent(args.intent)
+  const url = normalizeBrowserPreviewUrl(args.url, intent)
   const requestedBy = args.requestedBy ?? 'user'
   const rationale = normalizeRationale(
     args.rationale ?? 'Continue the active browser session in the TUI lane.',
@@ -444,7 +498,7 @@ export async function navigateBrowserPreviewSession(args: {
     url,
   })
   const session = createPreviewSession('navigate_session', {
-    intent: coerceIntent(args.intent),
+    intent,
     rationale,
     requestedBy,
     opened: result.ok,

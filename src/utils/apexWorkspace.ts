@@ -1918,6 +1918,22 @@ export function summarizeApexBrowser(summary: ApexBrowserSummary | null): {
     }
   }
 
+  const isPrivateUserSession =
+    activeSession.requestedBy === 'user' && !activeSession.recordHistory
+  if (isPrivateUserSession) {
+    return {
+      headline: `Private user session · ${activeSession.state} · native ${summary.renderMode} preview`,
+      details: [
+        'Private user browsing stays inside the TUI and is redacted from shared status surfaces.',
+        `${activeSession.intent} · private user session`,
+        `${activeSession.statusCode} · ${activeSession.loadTimeMs}ms · ${activeSession.imageCount} images · ${activeSession.links.length} links`,
+        summary.privacy.userHistoryPersisted
+          ? 'User browsing history is currently persisted.'
+          : 'User browsing history is not persisted; agent-led browsing stays accountable.',
+      ],
+    }
+  }
+
   return {
     headline: `${activeSession.title} · ${activeSession.state} · native ${summary.renderMode} preview`,
     details: [

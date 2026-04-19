@@ -9,10 +9,13 @@ This is the current contract:
 - `/preview` is the preferred native lane; `/apex launch browser` remains the explicit out-of-process fallback when you need the external Flowspace window.
 - User browsing history stays out of persistent receipts by default.
 - Q or agent-led browsing on the user’s behalf is the only lane that lands in accountable receipts.
+- private-network and localhost targets are reserved for explicit `preview` sessions, so the general `browse`, `watch`, and `music` lanes stay on public URLs instead of quietly hitting internal hosts.
+- shared status surfaces now redact private user session titles and URLs unless the session is an accountable Q or agent handoff.
 
 ## What `/preview` does
 
 - opens `http://` or `https://` URLs through the native OpenJaws browser lane
+- keeps local app previews on the `preview` intent and blocks private-network browsing for the non-preview leisure lanes
 - records:
   - intent (`preview`, `research`, `browse`, `watch`, `music`)
   - rationale (`why this session exists`)
