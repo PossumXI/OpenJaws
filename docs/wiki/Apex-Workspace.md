@@ -20,6 +20,7 @@ The current OpenJaws side exposes:
 - trusted Shadow Chat send plus chat-session creation from inside `/apex`
 - trusted Store install with structured install receipts from inside `/apex`
 - dedicated `chrono-bridge` health, summary, and bounded backup actions from inside `/apex`
+- `/status` now distinguishes the live bridge-backed preview session from plain Apex browser launcher availability
 - guarded launchers for:
   - `workspace_api`
   - `chrono-bridge`
@@ -98,4 +99,4 @@ The cleaner next steps are:
 - richer `/status` fusion for `system_monitor` and `security_center`
 - more bounded mail/chat/store operator actions over `workspace_api`
 - launcher-backed browser/security/vault actions with better receipts
-- if the browser needs deeper OpenJaws integration, add stable bridge endpoints first instead of pretending the external GUI is native Ink UI
+- keep launcher-backed browser actions separate, and add stable bridge endpoints first whenever deeper OpenJaws browser control is needed

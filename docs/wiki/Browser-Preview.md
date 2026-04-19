@@ -17,7 +17,7 @@ This is the current contract:
   - rationale (`why this session exists`)
   - requester (`user` or `agent`)
   - handler (`openjaws-browser`)
-- surfaces the live browser runtime plus the latest accountable receipt back into `/status`
+- surfaces the active in-TUI browser bridge session plus the latest accountable receipt back into `/status`, with the live bridge taking priority
 
 ## Why this design
 
@@ -28,6 +28,7 @@ For OpenJaws, the production seam is now:
 - OpenJaws TUI command for accountable launches
 - Apex browser bridge for page load, metadata, link capture, and excerpt rendering
 - persistent receipts only when Q or an agent is acting on the user’s behalf
+- launcher-backed desktop browser targets stay separate from `/preview`; the preview runtime is the bridge-backed in-TUI lane
 
 ## Accountability
 

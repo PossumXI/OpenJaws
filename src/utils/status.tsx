@@ -64,7 +64,6 @@ import {
   getApexWorkspaceSummary,
   summarizeApexChrono,
   summarizeApexWorkspace,
-  type ApexBrowserSummary,
   type ApexChronoSummary,
   type ApexWorkspaceAvailability,
   type ApexWorkspaceHealth,
@@ -93,6 +92,7 @@ import {
   summarizeBrowserPreviewRuntime,
   summarizeBrowserPreviewReceipt,
   type BrowserPreviewReceipt,
+  type BrowserPreviewRuntime,
 } from './browserPreview.js';
 export type Property = {
   label?: string;
@@ -318,6 +318,12 @@ export function buildImmaculateTraceProperties(
   if (!summary) {
     return []
   }
+  const traceStateLabel =
+    summary.runState === 'active'
+      ? 'active'
+      : summary.runState === 'completed'
+        ? 'completed'
+        : 'stale'
   const formatTraceLatency = (ms: number): string =>
     ms < 1000 ? `${Math.round(ms)}ms` : formatDuration(ms)
   const interactionParts = [
@@ -353,9 +359,14 @@ export function buildImmaculateTraceProperties(
       label: 'Immaculate trace',
       value: [
         summary.sessionId,
+        traceStateLabel,
         `${formatNumber(summary.eventCount)} events`,
         ...(summary.startedAt ? [`started ${summary.startedAt}`] : []),
-        ...(summary.endedAt ? [`ended ${summary.endedAt}`] : []),
+        ...(summary.endedAt
+          ? [`ended ${summary.endedAt}`]
+          : summary.lastTimestamp
+            ? [`last ${summary.lastTimestamp}`]
+            : []),
       ],
     },
     {
@@ -384,6 +395,12 @@ export function buildQTraceProperties(
   if (!summary) {
     return []
   }
+  const traceStateLabel =
+    summary.runState === 'active'
+      ? 'active'
+      : summary.runState === 'completed'
+        ? 'completed'
+        : 'stale'
   const formatTraceLatency = (ms: number): string =>
     ms < 1000 ? `${Math.round(ms)}ms` : formatDuration(ms)
   return [
@@ -392,9 +409,14 @@ export function buildQTraceProperties(
       value: [
         summary.sessionId,
         summary.kind,
+        traceStateLabel,
         `${formatNumber(summary.eventCount)} events`,
         ...(summary.startedAt ? [`started ${summary.startedAt}`] : []),
-        ...(summary.endedAt ? [`ended ${summary.endedAt}`] : []),
+        ...(summary.endedAt
+          ? [`ended ${summary.endedAt}`]
+          : summary.lastTimestamp
+            ? [`last ${summary.lastTimestamp}`]
+            : []),
       ],
     },
     {
@@ -716,7 +738,7 @@ export function buildApexWorkspaceProperties(
 }
 export function buildBrowserPreviewProperties(
   receipt: BrowserPreviewReceipt | null = null,
-  runtime: ApexBrowserSummary | null = null,
+  runtime: BrowserPreviewRuntime | null = null,
 ): Property[] {
   if (!receipt && !runtime) {
     return []

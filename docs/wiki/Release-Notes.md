@@ -26,6 +26,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - queued launches, retry pressure, approval pressure, and routed work are visible before they fail
 - task, tool, co-work, and delivery surfaces now share one compact output vocabulary too, so completed / waiting / retry states and handoff summaries stop drifting between different parts of the app
 - the Gemini media helper now exposes a direct probe plus structured quota/auth/model classification, so Discord media bots can fall back cleanly when Google blocks media generation upstream
+- the Discord mention help, locked operator manual, and per-bot command surface now come from one shared capability-aware command catalog instead of drifting across separate help copies
 
 ## Agent Co-Work
 
@@ -60,7 +61,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - each session keeps intent, rationale, requester, and runtime handler visible instead of letting agents browse without an explanation trail
 - the preview lane now uses the dedicated Apex browser bridge instead of preferring Chrome-compatible preview for normal session rendering
 - user browsing history stays private by default; only Q or agent-led browsing is persisted for accountability
-- `/status` now surfaces the live browser runtime and the latest accountable preview session
+- `/status` now reports the live bridge-backed preview session first and only uses the last accountable receipt as fallback context
 
 ## Immaculate Integration
 
@@ -70,7 +71,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - routed `Q` execution now uses signed manifests, worker assignment, remote dispatch, and signed result reconciliation
 - the Immaculate integration notes now carry the verified hybrid-session, OCI-training, W&B, and benchmark publication contracts that OpenJaws is aligning against
 - the tracing lane now has a typed `src/immaculate/events.ts` schema plus structured session-trace writing, and benchmark lanes now emit deterministic trace-backed receipt files with signature blocks when a signing key is configured
-- `/status` and `/immaculate` now read the latest typed trace summary directly, and `/status` now also reads the latest Q benchmark trace summary, so route flow and p95 latency are visible in operator surfaces instead of only inside artifact folders
+- `/status` and `/immaculate` now prefer the active typed trace for the run in flight, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
 
 ## Provider and First-Run Setup
 

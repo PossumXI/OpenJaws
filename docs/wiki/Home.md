@@ -106,7 +106,7 @@ OpenJaws now has a bounded `/preview` lane for native in-TUI app preview and sup
 - the TUI now records why a user or agent opened a browser session
 - the browser bridge keeps preview work inside OpenJaws instead of handing it off to Chrome
 - user browsing history stays private by default; only agent-led browsing is persisted for accountability
-- `/status` now surfaces the live browser runtime and the latest preview receipt
+- `/status` now surfaces the live in-TUI browser bridge session first and the latest accountable preview receipt as fallback context
 
 See [Accountable Browser Preview](Browser-Preview.md) for the exact boundary.
 
@@ -133,7 +133,7 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 - the local lane writes `reward.json` and `reward-details.json` so the results are easy to compare with Rewardkit-style tooling
 - `--lineage-id` and optional `--phase-id` now let the local, routed, and follow-up benchmark receipts stay attached to the same intentional work thread
 - hybrid sessions now keep a rolling 3-failures-in-60s transport hysteresis window for the Immaculate fast path, so one transient route miss does not instantly suppress routed execution
-- the local Discord `Q_agent` lane now writes patrol/routing/voice/knowledge/operator receipts that `/status` can read from the same machine
+- the local Discord lane now builds mention help, locked manuals, and per-bot command surfaces from one shared capability-aware command registry instead of drifting across separate help text
 
 Honest boundary:
 
@@ -143,7 +143,7 @@ Honest boundary:
 - the newest official Terminal-Bench public-task receipt is now submitted through the official leaderboard repo discussion flow, but the verifier reward stayed `0.0`, so it is execution proof rather than a strong leaderboard result
 - the newest local repeated Terminal-Bench soak receipt is useful for stability tuning, not a public leaderboard claim
 - the Immaculate trace lane now uses a typed event union under `src/immaculate/events.ts`, and benchmark lanes now emit deterministic trace-backed receipts with signature blocks when a signing key is configured
-- `/status` and `/immaculate` now read the latest typed Immaculate trace summary directly, and `/status` now also surfaces the latest Q benchmark trace summary, so live route flow and p95 latency stay visible outside raw artifact folders
+- `/status` and `/immaculate` now prefer the active typed Immaculate trace for the run in flight, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
 - the Discord station currently uses scheduled text-channel patrols and optional speech attachments, not full voice-channel presence
 - the private Discord station can search a secret-safe local corpus and run explicit operator-only OpenJaws workflows, but it is not a hidden shell surface
 

@@ -9,6 +9,8 @@ type LatencyStats = {
   maxMs: number | null
 }
 
+export type ImmaculateTraceRunState = 'active' | 'completed' | 'stale'
+
 export type ImmaculateTraceSummary = {
   path: string
   sessionId: string
@@ -16,6 +18,7 @@ export type ImmaculateTraceSummary = {
   startedAt: string | null
   endedAt: string | null
   lastTimestamp: string | null
+  runState: ImmaculateTraceRunState
   countsByType: Record<string, number>
   routeDispatchCount: number
   routeLeaseCount: number
@@ -27,6 +30,13 @@ export type ImmaculateTraceSummary = {
   reflexLatency: LatencyStats
   cognitiveLatency: LatencyStats
 }
+
+type TraceSummaryReadOptions = {
+  referenceTimeMs?: number
+  activeWindowMs?: number
+}
+
+export const IMMACULATE_ACTIVE_TRACE_WINDOW_MS = 15 * 60 * 1000
 
 function percentile(sorted: number[], ratio: number): number | null {
   if (sorted.length === 0) {
@@ -57,6 +67,63 @@ function summarizeLatencies(values: number[]): LatencyStats {
   }
 }
 
+function parseTraceTimestampMs(value: string | null): number | null {
+  if (!value) {
+    return null
+  }
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function getTraceActivityTimestampMs(summary: {
+  lastTimestamp: string | null
+  startedAt: string | null
+}): number | null {
+  return (
+    parseTraceTimestampMs(summary.lastTimestamp) ??
+    parseTraceTimestampMs(summary.startedAt)
+  )
+}
+
+function getTraceRecencyTimestampMs(summary: {
+  endedAt: string | null
+  lastTimestamp: string | null
+  startedAt: string | null
+}): number {
+  return (
+    parseTraceTimestampMs(summary.lastTimestamp) ??
+    parseTraceTimestampMs(summary.endedAt) ??
+    parseTraceTimestampMs(summary.startedAt) ??
+    0
+  )
+}
+
+export function classifyImmaculateTraceRunState(
+  summary: {
+    endedAt: string | null
+    lastTimestamp: string | null
+    startedAt: string | null
+  },
+  options: TraceSummaryReadOptions = {},
+): ImmaculateTraceRunState {
+  if (summary.endedAt) {
+    return 'completed'
+  }
+
+  const activityTimestampMs = getTraceActivityTimestampMs(summary)
+  if (activityTimestampMs === null) {
+    return 'stale'
+  }
+
+  const referenceTimeMs = options.referenceTimeMs ?? Date.now()
+  const activeWindowMs =
+    options.activeWindowMs ?? IMMACULATE_ACTIVE_TRACE_WINDOW_MS
+
+  return referenceTimeMs - activityTimestampMs <= activeWindowMs
+    ? 'active'
+    : 'stale'
+}
+
 export function resolveImmaculateTraceDir(root = process.cwd()): string {
   return resolve(
     process.env.OPENJAWS_SESSION_TRACE_DIR ??
@@ -79,7 +146,10 @@ export function listImmaculateTraceFiles(root = process.cwd()): string[] {
   }
 }
 
-export function readImmaculateTraceSummary(path: string): ImmaculateTraceSummary {
+export function readImmaculateTraceSummary(
+  path: string,
+  options: TraceSummaryReadOptions = {},
+): ImmaculateTraceSummary {
   const lines = readFileSync(path, 'utf8')
     .split(/\r?\n/)
     .map(line => line.trim())
@@ -136,13 +206,18 @@ export function readImmaculateTraceSummary(path: string): ImmaculateTraceSummary
   const endedEvent = [...events].reverse().find(event => event.type === 'session.ended')
   const lastEvent = events.at(-1) ?? null
 
-  return {
+  const summary = {
     path,
     sessionId: events[0]!.sessionId,
     eventCount: events.length,
     startedAt: startedEvent?.timestamp ?? events[0]!.timestamp,
     endedAt: endedEvent?.timestamp ?? null,
     lastTimestamp: lastEvent?.timestamp ?? null,
+  }
+
+  return {
+    ...summary,
+    runState: classifyImmaculateTraceRunState(summary, options),
     countsByType,
     routeDispatchCount: countsByType['route.dispatched'] ?? 0,
     routeLeaseCount: countsByType['route.leased'] ?? 0,
@@ -156,16 +231,60 @@ export function readImmaculateTraceSummary(path: string): ImmaculateTraceSummary
   }
 }
 
+export function listImmaculateTraceSummaries(
+  root = process.cwd(),
+  options: TraceSummaryReadOptions = {},
+): ImmaculateTraceSummary[] {
+  return listImmaculateTraceFiles(root).flatMap(path => {
+    try {
+      return [readImmaculateTraceSummary(path, options)]
+    } catch {
+      return []
+    }
+  })
+}
+
+function getTraceRunStateRank(runState: ImmaculateTraceRunState): number {
+  switch (runState) {
+    case 'active':
+      return 2
+    case 'completed':
+      return 1
+    default:
+      return 0
+  }
+}
+
+export function selectPreferredImmaculateTraceSummary(
+  summaries: ImmaculateTraceSummary[],
+): ImmaculateTraceSummary | null {
+  if (summaries.length === 0) {
+    return null
+  }
+
+  return [...summaries].sort((left, right) => {
+    const runStateRank =
+      getTraceRunStateRank(right.runState) -
+      getTraceRunStateRank(left.runState)
+    if (runStateRank !== 0) {
+      return runStateRank
+    }
+
+    const recencyDelta =
+      getTraceRecencyTimestampMs(right) - getTraceRecencyTimestampMs(left)
+    if (recencyDelta !== 0) {
+      return recencyDelta
+    }
+
+    return right.path.localeCompare(left.path)
+  })[0] ?? null
+}
+
 export function readLatestImmaculateTraceSummary(
   root = process.cwd(),
+  options: TraceSummaryReadOptions = {},
 ): ImmaculateTraceSummary | null {
-  const latestPath = listImmaculateTraceFiles(root)[0]
-  if (!latestPath) {
-    return null
-  }
-  try {
-    return readImmaculateTraceSummary(latestPath)
-  } catch {
-    return null
-  }
+  return selectPreferredImmaculateTraceSummary(
+    listImmaculateTraceSummaries(root, options),
+  )
 }

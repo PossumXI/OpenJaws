@@ -7,7 +7,10 @@ import {
   closeBenchmarkTraceWriter,
   createBenchmarkTraceWriter,
 } from './benchmarkTrace.js'
-import { readImmaculateTraceSummary } from './traceSummary.js'
+import {
+  readImmaculateTraceSummary,
+  readLatestImmaculateTraceSummary,
+} from './traceSummary.js'
 
 const cleanupDirs: string[] = []
 
@@ -74,8 +77,49 @@ describe('traceSummary', () => {
     expect(summary.workerAssignmentCount).toBe(1)
     expect(summary.latestRouteId).toBe('route-1')
     expect(summary.latestWorkerId).toBe('worker-1')
+    expect(summary.runState).toBe('completed')
     expect(summary.interactionLatency.p50Ms).toBe(120)
     expect(summary.llmLatency.p95Ms).toBe(250)
     expect(summary.reflexLatency.p50Ms).toBe(90)
+  })
+
+  test('prefers an active trace over a newer completed trace', () => {
+    const root = mkdtempSync(join(tmpdir(), 'openjaws-trace-preferred-'))
+    cleanupDirs.push(root)
+    const traceDir = join(root, 'artifacts', 'immaculate', 'session-traces')
+    mkdirSync(traceDir, { recursive: true })
+
+    const completedWriter = createBenchmarkTraceWriter({
+      outputDir: traceDir,
+      sessionId: 'completed-session',
+    })
+    appendBenchmarkTraceEvent(completedWriter, 'route.dispatched', {
+      routeId: 'route-completed',
+      runId: 'run-completed',
+      provider: 'oci',
+      model: 'Q',
+    })
+    closeBenchmarkTraceWriter(completedWriter)
+
+    const activeWriter = createBenchmarkTraceWriter({
+      outputDir: traceDir,
+      sessionId: 'active-session',
+    })
+    appendBenchmarkTraceEvent(activeWriter, 'route.dispatched', {
+      routeId: 'route-active',
+      runId: 'run-active',
+      provider: 'oci',
+      model: 'Q',
+    })
+
+    const summary = readLatestImmaculateTraceSummary(root, {
+      referenceTimeMs: Date.now(),
+    })
+
+    expect(summary).not.toBeNull()
+    expect(summary).toMatchObject({
+      sessionId: 'active-session',
+      runState: 'active',
+    })
   })
 })

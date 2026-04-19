@@ -300,7 +300,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - Native `Q` benchmark and curriculum lanes over audited packs so coding, agentic, and security slices can be compared in-repo.
 - A Netlify-ready Next.js landing site for public `Q` access, plans, Stripe checkout, API keys, credits, and usage under `website/`.
 - Voice surfaces for speech input/output wiring, including ElevenLabs summary playback configuration.
-- A local Discord `Q_agent` station can now run scheduled Immaculate-driven patrol receipts, controlled channel routing, and first-phase ElevenLabs speech attachments when operators wire their own private secrets.
+- A local Discord station can now derive per-bot mention help, locked manuals, and capability-filtered command surfaces from one shared command registry instead of drifting across separate help copies.
 - Firecrawl dataset skill for crawl/search -> structured dataset pipelines.
 - Remote Control, environment validation, startup harness receipts, and fail-closed configuration checks.
 
@@ -344,7 +344,7 @@ OpenJaws now has a bounded `/preview` lane for native in-TUI app preview, resear
 - browser launches keep an accountability receipt with intent, rationale, requester, and runtime handler
 - the browser bridge renders through the OpenJaws browser lane instead of handing preview work to Chrome
 - user browsing history stays private by default; only Q or agent-led browsing is persisted as an accountable handoff
-- `/status` now surfaces the live browser runtime and the latest accountable browser session
+- `/status` now surfaces the live in-TUI browser bridge session first and the latest accountable browser handoff only as fallback context
 
 See [Accountable Browser Preview](docs/wiki/Browser-Preview.md) for the exact contract.
 
@@ -358,7 +358,7 @@ OpenJaws treats Immaculate as the orchestration core rather than an optional add
 - `/immaculate` exposes live topology, control pulses, execution pressure, and worker health.
 - `/status` and the flight-deck surfaces expose the same route and worker state to installed users, not just internal operators.
 - the tracing lane now has a typed `src/immaculate/events.ts` contract plus structured session-trace writing, and benchmark lanes now emit deterministic trace-backed receipt files with signature blocks when a signing key is configured
-- `/status` and `/immaculate` now read the latest typed Immaculate trace summary directly, and `/status` now also surfaces the latest Q benchmark trace summary, so route flow and p95 latency stop living only in ad hoc benchmark strings
+- `/status` and `/immaculate` now prefer the active typed Immaculate trace for the run in flight, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
 
 Details:
 

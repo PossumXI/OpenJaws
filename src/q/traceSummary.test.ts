@@ -52,11 +52,54 @@ describe('q trace summary', () => {
     expect(readLatestQTraceSummary(root)).toMatchObject({
       kind: 'benchmark',
       sessionId: 'q-soak-test-session',
+      runState: 'completed',
       routeDispatchCount: 1,
       workerAssignmentCount: 1,
       latestRouteId: 'route-1',
       latestWorkerId: 'worker-1',
       path: writer.path,
+    })
+  })
+
+  test('prefers an active Q trace over a newer completed trace', () => {
+    const root = mkdtempSync(join(tmpdir(), 'openjaws-q-trace-active-'))
+    tempRoots.push(root)
+    const completedOutputDir = join(root, 'artifacts', 'q-completed')
+    mkdirSync(completedOutputDir, { recursive: true })
+    const completedWriter = createBenchmarkTraceWriter({
+      outputDir: completedOutputDir,
+      sessionId: 'q-completed-session',
+    })
+    appendBenchmarkTraceEvent(completedWriter, 'route.dispatched', {
+      routeId: 'route-completed',
+      runId: 'run-completed',
+      provider: 'oci',
+      model: 'Q',
+    })
+    closeBenchmarkTraceWriter(completedWriter)
+
+    const activeOutputDir = join(root, 'artifacts', 'q-active')
+    mkdirSync(activeOutputDir, { recursive: true })
+    const activeWriter = createBenchmarkTraceWriter({
+      outputDir: activeOutputDir,
+      sessionId: 'q-active-session',
+    })
+    appendBenchmarkTraceEvent(activeWriter, 'route.dispatched', {
+      routeId: 'route-active',
+      runId: 'run-active',
+      provider: 'oci',
+      model: 'Q',
+    })
+
+    expect(
+      readLatestQTraceSummary(root, {
+        referenceTimeMs: Date.now(),
+      }),
+    ).toMatchObject({
+      kind: 'benchmark',
+      sessionId: 'q-active-session',
+      runState: 'active',
+      path: activeWriter.path,
     })
   })
 })

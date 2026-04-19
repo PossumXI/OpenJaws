@@ -33,10 +33,11 @@ Immaculate improves OpenJaws by replacing guesswork with visible decisions.
 
 OpenJaws shows Immaculate through normal operator paths, not hidden internal controls.
 
-- `/status` shows route queue state, worker health, runtime mode, and routed execution details
+- `/status` shows route queue state, worker health, runtime mode, routed execution details, and the active Immaculate trace when a run is in flight
 - flight-deck notices surface pending assignment and routed `Q` state
 - background task surfaces reflect burst budgets, deferred launches, and crew pressure
 - `/immaculate` exposes topology and control state directly for operators who want a deeper view
+- `/status` and `/immaculate` prefer the current active Immaculate trace, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
 
 ## Security and Reliability Posture
 

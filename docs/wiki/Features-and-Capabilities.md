@@ -3,10 +3,10 @@
 ## Core Operator Surfaces
 
 - flight-deck TUI with compact receipts, status pills, and background task inspection
-- `/status` with startup harness, route queue, worker health, and voice/runtime wiring
+- `/status` with startup harness, route queue, worker health, voice/runtime wiring, and active-run-aware Immaculate/Q trace selection
 - `/immaculate` for live topology, execution load, control pulses, and worker visibility
 - `/provider`, `/theme`, `/voice`, `/remote-env`, `/caveman`, and `/power` configuration paths
-- `/preview` for native in-TUI browser preview, `/chrome` for optional Chrome automation, and `/mcp` for server inventory and auth state
+- `/preview` for the live bridge-backed in-TUI browser lane, `/chrome` for optional Chrome automation, and `/mcp` for server inventory and auth state
 - explicit runtime receipts so installed users can verify what is really active instead of relying on hidden fallbacks
 
 ## OpenCheek Agents

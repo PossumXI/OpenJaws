@@ -6,12 +6,14 @@ import {
   closeApexBrowserSession,
   getApexBrowserHealth,
   getApexBrowserSummary,
+  getApexLaunchTarget,
   navigateApexBrowserSession,
   openApexBrowserSession,
   startApexBrowserBridge,
   summarizeApexBrowser,
   type ApexBrowserSession,
   type ApexBrowserSummary,
+  type ApexWorkspaceHealth,
 } from './apexWorkspace.js'
 
 export type BrowserPreviewIntent =
@@ -56,6 +58,16 @@ export type BrowserPreviewReceipt = {
 export type BrowserPreviewSummary = {
   headline: string
   details: string[]
+}
+
+export type BrowserPreviewRuntime = {
+  configured: boolean
+  bridgePath: string | null
+  bridgeReady: boolean
+  launchReady: boolean
+  health: ApexWorkspaceHealth | null
+  summary: ApexBrowserSummary | null
+  message: string
 }
 
 const BROWSER_PREVIEW_DIR = 'browser-preview'
@@ -222,23 +234,74 @@ export async function readBrowserPreviewReceipt(): Promise<BrowserPreviewReceipt
 
 async function ensureApexBrowserRuntime(): Promise<{
   ok: boolean
-  message: string
-  summary: ApexBrowserSummary | null
+  runtime: BrowserPreviewRuntime
 }> {
-  const health = await getApexBrowserHealth()
-  if (health) {
+  const current = await resolveBrowserPreviewRuntime()
+  if (current.bridgeReady) {
     return {
       ok: true,
-      message: `Browser bridge ready at ${health.service}.`,
-      summary: await getApexBrowserSummary(),
+      runtime: current,
     }
   }
 
   const start = await startApexBrowserBridge()
+  const next = await resolveBrowserPreviewRuntime({
+    startupMessage: start.message,
+  })
   return {
-    ok: start.ok,
-    message: start.message,
-    summary: await getApexBrowserSummary(),
+    ok: next.bridgeReady,
+    runtime: next,
+  }
+}
+
+function buildBrowserRuntimeMessage(args: {
+  configured: boolean
+  health: ApexWorkspaceHealth | null
+  summary: ApexBrowserSummary | null
+  startupMessage?: string | null
+}): string {
+  if (args.summary) {
+    const activeSession =
+      args.summary.sessions.find(session => session.id === args.summary.activeSessionId) ??
+      args.summary.sessions[0] ??
+      null
+    return activeSession
+      ? `OpenJaws browser bridge ready with ${activeSession.title} in the TUI lane.`
+      : 'OpenJaws browser bridge ready for in-TUI rendering.'
+  }
+  if (args.health) {
+    return 'OpenJaws browser bridge online and waiting for the first TUI session.'
+  }
+  if (args.startupMessage?.trim()) {
+    return args.startupMessage.trim()
+  }
+  return args.configured
+    ? 'Browser bridge offline. Opening a session will boot it if the Apex browser source is available.'
+    : 'Browser source is unavailable. Configure OPENJAWS_APEX_ROOT / OPENJAWS_APEX_ASGARD_ROOT first.'
+}
+
+async function resolveBrowserPreviewRuntime(args?: {
+  startupMessage?: string | null
+}): Promise<BrowserPreviewRuntime> {
+  const launchTarget = getApexLaunchTarget('browser_bridge')
+  const [health, summary] = await Promise.all([
+    getApexBrowserHealth(),
+    getApexBrowserSummary(),
+  ])
+  const configured = Boolean(launchTarget)
+  return {
+    configured,
+    bridgePath: launchTarget?.path ?? null,
+    bridgeReady: Boolean(health),
+    launchReady: configured,
+    health,
+    summary,
+    message: buildBrowserRuntimeMessage({
+      configured,
+      health,
+      summary,
+      startupMessage: args?.startupMessage ?? null,
+    }),
   }
 }
 
@@ -285,8 +348,8 @@ function buildOpenMessage(
     : `Opened ${session.url} in the OpenJaws browser. User browsing history is not persisted.`
 }
 
-export async function readBrowserPreviewRuntime(): Promise<ApexBrowserSummary | null> {
-  return getApexBrowserSummary()
+export async function readBrowserPreviewRuntime(): Promise<BrowserPreviewRuntime> {
+  return resolveBrowserPreviewRuntime()
 }
 
 export async function openAccountableBrowserPreview(args: {
@@ -299,7 +362,7 @@ export async function openAccountableBrowserPreview(args: {
   message: string
   session: BrowserPreviewSession
   receipt: BrowserPreviewReceipt
-  runtime: ApexBrowserSummary | null
+  runtime: BrowserPreviewRuntime
 }> {
   const url = normalizeBrowserPreviewUrl(args.url)
   const rationale = normalizeRationale(args.rationale)
@@ -311,15 +374,15 @@ export async function openAccountableBrowserPreview(args: {
       rationale,
       requestedBy,
       opened: false,
-      note: runtime.message,
+      note: runtime.runtime.message,
       url,
     })
     return {
       ok: false,
-      message: runtime.message,
+      message: runtime.runtime.message,
       session,
       receipt: await readBrowserPreviewReceipt(),
-      runtime: runtime.summary,
+      runtime: runtime.runtime,
     }
   }
 
@@ -341,7 +404,7 @@ export async function openAccountableBrowserPreview(args: {
   const receipt = shouldPersistSession(requestedBy)
     ? await appendSession(session)
     : await readBrowserPreviewReceipt()
-  const nextRuntime = await getApexBrowserSummary()
+  const nextRuntime = await resolveBrowserPreviewRuntime()
   return {
     ok: result.ok,
     message:
@@ -365,7 +428,7 @@ export async function navigateBrowserPreviewSession(args: {
   message: string
   session: BrowserPreviewSession
   receipt: BrowserPreviewReceipt
-  runtime: ApexBrowserSummary | null
+  runtime: BrowserPreviewRuntime
 }> {
   const sessionId = args.sessionId.trim()
   if (!sessionId) {
@@ -396,7 +459,7 @@ export async function navigateBrowserPreviewSession(args: {
     message: result.message,
     session,
     receipt,
-    runtime: await getApexBrowserSummary(),
+    runtime: await resolveBrowserPreviewRuntime(),
   }
 }
 
@@ -408,7 +471,7 @@ export async function closeBrowserPreviewSession(args: {
   message: string
   session: BrowserPreviewSession
   receipt: BrowserPreviewReceipt
-  runtime: ApexBrowserSummary | null
+  runtime: BrowserPreviewRuntime
 }> {
   const sessionId = args.sessionId.trim()
   if (!sessionId) {
@@ -431,7 +494,7 @@ export async function closeBrowserPreviewSession(args: {
     message: result.message,
     session,
     receipt,
-    runtime: await getApexBrowserSummary(),
+    runtime: await resolveBrowserPreviewRuntime(),
   }
 }
 
@@ -444,7 +507,7 @@ export async function launchApexBrowserShell(args: {
   message: string
   session: BrowserPreviewSession
   receipt: BrowserPreviewReceipt
-  runtime: ApexBrowserSummary | null
+  runtime: BrowserPreviewRuntime
 }> {
   const rationale = normalizeRationale(args.rationale)
   const requestedBy = args.requestedBy ?? 'user'
@@ -454,17 +517,17 @@ export async function launchApexBrowserShell(args: {
     rationale,
     requestedBy,
     opened: runtime.ok,
-    note: runtime.message,
+    note: runtime.runtime.message,
   })
   const receipt = shouldPersistSession(requestedBy)
     ? await appendSession(session)
     : await readBrowserPreviewReceipt()
   return {
     ok: runtime.ok,
-    message: runtime.message,
+    message: runtime.runtime.message,
     session,
     receipt,
-    runtime: runtime.summary,
+    runtime: runtime.runtime,
   }
 }
 
@@ -493,7 +556,31 @@ export function summarizeBrowserPreviewReceipt(
 }
 
 export function summarizeBrowserPreviewRuntime(
-  summary: ApexBrowserSummary | null,
+  runtime: BrowserPreviewRuntime | null,
 ): BrowserPreviewSummary {
-  return summarizeApexBrowser(summary)
+  if (!runtime) {
+    return summarizeApexBrowser(null)
+  }
+  if (runtime.summary) {
+    const summary = summarizeApexBrowser(runtime.summary)
+    return {
+      headline: summary.headline,
+      details: [
+        runtime.message,
+        ...summary.details,
+      ],
+    }
+  }
+  return {
+    headline: runtime.bridgeReady
+      ? 'Browser bridge online'
+      : runtime.configured
+        ? 'Browser bridge offline'
+        : 'Browser source unavailable',
+    details: [
+      runtime.message,
+      ...(runtime.bridgePath ? [runtime.bridgePath] : []),
+      runtime.launchReady ? 'launch ready' : 'launch unavailable',
+    ],
+  }
 }

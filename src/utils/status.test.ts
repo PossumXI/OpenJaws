@@ -617,51 +617,64 @@ describe('buildBrowserPreviewProperties', () => {
   test('surfaces the live in-TUI browser runtime separately from accountable receipts', () => {
     expect(
       buildBrowserPreviewProperties(null, {
-        mode: 'live',
-        renderMode: 'tui',
-        activeSessionId: 'session-1',
-        sessionCount: 1,
-        privacy: {
-          doNotTrack: true,
-          blockThirdPartyCookies: true,
-          clearOnExit: true,
-          userHistoryPersisted: false,
-          agentHistoryPersisted: true,
+        configured: true,
+        bridgePath: 'C:\\Apex\\browser',
+        bridgeReady: true,
+        launchReady: true,
+        health: {
+          status: 'ok',
+          service: 'browser-bridge',
+          version: '0.2.0',
+          timestamp: '2026-04-18T22:05:03.000Z',
         },
-        sessions: [
-          {
-            id: 'session-1',
-            intent: 'preview',
-            rationale: 'Check the local app in the native browser lane.',
-            requestedBy: 'user',
-            recordHistory: false,
-            title: 'SEALED demo',
-            url: 'http://127.0.0.1:3000/',
-            state: 'ready',
-            openedAt: '2026-04-18T22:05:00.000Z',
-            updatedAt: '2026-04-18T22:05:03.000Z',
-            excerpt: 'Digital clock preview',
-            statusCode: 200,
-            loadTimeMs: 92,
-            imageCount: 3,
-            metadata: {
-              description: 'Clock preview',
-              keywords: ['clock', 'preview'],
-              author: null,
-              contentType: 'text/html',
-            },
-            links: [],
+        message: 'OpenJaws browser bridge ready with SEALED demo in the TUI lane.',
+        summary: {
+          mode: 'live',
+          renderMode: 'tui',
+          activeSessionId: 'session-1',
+          sessionCount: 1,
+          privacy: {
+            doNotTrack: true,
+            blockThirdPartyCookies: true,
+            clearOnExit: true,
+            userHistoryPersisted: false,
+            agentHistoryPersisted: true,
           },
-        ],
+          sessions: [
+            {
+              id: 'session-1',
+              intent: 'preview',
+              rationale: 'Check the local app in the native browser lane.',
+              requestedBy: 'user',
+              recordHistory: false,
+              title: 'SEALED demo',
+              url: 'http://127.0.0.1:3000/',
+              state: 'ready',
+              openedAt: '2026-04-18T22:05:00.000Z',
+              updatedAt: '2026-04-18T22:05:03.000Z',
+              excerpt: 'Digital clock preview',
+              statusCode: 200,
+              loadTimeMs: 92,
+              imageCount: 3,
+              metadata: {
+                description: 'Clock preview',
+                keywords: ['clock', 'preview'],
+                author: null,
+                contentType: 'text/html',
+              },
+              links: [],
+            },
+          ],
+        },
       }),
     ).toEqual([
       {
         label: 'Browser runtime',
         value: [
           'SEALED demo · ready · tui',
+          'OpenJaws browser bridge ready with SEALED demo in the TUI lane.',
           'preview · user · http://127.0.0.1:3000/',
           '200 · 92ms · 3 images · 0 links',
-          'User browsing history is not persisted; agent-led browsing stays accountable.',
         ],
       },
     ])
@@ -678,6 +691,7 @@ describe('buildImmaculateTraceProperties', () => {
         startedAt: '2026-04-16T00:00:00.000Z',
         endedAt: '2026-04-16T00:05:00.000Z',
         lastTimestamp: '2026-04-16T00:05:00.000Z',
+        runState: 'completed',
         countsByType: {
           'route.dispatched': 2,
           'worker.assigned': 1,
@@ -717,6 +731,7 @@ describe('buildImmaculateTraceProperties', () => {
         label: 'Immaculate trace',
         value: [
           'session-1',
+          'completed',
           '12 events',
           'started 2026-04-16T00:00:00.000Z',
           'ended 2026-04-16T00:05:00.000Z',
@@ -760,6 +775,7 @@ describe('buildQTraceProperties', () => {
         startedAt: '2026-04-17T00:00:00.000Z',
         endedAt: '2026-04-17T00:00:05.000Z',
         lastTimestamp: '2026-04-17T00:00:05.000Z',
+        runState: 'completed',
         countsByType: {
           'session.started': 1,
           'route.dispatched': 1,
@@ -802,6 +818,7 @@ describe('buildQTraceProperties', () => {
         value: [
           'q-soak-1',
           'benchmark',
+          'completed',
           '6 events',
           'started 2026-04-17T00:00:00.000Z',
           'ended 2026-04-17T00:00:05.000Z',

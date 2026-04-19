@@ -13,11 +13,11 @@ import {
   useModalOrTerminalSize,
 } from '../../context/modalContext.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
-import type { ApexBrowserSummary } from '../../utils/apexWorkspace.js'
 import { getApexLaunchTarget } from '../../utils/apexWorkspace.js'
 import type {
   BrowserPreviewIntent,
   BrowserPreviewReceipt,
+  BrowserPreviewRuntime,
 } from '../../utils/browserPreview.js'
 import {
   closeBrowserPreviewSession,
@@ -97,7 +97,7 @@ function PreviewOverview({
   runtimeStatus,
 }: {
   receipt: BrowserPreviewReceipt | null
-  runtime: ApexBrowserSummary | null
+  runtime: BrowserPreviewRuntime | null
   runtimeStatus: string
 }): React.ReactNode {
   const runtimeSummary = summarizeBrowserPreviewRuntime(runtime)
@@ -127,11 +127,12 @@ function PreviewOverview({
 function PreviewSession({
   runtime,
 }: {
-  runtime: ApexBrowserSummary | null
+  runtime: BrowserPreviewRuntime | null
 }): React.ReactNode {
   const activeSession =
-    runtime?.sessions.find(session => session.id === runtime.activeSessionId) ??
-    runtime?.sessions[0]
+    runtime?.summary?.sessions.find(
+      session => session.id === runtime.summary?.activeSessionId,
+    ) ?? runtime?.summary?.sessions[0]
 
   if (!activeSession) {
     return (
@@ -206,7 +207,7 @@ function PreviewLaunch({
   url: string
   rationale: string
   intent: BrowserPreviewIntent
-  runtime: ApexBrowserSummary | null
+  runtime: BrowserPreviewRuntime | null
   receipt: BrowserPreviewReceipt | null
   actionMessage: string | null
   onSetUrl: (value: string) => void
@@ -216,8 +217,9 @@ function PreviewLaunch({
 }): React.ReactNode {
   const { headerFocused, focusHeader } = useTabHeaderFocus()
   const activeSession =
-    runtime?.sessions.find(session => session.id === runtime.activeSessionId) ??
-    runtime?.sessions[0] ??
+    runtime?.summary?.sessions.find(
+      session => session.id === runtime.summary?.activeSessionId,
+    ) ?? runtime?.summary?.sessions[0] ??
     null
   const options = useMemo<OptionWithDescription<PreviewAction>[]>(
     () => [
@@ -371,7 +373,7 @@ function PreviewCommand({
   )
   const [intent, setIntent] = useState<BrowserPreviewIntent>('preview')
   const [receipt, setReceipt] = useState<BrowserPreviewReceipt | null>(null)
-  const [runtime, setRuntime] = useState<ApexBrowserSummary | null>(null)
+  const [runtime, setRuntime] = useState<BrowserPreviewRuntime | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [runtimeStatus, setRuntimeStatus] = useState(
     'Checking the OpenJaws browser bridge…',
@@ -384,11 +386,7 @@ function PreviewCommand({
     ])
     setReceipt(nextReceipt)
     setRuntime(nextRuntime)
-    setRuntimeStatus(
-      nextRuntime
-        ? 'OpenJaws browser bridge ready for in-TUI rendering.'
-        : 'Browser bridge offline. Opening a session will boot it if the Apex browser source is available.',
-    )
+    setRuntimeStatus(nextRuntime.message)
   }, [])
 
   useEffect(() => {
@@ -416,18 +414,14 @@ function PreviewCommand({
         setActionMessage(result.message)
         setReceipt(result.receipt)
         setRuntime(result.runtime)
-        setRuntimeStatus(
-          result.runtime
-            ? 'OpenJaws browser bridge ready for in-TUI rendering.'
-            : result.message,
-        )
+        setRuntimeStatus(result.runtime.message)
         setSelectedTab('session')
         return
       }
 
       if (action === 'navigate-preview') {
         const sessionId =
-          runtime?.activeSessionId ?? runtime?.sessions[0]?.id ?? null
+          runtime?.summary?.activeSessionId ?? runtime?.summary?.sessions[0]?.id ?? null
         if (!sessionId) {
           setActionMessage(
             'There is no active browser session to navigate yet. Open one first.',
@@ -443,13 +437,14 @@ function PreviewCommand({
         setActionMessage(result.message)
         setReceipt(result.receipt)
         setRuntime(result.runtime)
+        setRuntimeStatus(result.runtime.message)
         setSelectedTab('session')
         return
       }
 
       if (action === 'close-preview') {
         const sessionId =
-          runtime?.activeSessionId ?? runtime?.sessions[0]?.id ?? null
+          runtime?.summary?.activeSessionId ?? runtime?.summary?.sessions[0]?.id ?? null
         if (!sessionId) {
           setActionMessage('There is no active browser session to close.')
           return
@@ -458,6 +453,7 @@ function PreviewCommand({
         setActionMessage(result.message)
         setReceipt(result.receipt)
         setRuntime(result.runtime)
+        setRuntimeStatus(result.runtime.message)
         return
       }
     },
