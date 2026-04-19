@@ -20,6 +20,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - Settings now expose dedicated `Appearance` and `Privacy` tabs instead of leaving theme/privacy controls mixed into one generic list
 - the local Settings deck now includes a Privacy mode for telemetry/nonessential-traffic policy and clearer `auto` / `dark` / `light` theme behavior so installed users can tell what the app will actually render
 - command rediscovery is clearer too: `/help`, `/config`, `/theme`, and `/privacy-settings` now form the obvious public-safe entry points for operator setup
+- `/help` now pulls its quick-start section from the real command registry and shows aliases plus argument hints in the command browser instead of a static bare-name list
 
 ## OpenCheek Agents and Task Deck
 

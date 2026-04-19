@@ -61,6 +61,7 @@ The Q mark above is sourced from `src/components/LogoV2/qMarkData.ts` and can be
 - Starts new public installs on `Q` with `OCI`, but still lets you switch providers and models on purpose.
 - Supports both local and remote execution, including signed `Q` training routes and worker assignment.
 - Gives you practical controls like `/help`, `/config`, `/theme`, `/privacy-settings`, `/status`, `/immaculate`, `/provider`, `/voice`, and `/remote-env`.
+- Makes `/help` more useful on first run by surfacing real quick-start commands, aliases, and argument hints instead of a bare static list.
 - Keeps Settings readable with dedicated `Appearance` and `Privacy` tabs, including a local Privacy mode for telemetry/nonessential-traffic policy and clearer `auto` / `dark` / `light` theme behavior.
 - Adds a bounded `/apex` command center for trusted local mail, chat, store, system, security, and browser-preview lanes without pretending external Rust GUIs are native Ink views.
 - Normalizes task, tool, co-work, and delivery summaries so final handoffs read the same way across the TUI instead of drifting between different vocabularies.
@@ -177,6 +178,7 @@ OpenJaws currently ships as source plus native local builds.
 Useful first-run operator commands:
 
 - `/help` to rediscover the public command surface without guessing
+- type `/` in the prompt to search commands live when you do not remember the exact name
 - `/config` to open the main Settings deck with dedicated `Appearance` and `Privacy` tabs
 - `/theme` to change theme mode directly when you already know you want `auto`, `dark`, or `light`
 - `/privacy-settings` to jump straight to the local privacy controls
