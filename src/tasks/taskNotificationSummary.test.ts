@@ -20,7 +20,7 @@ describe('taskNotificationSummary', () => {
         description: 'scan repo',
         status: 'completed',
       }),
-    ).toBe('Agent "scan repo" done')
+    ).toBe('Agent "scan repo" completed')
 
     expect(
       formatLocalAgentNotificationSummary({
@@ -28,7 +28,7 @@ describe('taskNotificationSummary', () => {
         status: 'failed',
         error: 'timeout',
       }),
-    ).toBe('Agent "scan repo" retry: timeout')
+    ).toBe('Agent "scan repo" needs retry: timeout')
 
     expect(
       formatLocalAgentNotificationSummary({
@@ -44,38 +44,38 @@ describe('taskNotificationSummary', () => {
         description: 'ship the fix',
         status: 'completed',
       }),
-    ).toBe('Background session "ship the fix" done')
+    ).toBe('Background session "ship the fix" completed')
 
     expect(
       formatRemoteTaskNotificationSummary({
         title: 'Review PR',
         status: 'failed',
       }),
-    ).toBe('Remote task "Review PR" retry')
+    ).toBe('Remote task "Review PR" needs retry')
 
     expect(formatUltraplanFailureSummary('approval missing')).toBe(
-      'Ultraplan retry: approval missing',
+      'Ultraplan needs retry: approval missing',
     )
 
     expect(
       formatRemoteReviewNotificationSummary({
         status: 'completed',
       }),
-    ).toBe('Remote review done')
+    ).toBe('Remote review completed')
 
     expect(
       formatRemoteReviewNotificationSummary({
         status: 'failed',
         reason: 'no findings tag',
       }),
-    ).toBe('Remote review retry: no findings tag')
+    ).toBe('Remote review needs retry: no findings tag')
   })
 
   it('formats generic task status text with the same vocabulary', () => {
-    expect(formatGenericTaskStatusText('completed')).toBe('done')
+    expect(formatGenericTaskStatusText('completed')).toBe('completed')
     expect(formatGenericTaskStatusText('failed')).toBe('retry')
     expect(formatGenericTaskStatusText('killed')).toBe('stopped')
-    expect(formatGenericTaskStatusText('running')).toBe('live')
+    expect(formatGenericTaskStatusText('running')).toBe('active')
     expect(formatGenericTaskStatusText('pending')).toBe('queued')
   })
 
@@ -85,7 +85,7 @@ describe('taskNotificationSummary', () => {
         description: 'npm test',
         status: 'completed',
       }),
-    ).toBe('Background command "npm test" done')
+    ).toBe('Background command "npm test" completed')
 
     expect(
       formatLocalShellNotificationSummary({
@@ -93,7 +93,7 @@ describe('taskNotificationSummary', () => {
         status: 'failed',
         exitCode: 1,
       }),
-    ).toBe('Background command "npm test" retry (exit 1)')
+    ).toBe('Background command "npm test" needs retry: exit 1')
 
     expect(
       formatLocalShellNotificationSummary({
@@ -104,29 +104,29 @@ describe('taskNotificationSummary', () => {
     ).toBe('Monitor "watch logs" ended')
 
     expect(formatBackgroundShellWaitingSummary('npm test')).toBe(
-      'Background command "npm test" watch: waiting for input',
+      'Background command "npm test" waiting for input',
     )
     expect(formatBackgroundShellBatchSummary(3)).toBe(
-      '3 background commands done',
+      '3 background commands completed',
     )
   })
 
   it('summarizes queued task-notification overflow by pressure', () => {
     const digest = summarizeTaskNotificationOverflow([
-      '<task-notification><summary>Agent "a" done</summary><status>completed</status></task-notification>',
+      '<task-notification><summary>Agent "a" completed</summary><status>completed</status></task-notification>',
       '<task-notification><summary>Agent "b" retry</summary><status>failed</status></task-notification>',
-      '<task-notification><summary>Background command "c" watch: waiting for input</summary></task-notification>',
+      '<task-notification><summary>Background command "c" waiting for input</summary></task-notification>',
     ])
 
     expect(digest).toEqual({
-      summary: '+3 more task receipts · 1 done · 1 retry · 1 watch',
+      summary: '+3 more task receipts · 1 completed · 1 retry · 1 waiting',
       status: 'failed',
     })
 
     expect(
       buildTaskNotificationOverflowMessage([
-        '<task-notification><summary>Agent "a" done</summary><status>completed</status></task-notification>',
+        '<task-notification><summary>Agent "a" completed</summary><status>completed</status></task-notification>',
       ]),
-    ).toContain('+1 more task receipt · 1 done')
+    ).toContain('+1 more task receipt · 1 completed')
   })
 })

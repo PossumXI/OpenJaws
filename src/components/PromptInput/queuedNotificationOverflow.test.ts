@@ -54,7 +54,7 @@ describe('queuedNotificationOverflow', () => {
     expect(processed[1]?.value).toBe('/init')
     expect(processed[4]?.value).toBe('/status')
     expect(String(processed[3]?.value)).toContain(
-      '+2 more task receipts · 1 retry · 1 watch',
+      '+2 more task receipts · 1 retry · 1 waiting',
     )
   })
 
@@ -70,7 +70,7 @@ describe('queuedNotificationOverflow', () => {
       ),
     ])
 
-    expect(message).toContain('+2 more task receipts · 1 retry · 1 watch')
+    expect(message).toContain('+2 more task receipts · 1 retry · 1 waiting')
     expect(message).toContain('<status>failed</status>')
   })
 })

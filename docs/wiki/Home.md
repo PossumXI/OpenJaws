@@ -62,6 +62,7 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 - a clearer TUI with stronger OpenJaws branding
 - `Q` on `OCI` as the default public starting point
 - helper-agent crews you can inspect instead of hidden background work
+- tighter final-result formatting across tasks, tools, co-work, and delivered handoffs
 - safer routed `Q` execution with signed requests and explicit assignment
 - worker health checks instead of silent failures
 - safer public update and release verification

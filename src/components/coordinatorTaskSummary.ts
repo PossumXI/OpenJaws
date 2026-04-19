@@ -28,7 +28,7 @@ function buildImmaculateCoordinatorDetail(
 
   const parts: string[] = []
   if (status?.enabled) {
-    parts.push(status.reachable ? 'immaculate online' : 'immaculate offline')
+    parts.push(status.reachable ? 'Immaculate online' : 'Immaculate offline')
     if (deckReceipt?.profile) {
       parts.push(deckReceipt.profile)
     }
@@ -80,9 +80,9 @@ export function summarizeCoordinatorTasks(
   )
 
   const parts = [
-    'flight deck roster',
+    'crew overview',
     `${tasks.length} ${tasks.length === 1 ? 'agent' : 'agents'}`,
-    `${liveCount} live`,
+    `${liveCount} active`,
   ]
 
   if (retryCount > 0) {

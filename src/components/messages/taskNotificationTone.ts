@@ -27,6 +27,7 @@ export function getTaskNotificationRenderTone(
   if (
     hasWord(normalized, 'approval') ||
     hasWord(normalized, 'watch') ||
+    hasWord(normalized, 'waiting') ||
     normalized.includes('waiting for input') ||
     hasWord(normalized, 'input')
   ) {
@@ -55,6 +56,7 @@ export function getTaskNotificationRenderTone(
   if (
     status === 'completed' ||
     hasWord(normalized, 'done') ||
+    hasWord(normalized, 'completed') ||
     hasWord(normalized, 'ended')
   ) {
     return {

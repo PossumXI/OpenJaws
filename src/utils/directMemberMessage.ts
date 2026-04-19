@@ -1,4 +1,5 @@
 import type { AppState } from '../state/AppState.js'
+import { summarizeOutputText } from './outputPresentation.js'
 import {
   getActiveTeamPhaseId,
   getTeamPhaseReceiptById,
@@ -99,7 +100,7 @@ export async function sendDirectMemberMessage(
       from: 'user',
       text: message,
       timestamp: new Date().toISOString(),
-      summary: message,
+      summary: summarizeOutputText(message, 96, 'Direct handoff ready'),
     },
     teamContext.teamName,
   )
@@ -107,7 +108,7 @@ export async function sendDirectMemberMessage(
     fromName: 'user',
     toNames: [recipientName],
     phaseId: effectivePhaseId ?? undefined,
-    summary: message,
+    summary: summarizeOutputText(message, 96, 'Direct handoff ready'),
     text: message,
     sourceTerminalContextId,
   })

@@ -55,7 +55,7 @@ describe('summarizeCoordinatorTasks', () => {
     ] as never)
 
     expect(summary).toEqual({
-      text: 'flight deck roster · 3 agents · 1 live · 1 retry · 2 queued',
+      text: 'crew overview · 3 agents · 1 active · 1 retry · 2 queued',
       tone: 'error',
     })
   })
@@ -69,7 +69,7 @@ describe('summarizeCoordinatorTasks', () => {
     ] as never)
 
     expect(summary).toEqual({
-      text: 'flight deck roster · 1 agent · 1 live · 1 queued',
+      text: 'crew overview · 1 agent · 1 active · 1 queued',
       tone: 'warning',
     })
   })
@@ -97,9 +97,9 @@ describe('summarizeCoordinatorTasks', () => {
     )
 
     expect(summary).toEqual({
-      text: 'flight deck roster · 1 agent · 0 live',
+      text: 'crew overview · 1 agent · 0 active',
       tone: 'warning',
-      detail: 'immaculate offline · connect ECONNREFUSED',
+      detail: 'Immaculate offline · connect ECONNREFUSED',
     })
   })
 
@@ -133,9 +133,9 @@ describe('summarizeCoordinatorTasks', () => {
     )
 
     expect(summary).toEqual({
-      text: 'flight deck roster · 2 agents · 2 live · 1 queued',
+      text: 'crew overview · 2 agents · 2 active · 1 queued',
       tone: 'warning',
-      detail: 'immaculate online · human-connectome-harness · 6 exec · recommend router-core',
+      detail: 'Immaculate online · human-connectome-harness · 6 exec · recommend router-core',
     })
   })
 
@@ -184,10 +184,10 @@ describe('summarizeCoordinatorTasks', () => {
     )
 
     expect(summary).toEqual({
-      text: 'flight deck roster · 1 agent · 1 live',
+      text: 'crew overview · 1 agent · 1 active',
       tone: 'error',
       detail:
-        'immaculate online · 6 exec · wave reroute · launch window 900ms · pressure high · recommend router-core · burst reroute · burst cap 0 · recommend router-core',
+        'Immaculate online · 6 exec · wave reroute · launch window 900ms · pressure high · recommend router-core · burst reroute · burst cap 0 · recommend router-core',
     })
   })
 
@@ -213,9 +213,9 @@ describe('summarizeCoordinatorTasks', () => {
     )
 
     expect(summary).toEqual({
-      text: 'flight deck roster · 1 agent · 1 live · 2 deferred',
+      text: 'crew overview · 1 agent · 1 active · 2 deferred',
       tone: 'warning',
-      detail: 'immaculate online',
+      detail: 'Immaculate online',
     })
   })
 
@@ -234,9 +234,9 @@ describe('summarizeCoordinatorTasks', () => {
     })
 
     expect(summary).toEqual({
-      text: 'flight deck roster · 0 agents · 0 live · 2 deferred',
+      text: 'crew overview · 0 agents · 0 active · 2 deferred',
       tone: 'warning',
-      detail: 'immaculate online',
+      detail: 'Immaculate online',
     })
   })
 })

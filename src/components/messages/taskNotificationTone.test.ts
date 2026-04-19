@@ -4,7 +4,7 @@ import { getTaskNotificationRenderTone } from './taskNotificationTone.js'
 describe('taskNotificationTone', () => {
   it('elevates retry receipts to error tone', () => {
     expect(
-      getTaskNotificationRenderTone('failed', 'Agent "scan repo" retry'),
+      getTaskNotificationRenderTone('failed', 'Agent "scan repo" needs retry'),
     ).toEqual({
       bulletColor: 'error',
       summaryColor: 'error',
@@ -16,7 +16,7 @@ describe('taskNotificationTone', () => {
     expect(
       getTaskNotificationRenderTone(
         null,
-        'Background command "npm test" watch: waiting for input',
+        'Background command "npm test" waiting for input',
       ),
     ).toEqual({
       bulletColor: 'warning',
@@ -44,7 +44,7 @@ describe('taskNotificationTone', () => {
 
   it('keeps done receipts compact and ready receipts positively emphasized', () => {
     expect(
-      getTaskNotificationRenderTone('completed', 'Agent "scan repo" done'),
+      getTaskNotificationRenderTone('completed', 'Agent "scan repo" completed'),
     ).toEqual({
       bulletColor: 'success',
     })
@@ -62,7 +62,7 @@ describe('taskNotificationTone', () => {
     expect(
       getTaskNotificationRenderTone(
         'failed',
-        '+3 more task receipts · 1 done · 1 retry · 1 watch',
+        '+3 more task receipts · 1 completed · 1 retry · 1 waiting',
       ),
     ).toEqual({
       bulletColor: 'error',

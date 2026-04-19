@@ -1,5 +1,9 @@
 import { STATUS_TAG, SUMMARY_TAG, TASK_NOTIFICATION_TAG } from '../constants/xml.js'
 import type { BashTaskKind } from './LocalShellTask/guards.js'
+import {
+  formatLifecycleStatusText,
+  formatScopedActivitySummary,
+} from '../utils/outputPresentation.js'
 
 function extractNotificationTag(text: string, tag: string): string | null {
   const match = text.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`))
@@ -15,14 +19,12 @@ export function formatLocalAgentNotificationSummary({
   status: 'completed' | 'failed' | 'killed'
   error?: string
 }): string {
-  switch (status) {
-    case 'completed':
-      return `Agent "${description}" done`
-    case 'failed':
-      return `Agent "${description}" retry: ${error || 'Unknown error'}`
-    case 'killed':
-      return `Agent "${description}" stopped`
-  }
+  return formatScopedActivitySummary({
+    scope: 'Agent',
+    title: description,
+    status,
+    detail: error || 'Unknown error',
+  })
 }
 
 export function formatMainSessionNotificationSummary({
@@ -34,9 +36,9 @@ export function formatMainSessionNotificationSummary({
 }): string {
   switch (status) {
     case 'completed':
-      return `Background session "${description}" done`
+      return `Background session "${description}" completed`
     case 'failed':
-      return `Background session "${description}" retry`
+      return `Background session "${description}" needs retry`
   }
 }
 
@@ -47,18 +49,15 @@ export function formatRemoteTaskNotificationSummary({
   title: string
   status: 'completed' | 'failed' | 'killed'
 }): string {
-  switch (status) {
-    case 'completed':
-      return `Remote task "${title}" done`
-    case 'failed':
-      return `Remote task "${title}" retry`
-    case 'killed':
-      return `Remote task "${title}" stopped`
-  }
+  return formatScopedActivitySummary({
+    scope: 'Remote task',
+    title,
+    status,
+  })
 }
 
 export function formatUltraplanFailureSummary(reason: string): string {
-  return `Ultraplan retry: ${reason}`
+  return `Ultraplan needs retry: ${reason}`
 }
 
 export function formatRemoteReviewNotificationSummary({
@@ -70,27 +69,16 @@ export function formatRemoteReviewNotificationSummary({
 }): string {
   switch (status) {
     case 'completed':
-      return 'Remote review done'
+      return 'Remote review completed'
     case 'failed':
-      return `Remote review retry: ${reason || 'Unknown error'}`
+      return `Remote review needs retry: ${reason || 'Unknown error'}`
   }
 }
 
 export function formatGenericTaskStatusText(status: {
   type: 'completed' | 'failed' | 'killed' | 'running' | 'pending'
 }['type']): string {
-  switch (status) {
-    case 'completed':
-      return 'done'
-    case 'failed':
-      return 'retry'
-    case 'killed':
-      return 'stopped'
-    case 'running':
-      return 'live'
-    case 'pending':
-      return 'queued'
-  }
+  return formatLifecycleStatusText(status)
 }
 
 export function formatLocalShellNotificationSummary({
@@ -105,32 +93,33 @@ export function formatLocalShellNotificationSummary({
   kind?: BashTaskKind
 }): string {
   if (kind === 'monitor') {
-    switch (status) {
-      case 'completed':
-        return `Monitor "${description}" ended`
-      case 'failed':
-        return `Monitor "${description}" retry${exitCode !== undefined ? ` (exit ${exitCode})` : ''}`
-      case 'killed':
-        return `Monitor "${description}" stopped`
-    }
+    return formatScopedActivitySummary({
+      scope: 'Monitor',
+      title: description,
+      status,
+      detail: exitCode !== undefined ? `exit ${exitCode}` : undefined,
+      completedLabel: 'ended',
+    })
   }
 
-  switch (status) {
-    case 'completed':
-      return `Background command "${description}" done`
-    case 'failed':
-      return `Background command "${description}" retry${exitCode !== undefined ? ` (exit ${exitCode})` : ''}`
-    case 'killed':
-      return `Background command "${description}" stopped`
-  }
+  return formatScopedActivitySummary({
+    scope: 'Background command',
+    title: description,
+    status,
+    detail: exitCode !== undefined ? `exit ${exitCode}` : undefined,
+  })
 }
 
 export function formatBackgroundShellWaitingSummary(description: string): string {
-  return `Background command "${description}" watch: waiting for input`
+  return formatScopedActivitySummary({
+    scope: 'Background command',
+    title: description,
+    status: 'watch',
+  })
 }
 
 export function formatBackgroundShellBatchSummary(count: number): string {
-  return `${count} background command${count === 1 ? '' : 's'} done`
+  return `${count} background command${count === 1 ? '' : 's'} completed`
 }
 
 type TaskNotificationStatus = 'completed' | 'failed' | 'killed'
@@ -166,7 +155,7 @@ export function summarizeTaskNotificationOverflow(notifications: string[]): {
   const parts = [`+${count} more task receipt${count === 1 ? '' : 's'}`]
 
   if (completed > 0) {
-    parts.push(`${completed} done`)
+    parts.push(`${completed} completed`)
   }
   if (failed > 0) {
     parts.push(`${failed} retry`)
@@ -175,7 +164,7 @@ export function summarizeTaskNotificationOverflow(notifications: string[]): {
     parts.push(`${killed} stopped`)
   }
   if (watch > 0) {
-    parts.push(`${watch} watch`)
+    parts.push(`${watch} waiting`)
   }
 
   return {

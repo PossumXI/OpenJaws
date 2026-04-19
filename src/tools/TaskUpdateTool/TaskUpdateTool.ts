@@ -8,6 +8,7 @@ import {
   getTaskCompletedHookMessage,
 } from '../../utils/hooks.js'
 import { lazySchema } from '../../utils/lazySchema.js'
+import { summarizeOutputText } from '../../utils/outputPresentation.js'
 import {
   getActiveTeamPhaseId,
   getTeamPhaseReceiptById,
@@ -338,7 +339,7 @@ export const TaskUpdateTool = buildTool({
         fromName: senderName,
         toNames: [updates.owner],
         phaseId: effectivePhaseId,
-        summary: existingTask.subject,
+        summary: summarizeOutputText(existingTask.subject, 96, 'Task assignment'),
         text: existingTask.description,
         sourceTerminalContextId,
       })
@@ -428,7 +429,7 @@ export const TaskUpdateTool = buildTool({
       }
     }
 
-    let resultContent = `Updated task #${taskId} ${updatedFields.join(', ')}`
+    let resultContent = `Task #${taskId} updated: ${updatedFields.join(', ')}`
 
     // Add reminder for teammates when they complete a task (supports in-process teammates)
     if (
@@ -437,7 +438,7 @@ export const TaskUpdateTool = buildTool({
       isAgentSwarmsEnabled()
     ) {
       resultContent +=
-        '\n\nTask completed. Call TaskList now to find your next available task or see if your work unblocked others.'
+        '\n\nTask completed. Call TaskList now to pick up the next available task or check for newly unblocked work.'
     }
 
     if (verificationNudgeNeeded) {

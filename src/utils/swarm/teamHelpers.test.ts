@@ -199,12 +199,12 @@ describe('teamHelpers agent co-work', () => {
       sourceTerminalContextId: 'term-lead01',
       targetAgentIds: ['scout@bridge-crew'],
       targetTerminalContextIds: ['term-scout02'],
-      requestSummary: 'Compare the OpenJaws and cheeks OCI wiring before patching the bridge.',
+      requestSummary: 'Compare the OpenJaws and cheeks OCI wiring before patching the bridge',
       label: 'scout initial assignment',
     })
 
     expect(receipt.requestSummary).toBe(
-      'Compare the OpenJaws and cheeks OCI wiring before patching the bridge.',
+      'Compare the OpenJaws and cheeks OCI wiring before patching the bridge',
     )
     expect(receipt.targetTerminalContextIds).toEqual(['term-scout02'])
 
@@ -218,7 +218,7 @@ describe('teamHelpers agent co-work', () => {
     expect(delivered?.phaseId).toBe(receipt.phaseId)
     expect(delivered?.status).toBe('delivered')
     expect(delivered?.lastDeliverableSummary).toBe(
-      'Found the OCI path drift and patched the shared bridge config.',
+      'Found the OCI path drift and patched the shared bridge config',
     )
     expect(getLatestPhaseReceiptForAgent(teamFile, 'scout@bridge-crew')?.phaseId).toBe(
       receipt.phaseId,
@@ -228,10 +228,10 @@ describe('teamHelpers agent co-work', () => {
     expect(markdown).toContain('# Agent Co-Work Phase Memory: bridge-crew')
     expect(markdown).toContain('phase_id: `')
     expect(markdown).toContain(
-      'last_deliverable: Found the OCI path drift and patched the shared bridge config.',
+      'last_deliverable: Found the OCI path drift and patched the shared bridge config',
     )
     expect(markdown).toContain(
-      'deliverable · scout -> team-lead · Found the OCI path drift and patched the shared bridge config.',
+      'deliverable · scout -> team-lead · Found the OCI path drift and patched the shared bridge config',
     )
   })
 
@@ -738,7 +738,7 @@ describe('teamHelpers agent co-work', () => {
       toNames: ['team-lead'],
       phaseId,
       text: 'Patched the shared routing and delivered the cross-project notes.',
-      summary: 'Patched the shared routing and delivered the cross-project notes.',
+      summary: 'Patched the shared routing and delivered the cross-project notes',
       sourceTerminalContextId: 'term-scout02',
     })
 
@@ -747,7 +747,7 @@ describe('teamHelpers agent co-work', () => {
     expect(refreshed?.phaseReceipts).toHaveLength(1)
     expect(refreshed?.phaseReceipts?.[0]?.deliveries).toHaveLength(2)
     expect(refreshed?.phaseReceipts?.[0]?.lastDeliverableSummary).toBe(
-      'Patched the shared routing and delivered the cross-project notes.',
+      'Patched the shared routing and delivered the cross-project notes',
     )
     expect(
       refreshed?.terminalContexts?.find(
@@ -817,7 +817,7 @@ describe('teamHelpers agent co-work', () => {
       phaseId: receipt.phaseId,
       fromAgentId: 'scout@bridge-crew',
       toAgentIds: ['team-lead@bridge-crew'],
-      summary: 'Pinned the bridge audit receipt and delivered the cutover notes.',
+      summary: 'Pinned the bridge audit receipt and delivered the cutover notes',
       kind: 'deliverable',
       sourceTerminalContextId: 'term-scout02',
       targetTerminalContextIds: ['term-lead01'],
@@ -832,6 +832,6 @@ describe('teamHelpers agent co-work', () => {
     expect(
       getLatestPhaseReceiptForAgent(teamFile, 'scout@bridge-crew')
         ?.lastDeliverableSummary,
-    ).toBe('Pinned the bridge audit receipt and delivered the cutover notes.')
+    ).toBe('Pinned the bridge audit receipt and delivered the cutover notes')
   })
 })

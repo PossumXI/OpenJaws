@@ -24,6 +24,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - deferred teammate launch queue with inspectable rows, detail dialogs, and operator controls
 - coordinator, footer, and background-task surfaces now share one pressure vocabulary
 - queued launches, retry pressure, approval pressure, and routed work are visible before they fail
+- task, tool, co-work, and delivery surfaces now share one compact output vocabulary too, so completed / waiting / retry states and handoff summaries stop drifting between different parts of the app
 
 ## Agent Co-Work
 

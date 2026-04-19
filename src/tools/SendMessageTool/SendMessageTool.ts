@@ -15,10 +15,13 @@ import { generateRequestId } from '../../utils/agentId.js'
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { errorMessage } from '../../utils/errors.js'
-import { truncate } from '../../utils/format.js'
 import { gracefulShutdown } from '../../utils/gracefulShutdown.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { parseAddress } from '../../utils/peerAddress.js'
+import {
+  formatDirectDeliverySummary,
+  summarizeOutputText,
+} from '../../utils/outputPresentation.js'
 import { semanticBoolean } from '../../utils/semanticBoolean.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import type { BackendType } from '../../utils/swarm/backends/types.js'
@@ -224,12 +227,17 @@ async function handleMessage(
     appState,
   })
 
+  const normalizedSummary = summarizeOutputText(
+    summary ?? content,
+    96,
+    'Message ready',
+  )
   await writeToMailbox(
     recipientName,
     {
       from: senderName,
       text: content,
-      summary,
+      summary: normalizedSummary,
       timestamp: new Date().toISOString(),
       color: senderColor,
     },
@@ -240,7 +248,7 @@ async function handleMessage(
       fromName: senderName,
       toNames: [recipientName],
       phaseId: phaseSelection.phaseId,
-      summary,
+      summary: normalizedSummary,
       text: content,
       sourceTerminalContextId: phaseSelection.sourceTerminalContextId,
     })
@@ -251,13 +259,16 @@ async function handleMessage(
   return {
     data: {
       success: true,
-      message: `Message sent to ${recipientName}'s inbox`,
+      message: formatDirectDeliverySummary({
+        target: `@${recipientName}`,
+        summary: normalizedSummary,
+      }),
       routing: {
         sender: senderName,
         senderColor,
         target: `@${recipientName}`,
         targetColor: recipientColor,
-        summary,
+        summary: normalizedSummary,
         content,
       },
     },
@@ -279,6 +290,11 @@ async function handleBroadcast(
     )
   }
 
+  const normalizedSummary = summarizeOutputText(
+    summary ?? content,
+    96,
+    'Broadcast ready',
+  )
   const phaseSelection = await resolveMailboxPhaseSelection({
     teamName,
     explicitPhaseId: phaseId,
@@ -323,7 +339,7 @@ async function handleBroadcast(
       {
         from: senderName,
         text: content,
-        summary,
+        summary: normalizedSummary,
         timestamp: new Date().toISOString(),
         color: senderColor,
       },
@@ -334,7 +350,7 @@ async function handleBroadcast(
     fromName: senderName,
     toNames: recipients,
     phaseId: phaseSelection.phaseId,
-    summary,
+    summary: normalizedSummary,
     text: content,
     sourceTerminalContextId: phaseSelection.sourceTerminalContextId,
   })
@@ -342,13 +358,17 @@ async function handleBroadcast(
   return {
     data: {
       success: true,
-      message: `Message broadcast to ${recipients.length} teammate(s): ${recipients.join(', ')}`,
+      message: `${formatDirectDeliverySummary({
+        target: '@team',
+        summary: normalizedSummary,
+        recipientCount: recipients.length,
+      })} (${recipients.join(', ')})`,
       recipients,
       routing: {
         sender: senderName,
         senderColor,
         target: '@team',
-        summary,
+        summary: normalizedSummary,
         content,
       },
     },
@@ -852,12 +872,16 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
             addr.target,
             input.message,
           )
-          const preview = input.summary || truncate(input.message, 50)
+          const preview = summarizeOutputText(
+            input.summary || input.message,
+            50,
+            'Message ready',
+          )
           return {
             data: {
               success: result.ok,
               message: result.ok
-                ? `“${preview}” → ${input.to}`
+                ? `Delivered to ${input.to} · ${preview}`
                 : `Failed to send to ${input.to}: ${result.error ?? 'unknown'}`,
             },
           }
@@ -869,11 +893,15 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
           /* eslint-enable @typescript-eslint/no-require-imports */
           try {
             await sendToUdsSocket(addr.target, input.message)
-            const preview = input.summary || truncate(input.message, 50)
+            const preview = summarizeOutputText(
+              input.summary || input.message,
+              50,
+              'Message ready',
+            )
             return {
               data: {
                 success: true,
-                message: `“${preview}” → ${input.to}`,
+                message: `Delivered to ${input.to} · ${preview}`,
               },
             }
           } catch (e) {

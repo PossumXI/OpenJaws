@@ -13,6 +13,7 @@ import { gitExe } from '../git.js'
 import { getImmaculateHarnessConfig } from '../immaculateHarness.js'
 import { lazySchema } from '../lazySchema.js'
 import { resolveOciQRuntime } from '../ociQRuntime.js'
+import { summarizeOutputText } from '../outputPresentation.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { jsonParse, jsonStringify } from '../slowOperations.js'
 import { getTasksDir, notifyTasksUpdated } from '../tasks.js'
@@ -399,11 +400,7 @@ export function getTeamPhaseRegistryPath(teamName: string): string | null {
 }
 
 function summarizeTeamPhaseText(text: string, maxLength = 160): string {
-  const normalized = text.replace(/\s+/g, ' ').trim()
-  if (normalized.length <= maxLength) {
-    return normalized
-  }
-  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`
+  return summarizeOutputText(text, maxLength, 'Phase update ready')
 }
 
 function uniqStrings(values: Array<string | null | undefined>): string[] {
