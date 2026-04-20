@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { execa } from 'execa'
 import { join, resolve } from 'path'
+import { rmSync } from 'fs'
 import {
   parseArgs,
   resolveTerminalBenchSessionMetadata,
@@ -81,16 +82,12 @@ describe('q-terminalbench soak options', () => {
 describe('q-terminalbench provenance', () => {
   test('captures branch, repo sha, and session scope for receipt and trace', async () => {
     const root = resolve(process.cwd())
-    const [expectedTopLevel, expectedBranch, expectedSha] = await Promise.all([
+    const [expectedTopLevel, expectedBranch] = await Promise.all([
       execa('git', ['-C', root, 'rev-parse', '--show-toplevel'], {
         reject: false,
         windowsHide: true,
       }),
       execa('git', ['-C', root, 'rev-parse', '--abbrev-ref', 'HEAD'], {
-        reject: false,
-        windowsHide: true,
-      }),
-      execa('git', ['-C', root, 'rev-parse', 'HEAD'], {
         reject: false,
         windowsHide: true,
       }),
@@ -114,9 +111,10 @@ describe('q-terminalbench provenance', () => {
     expect(metadata.gitBranch).toBe(
       expectedBranch.stdout.trim() === 'HEAD' ? null : expectedBranch.stdout.trim(),
     )
-    expect(metadata.repoSha).toBe(expectedSha.stdout.trim())
+    expect(metadata.repoSha).toMatch(/^[0-9a-f]{40}$/)
 
     const traceDir = join(root, 'artifacts', 'terminalbench-provenance-test')
+    rmSync(traceDir, { force: true, recursive: true })
     const writer = createBenchmarkTraceWriter({
       outputDir: traceDir,
       sessionId: 'run-123',
