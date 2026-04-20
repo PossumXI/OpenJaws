@@ -32,6 +32,176 @@ export type DiscordRoundtableExecutionResult = {
   outputDir: string
   receiptPath: string
   job: DiscordOperatorExecutionResult
+  hasCodeChanges: boolean
+  artifactOnly: boolean
+  hasDisallowedChanges: boolean
+  verificationPassed: boolean
+  mergeable: boolean
+}
+
+export type DiscordRoundtableReceipt = {
+  version: 1
+  personaId: string
+  personaName: string
+  title: string
+  reason: string
+  targetRoot: string
+  targetPath: string
+  gitRoot: string
+  branchName: string | null
+  worktreePath: string | null
+  workspacePath: string
+  outputDir: string
+  startedAt: string
+  completedAt: string
+  changedFiles: string[]
+  commitSha: string | null
+  verificationSummary: string
+  executionQuality: {
+    hasCodeChanges: boolean
+    artifactOnly: boolean
+    hasDisallowedChanges: boolean
+    verificationPassed: boolean
+    mergeable: boolean
+  }
+  artifacts: {
+    stdoutPath: string
+    markdownPath: string
+    resultPath: string
+    deliveryPath: string
+  }
+}
+
+const CODE_PATH_PREFIXES = ['src/', 'apps/', 'packages/', 'scripts/', 'internal/']
+const CODE_FILE_EXTENSIONS = [
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.go',
+  '.rs',
+  '.py',
+  '.ps1',
+  '.sh',
+  '.toml',
+  '.json',
+  '.yaml',
+  '.yml',
+  '.sql',
+]
+const NON_MERGEABLE_PATH_PATTERNS = [
+  /^artifacts\//i,
+  /^_AUDIT/i,
+  /^_NOTE/i,
+  /^AUDIT/i,
+  /^docs\/wiki\/Audit/i,
+  /(?:^|[\\/])(receipt|result|delivery)\.json$/i,
+  /(?:^|[\\/])stdout\.txt$/i,
+  /(?:^|[\\/])stderr\.txt$/i,
+  /(?:^|[\\/])openjaws-output\.md$/i,
+  /(?:^|[\\/])\.openjaws-config[\\/]/i,
+]
+
+function isNonMergeablePath(path: string): boolean {
+  return NON_MERGEABLE_PATH_PATTERNS.some(pattern => pattern.test(path))
+}
+
+function isCodeChangePath(path: string): boolean {
+  const lower = path.toLowerCase()
+  return (
+    CODE_PATH_PREFIXES.some(prefix => lower.startsWith(prefix)) ||
+    CODE_FILE_EXTENSIONS.some(ext => lower.endsWith(ext))
+  )
+}
+
+export function classifyDiscordRoundtableExecution(args: {
+  changedFiles: string[]
+  verificationPassed: boolean
+  commitSha: string | null
+}): {
+  hasCodeChanges: boolean
+  artifactOnly: boolean
+  hasDisallowedChanges: boolean
+  verificationPassed: boolean
+  mergeable: boolean
+} {
+  const normalized = args.changedFiles
+    .map(path => path.replace(/\\/g, '/').replace(/^\.\//, '').trim())
+    .filter(Boolean)
+  const hasDisallowedChanges = normalized.some(isNonMergeablePath)
+  const hasCodeChanges = normalized.some(
+    path => isCodeChangePath(path) && !isNonMergeablePath(path),
+  )
+  const artifactOnly =
+    normalized.length > 0 && normalized.every(path => isNonMergeablePath(path))
+  const verificationPassed = args.verificationPassed
+  const mergeable =
+    Boolean(args.commitSha) &&
+    verificationPassed &&
+    hasCodeChanges &&
+    !artifactOnly &&
+    !hasDisallowedChanges
+  return {
+    hasCodeChanges,
+    artifactOnly,
+    hasDisallowedChanges,
+    verificationPassed,
+    mergeable,
+  }
+}
+
+export function buildDiscordRoundtableReceipt(args: {
+  personaId: string
+  personaName: string
+  action: DiscordRoundtableExecutableAction
+  targetPath: string
+  gitRoot: string
+  targetRootLabel: string
+  runContext: Pick<DiscordOperatorRunContext, 'branchName' | 'worktreePath' | 'workspacePath'>
+  outputDir: string
+  job: Pick<
+    DiscordOperatorExecutionResult,
+    'changedFiles' | 'commitSha' | 'verification'
+  > & {
+    result: Pick<DiscordOperatorExecutionResult['result'], 'startedAt' | 'completedAt'>
+  }
+  executionQuality: {
+    hasCodeChanges: boolean
+    artifactOnly: boolean
+    hasDisallowedChanges: boolean
+    verificationPassed: boolean
+    mergeable: boolean
+  }
+  timestampIso: string
+}): DiscordRoundtableReceipt {
+  return {
+    version: 1,
+    personaId: args.personaId,
+    personaName: args.personaName,
+    title: args.action.title,
+    reason: args.action.reason,
+    targetRoot: args.targetRootLabel,
+    targetPath: args.targetPath,
+    gitRoot: args.gitRoot,
+    branchName: args.runContext.branchName,
+    worktreePath: args.runContext.worktreePath,
+    workspacePath: args.runContext.workspacePath,
+    outputDir: args.outputDir,
+    startedAt: args.job.result.startedAt ?? args.timestampIso,
+    completedAt: args.job.result.completedAt ?? args.timestampIso,
+    changedFiles: args.job.changedFiles,
+    commitSha: args.job.commitSha,
+    verificationSummary: args.job.verification.summary,
+    executionQuality: args.executionQuality,
+    artifacts: {
+      stdoutPath: join(args.outputDir, 'stdout.txt'),
+      markdownPath: join(args.outputDir, 'openjaws-output.md'),
+      resultPath: join(args.outputDir, 'result.json'),
+      deliveryPath: join(args.outputDir, 'delivery.json'),
+    },
+  }
 }
 
 function findRoundtableRootDescriptor(
@@ -97,50 +267,43 @@ export async function executeDiscordRoundtableAction(args: {
   })
 
   const receiptPath = join(outputDir, 'receipt.json')
+  const executionQuality = classifyDiscordRoundtableExecution({
+    changedFiles: job.changedFiles,
+    verificationPassed: job.verification.passed,
+    commitSha: job.commitSha,
+  })
+  const targetRootLabel =
+    findRoundtableRootDescriptor(targetPath, args.roots)?.label ?? basename(targetPath)
+  const receipt = buildDiscordRoundtableReceipt({
+    personaId: args.personaId,
+    personaName: args.personaName,
+    action: args.action,
+    targetPath,
+    gitRoot,
+    targetRootLabel,
+    runContext: {
+      branchName: runContext.branchName,
+      worktreePath: runContext.worktreePath,
+      workspacePath: runContext.workspacePath,
+    },
+    outputDir,
+    job,
+    executionQuality,
+    timestampIso: new Date().toISOString(),
+  })
   writeFileSync(
     receiptPath,
-    `${JSON.stringify(
-      {
-        version: 1,
-        personaId: args.personaId,
-        personaName: args.personaName,
-        title: args.action.title,
-        reason: args.action.reason,
-        targetRoot:
-          findRoundtableRootDescriptor(targetPath, args.roots)?.label ??
-          basename(targetPath),
-        targetPath,
-        gitRoot,
-        branchName: runContext.branchName,
-        worktreePath: runContext.worktreePath,
-        workspacePath: runContext.workspacePath,
-        outputDir,
-        startedAt: job.result.startedAt ?? new Date().toISOString(),
-        completedAt: job.result.completedAt ?? new Date().toISOString(),
-        changedFiles: job.changedFiles,
-        commitSha: job.commitSha,
-        verificationSummary: job.verification.summary,
-        artifacts: {
-          stdoutPath: join(outputDir, 'stdout.txt'),
-          markdownPath: join(outputDir, 'openjaws-output.md'),
-          resultPath: join(outputDir, 'result.json'),
-          deliveryPath: join(outputDir, 'delivery.json'),
-        },
-      },
-      null,
-      2,
-    )}\n`,
+    `${JSON.stringify(receipt, null, 2)}\n`,
     'utf8',
   )
 
   return {
-    targetRootLabel:
-      findRoundtableRootDescriptor(targetPath, args.roots)?.label ??
-      basename(targetPath),
+    targetRootLabel,
     gitRoot,
     runContext,
     outputDir,
     receiptPath,
     job,
+    ...executionQuality,
   }
 }
