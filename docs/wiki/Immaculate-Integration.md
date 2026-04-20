@@ -39,6 +39,42 @@ OpenJaws shows Immaculate through normal operator paths, not hidden internal con
 - `/immaculate` exposes topology and control state directly for operators who want a deeper view
 - `/status` and `/immaculate` prefer the current active Immaculate trace, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
 
+## Shared Policy Layer
+
+OpenJaws now keeps the most important routed-`Q` and Immaculate timing rules in one shared module instead of letting the same numbers drift across launch helpers, routing code, and worker surfaces.
+
+- fast-path suppression window and failure threshold for routed `Q`
+- route-claim TTL and worker lease duration defaults
+- Immaculate crew hold/retry delays under pressure
+
+That keeps the decision surface easier to audit and reduces the chance that launch, routing, and worker code quietly diverge.
+
+## Runtime Coherence Audit
+
+OpenJaws now has a read-only runtime coherence check that compares the current live state instead of trusting one receipt in isolation.
+
+- live Immaculate reachability
+- Discord `Q` runtime receipt state
+- patrol snapshot vs. live harness reachability
+- route queue depth
+- latest Immaculate and Q trace summaries
+- roundtable runtime state
+- loopback health for `Q`, `Viola`, and `Blackbeak`
+
+Current fail-closed posture:
+
+- harness down plus no active trace is a warning, not a fake green
+- active-trace/live-harness disagreement is a failure
+- Discord patrol and queue-depth drift are surfaced as mismatches instead of being silently ignored
+
+Use:
+
+```powershell
+bun run runtime:coherence
+```
+
+That command is an audit surface, not a repair action.
+
 ## Security and Reliability Posture
 
 Immaculate is there to reduce hidden failure modes, not to take control away from the local operator.

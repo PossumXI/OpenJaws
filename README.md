@@ -60,12 +60,14 @@ The Q mark above is sourced from `src/components/LogoV2/qMarkData.ts` and can be
 - Keeps provider, model, routing, and remote-worker state visible so the app does not quietly drift into a different setup.
 - Starts new public installs on `Q` with `OCI`, but still lets you switch providers and models on purpose.
 - Supports both local and remote execution, including signed `Q` training routes and worker assignment.
+- Keeps routed `Q` fallback thresholds, route lease timing, worker lease duration, and Immaculate crew pacing on one shared policy path instead of duplicating those numbers across launch, routing, and worker code.
 - Gives you practical controls like `/help`, `/config`, `/theme`, `/privacy-settings`, `/status`, `/immaculate`, `/provider`, `/voice`, and `/remote-env`.
 - Makes `/help` more useful on first run by surfacing real quick-start commands, aliases, and argument hints instead of a bare static list.
 - Keeps Settings readable with dedicated `Appearance` and `Privacy` tabs, including a local Privacy mode for telemetry/nonessential-traffic policy and clearer `auto` / `dark` / `light` theme behavior.
 - Adds a bounded `/apex` command center for trusted local mail, chat, store, system, security, and browser-preview lanes without pretending external Rust GUIs are native Ink views.
 - Normalizes task, tool, co-work, and delivery summaries so final handoffs read the same way across the TUI instead of drifting between different vocabularies.
 - Probes Gemini media lanes explicitly so Discord media bots can tell the difference between a listed model and a Google-side quota block, then fall back cleanly instead of stalling.
+- Adds a read-only runtime coherence audit so operators can reconcile live Immaculate reachability, Discord receipts, route queue depth, and active traces before trusting the current state.
 - Includes built-in dataset and training tools for improving `Q` over time.
 
 ## Live Immaculate Benchmarks
@@ -118,6 +120,14 @@ Release verification:
 ```powershell
 bun run verify:release
 ```
+
+Runtime coherence audit:
+
+```powershell
+bun run runtime:coherence
+```
+
+That audit command is read-only. It reports when the live harness, Discord receipts, queue depth, and active traces disagree; it does not try to repair them for you.
 
 Hosted GitHub verification:
 

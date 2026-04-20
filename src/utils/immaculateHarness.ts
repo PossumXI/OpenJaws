@@ -1,6 +1,10 @@
 import axios from 'axios'
 import { jsonStringify } from './slowOperations.js'
 import { getSettings_DEPRECATED } from './settings/settings.js'
+import {
+  IMMACULATE_CREW_POLICY,
+  resolveImmaculatePressureDelayMs,
+} from '../immaculate/policies.js'
 
 export const IMMACULATE_HARNESS_ACTIONS = [
   'health',
@@ -221,7 +225,6 @@ const REQUEST_TIMEOUT_MS = 20_000
 const HEALTH_TIMEOUT_MS = 2_500
 const DEFAULT_ACTUATION_TIMEOUT_MS = 1_500
 const DEFAULT_OBJECTIVE_LENGTH = 180
-const CREW_WAVE_RETENTION_MS = 15_000
 
 const GOVERNANCE_PROFILES: Partial<
   Record<ImmaculateHarnessAction, ImmaculateGovernanceProfile>
@@ -1315,18 +1318,20 @@ export function resolveImmaculateCrewLaunchWindow({
   })
 
   if (verdict.label === 'reroute') {
+    const delayMs = resolveImmaculatePressureDelayMs(verdict.label)
     return {
       label: 'reroute',
-      delayMs: 900,
-      detail: `launch window 900ms · ${verdict.detail}`,
+      delayMs,
+      detail: `launch window ${delayMs}ms · ${verdict.detail}`,
     }
   }
 
   if (verdict.label === 'hold') {
+    const delayMs = resolveImmaculatePressureDelayMs(verdict.label)
     return {
       label: 'hold',
-      delayMs: 250,
-      detail: `launch window 250ms · ${verdict.detail}`,
+      delayMs,
+      detail: `launch window ${delayMs}ms · ${verdict.detail}`,
     }
   }
 
@@ -1347,22 +1352,24 @@ export function resolveImmaculateRetryWindow({
   const recommendedLayerId = deckReceipt?.recommendedLayerId
 
   if (executionCount >= Math.max(3, layerCount * 2)) {
+    const delayMs = resolveImmaculatePressureDelayMs('reroute')
     return {
       label: 'reroute',
-      delayMs: 900,
+      delayMs,
       detail: recommendedLayerId
-        ? `retry window 900ms · recommend ${recommendedLayerId}`
-        : 'retry window 900ms',
+        ? `retry window ${delayMs}ms · recommend ${recommendedLayerId}`
+        : `retry window ${delayMs}ms`,
     }
   }
 
   if (executionCount >= Math.max(1, layerCount)) {
+    const delayMs = resolveImmaculatePressureDelayMs('hold')
     return {
       label: 'hold',
-      delayMs: 250,
+      delayMs,
       detail: recommendedLayerId
-        ? `retry window 250ms · recommend ${recommendedLayerId}`
-        : 'retry window 250ms',
+        ? `retry window ${delayMs}ms · recommend ${recommendedLayerId}`
+        : `retry window ${delayMs}ms`,
     }
   }
 
@@ -1429,7 +1436,7 @@ export function isImmaculateCrewWaveActive(
   if (wave.holdUntil && wave.holdUntil > now) {
     return true
   }
-  return now - wave.updatedAt <= CREW_WAVE_RETENTION_MS
+  return now - wave.updatedAt <= IMMACULATE_CREW_POLICY.retentionMs
 }
 
 export function summarizeImmaculateCrewWave(
@@ -1519,7 +1526,7 @@ export function isImmaculateCrewBurstBudgetActive(
   if (budget.holdUntil && budget.holdUntil > now) {
     return true
   }
-  return now - budget.updatedAt <= CREW_WAVE_RETENTION_MS
+  return now - budget.updatedAt <= IMMACULATE_CREW_POLICY.retentionMs
 }
 
 export function shouldDeferImmaculateCrewSpawn(

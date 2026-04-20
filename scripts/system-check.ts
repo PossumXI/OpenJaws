@@ -515,6 +515,19 @@ async function main() {
     }),
   )
   results.push(
+    await runJsonCommandCheck('runtime-coherence-live', 'bun', [
+      'scripts/runtime-coherence.ts',
+      '--json',
+    ], {
+      successSummary:
+        'Runtime coherence reconciled live Immaculate state, traces, and Discord receipts',
+      failureSummary:
+        'Runtime coherence found drift between live harness state and local audit surfaces',
+      timeoutMs: 60_000,
+      allowFailure: true,
+    }),
+  )
+  results.push(
     await runJsonCommandCheck('startup-harness-live', 'bun', [
       '-e',
       [

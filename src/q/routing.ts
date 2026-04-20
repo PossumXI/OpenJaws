@@ -51,6 +51,10 @@ import {
   registerImmaculateHarnessWorker,
   unregisterImmaculateHarnessWorker,
 } from '../utils/immaculateHarness.js'
+import {
+  resolveQRouteDispatchTransport,
+  resolveQWorkerLeaseDurationMs,
+} from '../immaculate/policies.js'
 
 export type QRouteDispatchCliOptions = {
   root: string | null
@@ -415,10 +419,11 @@ export function writeDispatchState(args: {
 }
 
 export function getWorkerLeaseDurationMs(options: QRouteWorkerCliOptions): number {
-  return Math.max(
-    options.claimTtlMs ?? 45_000,
-    options.watch ? options.pollMs * 3 : 5_000,
-  )
+  return resolveQWorkerLeaseDurationMs({
+    claimTtlMs: options.claimTtlMs,
+    watch: options.watch,
+    pollMs: options.pollMs,
+  })
 }
 
 export function validateWorkerOptions(options: QRouteWorkerCliOptions): void {
@@ -810,9 +815,11 @@ export async function dispatchQTrainingRoute(
       ? executionEndpointValidation.endpoint
       : null
   const dispatchTransport: QTrainingRouteDispatchTransport =
-    remoteExecution && !fastPathWindow.active && executionEndpoint
-      ? 'remote_http'
-      : 'local_process'
+    resolveQRouteDispatchTransport({
+      remoteExecution,
+      executionEndpoint,
+      fallbackWindow: fastPathWindow,
+    })
   const claimedRouteDisplayStatus =
     getQTrainingRouteQueueDisplayStatus(claimedRoute)
   const claimedRouteSummary = getQTrainingRouteQueueStatusSummary(claimedRoute)
