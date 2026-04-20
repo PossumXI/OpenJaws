@@ -650,6 +650,17 @@ export function buildDiscordQAgentProperties(
     ]
   }]
   properties.push({
+    label: 'Q gateway',
+    value: [
+      receipt.gateway.userId ? `user ${receipt.gateway.userId}` : 'user unknown',
+      ...(receipt.gateway.readyAt ? [`ready ${receipt.gateway.readyAt}`] : []),
+      ...(receipt.gateway.lastHeartbeatAt
+        ? [`heartbeat ${receipt.gateway.lastHeartbeatAt}`]
+        : []),
+      ...(receipt.gateway.lastReplyAt ? [`reply ${receipt.gateway.lastReplyAt}`] : []),
+    ],
+  })
+  properties.push({
     label: 'Q patrol',
     value: [
       receipt.schedule.enabled
@@ -678,11 +689,22 @@ export function buildDiscordQAgentProperties(
     label: 'Q voice',
     value: [
       receipt.voice.enabled ? 'enabled' : 'disabled',
+      `provider ${receipt.voice.provider}`,
       receipt.voice.ready ? 'ready' : 'not ready',
+      receipt.voice.connected ? 'connected' : 'not connected',
       receipt.voice.voiceId ?? 'voice missing',
       receipt.voice.modelId ?? 'model missing',
-      ...(receipt.voice.lastChannelName
-        ? [`last ${receipt.voice.lastChannelName}`]
+      ...(receipt.voice.channelName
+        ? [`live ${receipt.voice.channelName}`]
+        : receipt.voice.lastChannelName
+          ? [`last ${receipt.voice.lastChannelName}`]
+          : []),
+      ...(receipt.voice.stagedProvider
+        ? [
+            receipt.voice.stagedSummary
+              ? `staged ${receipt.voice.stagedSummary}`
+              : `staged ${receipt.voice.stagedProvider} ${receipt.voice.stagedReady ? 'ready' : 'not ready'}`,
+          ]
         : []),
       ...(receipt.voice.lastError ? [receipt.voice.lastError] : []),
     ]

@@ -49,6 +49,8 @@ If you want that path to stay free:
 - keep its rate limits separate from downloaded public installs
 - do not treat Discord access as proof that a downloaded OpenJaws install is entitled to unlimited hosted `Q`
 
+The current private Discord operator lane can also hand off a bounded request to the hosted `@openjaws` GitHub App when you want work to keep moving after the local machine goes offline. Treat that as an internal operator exception too, not as a public hosted entitlement.
+
 ## Rate Limits and Credits
 
 The honest place to enforce credits and rate limits is the hosted `Q` service that issues the key.
@@ -80,7 +82,8 @@ Recommended boundary between lanes:
 
 - free lane: short interactive use, bounded evaluation, light experimentation
 - paid lane: heavier daily usage, longer coding sessions, larger benchmark volume, and sustained team use
-- internal Discord lane: optional no-charge exception, still rate-limited and moderated
+- internal Discord lane: optional no-charge exception, still rate-limited, moderated, and approval-gated before pushes
+- internal Discord -> hosted GitHub lane: supervised off-machine execution for approved repos, still private/internal and not a public consumer plan
 
 ## Example Operator Policy
 

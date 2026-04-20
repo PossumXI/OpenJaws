@@ -290,6 +290,7 @@ describe('buildDiscordQAgentProperties', () => {
         guilds: [{ id: 'guild-1', name: 'Arobi' }],
         gateway: {
           connected: true,
+          userId: 'bot-user-1',
           readyAt: '2026-04-15T09:00:10.000Z',
           lastHeartbeatAt: '2026-04-15T10:00:00.000Z',
           lastSequence: 42,
@@ -346,9 +347,11 @@ describe('buildDiscordQAgentProperties', () => {
           enabled: true,
           provider: 'elevenlabs',
           ready: true,
+          connected: true,
           voiceId: 'voice-1',
           voiceIdSource: 'ELEVENLABS_VOICE_ID',
           modelId: 'eleven_flash_v2_5',
+          channelName: 'viola-lounge',
           lastRenderedAt: '2026-04-15T09:55:02.000Z',
           lastSpokenText: 'Blackbeak checking in',
           lastChannelName: 'q-command-station',
@@ -405,6 +408,15 @@ describe('buildDiscordQAgentProperties', () => {
         ],
       },
       {
+        label: 'Q gateway',
+        value: [
+          'user bot-user-1',
+          'ready 2026-04-15T09:00:10.000Z',
+          'heartbeat 2026-04-15T10:00:00.000Z',
+          'reply 2026-04-15T09:59:01.000Z',
+        ],
+      },
+      {
         label: 'Q patrol',
         value: ['every 15m', '1 patrol post sent', 'next 2026-04-15T10:10:00.000Z'],
       },
@@ -421,10 +433,12 @@ describe('buildDiscordQAgentProperties', () => {
         label: 'Q voice',
         value: [
           'enabled',
+          'provider elevenlabs',
           'ready',
+          'connected',
           'voice-1',
           'eleven_flash_v2_5',
-          'last q-command-station',
+          'live viola-lounge',
         ],
       },
       {

@@ -138,8 +138,9 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 - `--lineage-id` and optional `--phase-id` now let the local, routed, and follow-up benchmark receipts stay attached to the same intentional work thread
 - hybrid sessions now keep a rolling 3-failures-in-60s transport hysteresis window for the Immaculate fast path, so one transient route miss does not instantly suppress routed execution
 - the local Discord lane now builds mention help, locked manuals, and per-bot command surfaces from one shared capability-aware command registry instead of drifting across separate help text
-- that same private Discord lane can now stage isolated OpenJaws runs in disposable git worktrees and per-job branches, run verification before any publish step, and hold pushes behind an explicit `confirm-push` command in Discord
-- that private Discord operator surface now exposes explicit `workspaces`, `openjaws-status`, `start-openjaws`, `ask-openjaws`, `pending-pushes`, `confirm-push`, and `stop-openjaws` commands behind the same approved-root and operator/trainer gate instead of a hidden shell
+- that same private Discord lane can now stage isolated OpenJaws runs in disposable git worktrees and per-job branches, run verification before any publish step, and hold pushes behind explicit approval checkpoints in Discord
+- that private Discord operator surface now exposes explicit `workspaces`, `openjaws-status`, `start-openjaws`, `ask-openjaws`, `github-status`, `ask-github-openjaws`, `pending-pushes`, `confirm-push`, and `stop-openjaws` commands behind the same approved-root and operator/trainer gate instead of a hidden shell
+- that same operator lane can now hand off bounded work to the hosted `@openjaws` GitHub App by opening a prepared issue against the target repo, which lets supervised work continue remotely when the local machine goes offline
 
 Honest boundary:
 
@@ -152,8 +153,8 @@ Honest boundary:
 - `/status` and `/immaculate` now prefer the active typed Immaculate trace for the run in flight, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
 - the private Discord station now supports live voice-channel presence for the internal lane, but that voice path is still local/private and should be treated as an experimental operator surface rather than a public hosted feature
 - the private Discord station can search a secret-safe local corpus and run explicit operator-only OpenJaws workflows, but it is not a hidden shell surface
-- the private roundtable lane now deduplicates work by canonical project scope, so the bots can keep taking bounded 4-hour actions without stacking multiple helpers onto the same repo path at once
-- that operator surface is still local-machine scoped; it is not yet a hosted off-machine GitHub worker and should be treated as a supervised branch/worktree control lane
+- the private roundtable lane now deduplicates work by canonical project scope and uses a queued lease ledger plus approval checkpoints before pushes, so the bots can keep taking bounded 4-hour actions without stacking multiple helpers onto the same repo path at once
+- the private Discord operator lane can now hand off bounded work to the hosted `@openjaws` GitHub App for remote execution, but that GitHub worker is still a private/internal operator surface rather than a public consumer feature
 
 For who should bring their own key, what can stay free, and where credits/rate limits actually belong, see [Q Access and Limits](Q-Access-and-Limits.md).
 
