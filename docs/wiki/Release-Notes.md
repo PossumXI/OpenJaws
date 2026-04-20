@@ -67,6 +67,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - user browsing history stays private by default; only Q or agent-led browsing is persisted for accountability
 - localhost/private-network targets are now reserved for explicit `preview` sessions so the general browse/watch/music lanes stay on public URLs
 - private user sessions are now redacted from shared `/status` surfaces unless the session is an accountable Q or agent handoff
+- agent navigate/close actions now fail closed when they target a private or unknown user browser session, so the native preview lane cannot mutate unsupervised user browsing state by accident
 - `/status` now reports the live bridge-backed preview session first and only uses the last accountable receipt as fallback context
 
 ## Immaculate Integration

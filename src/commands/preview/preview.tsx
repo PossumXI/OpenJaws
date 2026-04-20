@@ -435,6 +435,7 @@ function PreviewCommand({
           url,
           intent,
           rationale,
+          requestedBy: 'user',
         })
         setActionMessage(result.message)
         setReceipt(result.receipt)
@@ -451,7 +452,10 @@ function PreviewCommand({
           setActionMessage('There is no active browser session to close.')
           return
         }
-        const result = await closeBrowserPreviewSession({ sessionId })
+        const result = await closeBrowserPreviewSession({
+          sessionId,
+          requestedBy: 'user',
+        })
         setActionMessage(result.message)
         setReceipt(result.receipt)
         setRuntime(result.runtime)

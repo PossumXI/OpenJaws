@@ -11,6 +11,7 @@ This is the current contract:
 - Q or agent-led browsing on the user’s behalf is the only lane that lands in accountable receipts.
 - private-network and localhost targets are reserved for explicit `preview` sessions, so the general `browse`, `watch`, and `music` lanes stay on public URLs instead of quietly hitting internal hosts.
 - shared status surfaces now redact private user session titles and URLs unless the session is an accountable Q or agent handoff.
+- agent-side navigate and close operations now fail closed against private or unknown user sessions, so only accountable browser sessions can be mutated on the operator’s behalf.
 
 ## What `/preview` does
 

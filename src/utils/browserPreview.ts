@@ -75,6 +75,12 @@ const BROWSER_PREVIEW_DIR = 'browser-preview'
 const BROWSER_PREVIEW_RECEIPT = 'receipt.json'
 const MAX_BROWSER_PREVIEW_SESSIONS = 30
 
+type BrowserPreviewMutationAccess = {
+  ok: boolean
+  message: string | null
+  session: ApexBrowserSession | null
+}
+
 function createEmptyReceipt(): BrowserPreviewReceipt {
   return {
     version: 1,
@@ -157,6 +163,10 @@ function isAccountableBrowserPreviewSession(
   session: BrowserPreviewSession,
 ): boolean {
   return session.requestedBy === 'agent'
+}
+
+function isPrivateUserApexBrowserSession(session: ApexBrowserSession): boolean {
+  return session.requestedBy === 'user' && !session.recordHistory
 }
 
 function isPrivateBrowserPreviewHost(hostname: string): boolean {
@@ -386,6 +396,67 @@ function shouldPersistSession(requestedBy: 'user' | 'agent'): boolean {
   return requestedBy === 'agent'
 }
 
+export function assessBrowserPreviewMutationAccess(args: {
+  sessionId: string
+  requestedBy: 'user' | 'agent'
+  summary: ApexBrowserSummary | null
+  runtimeMessage?: string | null
+}): BrowserPreviewMutationAccess {
+  const sessionId = args.sessionId.trim()
+  if (!sessionId) {
+    return {
+      ok: false,
+      message: 'A browser session id is required.',
+      session: null,
+    }
+  }
+
+  if (args.requestedBy !== 'agent') {
+    const session =
+      args.summary?.sessions.find(candidate => candidate.id === sessionId) ?? null
+    return {
+      ok: true,
+      message: null,
+      session,
+    }
+  }
+
+  if (!args.summary) {
+    return {
+      ok: false,
+      message:
+        args.runtimeMessage?.trim() ||
+        'Agent browser mutations require a live browser session map before navigating or closing sessions.',
+      session: null,
+    }
+  }
+
+  const session =
+    args.summary.sessions.find(candidate => candidate.id === sessionId) ?? null
+  if (!session) {
+    return {
+      ok: false,
+      message: `No live browser session was found for ${sessionId}.`,
+      session: null,
+    }
+  }
+
+  if (isPrivateUserApexBrowserSession(session)) {
+    return {
+      ok: false,
+      message:
+        'Agent browser mutations cannot navigate or close private user sessions. Launch an accountable preview session instead.',
+      session,
+    }
+  }
+
+  return {
+    ok: true,
+    message: null,
+    session,
+  }
+}
+
 function buildOpenMessage(
   requestedBy: 'user' | 'agent',
   session: ApexBrowserSession | null,
@@ -493,6 +564,33 @@ export async function navigateBrowserPreviewSession(args: {
   const rationale = normalizeRationale(
     args.rationale ?? 'Continue the active browser session in the TUI lane.',
   )
+  const runtime = await resolveBrowserPreviewRuntime()
+  const access = assessBrowserPreviewMutationAccess({
+    sessionId,
+    requestedBy,
+    summary: runtime.summary,
+    runtimeMessage: runtime.message,
+  })
+  if (!access.ok) {
+    const session = createPreviewSession('navigate_session', {
+      intent,
+      rationale,
+      requestedBy,
+      opened: false,
+      note: access.message ?? 'Browser session mutation was blocked.',
+      url,
+    })
+    const receipt = shouldPersistSession(requestedBy)
+      ? await appendSession(session)
+      : await readBrowserPreviewReceipt()
+    return {
+      ok: false,
+      message: access.message ?? 'Browser session mutation was blocked.',
+      session,
+      receipt,
+      runtime,
+    }
+  }
   const result = await navigateApexBrowserSession({
     sessionId,
     url,
@@ -532,6 +630,32 @@ export async function closeBrowserPreviewSession(args: {
     throw new Error('A browser session id is required.')
   }
   const requestedBy = args.requestedBy ?? 'user'
+  const runtime = await resolveBrowserPreviewRuntime()
+  const access = assessBrowserPreviewMutationAccess({
+    sessionId,
+    requestedBy,
+    summary: runtime.summary,
+    runtimeMessage: runtime.message,
+  })
+  if (!access.ok) {
+    const session = createPreviewSession('close_session', {
+      intent: 'preview',
+      rationale: 'Close the in-TUI browser session.',
+      requestedBy,
+      opened: false,
+      note: access.message ?? 'Browser session mutation was blocked.',
+    })
+    const receipt = shouldPersistSession(requestedBy)
+      ? await appendSession(session)
+      : await readBrowserPreviewReceipt()
+    return {
+      ok: false,
+      message: access.message ?? 'Browser session mutation was blocked.',
+      session,
+      receipt,
+      runtime,
+    }
+  }
   const result = await closeApexBrowserSession({ sessionId })
   const session = createPreviewSession('close_session', {
     intent: 'preview',

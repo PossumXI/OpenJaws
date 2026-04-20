@@ -3,6 +3,7 @@ import { mkdir, rm, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import {
+  assessBrowserPreviewMutationAccess,
   getBrowserPreviewReceiptPath,
   normalizeBrowserPreviewUrl,
   readBrowserPreviewReceipt,
@@ -203,5 +204,115 @@ describe('browserPreview', () => {
     ).toThrow(
       'Private-network browser targets are only allowed for preview intent.',
     )
+  })
+
+  test('blocks agent mutations when the live browser summary is unavailable', () => {
+    const access = assessBrowserPreviewMutationAccess({
+      sessionId: 'session-1',
+      requestedBy: 'agent',
+      summary: null,
+      runtimeMessage: 'Browser bridge offline right now.',
+    })
+
+    expect(access.ok).toBe(false)
+    expect(access.message).toBe('Browser bridge offline right now.')
+  })
+
+  test('blocks agent mutations against private user sessions', () => {
+    const access = assessBrowserPreviewMutationAccess({
+      sessionId: 'session-1',
+      requestedBy: 'agent',
+      summary: {
+        mode: 'live',
+        renderMode: 'tui',
+        activeSessionId: 'session-1',
+        sessionCount: 1,
+        privacy: {
+          doNotTrack: true,
+          blockThirdPartyCookies: true,
+          clearOnExit: true,
+          userHistoryPersisted: false,
+          agentHistoryPersisted: true,
+        },
+        sessions: [
+          {
+            id: 'session-1',
+            intent: 'preview',
+            rationale: 'User is checking a local build.',
+            requestedBy: 'user',
+            recordHistory: false,
+            title: 'SEALED demo',
+            url: 'http://127.0.0.1:3000/',
+            state: 'ready',
+            openedAt: '2026-04-18T22:05:00.000Z',
+            updatedAt: '2026-04-18T22:05:03.000Z',
+            excerpt: 'Digital clock preview',
+            statusCode: 200,
+            loadTimeMs: 92,
+            imageCount: 3,
+            metadata: {
+              description: 'Clock preview',
+              keywords: ['clock', 'preview'],
+              author: null,
+              contentType: 'text/html',
+            },
+            links: [],
+          },
+        ],
+      },
+    })
+
+    expect(access.ok).toBe(false)
+    expect(access.message).toContain(
+      'Agent browser mutations cannot navigate or close private user sessions.',
+    )
+  })
+
+  test('allows agent mutations for accountable agent sessions', () => {
+    const access = assessBrowserPreviewMutationAccess({
+      sessionId: 'session-2',
+      requestedBy: 'agent',
+      summary: {
+        mode: 'live',
+        renderMode: 'tui',
+        activeSessionId: 'session-2',
+        sessionCount: 1,
+        privacy: {
+          doNotTrack: true,
+          blockThirdPartyCookies: true,
+          clearOnExit: true,
+          userHistoryPersisted: false,
+          agentHistoryPersisted: true,
+        },
+        sessions: [
+          {
+            id: 'session-2',
+            intent: 'research',
+            rationale: 'Q is verifying docs on the user’s behalf.',
+            requestedBy: 'agent',
+            recordHistory: true,
+            title: 'Provider docs',
+            url: 'https://docs.example.com/',
+            state: 'ready',
+            openedAt: '2026-04-18T22:05:00.000Z',
+            updatedAt: '2026-04-18T22:05:03.000Z',
+            excerpt: 'Provider docs',
+            statusCode: 200,
+            loadTimeMs: 92,
+            imageCount: 1,
+            metadata: {
+              description: 'Docs',
+              keywords: ['docs'],
+              author: null,
+              contentType: 'text/html',
+            },
+            links: [],
+          },
+        ],
+      },
+    })
+
+    expect(access.ok).toBe(true)
+    expect(access.session?.id).toBe('session-2')
   })
 })
