@@ -322,7 +322,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - That same private Discord lane can now stage isolated OpenJaws runs in disposable git worktrees and per-job branches, run verification before any publish step, and hold pushes behind explicit approval checkpoints instead of auto-pushing code upstream.
 - The private Discord operator surface now has explicit commands for `workspaces`, `openjaws-status`, `start-openjaws`, `ask-openjaws`, `github-status`, `ask-github-openjaws`, `pending-pushes`, `confirm-push`, and `stop-openjaws`, all behind the same approved-root and operator/trainer gate instead of a hidden shell.
 - The private roundtable lane now uses a queued action ledger with per-project leases, so Q, Viola, and Blackbeak can take bounded repo actions without piling duplicate work onto the same project scope.
-- That same roundtable lane now rolls forward in continuous 4-hour windows, understands direct project requests like `start an openjaws session for project sealed and ...`, includes `SEALED` in its default knowledge/action roots, and expires stale approval holds instead of blocking new work forever.
+- That same roundtable lane now rolls forward in continuous 4-hour windows, understands direct project requests like `start an openjaws session for project sealed and ...`, keeps `SEALED` in its shared codebase knowledge scope, and limits autonomous branch/worktree execution to git-backed roots so manual-only demo folders do not poison the queue.
 - Firecrawl dataset skill for crawl/search -> structured dataset pipelines.
 - Remote Control, environment validation, startup harness receipts, and fail-closed configuration checks.
 

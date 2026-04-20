@@ -62,9 +62,6 @@ export function normalizeDiscordExecutionApprovalState(
   if (job.status === 'awaiting_approval') {
     return 'pending'
   }
-  if (job.status === 'completed') {
-    return 'approved'
-  }
   if (job.status === 'rejected' || job.status === 'error') {
     return 'rejected'
   }
