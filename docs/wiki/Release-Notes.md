@@ -31,6 +31,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - task, tool, co-work, and delivery surfaces now share one compact output vocabulary too, so completed / waiting / retry states and handoff summaries stop drifting between different parts of the app
 - the Gemini media helper now exposes a direct probe plus structured quota/auth/model classification, so Discord media bots can fall back cleanly when Google blocks media generation upstream
 - the Discord mention help, locked operator manual, and per-bot command surface now come from one shared capability-aware command catalog instead of drifting across separate help copies
+- the tracked Discord operator modules now own the shared parser, worktree creation, verification, commit, and approval-push helpers that both the private operator lane and the roundtable lane consume, which removes one of the last big local-only execution drifts
 
 ## Agent Co-Work
 
