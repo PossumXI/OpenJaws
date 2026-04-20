@@ -309,6 +309,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - A Netlify-ready Next.js landing site for public `Q` access, plans, Stripe checkout, API keys, credits, and usage under `website/`.
 - Voice surfaces for speech input/output wiring, including ElevenLabs summary playback configuration.
 - A local Discord station can now derive per-bot mention help, locked manuals, and capability-filtered command surfaces from one shared command registry instead of drifting across separate help copies.
+- That same private Discord lane can now stage isolated OpenJaws runs in disposable git worktrees and per-job branches, run verification before any publish step, and require an explicit `confirm-push` command before it sends code upstream.
 - Firecrawl dataset skill for crawl/search -> structured dataset pipelines.
 - Remote Control, environment validation, startup harness receipts, and fail-closed configuration checks.
 
@@ -420,6 +421,8 @@ OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
 - hybrid Q sessions now keep a rolling 3-failures-in-60s transport hysteresis window for the Immaculate fast path, so one transient network miss no longer knocks the whole hybrid lane off course
 - `q:bridgebench`, `q:curriculum`, `q:hybrid`, and routed `launch:q` runs can now carry both `--lineage-id` and optional `--phase-id`, so local, routed, and follow-up benchmark receipts stay attached to one intentional work thread
 - the local Discord `Q_agent` lane now writes a shared receipt file that `/status` can read, so patrol cadence, routing decisions, Discord voice readiness, local knowledge readiness, and the last operator action stay visible to operators
+- the private Discord operator lane can now launch bounded OpenJaws jobs into isolated worktrees and per-job branches, report changed files plus verification results back into Discord, and wait for an explicit `@Q operator confirm-push <job-id-or-branch>` before pushing anything upstream
+- the roundtable lane now deduplicates work by canonical project scope, so the bots can keep taking bounded 4-hour actions without piling multiple helpers onto the same repo path at once
 
 Current local benchmark snapshot from this workspace:
 
@@ -454,6 +457,7 @@ Important boundary:
 - the newest official Terminal-Bench submission is real and public, but the verifier reward stayed `0.0`, so it is credibility-proofed execution rather than a strong benchmark result
 - the Discord station currently speaks through text-channel `.wav` attachments, not live voice-channel participation
 - the private Discord station now supports secret-safe local corpus retrieval and explicit operator-only OpenJaws workflows, not an unrestricted remote shell
+- that private operator surface is still local-machine scoped; it is not yet a hosted off-machine GitHub worker and should be treated as a supervised branch/worktree control lane
 
 Public hosted-Q website target:
 

@@ -132,6 +132,8 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 - the repo now carries a scheduled `Q Benchmark Soak` GitHub workflow that emits sample benchmark, hybrid, and Terminal-Bench dry-run receipts as artifacts
 - the local Discord `Q_agent` station now runs scheduled Immaculate-aware patrols, controlled room routing, and first-phase ElevenLabs speech attachments, with one shared receipt file surfaced back into `/status`
 - that same private Discord lane now keeps a secret-safe local knowledge index and explicit operator-only OpenJaws actions under the same receipt, so operators can see both what Q knows locally and what it touched
+- the private Discord operator lane can now launch bounded OpenJaws runs inside disposable git worktrees and per-job branches, report changed files plus verification results back into Discord, and wait for an explicit `confirm-push` command before pushing anything upstream
+- the private roundtable lane now deduplicates work by canonical project scope, so multi-agent 4-hour sessions keep taking bounded actions without piling duplicate work onto the same repo path
 
 This is useful for tuning and honest before/after comparison. It is not a replacement for the public Immaculate benchmark source or a fake Harbor / Terminal-Bench leaderboard claim.
 

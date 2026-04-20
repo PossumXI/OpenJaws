@@ -138,6 +138,7 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 - `--lineage-id` and optional `--phase-id` now let the local, routed, and follow-up benchmark receipts stay attached to the same intentional work thread
 - hybrid sessions now keep a rolling 3-failures-in-60s transport hysteresis window for the Immaculate fast path, so one transient route miss does not instantly suppress routed execution
 - the local Discord lane now builds mention help, locked manuals, and per-bot command surfaces from one shared capability-aware command registry instead of drifting across separate help text
+- that same private Discord lane can now stage isolated OpenJaws runs in disposable git worktrees and per-job branches, run verification before any publish step, and hold pushes behind an explicit `confirm-push` command in Discord
 
 Honest boundary:
 
@@ -150,6 +151,7 @@ Honest boundary:
 - `/status` and `/immaculate` now prefer the active typed Immaculate trace for the run in flight, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
 - the Discord station currently uses scheduled text-channel patrols and optional speech attachments, not full voice-channel presence
 - the private Discord station can search a secret-safe local corpus and run explicit operator-only OpenJaws workflows, but it is not a hidden shell surface
+- the private roundtable lane now deduplicates work by canonical project scope, so the bots can keep taking bounded 4-hour actions without stacking multiple helpers onto the same repo path at once
 
 For who should bring their own key, what can stay free, and where credits/rate limits actually belong, see [Q Access and Limits](Q-Access-and-Limits.md).
 
