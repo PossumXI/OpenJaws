@@ -33,6 +33,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - the Discord mention help, locked operator manual, and per-bot command surface now come from one shared capability-aware command catalog instead of drifting across separate help copies
 - the tracked Discord operator modules now own the shared parser, worktree creation, verification, commit, and approval-push helpers that both the private operator lane and the roundtable lane consume, which removes one of the last big local-only execution drifts
 - the new tracked Discord execution queue and roundtable executor modules now also own shared lease, dedupe, approval-target, and bounded roundtable job execution semantics, so direct operator runs and roundtable runs stop diverging at the approval checkpoint
+- the shared roundtable execution classifier now fails mixed code-plus-artifact outputs closed, so only verified code-bearing branches without generated audit or artifact spillover reach the approval checkpoint
 
 ## Agent Co-Work
 

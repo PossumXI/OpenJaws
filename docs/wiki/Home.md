@@ -143,6 +143,7 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 - that private Discord operator surface now exposes explicit `workspaces`, `openjaws-status`, `start-openjaws`, `ask-openjaws`, `github-status`, `ask-github-openjaws`, `pending-pushes`, `confirm-push`, and `stop-openjaws` commands behind the same approved-root and operator/trainer gate instead of a hidden shell
 - the tracked shared Discord operator modules now own the parser, worktree creation, verification, commit, and approval-push helpers that the operator lane and roundtable lane both consume, so the two bounded execution paths stop diverging
 - the tracked shared Discord execution modules now also own the queued lease, dedupe, approval-target, and roundtable-executor path, so direct operator jobs and roundtable jobs now reconcile through one tracked job model instead of two private queue variants
+- that shared roundtable execution classifier now fails mixed code-plus-artifact outputs closed, so only verified code-bearing branches without generated audit or artifact spillover enter the approval lane
 - that same operator lane can now hand off bounded work to the hosted `@openjaws` GitHub App by opening a prepared issue against the target repo, which lets supervised work continue remotely when the local machine goes offline
 
 Honest boundary:
