@@ -32,6 +32,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - the Gemini media helper now exposes a direct probe plus structured quota/auth/model classification, so Discord media bots can fall back cleanly when Google blocks media generation upstream
 - the Discord mention help, locked operator manual, and per-bot command surface now come from one shared capability-aware command catalog instead of drifting across separate help copies
 - the tracked Discord operator modules now own the shared parser, worktree creation, verification, commit, and approval-push helpers that both the private operator lane and the roundtable lane consume, which removes one of the last big local-only execution drifts
+- the new tracked Discord execution queue and roundtable executor modules now also own shared lease, dedupe, approval-target, and bounded roundtable job execution semantics, so direct operator runs and roundtable runs stop diverging at the approval checkpoint
 
 ## Agent Co-Work
 
@@ -142,6 +143,7 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 - that same operator lane can now hand off a bounded request to the hosted `@openjaws` GitHub App by opening a prepared issue against the target repo, which lets supervised work continue remotely when the local machine goes offline
 - the private roundtable lane now deduplicates work by canonical project scope and uses a queued lease ledger plus approval checkpoints, so multi-agent 4-hour sessions keep taking bounded actions without piling duplicate work onto the same repo path
 - the private roundtable lane now also rolls forward in continuous 4-hour windows, accepts direct project commands like `start an openjaws session for project openjaws|immaculate|asgard|sealed and ...`, includes `SEALED` in its default project roots, and auto-expires stale approval holds instead of leaving old pending actions to clog the queue
+- that same approval path now supports clean rejection of unsafe note-only or artifact-mixed autonomous branches, which frees the per-project lease for the next bounded pass instead of silently blocking new work
 - the private Discord voice lane now supports live voice-channel presence for the internal station, but it remains a local/private experimental operator feature rather than a public hosted promise
 
 This is useful for tuning and honest before/after comparison. It is not a replacement for the public Immaculate benchmark source or a fake Harbor / Terminal-Bench leaderboard claim.

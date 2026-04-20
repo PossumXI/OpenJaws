@@ -142,6 +142,7 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 - that same private Discord lane can now stage isolated OpenJaws runs in disposable git worktrees and per-job branches, run verification before any publish step, and hold pushes behind explicit approval checkpoints in Discord
 - that private Discord operator surface now exposes explicit `workspaces`, `openjaws-status`, `start-openjaws`, `ask-openjaws`, `github-status`, `ask-github-openjaws`, `pending-pushes`, `confirm-push`, and `stop-openjaws` commands behind the same approved-root and operator/trainer gate instead of a hidden shell
 - the tracked shared Discord operator modules now own the parser, worktree creation, verification, commit, and approval-push helpers that the operator lane and roundtable lane both consume, so the two bounded execution paths stop diverging
+- the tracked shared Discord execution modules now also own the queued lease, dedupe, approval-target, and roundtable-executor path, so direct operator jobs and roundtable jobs now reconcile through one tracked job model instead of two private queue variants
 - that same operator lane can now hand off bounded work to the hosted `@openjaws` GitHub App by opening a prepared issue against the target repo, which lets supervised work continue remotely when the local machine goes offline
 
 Honest boundary:
@@ -157,6 +158,7 @@ Honest boundary:
 - the private Discord station can search a secret-safe local corpus and run explicit operator-only OpenJaws workflows, but it is not a hidden shell surface
 - the private roundtable lane now deduplicates work by canonical project scope and uses a queued lease ledger plus approval checkpoints before pushes, so the bots can keep taking bounded 4-hour actions without stacking multiple helpers onto the same repo path at once
 - that roundtable lane now also rolls forward in continuous 4-hour windows, accepts direct project commands like `start an openjaws session for project sealed and ...`, includes `SEALED` in its default codebase scope, and expires stale approval holds instead of leaving old pending actions to block fresh work
+- the same approval ledger now makes it straightforward to reject unsafe note-only or artifact-mixed autonomous branches without holding the OpenJaws/Immaculate/Asgard project lease open after review
 - the private Discord operator lane can now hand off bounded work to the hosted `@openjaws` GitHub App for remote execution, but that GitHub worker is still a private/internal operator surface rather than a public consumer feature
 
 For who should bring their own key, what can stay free, and where credits/rate limits actually belong, see [Q Access and Limits](Q-Access-and-Limits.md).
