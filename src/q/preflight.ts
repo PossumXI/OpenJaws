@@ -60,37 +60,18 @@ export function resolveDefaultHarborCommand(): string {
     return configured
   }
 
-  const userProfile = process.env.USERPROFILE
-  if (userProfile) {
-    const immaculateHarbor = resolve(
-      userProfile,
-      'Desktop',
-      'Immaculate',
-      'Immaculate-q-gateway',
-      '.tools',
-      'harbor-venv',
-      'Scripts',
-      process.platform === 'win32' ? 'harbor.exe' : 'harbor',
-    )
-    if (existsSync(immaculateHarbor)) {
-      return immaculateHarbor
-    }
-  }
-
-  const localAppData = process.env.LOCALAPPDATA
-  if (localAppData) {
-    const pythonScriptsHarbor = resolve(
-      localAppData,
-      'Packages',
-      'PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0',
-      'LocalCache',
-      'local-packages',
-      'Python313',
-      'Scripts',
-      process.platform === 'win32' ? 'harbor.exe' : 'harbor',
-    )
-    if (existsSync(pythonScriptsHarbor)) {
-      return pythonScriptsHarbor
+  const harborExecutable = process.platform === 'win32' ? 'harbor.exe' : 'harbor'
+  const localHarborCandidates = [
+    resolve(process.cwd(), '.tools', 'harbor-venv', 'Scripts', harborExecutable),
+    resolve(process.cwd(), '.venv-gemma4', 'Scripts', harborExecutable),
+    resolve(process.cwd(), '.venv', 'Scripts', harborExecutable),
+    resolve(process.cwd(), '.tools', 'harbor-venv', 'bin', harborExecutable),
+    resolve(process.cwd(), '.venv-gemma4', 'bin', harborExecutable),
+    resolve(process.cwd(), '.venv', 'bin', harborExecutable),
+  ]
+  for (const candidate of localHarborCandidates) {
+    if (existsSync(candidate)) {
+      return candidate
     }
   }
 
