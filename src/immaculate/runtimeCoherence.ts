@@ -95,6 +95,9 @@ export function buildRuntimeCoherenceReport(args: {
   } else {
     const qRuntimeHealthy =
       qReceipt.status === 'ready' && qReceipt.gateway.connected === true
+    const voiceEnabled = qReceipt.voice.enabled === true
+    const voiceReady = qReceipt.voice.ready === true
+    const voiceConnected = qReceipt.voice.connected === true
     checks.push({
       id: 'discord-q-receipt',
       status: qRuntimeHealthy ? 'ok' : 'failed',
@@ -105,6 +108,24 @@ export function buildRuntimeCoherenceReport(args: {
           }.`,
       detail: qReceipt.gateway.lastReplyAt ?? qReceipt.gateway.lastHeartbeatAt ?? null,
     })
+
+    if (voiceEnabled) {
+      const voiceRuntimeHealthy = voiceReady && voiceConnected
+      checks.push({
+        id: 'voice-runtime',
+        status: voiceRuntimeHealthy ? 'ok' : qRuntimeHealthy ? 'warning' : 'failed',
+        summary: voiceRuntimeHealthy
+          ? `Q voice runtime ready via ${qReceipt.voice.provider}.`
+          : `Q voice runtime is ${voiceReady ? 'disconnected' : 'not ready'} via ${
+              qReceipt.voice.provider
+            }.`,
+        detail:
+          qReceipt.voice.runtimeUrl ??
+          qReceipt.voice.lastError ??
+          qReceipt.voice.lastChannelName ??
+          null,
+      })
+    }
 
     if (qReceipt.patrol.snapshot) {
       checks.push({
