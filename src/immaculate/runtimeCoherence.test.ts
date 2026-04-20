@@ -201,4 +201,79 @@ describe('runtimeCoherence', () => {
       report.checks.find(check => check.id === 'active-trace-vs-harness')?.status,
     ).toBe('failed')
   })
+
+  test('warns when the voice runtime is enabled but not actually connected', () => {
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: {
+        version: 1,
+        updatedAt: '2026-04-20T12:00:00.000Z',
+        startedAt: '2026-04-20T10:00:00.000Z',
+        status: 'ready',
+        backend: 'Q backend',
+        guilds: [{ id: '1', name: 'Arobi' }],
+        gateway: {
+          connected: true,
+          userId: 'bot-1',
+          guildCount: 1,
+          lastSequence: 42,
+        },
+        schedule: {
+          enabled: true,
+          intervalMs: 900_000,
+          cycleCount: 2,
+        },
+        routing: {
+          lastDecision: null,
+          lastPostedChannelName: null,
+          lastPostedReason: null,
+          channels: [],
+        },
+        voice: {
+          enabled: true,
+          provider: 'system',
+          ready: true,
+          connected: false,
+          runtimeUrl: 'ws://127.0.0.1:8791',
+        },
+        patrol: {
+          snapshot: {
+            harnessReachable: true,
+            harnessSummary: 'reachable',
+            deckSummary: null,
+            workerSummary: null,
+            trainingSummary: null,
+            hybridSummary: null,
+            routeQueueSummary: null,
+            queueLength: 0,
+            recommendedLayerId: null,
+          },
+        },
+        knowledge: {
+          enabled: false,
+          ready: false,
+          fileCount: 0,
+          chunkCount: 0,
+        },
+        operator: {},
+        events: [],
+      },
+      immaculateTrace: null,
+      qTrace: null,
+      routeQueueDepth: 0,
+      roundtable: {
+        status: 'completed',
+        channelName: 'dev_support',
+      },
+    })
+
+    expect(report.status).toBe('warning')
+    expect(
+      report.checks.find(check => check.id === 'voice-runtime')?.status,
+    ).toBe('warning')
+  })
 })
