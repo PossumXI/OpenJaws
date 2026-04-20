@@ -436,8 +436,10 @@ OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
 - the local Discord `Q_agent` lane now writes a shared receipt file that `/status` can read, so patrol cadence, routing decisions, Discord voice readiness, local knowledge readiness, and the last operator action stay visible to operators
 - the private Discord operator lane can now launch bounded OpenJaws jobs into isolated worktrees and per-job branches, report changed files plus verification results back into Discord, and hold upstream pushes behind explicit approval checkpoints
 - the tracked `src/utils/discordOperatorWork.ts` plus `src/utils/discordOperatorExecution.ts` modules now own the shared parser, worktree, verification, commit, and approval-push helpers that both the Discord operator lane and the private roundtable lane consume, so those two execution paths stop drifting
+- the tracked `src/utils/discordExecutionQueue.ts` plus `src/utils/discordRoundtableExecution.ts` modules now own the shared lease, dedupe, approval-target, and roundtable-executor semantics too, so direct operator jobs and roundtable jobs stop diverging at the approval boundary
 - that same operator lane now also supports `github-status` plus `ask-github-openjaws`, which opens a prepared `@openjaws` GitHub issue against the target repo so bounded work can continue remotely when the local machine goes offline
 - the roundtable lane now deduplicates work by canonical project scope and uses a queued lease ledger, so the bots can keep taking bounded 4-hour actions without piling multiple helpers onto the same repo path at once
+- stale or unsafe autonomous branches can now be rejected cleanly without leaving the per-project lease occupied, which keeps the next bounded pass eligible for execution instead of being blocked by an old approval hold
 
 Current local benchmark snapshot from this workspace:
 
