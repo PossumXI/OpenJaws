@@ -132,7 +132,10 @@ export function getSavedOrConfiguredModelForProvider(
   for (const envVar of defaults.modelEnvVars) {
     const model = process.env[envVar]?.trim()
     if (model) {
-      return model
+      // Ignore values that include a provider prefix (e.g., "openai.gpt-oss-120b" or "openai:gpt-oss-120b")
+      if (!model.includes('.') && !model.includes(':')) {
+        return model
+      }
     }
   }
 

@@ -14,7 +14,7 @@ import { getPlatform } from './platform.js'
  */
 function checkPathExists(path: string): boolean {
   try {
-    execSync_DEPRECATED(`dir "${path}"`, { stdio: 'pipe' })
+    require('fs').accessSync(path, require('fs').constants.F_OK)
     return true
   } catch {
     return false
