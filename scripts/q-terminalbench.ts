@@ -462,10 +462,6 @@ function normalizeTaskFilter(options: CliOptions, value: string): string {
 
 function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): string[] {
   const attemptJobName = resolveAttemptJobName(options, cycle, attempt)
-  const agentEnv = collectAgentEnv({
-    officialSubmission: options.officialSubmission,
-    model: options.model,
-  })
   const args = [
     'run',
     '--dataset',
@@ -513,12 +509,6 @@ function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): s
     if (options.model) {
       args.push('--model', options.model)
     }
-    for (const [name, value] of Object.entries(agentEnv)) {
-      args.push('--ek', `${name}=${value}`)
-    }
-    for (const [name, value] of Object.entries(buildBenchmarkSeedEnv(options.seed))) {
-      args.push('--ek', `${name}=${value}`)
-    }
   }
 
   if (options.exportTraces) {
@@ -535,6 +525,27 @@ function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): s
   }
 
   return args
+}
+
+function buildHarborProcessEnv(options: CliOptions): Record<string, string> {
+  const env: Record<string, string> = {
+    ...buildBenchmarkSeedEnv(options.seed),
+    PYTHONUTF8: '1',
+    PYTHONIOENCODING: 'utf-8',
+    NO_COLOR: '1',
+    FORCE_COLOR: '0',
+    TERM: 'dumb',
+  }
+  if (options.agent === 'openjaws') {
+    Object.assign(
+      env,
+      collectAgentEnv({
+        officialSubmission: options.officialSubmission,
+        model: options.model,
+      }),
+    )
+  }
+  return env
 }
 
 function redactHarborArgs(args: string[]): string[] {
@@ -1023,14 +1034,7 @@ async function runHarborAttempt(args: {
     reject: false,
     windowsHide: true,
     timeout: args.options.timeoutMs,
-    env: {
-      ...buildBenchmarkSeedEnv(args.options.seed),
-      PYTHONUTF8: '1',
-      PYTHONIOENCODING: 'utf-8',
-      NO_COLOR: '1',
-      FORCE_COLOR: '0',
-      TERM: 'dumb',
-    },
+    env: buildHarborProcessEnv(args.options),
   })
 
   const expectedJobName = resolveAttemptJobName(args.options, args.cycle, args.attempt)
