@@ -140,6 +140,7 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 - that same operator surface now exposes `workspaces`, `openjaws-status`, `start-openjaws`, `ask-openjaws`, `github-status`, `ask-github-openjaws`, `pending-pushes`, `confirm-push`, and `stop-openjaws` behind the same approved-root and operator/trainer gate instead of a hidden shell
 - that same operator lane can now hand off a bounded request to the hosted `@openjaws` GitHub App by opening a prepared issue against the target repo, which lets supervised work continue remotely when the local machine goes offline
 - the private roundtable lane now deduplicates work by canonical project scope and uses a queued lease ledger plus approval checkpoints, so multi-agent 4-hour sessions keep taking bounded actions without piling duplicate work onto the same repo path
+- the private roundtable lane now also rolls forward in continuous 4-hour windows, accepts direct project commands like `start an openjaws session for project openjaws|immaculate|asgard|sealed and ...`, includes `SEALED` in its default project roots, and auto-expires stale approval holds instead of leaving old pending actions to clog the queue
 - the private Discord voice lane now supports live voice-channel presence for the internal station, but it remains a local/private experimental operator feature rather than a public hosted promise
 
 This is useful for tuning and honest before/after comparison. It is not a replacement for the public Immaculate benchmark source or a fake Harbor / Terminal-Bench leaderboard claim.
