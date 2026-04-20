@@ -1,3 +1,4 @@
+import { existsSync } from 'fs'
 import type { DiscordQAgentReceipt } from '../utils/discordQAgentRuntime.js'
 import type { ImmaculateHarnessStatus } from '../utils/immaculateHarness.js'
 import type { QTraceSummary } from '../q/traceSummary.js'
@@ -60,6 +61,14 @@ function aggregateStatus(
     return 'warning'
   }
   return 'ok'
+}
+
+function traceSummaryPathExists(path: string | null | undefined): boolean {
+  if (!path) {
+    return false
+  }
+
+  return existsSync(path)
 }
 
 export function buildRuntimeCoherenceReport(args: {
@@ -170,6 +179,28 @@ export function buildRuntimeCoherenceReport(args: {
       summary: `Immaculate trace: ${
         args.immaculateTrace ? summarizeTrace(args.immaculateTrace) : 'missing'
       } | Q trace: ${args.qTrace ? summarizeTrace(args.qTrace) : 'missing'}`,
+    })
+  }
+
+  if (args.immaculateTrace) {
+    const immaculateTracePathExists = traceSummaryPathExists(args.immaculateTrace.path)
+    checks.push({
+      id: 'immaculate-trace-path',
+      status: immaculateTracePathExists ? 'ok' : 'warning',
+      summary: immaculateTracePathExists
+        ? `Latest local Immaculate trace summary points to ${args.immaculateTrace.path}.`
+        : `Latest local Immaculate trace summary points to a missing file: ${args.immaculateTrace.path}.`,
+    })
+  }
+
+  if (args.qTrace) {
+    const qTracePathExists = traceSummaryPathExists(args.qTrace.path)
+    checks.push({
+      id: 'q-trace-path',
+      status: qTracePathExists ? 'ok' : 'warning',
+      summary: qTracePathExists
+        ? `Latest local Q trace summary points to ${args.qTrace.path}.`
+        : `Latest local Q trace summary points to a missing file: ${args.qTrace.path}.`,
     })
   }
 
