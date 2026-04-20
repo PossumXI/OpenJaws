@@ -1,4 +1,4 @@
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import type { DiscordQAgentReceipt } from '../utils/discordQAgentRuntime.js'
 import type { ImmaculateHarnessStatus } from '../utils/immaculateHarness.js'
 import type { QTraceSummary } from '../q/traceSummary.js'
@@ -69,6 +69,32 @@ function traceSummaryPathExists(path: string | null | undefined): boolean {
   }
 
   return existsSync(path)
+}
+
+function readTraceSessionStartedPath(path: string): string | null {
+  try {
+    const firstLine = readFileSync(path, 'utf8')
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .find(Boolean)
+
+    if (!firstLine) {
+      return null
+    }
+
+    const event = JSON.parse(firstLine) as {
+      tracePath?: unknown
+      type?: unknown
+    }
+
+    if (event.type !== 'session.started') {
+      return null
+    }
+
+    return typeof event.tracePath === 'string' ? event.tracePath : null
+  } catch {
+    return null
+  }
 }
 
 export function buildRuntimeCoherenceReport(args: {
@@ -191,6 +217,19 @@ export function buildRuntimeCoherenceReport(args: {
         ? `Latest local Immaculate trace summary points to ${args.immaculateTrace.path}.`
         : `Latest local Immaculate trace summary points to a missing file: ${args.immaculateTrace.path}.`,
     })
+
+    if (immaculateTracePathExists) {
+      const tracePath = readTraceSessionStartedPath(args.immaculateTrace.path)
+      checks.push({
+        id: 'immaculate-trace-provenance',
+        status: tracePath === args.immaculateTrace.path ? 'ok' : 'warning',
+        summary:
+          tracePath === args.immaculateTrace.path
+            ? 'Latest local Immaculate trace provenance matches the summary path.'
+            : 'Latest local Immaculate trace provenance does not match the summary path.',
+        detail: tracePath ?? 'missing session.started tracePath',
+      })
+    }
   }
 
   if (args.qTrace) {
@@ -202,6 +241,19 @@ export function buildRuntimeCoherenceReport(args: {
         ? `Latest local Q trace summary points to ${args.qTrace.path}.`
         : `Latest local Q trace summary points to a missing file: ${args.qTrace.path}.`,
     })
+
+    if (qTracePathExists) {
+      const tracePath = readTraceSessionStartedPath(args.qTrace.path)
+      checks.push({
+        id: 'q-trace-provenance',
+        status: tracePath === args.qTrace.path ? 'ok' : 'warning',
+        summary:
+          tracePath === args.qTrace.path
+            ? 'Latest local Q trace provenance matches the summary path.'
+            : 'Latest local Q trace provenance does not match the summary path.',
+        detail: tracePath ?? 'missing session.started tracePath',
+      })
+    }
   }
 
   if (!harnessReachable && (hasActiveTrace(args.immaculateTrace) || hasActiveTrace(args.qTrace))) {
