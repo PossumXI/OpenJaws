@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test'
+import { execa } from 'execa'
+import { join, resolve } from 'path'
 import {
   parseArgs,
+  resolveTerminalBenchSessionMetadata,
 } from './q-terminalbench.ts'
+import { createBenchmarkTraceWriter } from '../src/immaculate/benchmarkTrace.js'
 import { buildQProviderProbeCheck } from '../src/q/runtime.js'
 import {
   buildAggregateSummary,
@@ -71,6 +75,66 @@ describe('q-terminalbench soak options', () => {
         2,
       ),
     ).toBe('smoke-cycle-3-attempt-2')
+  })
+})
+
+describe('q-terminalbench provenance', () => {
+  test('captures branch, repo sha, and session scope for receipt and trace', async () => {
+    const root = resolve(process.cwd())
+    const [expectedTopLevel, expectedBranch, expectedSha] = await Promise.all([
+      execa('git', ['-C', root, 'rev-parse', '--show-toplevel'], {
+        reject: false,
+        windowsHide: true,
+      }),
+      execa('git', ['-C', root, 'rev-parse', '--abbrev-ref', 'HEAD'], {
+        reject: false,
+        windowsHide: true,
+      }),
+      execa('git', ['-C', root, 'rev-parse', 'HEAD'], {
+        reject: false,
+        windowsHide: true,
+      }),
+    ])
+
+    const metadata = await resolveTerminalBenchSessionMetadata({
+      root,
+      runId: 'run-123',
+      options: {
+        officialSubmission: false,
+        soak: false,
+      },
+    })
+
+    expect(metadata).toMatchObject({
+      runId: 'run-123',
+      sessionScope: 'terminalbench:bounded',
+      repoPath: resolve(root),
+      worktreePath: expectedTopLevel.stdout.trim() || resolve(root),
+    })
+    expect(metadata.gitBranch).toBe(
+      expectedBranch.stdout.trim() === 'HEAD' ? null : expectedBranch.stdout.trim(),
+    )
+    expect(metadata.repoSha).toBe(expectedSha.stdout.trim())
+
+    const traceDir = join(root, 'artifacts', 'terminalbench-provenance-test')
+    const writer = createBenchmarkTraceWriter({
+      outputDir: traceDir,
+      sessionId: 'run-123',
+      sessionMetadata: metadata,
+    })
+    const firstLine = (await Bun.file(writer.path).text()).split(/\r?\n/)[0]
+    expect(firstLine).toBeTruthy()
+    expect(JSON.parse(firstLine)).toMatchObject({
+      type: 'session.started',
+      sessionId: 'run-123',
+      tracePath: writer.path,
+      runId: 'run-123',
+      sessionScope: 'terminalbench:bounded',
+      repoPath: resolve(root),
+      worktreePath: expectedTopLevel.stdout.trim() || resolve(root),
+      gitBranch: metadata.gitBranch,
+      repoSha: metadata.repoSha,
+    })
   })
 })
 

@@ -11,6 +11,16 @@ export type BenchmarkTraceWriter = {
   path: string
   sessionId: string
   startedAt: number
+  sessionMetadata: BenchmarkTraceSessionMetadata | null
+}
+
+export type BenchmarkTraceSessionMetadata = {
+  runId?: string
+  sessionScope?: string
+  repoPath?: string
+  worktreePath?: string
+  gitBranch?: string | null
+  repoSha?: string | null
 }
 
 function resolveBenchmarkTracePath(outputDir: string, sessionId: string): string {
@@ -20,16 +30,26 @@ function resolveBenchmarkTracePath(outputDir: string, sessionId: string): string
 export function createBenchmarkTraceWriter(args: {
   outputDir: string
   sessionId: string
+  sessionMetadata?: BenchmarkTraceSessionMetadata | null
 }): BenchmarkTraceWriter {
   mkdirSync(args.outputDir, { recursive: true })
   const writer: BenchmarkTraceWriter = {
     path: resolveBenchmarkTracePath(args.outputDir, args.sessionId),
     sessionId: args.sessionId,
     startedAt: Date.now(),
+    sessionMetadata: args.sessionMetadata ?? null,
   }
-  appendBenchmarkTraceEvent(writer, 'session.started', {
+  const sessionStartedPayload: Record<string, unknown> = {
     tracePath: writer.path,
-  })
+  }
+  if (writer.sessionMetadata) {
+    for (const [key, value] of Object.entries(writer.sessionMetadata)) {
+      if (value !== null && value !== undefined) {
+        sessionStartedPayload[key] = value
+      }
+    }
+  }
+  appendBenchmarkTraceEvent(writer, 'session.started', sessionStartedPayload)
   return writer
 }
 

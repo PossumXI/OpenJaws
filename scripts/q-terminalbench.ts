@@ -14,6 +14,7 @@ import {
   appendBenchmarkTraceEvent,
   closeBenchmarkTraceWriter,
   createBenchmarkTraceWriter,
+  type BenchmarkTraceSessionMetadata,
 } from '../src/immaculate/benchmarkTrace.js'
 import {
   buildBenchmarkSeedEnv,
@@ -388,6 +389,48 @@ function sanitizeSubmissionSlug(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'submission'
+}
+
+function buildTerminalBenchSessionScope(options: Pick<CliOptions, 'officialSubmission' | 'soak'>): string {
+  if (options.officialSubmission) {
+    return 'terminalbench:official'
+  }
+  return options.soak ? 'terminalbench:soak' : 'terminalbench:bounded'
+}
+
+async function readGitText(args: {
+  cwd: string
+  argv: string[]
+}): Promise<string | null> {
+  const result = await execa('git', ['-C', args.cwd, ...args.argv], {
+    reject: false,
+    windowsHide: true,
+    timeout: 10_000,
+  })
+  const text = (result.stdout || result.stderr || '').trim()
+  return result.exitCode === 0 && text ? text : null
+}
+
+export async function resolveTerminalBenchSessionMetadata(args: {
+  root: string
+  runId: string
+  options: Pick<CliOptions, 'officialSubmission' | 'soak'>
+}): Promise<TerminalBenchSessionMetadata> {
+  const repoPath = resolve(args.root)
+  const [worktreePath, gitBranch, repoSha] = await Promise.all([
+    readGitText({ cwd: repoPath, argv: ['rev-parse', '--show-toplevel'] }),
+    readGitText({ cwd: repoPath, argv: ['rev-parse', '--abbrev-ref', 'HEAD'] }),
+    readGitText({ cwd: repoPath, argv: ['rev-parse', 'HEAD'] }),
+  ])
+
+  return {
+    runId: args.runId,
+    sessionScope: buildTerminalBenchSessionScope(args.options),
+    repoPath,
+    worktreePath: worktreePath ?? repoPath,
+    gitBranch: gitBranch && gitBranch !== 'HEAD' ? gitBranch : null,
+    repoSha,
+  }
 }
 
 function collectAgentEnv(options?: { officialSubmission?: boolean; model?: string | null }): Record<string, string> {
@@ -1138,6 +1181,7 @@ function writeSignedBenchmarkArtifacts(args: {
     reportSha256: sha256File(reportPath),
     seed: args.report.seed ?? null,
     traceReferences: args.report.traceReferences,
+    provenance: args.report.provenance ?? null,
     summary: args.report.summary ?? null,
     status: args.report.status ?? null,
   }
@@ -1174,9 +1218,15 @@ async function main() {
     options.jobName = options.jobName ?? `${runId}-official`
   }
   validateOfficialSubmissionOptions(options)
+  const sessionMetadata = await resolveTerminalBenchSessionMetadata({
+    root: options.root,
+    runId,
+    options,
+  })
   const traceWriter = createBenchmarkTraceWriter({
     outputDir,
     sessionId: runId,
+    sessionMetadata,
   })
 
   const checks: PreflightCheck[] = await runQPreflightChecks({
@@ -1234,6 +1284,7 @@ async function main() {
     officialSubmission: options.officialSubmission,
     harborCommand: options.harborCommand,
     harborArgs: redactHarborArgs(representativeHarborArgs),
+    provenance: sessionMetadata,
     agentEnvNames:
       options.agent === 'openjaws'
         ? Object.keys(
