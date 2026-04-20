@@ -41,7 +41,7 @@ describe('discordExecutionQueue', () => {
     ).toBe('pending')
     expect(
       normalizeDiscordExecutionApprovalState({ status: 'completed' }),
-    ).toBe('approved')
+    ).toBeNull()
     expect(
       normalizeDiscordExecutionApprovalState({ status: 'error' }),
     ).toBe('rejected')

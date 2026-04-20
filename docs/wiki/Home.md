@@ -157,7 +157,7 @@ Honest boundary:
 - the private Discord station now supports live voice-channel presence for the internal lane, but that voice path is still local/private and should be treated as an experimental operator surface rather than a public hosted feature
 - the private Discord station can search a secret-safe local corpus and run explicit operator-only OpenJaws workflows, but it is not a hidden shell surface
 - the private roundtable lane now deduplicates work by canonical project scope and uses a queued lease ledger plus approval checkpoints before pushes, so the bots can keep taking bounded 4-hour actions without stacking multiple helpers onto the same repo path at once
-- that roundtable lane now also rolls forward in continuous 4-hour windows, accepts direct project commands like `start an openjaws session for project sealed and ...`, includes `SEALED` in its default codebase scope, and expires stale approval holds instead of leaving old pending actions to block fresh work
+- that roundtable lane now also rolls forward in continuous 4-hour windows, accepts direct project commands like `start an openjaws session for project sealed and ...`, keeps `SEALED` in its shared codebase scope, and limits autonomous branch/worktree execution to git-backed roots so manual-only paths do not clog the queue
 - the same approval ledger now makes it straightforward to reject unsafe note-only or artifact-mixed autonomous branches without holding the OpenJaws/Immaculate/Asgard project lease open after review
 - the private Discord operator lane can now hand off bounded work to the hosted `@openjaws` GitHub App for remote execution, but that GitHub worker is still a private/internal operator surface rather than a public consumer feature
 
