@@ -48,6 +48,7 @@
     "q:terminalbench": "bun scripts/q-terminalbench.ts",
     "q:terminalbench:soak": "bun scripts/q-terminalbench.ts --soak --soak-cycles 3 --soak-duration-minutes 45",
     "q:receipt:sign": "bun scripts/sign-benchmark-receipt.ts",
+    "runtime:coherence": "bun scripts/runtime-coherence.ts --json",
     "dispatch:q-route": "bun scripts/dispatch-q-route.ts",
     "process:q-routes": "bun scripts/process-q-routes.ts",
     "poll:q-route": "bun scripts/poll-q-route-result.ts",

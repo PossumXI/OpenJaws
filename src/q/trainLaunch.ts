@@ -29,6 +29,11 @@ import {
   getImmaculateHarnessStatus,
   normalizeImmaculateObjective,
 } from '../utils/immaculateHarness.js'
+import {
+  isQTransportFastPathSuppressed,
+  shouldRequestImmaculateQRoute,
+  summarizeQFastPathSuppression,
+} from '../immaculate/policies.js'
 
 export type QTrainLaunchCliOptions = {
   root: string | null
@@ -552,12 +557,14 @@ export async function launchQTrainingRun(
     options.allowHostRisk && preflight.decision === 'remote_required'
   const fastPathWindow = peekQTrainingFastPathWindow({ root })
   const fastPathSuppressed =
-    fastPathWindow.active && options.routeMode !== 'local'
-  const wantsImmaculateRoute =
-    preflight.decision === 'remote_required' &&
-    !forceLocalLaunch &&
-    !fastPathSuppressed &&
+    isQTransportFastPathSuppressed(fastPathWindow) &&
     options.routeMode !== 'local'
+  const wantsImmaculateRoute = shouldRequestImmaculateQRoute({
+    preflightDecision: preflight.decision,
+    routeMode: options.routeMode,
+    forceLocalLaunch,
+    fallbackWindow: fastPathWindow,
+  })
   const routeAttempt = wantsImmaculateRoute
     ? await requestImmaculateQRoute({
         runId,
@@ -584,9 +591,11 @@ export async function launchQTrainingRun(
               code: 'fast_path_suppressed',
               summary:
                 'Immaculate fast path temporarily suppressed after recent transport failures.',
-              detail: `${fastPathWindow.recentTransportFailureCount} transport failures observed within ${Math.round(
-                fastPathWindow.windowMs / 1000,
-              )}s. The fast path resumes automatically after a clean routed success.`,
+              detail: summarizeQFastPathSuppression({
+                recentTransportFailureCount:
+                  fastPathWindow.recentTransportFailureCount,
+                windowMs: fastPathWindow.windowMs,
+              }),
             })
           : null,
       }

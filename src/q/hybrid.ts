@@ -13,6 +13,7 @@ import {
   type QTrainingStatus,
   upsertQTrainingHybridSessionReceipt,
 } from '../utils/qTraining.js'
+import { Q_FAST_PATH_POLICY } from '../immaculate/policies.js'
 
 export type QHybridCliOptions = {
   root: string
@@ -49,8 +50,9 @@ export type QHybridFallbackHistory = {
   lastSuccessAt: string | null
 }
 
-export const Q_HYBRID_FALLBACK_FAILURE_THRESHOLD = 3
-export const Q_HYBRID_FALLBACK_WINDOW_MS = 60_000
+export const Q_HYBRID_FALLBACK_FAILURE_THRESHOLD =
+  Q_FAST_PATH_POLICY.failureThreshold
+export const Q_HYBRID_FALLBACK_WINDOW_MS = Q_FAST_PATH_POLICY.windowMs
 
 export function makeHybridSessionId(): string {
   return `q-hybrid-${new Date()

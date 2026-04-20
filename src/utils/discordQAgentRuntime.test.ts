@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'bun:test'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import {
   createDiscordQAgentReceipt,
   getDiscordQAgentRoutePolicies,
+  readDiscordQAgentReceipt,
   recordDiscordQAgentEvent,
   upsertDiscordQAgentRouteState,
 } from './discordQAgentRuntime.js'
@@ -110,5 +114,65 @@ describe('discordQAgentRuntime', () => {
     expect(updates?.id).toBe('updates')
     expect(updates?.lastSummary).toBeUndefined()
     expect(updates?.lastPostedAt).toBeUndefined()
+  })
+
+  it('normalizes older receipt payloads when reading from disk', () => {
+    const root = mkdtempSync(join(tmpdir(), 'discord-q-agent-runtime-'))
+    try {
+      const receiptPath = join(
+        root,
+        'local-command-station',
+        'discord-q-agent-receipt.json',
+      )
+      mkdirSync(join(root, 'local-command-station'), { recursive: true })
+      writeFileSync(
+        receiptPath,
+        JSON.stringify({
+          version: 1,
+          updatedAt: '2026-04-20T00:00:00.000Z',
+          startedAt: '2026-04-20T00:00:00.000Z',
+          status: 'ready',
+          backend: 'Q backend',
+          guilds: [],
+          gateway: {
+            connected: true,
+            guildCount: 0,
+            lastSequence: 2,
+          },
+          schedule: {
+            enabled: true,
+            intervalMs: 900_000,
+            cycleCount: 1,
+          },
+          routing: {
+            channels: [],
+          },
+          voice: {
+            enabled: true,
+            provider: 'system',
+            ready: true,
+          },
+          patrol: {},
+          knowledge: {
+            enabled: false,
+            ready: false,
+            fileCount: 0,
+            chunkCount: 0,
+          },
+          operator: {},
+          events: [],
+        }) + '\n',
+      )
+
+      const receipt = readDiscordQAgentReceipt(root)
+
+      expect(receipt?.gateway.userId).toBeNull()
+      expect(receipt?.voice.connected).toBe(false)
+      expect(receipt?.voice.stagedProvider).toBeNull()
+      expect(receipt?.voice.runtimeUrl).toBeNull()
+      expect(receipt?.voice.channelName).toBeNull()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

@@ -72,6 +72,7 @@ export type DiscordQAgentReceipt = {
   }>
   gateway: {
     connected: boolean
+    userId?: string | null
     readyAt?: string | null
     lastHeartbeatAt?: string | null
     lastSequence?: number | null
@@ -97,14 +98,26 @@ export type DiscordQAgentReceipt = {
   }
   voice: {
     enabled: boolean
-    provider: 'off' | 'elevenlabs'
+    provider: 'off' | 'elevenlabs' | 'system' | 'personaplex'
     ready: boolean
+    stagedProvider?: string | null
+    stagedReady?: boolean
+    stagedSummary?: string | null
+    runtimeUrl?: string | null
+    connected?: boolean
     voiceId?: string | null
     voiceIdSource?: string | null
     modelId?: string | null
+    guildId?: string | null
+    channelId?: string | null
+    channelName?: string | null
+    joinedAt?: string | null
     lastRenderedAt?: string | null
     lastSpokenText?: string | null
     lastChannelName?: string | null
+    lastHeardUserId?: string | null
+    lastHeardAt?: string | null
+    lastTranscriptSummary?: string | null
     lastError?: string | null
   }
   patrol: {
@@ -158,12 +171,100 @@ function cloneRoutePolicies(): DiscordQAgentRouteState[] {
   return getDiscordQAgentRoutePolicies().map(policy => ({ ...policy }))
 }
 
+function normalizeDiscordQAgentReceipt(
+  value: unknown,
+): DiscordQAgentReceipt | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  const record = value as Record<string, unknown>
+  const scheduleRecord =
+    record.schedule && typeof record.schedule === 'object' && !Array.isArray(record.schedule)
+      ? (record.schedule as Record<string, unknown>)
+      : {}
+  const voiceRecord =
+    record.voice && typeof record.voice === 'object' && !Array.isArray(record.voice)
+      ? (record.voice as Record<string, unknown>)
+      : {}
+  const routingRecord =
+    record.routing && typeof record.routing === 'object' && !Array.isArray(record.routing)
+      ? (record.routing as Record<string, unknown>)
+      : {}
+  const base = createDiscordQAgentReceipt({
+    backend:
+      typeof record.backend === 'string' ? record.backend : 'Q backend unavailable',
+    scheduleEnabled:
+      typeof scheduleRecord.enabled === 'boolean' ? scheduleRecord.enabled : false,
+    scheduleIntervalMs:
+      typeof scheduleRecord.intervalMs === 'number' ? scheduleRecord.intervalMs : 0,
+    voiceEnabled:
+      typeof voiceRecord.enabled === 'boolean' ? voiceRecord.enabled : false,
+    voiceReady:
+      typeof voiceRecord.ready === 'boolean' ? voiceRecord.ready : false,
+    voiceProvider:
+      typeof voiceRecord.provider === 'string'
+        ? (voiceRecord.provider as DiscordQAgentReceipt['voice']['provider'])
+        : undefined,
+    voiceId:
+      typeof voiceRecord.voiceId === 'string' ? voiceRecord.voiceId : null,
+    voiceIdSource:
+      typeof voiceRecord.voiceIdSource === 'string'
+        ? voiceRecord.voiceIdSource
+        : null,
+    voiceModelId:
+      typeof voiceRecord.modelId === 'string' ? voiceRecord.modelId : null,
+  })
+
+  return {
+    ...base,
+    ...record,
+    gateway: {
+      ...base.gateway,
+      ...((record.gateway as Record<string, unknown> | undefined) ?? {}),
+    },
+    schedule: {
+      ...base.schedule,
+      ...scheduleRecord,
+    },
+    routing: {
+      ...base.routing,
+      ...routingRecord,
+      channels: Array.isArray(routingRecord.channels)
+        ? (routingRecord.channels as DiscordQAgentRouteState[])
+        : base.routing.channels,
+    },
+    voice: {
+      ...base.voice,
+      ...voiceRecord,
+    },
+    patrol: {
+      ...base.patrol,
+      ...((record.patrol as Record<string, unknown> | undefined) ?? {}),
+    },
+    knowledge: {
+      ...base.knowledge,
+      ...((record.knowledge as Record<string, unknown> | undefined) ?? {}),
+    },
+    operator: {
+      ...base.operator,
+      ...((record.operator as Record<string, unknown> | undefined) ?? {}),
+    },
+    guilds: Array.isArray(record.guilds)
+      ? (record.guilds as DiscordQAgentReceipt['guilds'])
+      : [],
+    events: Array.isArray(record.events)
+      ? (record.events as DiscordQAgentEvent[])
+      : [],
+  }
+}
+
 export function createDiscordQAgentReceipt(args: {
   backend: string
   scheduleEnabled: boolean
   scheduleIntervalMs: number
   voiceEnabled: boolean
   voiceReady: boolean
+  voiceProvider?: DiscordQAgentReceipt['voice']['provider']
   voiceId?: string | null
   voiceIdSource?: string | null
   voiceModelId?: string | null
@@ -178,6 +279,7 @@ export function createDiscordQAgentReceipt(args: {
     guilds: [],
     gateway: {
       connected: false,
+      userId: null,
       guildCount: 0,
       lastSequence: null,
     },
@@ -197,14 +299,26 @@ export function createDiscordQAgentReceipt(args: {
     },
     voice: {
       enabled: args.voiceEnabled,
-      provider: args.voiceEnabled ? 'elevenlabs' : 'off',
+      provider: args.voiceEnabled ? args.voiceProvider ?? 'elevenlabs' : 'off',
       ready: args.voiceReady,
+      stagedProvider: null,
+      stagedReady: false,
+      stagedSummary: null,
+      runtimeUrl: null,
+      connected: false,
       voiceId: args.voiceId ?? null,
       voiceIdSource: args.voiceIdSource ?? null,
       modelId: args.voiceModelId ?? null,
+      guildId: null,
+      channelId: null,
+      channelName: null,
+      joinedAt: null,
       lastRenderedAt: null,
       lastSpokenText: null,
       lastChannelName: null,
+      lastHeardUserId: null,
+      lastHeardAt: null,
+      lastTranscriptSummary: null,
       lastError: null,
     },
     patrol: {
@@ -246,7 +360,9 @@ export function readDiscordQAgentReceipt(
   if (!existsSync(receiptPath)) {
     return null
   }
-  return JSON.parse(readFileSync(receiptPath, 'utf8')) as DiscordQAgentReceipt
+  return normalizeDiscordQAgentReceipt(
+    JSON.parse(readFileSync(receiptPath, 'utf8')),
+  )
 }
 
 export function writeDiscordQAgentReceipt(

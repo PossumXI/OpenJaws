@@ -68,6 +68,7 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 - worker health checks instead of silent failures
 - safer public update and release verification
 - clearer status for everyday installed users
+- shared Q/Immaculate policy defaults plus a runtime coherence audit for reconciling live harness state, traces, route queue depth, and Discord receipts
 - a clearer Settings deck with dedicated `Appearance` and `Privacy` tabs instead of mixed toggles
 - a local Privacy mode for telemetry/nonessential-traffic policy plus clearer `auto` / `dark` / `light` theme behavior for installed users
 - easier command rediscovery through `/help`, `/config`, `/theme`, and `/privacy-settings`

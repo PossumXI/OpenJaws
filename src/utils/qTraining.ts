@@ -11,6 +11,11 @@ import {
 import { homedir, freemem, totalmem } from 'os'
 import { dirname, isAbsolute, join, relative, resolve } from 'path'
 import * as lockfile from './lockfile.js'
+import {
+  Q_FAST_PATH_POLICY,
+  resolveQFastPathPolicy,
+  resolveQRouteClaimTtlMs,
+} from '../immaculate/policies.js'
 
 export type QTrainingStatus =
   | 'launched'
@@ -524,14 +529,14 @@ export function getQTrainingImmaculateBaseModel(
 const GIB = 1024 ** 3
 const Q_ROUTE_SECRET_FILE = join('.openjaws', 'q-route-secret')
 const Q_ROUTE_QUEUE_LOCK_FILE = '.route-queue.lock'
-const DEFAULT_Q_ROUTE_QUEUE_LEASE_MS = 45_000
 const Q_TRAINING_FAST_PATH_STATE_FILE = join(
   'artifacts',
   'immaculate',
   'q-fast-path.json',
 )
-export const Q_TRAINING_FAST_PATH_FAILURE_THRESHOLD = 3
-export const Q_TRAINING_FAST_PATH_WINDOW_MS = 60_000
+export const Q_TRAINING_FAST_PATH_FAILURE_THRESHOLD =
+  Q_FAST_PATH_POLICY.failureThreshold
+export const Q_TRAINING_FAST_PATH_WINDOW_MS = Q_FAST_PATH_POLICY.windowMs
 const Q_ROUTE_QUEUE_LOCK_OPTIONS = {
   realpath: false,
 } as const
@@ -619,8 +624,10 @@ export function computeQTrainingFastPathWindow(args: {
   history: QTrainingFastPathStateFile
   fallbackWindow: QTrainingHybridFallbackWindow
 } {
-  const threshold = args.threshold ?? Q_TRAINING_FAST_PATH_FAILURE_THRESHOLD
-  const windowMs = args.windowMs ?? Q_TRAINING_FAST_PATH_WINDOW_MS
+  const { failureThreshold: threshold, windowMs } = resolveQFastPathPolicy({
+    threshold: args.threshold,
+    windowMs: args.windowMs,
+  })
   const observedMs = Date.parse(args.observedAt)
   const nextHistory: QTrainingFastPathStateFile = {
     failureTimestamps: pruneQTrainingFastPathFailures(
@@ -2765,7 +2772,7 @@ export function claimQTrainingRouteQueueEntry(args: {
 }): QTrainingRouteQueueEntry | null {
   const root = args.root ?? process.cwd()
   const claimedAt = args.claimedAt ?? new Date().toISOString()
-  const claimTtlMs = args.claimTtlMs ?? DEFAULT_Q_ROUTE_QUEUE_LEASE_MS
+  const claimTtlMs = resolveQRouteClaimTtlMs(args.claimTtlMs)
   const explicitTarget = Boolean(args.runId || args.manifestPath)
 
   return withQTrainingRouteQueueLock(root, () => {
@@ -3024,7 +3031,7 @@ export function updateQTrainingRouteQueueClaim(args: {
 }): QTrainingRouteQueueEntry | null {
   const root = args.root ?? process.cwd()
   const updatedAt = args.updatedAt ?? new Date().toISOString()
-  const claimTtlMs = args.claimTtlMs ?? DEFAULT_Q_ROUTE_QUEUE_LEASE_MS
+  const claimTtlMs = resolveQRouteClaimTtlMs(args.claimTtlMs)
 
   return withQTrainingRouteQueueLock(root, () => {
     const current = readQTrainingRouteQueueUnlocked(root)
@@ -3135,7 +3142,7 @@ export function renewQTrainingRouteQueueClaim(args: {
 }): QTrainingRouteQueueEntry | null {
   const root = args.root ?? process.cwd()
   const renewedAt = args.renewedAt ?? new Date().toISOString()
-  const claimTtlMs = args.claimTtlMs ?? DEFAULT_Q_ROUTE_QUEUE_LEASE_MS
+  const claimTtlMs = resolveQRouteClaimTtlMs(args.claimTtlMs)
 
   return withQTrainingRouteQueueLock(root, () => {
     const current = readQTrainingRouteQueueUnlocked(root)
