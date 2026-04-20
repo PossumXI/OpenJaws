@@ -133,7 +133,9 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 - the local Discord `Q_agent` station now runs scheduled Immaculate-aware patrols, controlled room routing, and first-phase ElevenLabs speech attachments, with one shared receipt file surfaced back into `/status`
 - that same private Discord lane now keeps a secret-safe local knowledge index and explicit operator-only OpenJaws actions under the same receipt, so operators can see both what Q knows locally and what it touched
 - the private Discord operator lane can now launch bounded OpenJaws runs inside disposable git worktrees and per-job branches, report changed files plus verification results back into Discord, and wait for an explicit `confirm-push` command before pushing anything upstream
+- the private Discord operator surface now exposes explicit `workspaces`, `openjaws-status`, `start-openjaws`, `ask-openjaws`, `pending-pushes`, `confirm-push`, and `stop-openjaws` commands behind the same approved-root and operator/trainer gate instead of a hidden shell
 - the private roundtable lane now deduplicates work by canonical project scope, so multi-agent 4-hour sessions keep taking bounded actions without piling duplicate work onto the same repo path
+- the private Discord voice lane now supports live voice-channel presence for the internal station, but it remains a local/private experimental operator feature rather than a public hosted promise
 
 This is useful for tuning and honest before/after comparison. It is not a replacement for the public Immaculate benchmark source or a fake Harbor / Terminal-Bench leaderboard claim.
 

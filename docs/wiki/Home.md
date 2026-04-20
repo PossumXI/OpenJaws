@@ -139,6 +139,7 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 - hybrid sessions now keep a rolling 3-failures-in-60s transport hysteresis window for the Immaculate fast path, so one transient route miss does not instantly suppress routed execution
 - the local Discord lane now builds mention help, locked manuals, and per-bot command surfaces from one shared capability-aware command registry instead of drifting across separate help text
 - that same private Discord lane can now stage isolated OpenJaws runs in disposable git worktrees and per-job branches, run verification before any publish step, and hold pushes behind an explicit `confirm-push` command in Discord
+- that private Discord operator surface now exposes explicit `workspaces`, `openjaws-status`, `start-openjaws`, `ask-openjaws`, `pending-pushes`, `confirm-push`, and `stop-openjaws` commands behind the same approved-root and operator/trainer gate instead of a hidden shell
 
 Honest boundary:
 
@@ -149,9 +150,10 @@ Honest boundary:
 - the newest local repeated Terminal-Bench soak receipt is useful for stability tuning, not a public leaderboard claim
 - the Immaculate trace lane now uses a typed event union under `src/immaculate/events.ts`, and benchmark lanes now emit deterministic trace-backed receipts with signature blocks when a signing key is configured
 - `/status` and `/immaculate` now prefer the active typed Immaculate trace for the run in flight, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
-- the Discord station currently uses scheduled text-channel patrols and optional speech attachments, not full voice-channel presence
+- the private Discord station now supports live voice-channel presence for the internal lane, but that voice path is still local/private and should be treated as an experimental operator surface rather than a public hosted feature
 - the private Discord station can search a secret-safe local corpus and run explicit operator-only OpenJaws workflows, but it is not a hidden shell surface
 - the private roundtable lane now deduplicates work by canonical project scope, so the bots can keep taking bounded 4-hour actions without stacking multiple helpers onto the same repo path at once
+- that operator surface is still local-machine scoped; it is not yet a hosted off-machine GitHub worker and should be treated as a supervised branch/worktree control lane
 
 For who should bring their own key, what can stay free, and where credits/rate limits actually belong, see [Q Access and Limits](Q-Access-and-Limits.md).
 

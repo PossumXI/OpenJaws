@@ -310,6 +310,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - Voice surfaces for speech input/output wiring, including ElevenLabs summary playback configuration.
 - A local Discord station can now derive per-bot mention help, locked manuals, and capability-filtered command surfaces from one shared command registry instead of drifting across separate help copies.
 - That same private Discord lane can now stage isolated OpenJaws runs in disposable git worktrees and per-job branches, run verification before any publish step, and require an explicit `confirm-push` command before it sends code upstream.
+- The private Discord operator surface now has explicit commands for `workspaces`, `openjaws-status`, `start-openjaws`, `ask-openjaws`, `pending-pushes`, `confirm-push`, and `stop-openjaws`, all behind the same approved-root and operator/trainer gate instead of a hidden shell.
 - Firecrawl dataset skill for crawl/search -> structured dataset pipelines.
 - Remote Control, environment validation, startup harness receipts, and fail-closed configuration checks.
 
@@ -455,7 +456,7 @@ Important boundary:
 - they do not replace the public Immaculate benchmark record
 - the Harbor / Terminal-Bench path is an in-repo adapter lane, not a public leaderboard claim by itself
 - the newest official Terminal-Bench submission is real and public, but the verifier reward stayed `0.0`, so it is credibility-proofed execution rather than a strong benchmark result
-- the Discord station currently speaks through text-channel `.wav` attachments, not live voice-channel participation
+- the private Discord station now supports live voice-channel presence for the internal lane, but that voice path is still local/private and should be treated as an experimental operator surface rather than a public hosted feature
 - the private Discord station now supports secret-safe local corpus retrieval and explicit operator-only OpenJaws workflows, not an unrestricted remote shell
 - that private operator surface is still local-machine scoped; it is not yet a hosted off-machine GitHub worker and should be treated as a supervised branch/worktree control lane
 
