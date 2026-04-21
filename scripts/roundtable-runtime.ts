@@ -112,10 +112,7 @@ function resolveAllowedRoots(cliRoots: string[]): string[] {
 }
 
 function resolveRoundtableModel(): string {
-  const model =
-    process.env.DISCORD_Q_MODEL?.trim() ||
-    process.env.Q_AGENT_MODEL?.trim() ||
-    REQUIRED_ROUNDTABLE_MODEL
+  const model = process.env.DISCORD_Q_MODEL?.trim() || REQUIRED_ROUNDTABLE_MODEL
   if (model !== REQUIRED_ROUNDTABLE_MODEL) {
     throw new Error(
       `Roundtable runtime must stay on ${REQUIRED_ROUNDTABLE_MODEL}. Set DISCORD_Q_MODEL to ${REQUIRED_ROUNDTABLE_MODEL} instead of ${model}.`,

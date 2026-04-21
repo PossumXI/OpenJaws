@@ -37,6 +37,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - the new tracked Discord execution queue and roundtable executor modules now also own shared lease, dedupe, approval-target, and bounded roundtable job execution semantics, so direct operator runs and roundtable runs stop diverging at the approval checkpoint
 - the tracked roundtable scheduler policy now owns fallback root scoring, approval TTL resolution, and reply/PASS inspection as well, which gives the private Discord loop a tested way to prefer repo-grounded progress over idle `PASS` turns
 - the shared roundtable execution classifier now fails mixed code-plus-artifact outputs closed, so only verified code-bearing branches without generated audit or artifact spillover reach the approval checkpoint
+- repo-root roundtable handoffs now narrow themselves onto a concrete code-bearing path like `src`, `apps`, or `packages` before the tracked worktree lane materializes the job, which cuts down on broad no-diff audits and makes approval candidates more likely to carry mergeable code
 - the governed roundtable session reader now keeps `executing queued action` in the `running` state instead of collapsing it back to `queued`, which fixes one of the last live-session truth leaks during autonomous runs
 - the tracked roundtable readers now also detect the nested `roundtable-runtime/roundtable-runtime` output that the bundled private fallback writes, so status/coherence surfaces stop reading stale top-level files when the live Discord lane is healthy
 
@@ -211,3 +212,4 @@ This pass also tightens the public `Q` runtime story:
 - broader live walkthrough coverage for operator surfaces beyond settings and deferred launch controls
 - continued tightening of compatibility shims where it is safe and does not break provider contracts
 - the tracked roundtable CLI now resolves the repo root from the script path, uses the bounded `run-openjaws-visible.ps1` prompt runner, and refuses to start unless the model pin stays on `oci:Q`
+- the tracked roundtable CLI also no longer falls back to a generic `Q_AGENT_MODEL` override, so the Discord roundtable cannot silently drift off the required `oci:Q` lane

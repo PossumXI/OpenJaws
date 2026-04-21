@@ -20,6 +20,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - Artifact-only output is held back and never promoted into the approval lane.
 - Verification must pass before a branch is eligible for approval.
 - Fallback root scoring, approval TTL resolution, and reply/PASS inspection live in tracked shared scheduler code so the private Discord loop does not have to carry its own drifting policy copy.
+- Repo-root handoffs are narrowed onto a preferred code-bearing path such as `src`, `apps`, or `packages` before the tracked worktree lane materializes the job, so the queue stops defaulting to whole-repo no-diff audits when a planner only names the project root.
 
 ## Operator Commands
 
@@ -36,7 +37,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - `scripts/roundtable-runtime.ts` is the tracked CLI wrapper around the shared runtime path.
 - The tracked CLI now resolves the repo root from the script location instead of ambient `cwd`, so it stops writing queue/session state into accidental nested station directories.
 - The tracked CLI now targets `local-command-station/run-openjaws-visible.ps1` for bounded prompt jobs; `launch-openjaws-visible.ps1` stays reserved for interactive visible shell launches.
-- The tracked CLI hard-fails if the roundtable model is anything other than `oci:Q`.
+- The tracked CLI hard-fails if the roundtable model is anything other than `oci:Q`, and it no longer falls back to a generic `Q_AGENT_MODEL` override.
 - the CLI now prints both the tracked queue path and the live session path explicitly so operator reads do not silently point at the wrong file after the queue/session split.
 - The live Discord runtime now posts roundtable transition receipts back into the configured `q-roundtable` lane, with a fallback to `openjaws-updates` if the dedicated roundtable channel is not present yet.
 - The tracked runtime readers now reconcile both the live `discord-roundtable.log` and the split session metadata, so `@Q operator roundtable-status` and `bun run runtime:coherence` show the actual active lane such as `#dev_support` when older persisted files drift from the bound Discord channel.

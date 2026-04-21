@@ -30,6 +30,7 @@ import {
 } from './discordOperatorWork.js'
 import {
   DEFAULT_ROUNDTABLE_WINDOW_HOURS,
+  resolveRoundtableExecutionScope,
   resolveRoundtableDurationHours,
   resolveRoundtableApprovalTtlHours,
 } from './discordRoundtableScheduler.js'
@@ -836,6 +837,7 @@ function quarantineDiscordRoundtableHandoff(args: {
 function buildActionPrompt(args: {
   action: RawRoundtableAction
   handoff: RawRoundtableHandoff
+  targetPath: string
 }): string {
   const taskPreview =
     args.action.taskDocumentPath && existsSync(args.action.taskDocumentPath)
@@ -849,6 +851,7 @@ function buildActionPrompt(args: {
     `Role: ${args.action.role}`,
     `Objective: ${args.action.objective}`,
     `Reason: ${args.action.rationale}`,
+    `Assigned target path: ${args.targetPath}`,
     ...(args.action.commandHint ? [`Command hint: ${args.action.commandHint}`] : []),
     ...(args.action.routeSuggestion
       ? [`Route suggestion: ${args.action.routeSuggestion}`]
@@ -1048,7 +1051,14 @@ function createTrackedJob(args: {
   if (!isAllowedTargetPath(targetPath, args.allowedRoots)) {
     return null
   }
-  const gitRoot = findGitRoot(targetPath)
+  const roots = normalizeRootDescriptors(args.allowedRoots)
+  const scope = resolveRoundtableExecutionScope({
+    targetPath,
+    repoId: args.action.repoId,
+    roots,
+    pathExists: existsSync,
+  })
+  const gitRoot = findGitRoot(scope.targetPath)
   if (
     !gitRoot ||
     !args.action.executionReady ||
@@ -1066,14 +1076,14 @@ function createTrackedJob(args: {
     kind: 'roundtable',
     id: jobId,
     branchName: '',
-    worktreePath: targetPath,
-    workspacePath: targetPath,
+    worktreePath: scope.targetPath,
+    workspacePath: scope.targetPath,
     changedFiles: [],
     summary: args.action.objective,
     status: 'queued',
     approvalState: null,
-    workKey: `${sanitizeSegment(args.action.repoId)}::.`,
-    projectKey: sanitizeSegment(args.action.repoId),
+    workKey: scope.workKey,
+    projectKey: scope.projectKey,
     sourcePath: args.sourcePath,
     sourceSessionId: args.handoff.sessionId,
     sourceScheduleId: args.handoff.scheduleId,
@@ -1084,8 +1094,8 @@ function createTrackedJob(args: {
     objective: args.action.objective,
     rationale: args.action.rationale,
     commandHint: args.action.commandHint,
-    targetPath,
-    targetRootLabel: null,
+    targetPath: scope.targetPath,
+    targetRootLabel: scope.rootLabel,
     receiptPath: null,
     outputDir: null,
     commitStatement: args.action.commitStatement,
@@ -1101,10 +1111,11 @@ function createTrackedJob(args: {
       id: jobId,
       title: args.action.objective,
       reason: args.action.rationale,
-      targetPath,
+      targetPath: scope.targetPath,
       prompt: buildActionPrompt({
         action: args.action,
         handoff: args.handoff,
+        targetPath: scope.targetPath,
       }),
       gitRoot,
     },

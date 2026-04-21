@@ -45,6 +45,7 @@ function createRepoRoot(prefix: string) {
 describe('discordRoundtableRuntime', () => {
   it('ingests governed handoffs into queued repo-scoped jobs', () => {
     const repoRoot = createRepoRoot('oj-roundtable-repo-')
+    mkdirSync(join(repoRoot, 'src'), { recursive: true })
     const handoffPath = join(repoRoot, 'handoff.json')
     writeFileSync(
       handoffPath,
@@ -55,8 +56,8 @@ describe('discordRoundtableRuntime', () => {
           actions: [
             {
               id: 'action-a',
-              repoId: 'asgard',
-              repoLabel: 'Asgard',
+              repoId: 'openjaws',
+              repoLabel: 'OpenJaws',
               role: 'Violet',
               objective: 'Harden the orchestrator',
               rationale: 'Close the roundtable execution gap.',
@@ -87,7 +88,13 @@ describe('discordRoundtableRuntime', () => {
     expect(ingested.ingestedCount).toBe(1)
     expect(ingested.state.jobs).toHaveLength(1)
     expect(ingested.state.jobs[0]?.status).toBe('queued')
-    expect(ingested.state.jobs[0]?.projectKey).toBe('asgard')
+    expect(ingested.state.jobs[0]?.projectKey).toBe('openjaws')
+    expect(ingested.state.jobs[0]?.targetPath).toBe(join(repoRoot, 'src'))
+    expect(ingested.state.jobs[0]?.workKey).toBe('openjaws::src')
+    expect(ingested.state.jobs[0]?.action.targetPath).toBe(join(repoRoot, 'src'))
+    expect(ingested.state.jobs[0]?.action.prompt).toContain(
+      `Assigned target path: ${join(repoRoot, 'src')}`,
+    )
     expect(ingested.state.jobs[0]?.action.prompt).toContain(
       'Objective: Harden the orchestrator',
     )

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   chooseFallbackRoundtableRoot,
   inspectRoundtableReply,
+  resolveRoundtableExecutionScope,
   resolvePreferredRoundtableExecutionTargetPath,
   resolveRoundtableApprovalTtlHours,
   resolveRoundtableDurationHours,
@@ -63,6 +64,35 @@ describe('discordRoundtableScheduler', () => {
     expect(
       resolvePreferredRoundtableExecutionTargetPath(roots[1]!, () => false),
     ).toBe('C:\\Users\\Knight\\Desktop\\Immaculate')
+  })
+
+  it('narrows repo-root execution scopes to a concrete code path and stable work key', () => {
+    expect(
+      resolveRoundtableExecutionScope({
+        targetPath: 'D:\\openjaws\\OpenJaws',
+        repoId: 'OpenJaws',
+        roots,
+        pathExists: path => path.endsWith('\\src'),
+      }),
+    ).toEqual({
+      targetPath: 'D:\\openjaws\\OpenJaws\\src',
+      projectKey: 'openjaws',
+      workKey: 'openjaws::src',
+      rootLabel: 'OpenJaws',
+    })
+
+    expect(
+      resolveRoundtableExecutionScope({
+        targetPath: 'C:\\Users\\Knight\\Desktop\\Immaculate\\apps\\harness',
+        repoId: 'Immaculate',
+        roots,
+      }),
+    ).toEqual({
+      targetPath: 'C:\\Users\\Knight\\Desktop\\Immaculate\\apps\\harness',
+      projectKey: 'immaculate',
+      workKey: 'immaculate::apps/harness',
+      rootLabel: 'Immaculate',
+    })
   })
 
   it('penalizes pending approvals and stale non-mergeable work when choosing a fallback root', () => {
