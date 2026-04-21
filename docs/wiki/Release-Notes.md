@@ -40,6 +40,8 @@ This page summarizes the current public OpenJaws surface that is already working
 - repo-root roundtable handoffs now narrow themselves onto a concrete code-bearing path like `src`, `apps`, or `packages` before the tracked worktree lane materializes the job, which cuts down on broad no-diff audits and makes approval candidates more likely to carry mergeable code
 - the governed roundtable session reader now keeps `executing queued action` in the `running` state instead of collapsing it back to `queued`, which fixes one of the last live-session truth leaks during autonomous runs
 - the tracked roundtable readers now also detect the nested `roundtable-runtime/roundtable-runtime` output that the bundled private fallback writes, so status/coherence surfaces stop reading stale top-level files when the live Discord lane is healthy
+- the tracked roundtable bootstrap path now rebuilds fresh live session metadata from the canonical queue/session model before the bundled private lane starts, rotates stale nested bundle logs, and rewrites the fallback `roundtable-runtime/roundtable-runtime` state so a restart does not resurrect a completed window
+- the tracked scheduler now only relaxes after a recent diff-bearing completed commit, so no-diff or rejected audit receipts stop counting as real progress and fresh sessions keep driving toward scoped code-bearing work longer
 
 ## Agent Co-Work
 

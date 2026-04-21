@@ -108,6 +108,13 @@ export type DiscordRoundtableLogSnapshot = {
   lastSummary: string | null
 }
 
+export type DiscordRoundtableBootstrapResult = {
+  state: DiscordRoundtableRuntimeState
+  sessionState: DiscordRoundtableSessionState
+  legacyRuntimeDirs: string[]
+  clearedLogPaths: string[]
+}
+
 export type DiscordRoundtableProcessResult = {
   state: DiscordRoundtableRuntimeState
   ingestedCount: number
@@ -425,6 +432,13 @@ export function getDiscordRoundtableStatePath(root = process.cwd()): string {
   return join(getDiscordRoundtableRuntimeDir(root), 'discord-roundtable.state.json')
 }
 
+export function getDiscordRoundtableQueueStatePath(root = process.cwd()): string {
+  return join(
+    getDiscordRoundtableRuntimeDir(root),
+    'discord-roundtable-queue.state.json',
+  )
+}
+
 export function getDiscordRoundtableSessionStatePath(root = process.cwd()): string {
   return join(getDiscordRoundtableRuntimeDir(root), 'discord-roundtable.session.json')
 }
@@ -439,6 +453,14 @@ export function getDiscordRoundtableQuarantineDir(root = process.cwd()): string 
 
 export function getOpenJawsOperatorStatePath(root = process.cwd()): string {
   return resolve(root, 'local-command-station', 'openjaws-operator-state.json')
+}
+
+function getDiscordRoundtableLegacyRuntimeDirs(root = process.cwd()): string[] {
+  const primary = getDiscordRoundtableRuntimeDir(root)
+  const nested = join(primary, 'roundtable-runtime')
+  return Array.from(new Set([...getDiscordRoundtableObservedRuntimeDirs(root), nested])).filter(
+    runtimeDir => runtimeDir.toLowerCase() !== primary.toLowerCase(),
+  )
 }
 
 export function createDiscordRoundtableRuntimeState(args?: {
@@ -484,6 +506,326 @@ export function createDiscordRoundtableSessionState(args?: {
     lastError: null,
     processedCommandMessageIds: [],
   }
+}
+
+function rotateRoundtableLog(path: string, nowIso: string): string | null {
+  if (!existsSync(path)) {
+    return null
+  }
+  const archivePath = join(
+    dirname(path),
+    `discord-roundtable.previous-${nowIso.replace(/[-:]/g, '').replace(/\..+/, '')}.log`,
+  )
+  renameSync(path, archivePath)
+  return archivePath
+}
+
+function buildBootstrappedRoundtableRuntimeState(args: {
+  state: DiscordRoundtableRuntimeState | null
+  sessionState: DiscordRoundtableSessionState | null
+  now: Date
+  roundtableChannelName?: string | null
+}): DiscordRoundtableRuntimeState {
+  const nowIso = args.now.toISOString()
+  const state =
+    args.state ??
+    createDiscordRoundtableRuntimeState({
+      now: args.now,
+      roundtableChannelName: args.roundtableChannelName ?? null,
+    })
+  const roundtableChannelName =
+    args.roundtableChannelName ??
+    args.sessionState?.roundtableChannelName ??
+    state.roundtableChannelName ??
+    null
+  const summary =
+    state.jobs.length === 0 && !state.activeJobId
+      ? roundtableChannelName
+        ? `Roundtable bootstrapped in #${roundtableChannelName}.`
+        : 'Roundtable bootstrapped.'
+      : args.sessionState?.lastSummary ??
+        state.lastSummary ??
+        (roundtableChannelName
+          ? `Roundtable bootstrapped in #${roundtableChannelName}.`
+          : 'Roundtable bootstrapped.')
+  return {
+    ...state,
+    updatedAt: nowIso,
+    roundtableChannelName,
+    lastSummary: summary,
+    lastError: null,
+    status: normalizeRuntimeStatus(
+      state.jobs,
+      null,
+      state.jobs.length > 0 ? state.status : 'running',
+    ),
+  }
+}
+
+function buildBootstrappedRoundtableSessionState(args: {
+  state: DiscordRoundtableRuntimeState
+  trackedSessionState: DiscordRoundtableSessionState | null
+  now: Date
+  durationHours: number
+  roundtableChannelName?: string | null
+}): DiscordRoundtableSessionState {
+  const nowIso = args.now.toISOString()
+  const nowMs = args.now.getTime()
+  const trackedSession = args.trackedSessionState
+  const trackedEndsAtMs = parseIsoTimestampMs(trackedSession?.endsAt)
+  const shouldReuseTrackedSession =
+    trackedSession !== null &&
+    trackedSession.status !== 'completed' &&
+    trackedSession.status !== 'error' &&
+    (trackedEndsAtMs === null || trackedEndsAtMs > nowMs)
+  const roundtableChannelName =
+    args.roundtableChannelName ??
+    trackedSession?.roundtableChannelName ??
+    args.state.roundtableChannelName ??
+    null
+
+  if (shouldReuseTrackedSession && trackedSession) {
+    return {
+      ...trackedSession,
+      updatedAt: nowIso,
+      status:
+        trackedSession.status === 'completed'
+          ? 'running'
+          : normalizeDiscordRoundtableSessionStatus(
+              args.state.status === 'idle' ? 'running' : args.state.status,
+            ),
+      roundtableChannelName,
+      lastSummary: args.state.lastSummary ?? trackedSession.lastSummary,
+      lastError: args.state.lastError ?? trackedSession.lastError,
+    }
+  }
+
+  const freshState = createDiscordRoundtableSessionState({
+    now: args.now,
+    roundtableChannelName,
+  })
+  return {
+    ...freshState,
+    status: normalizeDiscordRoundtableSessionStatus(
+      args.state.status === 'idle' ? 'running' : args.state.status,
+    ),
+    updatedAt: nowIso,
+    startedAt: nowIso,
+    endsAt: new Date(
+      nowMs + Math.max(args.durationHours, 0.25) * 60 * 60 * 1000,
+    ).toISOString(),
+    lastSummary: args.state.lastSummary,
+    lastError: args.state.lastError,
+  }
+}
+
+function resetDiscordRoundtableLegacyRuntime(args: {
+  runtimeDir: string
+  state: DiscordRoundtableRuntimeState
+  sessionState: DiscordRoundtableSessionState
+  nowIso: string
+}) {
+  mkdirSync(args.runtimeDir, { recursive: true })
+  const logPath = join(args.runtimeDir, 'discord-roundtable.log')
+  const clearedLogPath = rotateRoundtableLog(logPath, args.nowIso)
+  writeFileSync(logPath, '', 'utf8')
+  writeJsonFile(join(args.runtimeDir, 'discord-roundtable-actions.json'), [])
+  writeJsonFile(join(args.runtimeDir, 'discord-roundtable-memory.json'), {
+    summary: null,
+    currentFocus: null,
+    lastHumanQuestion: null,
+    openThreads: [],
+  })
+  writeJsonFile(join(args.runtimeDir, 'discord-roundtable.state.json'), {
+    version: 1,
+    status: args.sessionState.status,
+    updatedAt: args.sessionState.updatedAt,
+    roundtableChannelName: args.sessionState.roundtableChannelName,
+    lastSummary: args.sessionState.lastSummary,
+    lastError: args.sessionState.lastError,
+    activeJobId: args.state.activeJobId,
+    ingestedHandoffs: args.state.ingestedHandoffs,
+    jobs: args.state.jobs,
+    startedAt: args.sessionState.startedAt,
+    endsAt: args.sessionState.endsAt,
+    guildId: args.sessionState.guildId,
+    roundtableChannelId: args.sessionState.roundtableChannelId,
+    generalChannelId: args.sessionState.generalChannelId,
+    generalChannelName: args.sessionState.generalChannelName,
+    violaVoiceChannelId: args.sessionState.violaVoiceChannelId,
+    violaVoiceChannelName: args.sessionState.violaVoiceChannelName,
+    turnCount: args.sessionState.turnCount,
+    nextPersona: args.sessionState.nextPersona,
+    lastSpeaker: args.sessionState.lastSpeaker,
+    processedCommandMessageIds: args.sessionState.processedCommandMessageIds,
+  })
+  return clearedLogPath
+}
+
+export function bootstrapDiscordRoundtableRuntime(args?: {
+  root?: string
+  roundtableChannelName?: string | null
+  durationHours?: number
+  now?: Date
+}): DiscordRoundtableBootstrapResult {
+  const runtimeRoot = args?.root ?? process.cwd()
+  const now = args?.now ?? new Date()
+  const durationHours = args?.durationHours ?? DEFAULT_ROUNDTABLE_WINDOW_HOURS
+  const storedRuntimeState = readStoredDiscordRoundtableRuntimeState(runtimeRoot)
+  const trackedSessionState = readStoredDiscordRoundtableSessionState(runtimeRoot)
+  const state = buildBootstrappedRoundtableRuntimeState({
+    state: storedRuntimeState,
+    sessionState: trackedSessionState,
+    now,
+    roundtableChannelName: args?.roundtableChannelName,
+  })
+  const sessionState = buildBootstrappedRoundtableSessionState({
+    state,
+    trackedSessionState,
+    now,
+    durationHours,
+    roundtableChannelName: args?.roundtableChannelName,
+  })
+  saveDiscordRoundtableRuntimeState({
+    root: runtimeRoot,
+    state,
+  })
+  saveDiscordRoundtableSessionState({
+    root: runtimeRoot,
+    state: sessionState,
+  })
+
+  const legacyRuntimeDirs = getDiscordRoundtableLegacyRuntimeDirs(runtimeRoot)
+  const clearedLogPaths = legacyRuntimeDirs
+    .map(runtimeDir =>
+      resetDiscordRoundtableLegacyRuntime({
+        runtimeDir,
+        state,
+        sessionState,
+        nowIso: now.toISOString(),
+      }),
+    )
+    .filter((entry): entry is string => Boolean(entry))
+
+  return {
+    state,
+    sessionState,
+    legacyRuntimeDirs,
+    clearedLogPaths,
+  }
+}
+
+function normalizeDiscordRoundtableRuntimeState(
+  parsed: Partial<DiscordRoundtableRuntimeState> | null | undefined,
+  args?: {
+    now?: Date
+    roundtableChannelName?: string | null
+  },
+): DiscordRoundtableRuntimeState | null {
+  if (!parsed) {
+    return null
+  }
+  const now =
+    typeof parsed.updatedAt === 'string' ? new Date(parsed.updatedAt) : args?.now ?? new Date()
+  const base = createDiscordRoundtableRuntimeState({
+    now,
+    roundtableChannelName:
+      typeof parsed.roundtableChannelName === 'string'
+        ? parsed.roundtableChannelName
+        : args?.roundtableChannelName ?? null,
+  })
+  return {
+    version: 1,
+    status:
+      parsed.status === 'idle' ||
+      parsed.status === 'queued' ||
+      parsed.status === 'running' ||
+      parsed.status === 'awaiting_approval' ||
+      parsed.status === 'error'
+        ? parsed.status
+        : base.status,
+    updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : base.updatedAt,
+    roundtableChannelName:
+      typeof parsed.roundtableChannelName === 'string'
+        ? parsed.roundtableChannelName
+        : base.roundtableChannelName,
+    lastSummary:
+      typeof parsed.lastSummary === 'string' ? parsed.lastSummary : base.lastSummary,
+    lastError: typeof parsed.lastError === 'string' ? parsed.lastError : base.lastError,
+    activeJobId:
+      typeof parsed.activeJobId === 'string' ? parsed.activeJobId : base.activeJobId,
+    ingestedHandoffs: Array.isArray(parsed.ingestedHandoffs)
+      ? parsed.ingestedHandoffs.filter(
+          (entry): entry is string => typeof entry === 'string' && entry.length > 0,
+        )
+      : [],
+    jobs: Array.isArray(parsed.jobs) ? (parsed.jobs as DiscordRoundtableTrackedJob[]) : [],
+  }
+}
+
+function normalizeDiscordRoundtableSessionState(
+  parsed: Partial<DiscordRoundtableSessionState> | null | undefined,
+  args?: {
+    now?: Date
+    roundtableChannelName?: string | null
+  },
+): DiscordRoundtableSessionState | null {
+  if (!parsed) {
+    return null
+  }
+  const now =
+    typeof parsed.updatedAt === 'string' ? new Date(parsed.updatedAt) : args?.now ?? new Date()
+  const base = createDiscordRoundtableSessionState({
+    now,
+    roundtableChannelName:
+      typeof parsed.roundtableChannelName === 'string'
+        ? parsed.roundtableChannelName
+        : args?.roundtableChannelName ?? null,
+  })
+  return {
+    version: 1,
+    status: normalizeDiscordRoundtableSessionStatus(parsed.status),
+    updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : base.updatedAt,
+    startedAt: asString(parsed.startedAt),
+    endsAt: asString(parsed.endsAt),
+    guildId: asString(parsed.guildId),
+    roundtableChannelId: asString(parsed.roundtableChannelId),
+    roundtableChannelName:
+      typeof parsed.roundtableChannelName === 'string'
+        ? parsed.roundtableChannelName
+        : base.roundtableChannelName,
+    generalChannelId: asString(parsed.generalChannelId),
+    generalChannelName: asString(parsed.generalChannelName),
+    violaVoiceChannelId: asString(parsed.violaVoiceChannelId),
+    violaVoiceChannelName: asString(parsed.violaVoiceChannelName),
+    turnCount: asNumber(parsed.turnCount),
+    nextPersona: asString(parsed.nextPersona),
+    lastSpeaker: asString(parsed.lastSpeaker),
+    lastSummary: asString(parsed.lastSummary),
+    lastError: asString(parsed.lastError),
+    processedCommandMessageIds: asStringArray(parsed.processedCommandMessageIds),
+  }
+}
+
+function readStoredDiscordRoundtableRuntimeState(
+  root = process.cwd(),
+): DiscordRoundtableRuntimeState | null {
+  return normalizeDiscordRoundtableRuntimeState(
+    readJsonFile<Partial<DiscordRoundtableRuntimeState>>(getDiscordRoundtableStatePath(root)) ??
+      readJsonFile<Partial<DiscordRoundtableRuntimeState>>(
+        getDiscordRoundtableQueueStatePath(root),
+      ),
+  )
+}
+
+function readStoredDiscordRoundtableSessionState(
+  root = process.cwd(),
+): DiscordRoundtableSessionState | null {
+  return normalizeDiscordRoundtableSessionState(
+    readJsonFile<Partial<DiscordRoundtableSessionState>>(
+      getDiscordRoundtableSessionStatePath(root),
+    ),
+  )
 }
 
 function normalizeDiscordRoundtableSessionStatus(
@@ -542,40 +884,8 @@ function readLegacyDiscordRoundtableSessionState(
 export function loadDiscordRoundtableRuntimeState(
   root = process.cwd(),
 ): DiscordRoundtableRuntimeState {
-  const parsed = readJsonFile<Partial<DiscordRoundtableRuntimeState>>(
-    getDiscordRoundtableStatePath(root),
-  )
-  const base = createDiscordRoundtableRuntimeState()
-  if (!parsed) {
-    return base
-  }
-  const state: DiscordRoundtableRuntimeState = {
-    version: 1,
-    status:
-      parsed.status === 'idle' ||
-      parsed.status === 'queued' ||
-      parsed.status === 'running' ||
-      parsed.status === 'awaiting_approval' ||
-      parsed.status === 'error'
-        ? parsed.status
-        : base.status,
-    updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : base.updatedAt,
-    roundtableChannelName:
-      typeof parsed.roundtableChannelName === 'string'
-        ? parsed.roundtableChannelName
-        : base.roundtableChannelName,
-    lastSummary:
-      typeof parsed.lastSummary === 'string' ? parsed.lastSummary : base.lastSummary,
-    lastError: typeof parsed.lastError === 'string' ? parsed.lastError : base.lastError,
-    activeJobId:
-      typeof parsed.activeJobId === 'string' ? parsed.activeJobId : base.activeJobId,
-    ingestedHandoffs: Array.isArray(parsed.ingestedHandoffs)
-      ? parsed.ingestedHandoffs.filter(
-          (entry): entry is string => typeof entry === 'string' && entry.length > 0,
-        )
-      : [],
-    jobs: Array.isArray(parsed.jobs) ? (parsed.jobs as DiscordRoundtableTrackedJob[]) : [],
-  }
+  const state =
+    readStoredDiscordRoundtableRuntimeState(root) ?? createDiscordRoundtableRuntimeState()
   return overlayRoundtableLogSnapshot({
     state,
     logSnapshot: readDiscordRoundtableLogSnapshot(root),
@@ -586,44 +896,12 @@ export function loadDiscordRoundtableSessionState(
   root = process.cwd(),
 ): DiscordRoundtableSessionState | null {
   const parsed =
-    readJsonFile<Partial<DiscordRoundtableSessionState>>(
-      getDiscordRoundtableSessionStatePath(root),
-    ) ?? readLegacyDiscordRoundtableSessionState(root)
+    readStoredDiscordRoundtableSessionState(root) ??
+    normalizeDiscordRoundtableSessionState(readLegacyDiscordRoundtableSessionState(root))
   if (!parsed) {
     return null
   }
-  const now =
-    typeof parsed.updatedAt === 'string' ? new Date(parsed.updatedAt) : new Date()
-  const base = createDiscordRoundtableSessionState({
-    now,
-    roundtableChannelName:
-      typeof parsed.roundtableChannelName === 'string'
-        ? parsed.roundtableChannelName
-        : null,
-  })
-  const state: DiscordRoundtableSessionState = {
-    version: 1,
-    status: normalizeDiscordRoundtableSessionStatus(parsed.status),
-    updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : base.updatedAt,
-    startedAt: asString(parsed.startedAt),
-    endsAt: asString(parsed.endsAt),
-    guildId: asString(parsed.guildId),
-    roundtableChannelId: asString(parsed.roundtableChannelId),
-    roundtableChannelName:
-      typeof parsed.roundtableChannelName === 'string'
-        ? parsed.roundtableChannelName
-        : base.roundtableChannelName,
-    generalChannelId: asString(parsed.generalChannelId),
-    generalChannelName: asString(parsed.generalChannelName),
-    violaVoiceChannelId: asString(parsed.violaVoiceChannelId),
-    violaVoiceChannelName: asString(parsed.violaVoiceChannelName),
-    turnCount: asNumber(parsed.turnCount),
-    nextPersona: asString(parsed.nextPersona),
-    lastSpeaker: asString(parsed.lastSpeaker),
-    lastSummary: asString(parsed.lastSummary),
-    lastError: asString(parsed.lastError),
-    processedCommandMessageIds: asStringArray(parsed.processedCommandMessageIds),
-  }
+  const state = parsed
 
   const logSnapshot = readDiscordRoundtableLogSnapshot(root)
   if (!logSnapshot) {
@@ -663,6 +941,7 @@ export function saveDiscordRoundtableRuntimeState(args: {
   state: DiscordRoundtableRuntimeState
 }) {
   writeJsonFile(getDiscordRoundtableStatePath(args.root), args.state)
+  writeJsonFile(getDiscordRoundtableQueueStatePath(args.root), args.state)
 }
 
 export function saveDiscordRoundtableSessionState(args: {

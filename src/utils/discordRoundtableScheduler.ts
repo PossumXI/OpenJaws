@@ -381,9 +381,11 @@ export function shouldForceRoundtableContribution(args: {
   const recentConcreteOutcome = recentActions.some(action => {
     const completedAtMs = parseIsoTimestampMs(action.completedAt)
     return (
+      action.status === 'completed' &&
       completedAtMs !== null &&
       nowMs - completedAtMs < 20 * 60_000 &&
-      (action.changedFiles.length > 0 || Boolean(action.verificationSummary))
+      action.changedFiles.length > 0 &&
+      Boolean(action.commitSha)
     )
   })
 

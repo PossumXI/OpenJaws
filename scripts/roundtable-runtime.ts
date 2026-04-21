@@ -2,8 +2,8 @@ import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import {
   formatDiscordRoundtableTransitionReceipt,
+  getDiscordRoundtableQueueStatePath,
   getDiscordRoundtableSessionStatePath,
-  getDiscordRoundtableStatePath,
   processDiscordRoundtableRuntime,
 } from '../src/utils/discordRoundtableRuntime.js'
 
@@ -150,7 +150,7 @@ async function runIteration(options: CliOptions) {
   const output = options.json
     ? JSON.stringify(
         {
-          queueStatePath: getDiscordRoundtableStatePath(root),
+          queueStatePath: getDiscordRoundtableQueueStatePath(root),
           sessionStatePath: getDiscordRoundtableSessionStatePath(root),
           ingestedCount: result.ingestedCount,
           executedCount: result.executedCount,
@@ -168,7 +168,7 @@ async function runIteration(options: CliOptions) {
       )
     : [
         `Roundtable status: ${result.state.status}`,
-        `Queue path: ${getDiscordRoundtableStatePath(root)}`,
+        `Queue path: ${getDiscordRoundtableQueueStatePath(root)}`,
         `Session path: ${getDiscordRoundtableSessionStatePath(root)}`,
         `Ingested: ${result.ingestedCount}`,
         `Executed: ${result.executedCount}`,
