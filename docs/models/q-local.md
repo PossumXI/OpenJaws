@@ -37,6 +37,8 @@ That override only applies to `ollama:q` or `ollama:q:latest`, and it beats the
 generic provider-level Ollama base URL. Generic Ollama models still follow
 `OLLAMA_BASE_URL` or the default `http://127.0.0.1:11434`. An explicit
 per-model override for `ollama:q` still wins if you set one in `settings.json`.
+Discord chat is separate: it stays on `DISCORD_Q_MODEL` and does not inherit
+the general `Q_AGENT_MODEL` path.
 
 ## Dataset Export
 

@@ -512,6 +512,7 @@ export function buildProviderGuidanceProperties(
           '/provider base-url ollama <url>',
           `env ${defaults.baseURLEnvVars.join(' / ')}`,
           'env OPENJAWS_OLLAMA_Q_BASE_URL / OLLAMA_Q_BASE_URL for ollama:q',
+          'settings override: llmModelOverrides.ollama:q.baseURL wins over env',
         ],
     })
     return properties
