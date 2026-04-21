@@ -83,6 +83,21 @@ export type DiscordRoundtableProcessResult = {
   awaitingApprovalCount: number
   durationHours: number
   approvalTtlHours: number
+  transitionReceipts: DiscordRoundtableTransitionReceipt[]
+}
+
+export type DiscordRoundtableTransitionReceipt = {
+  jobId: string
+  repoLabel: string
+  role: string
+  objective: string
+  status: DiscordExecutionJobStatus
+  branchName: string | null
+  commitSha: string | null
+  verificationSummary: string | null
+  receiptPath: string | null
+  rejectionReason: string | null
+  summary: string | null
 }
 
 type DiscordRoundtableJobCounts = {
@@ -562,6 +577,70 @@ function formatHighlightedRoundtableJob(
   return segments.join(' · ')
 }
 
+function formatRoundtablePendingSummary(
+  job: Pick<
+    DiscordRoundtableTrackedJob,
+    'repoLabel' | 'role' | 'objective' | 'verificationSummary'
+  >,
+): string {
+  const objective = job.objective.replace(/\s+/g, ' ').trim()
+  const prefix = `${job.repoLabel} · ${job.role}`
+  if (job.verificationSummary?.trim()) {
+    return `${prefix} · ${objective} · ${job.verificationSummary.trim()}`
+  }
+  return `${prefix} · ${objective}`
+}
+
+function buildRoundtableTransitionReceipts(args: {
+  previousJobs: DiscordRoundtableTrackedJob[]
+  nextJobs: DiscordRoundtableTrackedJob[]
+}): DiscordRoundtableTransitionReceipt[] {
+  const previousById = new Map(args.previousJobs.map(job => [job.id, job]))
+  const receipts: DiscordRoundtableTransitionReceipt[] = []
+  for (const job of args.nextJobs) {
+    const previous = previousById.get(job.id)
+    const changed =
+      !previous ||
+      previous.status !== job.status ||
+      previous.branchName !== job.branchName ||
+      previous.receiptPath !== job.receiptPath ||
+      previous.rejectionReason !== job.rejectionReason ||
+      previous.commitSha !== job.commitSha
+    if (!changed) {
+      continue
+    }
+    receipts.push({
+      jobId: job.id,
+      repoLabel: job.repoLabel,
+      role: job.role,
+      objective: job.objective,
+      status: job.status,
+      branchName: job.branchName ?? null,
+      commitSha: job.commitSha ?? null,
+      verificationSummary: job.verificationSummary ?? null,
+      receiptPath: job.receiptPath ?? null,
+      rejectionReason: job.rejectionReason ?? null,
+      summary: job.summary ?? null,
+    })
+  }
+  return receipts
+}
+
+function formatRoundtableQueueJobLine(
+  label: string,
+  job: DiscordRoundtableTrackedJob,
+): string {
+  const segments = [label, job.id]
+  if (job.branchName) {
+    segments.push(job.branchName)
+  }
+  segments.push(job.summary ?? job.objective)
+  if (job.receiptPath) {
+    segments.push(`receipt ${job.receiptPath}`)
+  }
+  return segments.join(' · ')
+}
+
 function isAllowedTargetPath(targetPath: string, allowedRoots: string[]): boolean {
   return allowedRoots.some(root => relativeWithinRoot(root, targetPath) !== null)
 }
@@ -580,7 +659,13 @@ function createTrackedJob(args: {
     return null
   }
   const gitRoot = findGitRoot(targetPath)
-  if (!gitRoot || !args.action.executionReady) {
+  if (
+    !gitRoot ||
+    !args.action.executionReady ||
+    args.action.requiresManualCheckout ||
+    !args.action.workspaceMaterialized ||
+    !args.action.authorityBound
+  ) {
     return null
   }
   const jobId = sanitizeSegment(
@@ -626,7 +711,7 @@ function createTrackedJob(args: {
       id: jobId,
       title: args.action.objective,
       reason: args.action.rationale,
-      targetPath: gitRoot,
+      targetPath,
       prompt: buildActionPrompt({
         action: args.action,
         handoff: args.handoff,
@@ -714,7 +799,12 @@ function appendOperatorPendingPush(args: {
     worktreePath: args.execution.runContext.worktreePath ?? '',
     workspacePath: args.execution.runContext.workspacePath,
     changedFiles: args.execution.job.changedFiles,
-    summary: args.execution.job.verification.summary,
+    summary: formatRoundtablePendingSummary({
+      repoLabel: args.job.repoLabel,
+      role: args.job.role,
+      objective: args.job.objective,
+      verificationSummary: args.execution.job.verification.summary,
+    }),
     verificationSummary: args.execution.job.verification.summary,
     commitSha: args.execution.job.commitSha ?? '',
     gitRoot: args.execution.gitRoot,
@@ -733,6 +823,34 @@ function appendOperatorPendingPush(args: {
     pendingPush,
   ]
   writeJsonFile(args.path, state)
+}
+
+function pruneOperatorPendingPushes(args: {
+  path: string
+  jobs: DiscordRoundtableTrackedJob[]
+}) {
+  const state = loadOperatorState(args.path)
+  const activeApprovalJobs = new Set(
+    args.jobs
+      .filter(
+        job =>
+          job.status === 'awaiting_approval' && job.approvalState === 'pending',
+      )
+      .map(job => job.id),
+  )
+  const nextPendingPushes = (state.pendingPushes ?? []).filter(push => {
+    if (!push.requestedByUserId.startsWith('roundtable:')) {
+      return true
+    }
+    return activeApprovalJobs.has(push.jobId)
+  })
+  if (nextPendingPushes.length === (state.pendingPushes ?? []).length) {
+    return
+  }
+  writeJsonFile(args.path, {
+    ...state,
+    pendingPushes: nextPendingPushes,
+  })
 }
 
 function holdbackReason(result: DiscordRoundtableExecutionResult): string {
@@ -806,7 +924,12 @@ async function runQueuedJob(args: {
       worktreePath: execution.runContext.worktreePath ?? candidate.worktreePath,
       workspacePath: execution.runContext.workspacePath,
       changedFiles: execution.job.changedFiles,
-      summary: execution.job.verification.summary,
+      summary: formatRoundtablePendingSummary({
+        repoLabel: candidate.repoLabel,
+        role: candidate.role,
+        objective: candidate.objective,
+        verificationSummary: execution.job.verification.summary,
+      }),
       verificationSummary: execution.job.verification.summary,
       commitSha: execution.job.commitSha,
       targetRootLabel: execution.targetRootLabel,
@@ -895,6 +1018,7 @@ export async function processDiscordRoundtableRuntime(
           durationHours,
         })
   let state = loadDiscordRoundtableRuntimeState(runtimeRoot)
+  const previousJobs = state.jobs.map(job => ({ ...job }))
   state = {
     ...state,
     roundtableChannelName:
@@ -904,6 +1028,12 @@ export async function processDiscordRoundtableRuntime(
       nowMs: (options.now?.() ?? new Date()).getTime(),
     }) as DiscordRoundtableTrackedJob[],
   }
+  pruneOperatorPendingPushes({
+    path:
+      options.operatorStatePath ??
+      getOpenJawsOperatorStatePath(options.root ?? runtimeRoot),
+    jobs: state.jobs,
+  })
 
   let ingestedCount = 0
   const handoffPaths = new Set<string>()
@@ -980,6 +1110,12 @@ export async function processDiscordRoundtableRuntime(
 
   state.updatedAt = (options.now?.() ?? new Date()).toISOString()
   state.status = normalizeRuntimeStatus(state.jobs, state.lastError, state.status)
+  pruneOperatorPendingPushes({
+    path:
+      options.operatorStatePath ??
+      getOpenJawsOperatorStatePath(options.root ?? runtimeRoot),
+    jobs: state.jobs,
+  })
   saveDiscordRoundtableRuntimeState({
     root: runtimeRoot,
     state,
@@ -992,6 +1128,10 @@ export async function processDiscordRoundtableRuntime(
     awaitingApprovalCount: state.jobs.filter(job => job.status === 'awaiting_approval').length,
     durationHours,
     approvalTtlHours,
+    transitionReceipts: buildRoundtableTransitionReceipts({
+      previousJobs,
+      nextJobs: state.jobs,
+    }),
   }
 }
 
@@ -1015,6 +1155,12 @@ export function buildDiscordRoundtableRuntimeStatusLines(
   }
   if (state.lastError) {
     lines.push(`Last error: ${state.lastError}`)
+  }
+  for (const job of state.jobs.filter(job => job.status === 'awaiting_approval').slice(0, 3)) {
+    lines.push(formatRoundtableQueueJobLine('Awaiting approval', job))
+  }
+  for (const job of state.jobs.filter(job => job.status === 'queued').slice(0, 2)) {
+    lines.push(formatRoundtableQueueJobLine('Queued', job))
   }
   return lines
 }
@@ -1041,5 +1187,36 @@ export function formatDiscordRoundtableRuntimeAnnouncement(
     lines.push(`Summary: ${result.state.lastSummary}`)
   }
   lines.push('Use `@Q operator roundtable-status` for the current queue and approval state.')
+  return lines.join('\n')
+}
+
+export function formatDiscordRoundtableTransitionReceipt(
+  receipt: DiscordRoundtableTransitionReceipt,
+): string {
+  const lines = [
+    `Roundtable receipt: ${receipt.status.replace(/_/g, ' ')}`,
+    `Repo: ${receipt.repoLabel} · ${receipt.role}`,
+    `Job: ${receipt.jobId}`,
+    `Objective: ${receipt.objective}`,
+  ]
+  if (receipt.branchName) {
+    lines.push(`Branch: ${receipt.branchName}`)
+  }
+  if (receipt.commitSha) {
+    lines.push(`Commit: ${receipt.commitSha}`)
+  }
+  if (receipt.verificationSummary) {
+    lines.push(`Tests: ${receipt.verificationSummary}`)
+  }
+  if (receipt.receiptPath) {
+    lines.push(`Receipt: ${receipt.receiptPath}`)
+  }
+  if (receipt.status === 'awaiting_approval' && receipt.branchName) {
+    lines.push(`Confirm: @Q operator confirm-push ${receipt.branchName}`)
+  } else if (receipt.rejectionReason) {
+    lines.push(`Reason: ${receipt.rejectionReason}`)
+  } else if (receipt.summary) {
+    lines.push(`Summary: ${receipt.summary}`)
+  }
   return lines.join('\n')
 }

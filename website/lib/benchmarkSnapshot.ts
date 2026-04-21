@@ -22,9 +22,12 @@ export type BenchmarkSnapshot = {
     taskName: string
     scope: string
     status: string
+    submissionState: string
     agent: string
     model: string
     outcome: string
+    executionErrorTrials: number
+    benchmarkFailedTrials: number
     summary: string
     submissionUrl?: string
   }

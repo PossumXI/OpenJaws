@@ -19,11 +19,14 @@
     "runId": "q-terminalbench-20260416T160708",
     "taskName": "circuit-fibsqrt",
     "scope": "Official TerminalBench 2.0 public task",
-    "status": "submitted",
+    "status": "completed_with_errors",
+    "submissionState": "submitted",
     "agent": "openjaws",
     "model": "oci:Q",
     "outcome": "reward 0.0 // 5 trials",
-    "summary": "OpenJaws ran circuit-fibsqrt on OCI Q with 5 trials and 0 runtime errors. Mean reward: 0.0. The official leaderboard submission discussion is linked here.",
+    "executionErrorTrials": 0,
+    "benchmarkFailedTrials": 5,
+    "summary": "OpenJaws ran circuit-fibsqrt on OCI Q with 5 trials, 0 runtime errors, and 5 benchmark-failing trials. Mean reward: 0.0. The official leaderboard submission discussion is linked here.",
     "submissionUrl": "https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard/discussions/141"
   },
   "terminalBenchSoak": {

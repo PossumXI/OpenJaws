@@ -306,10 +306,8 @@ export function shouldForceRoundtableContribution(args: {
     return true
   }
 
-  const nowMs = args.nowMs ?? Date.now()
-  const recentActions = args.recentActions.slice(-6)
   if (
-    recentActions.some(
+    args.recentActions.some(
       action =>
         action.status === 'queued' ||
         action.status === 'running' ||
@@ -319,6 +317,8 @@ export function shouldForceRoundtableContribution(args: {
     return true
   }
 
+  const nowMs = args.nowMs ?? Date.now()
+  const recentActions = args.recentActions.slice(-6)
   const recentConcreteOutcome = recentActions.some(action => {
     const completedAtMs = parseIsoTimestampMs(action.completedAt)
     return (

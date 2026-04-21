@@ -53,6 +53,7 @@ import {
 import { resolveOciQRuntime } from '../src/utils/ociQRuntime.js'
 
 type AgentMode = 'openjaws' | 'oracle'
+type TerminalBenchSessionMetadata = BenchmarkTraceSessionMetadata
 
 type CliOptions = {
   root: string

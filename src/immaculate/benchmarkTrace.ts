@@ -21,6 +21,7 @@ export type BenchmarkTraceSessionMetadata = {
   worktreePath?: string
   gitBranch?: string | null
   repoSha?: string | null
+  tracePath?: string
 }
 
 function resolveBenchmarkTracePath(outputDir: string, sessionId: string): string {
@@ -38,6 +39,9 @@ export function createBenchmarkTraceWriter(args: {
     sessionId: args.sessionId,
     startedAt: Date.now(),
     sessionMetadata: args.sessionMetadata ?? null,
+  }
+  if (writer.sessionMetadata) {
+    writer.sessionMetadata.tracePath = writer.path
   }
   const sessionStartedPayload: Record<string, unknown> = {
     tracePath: writer.path,

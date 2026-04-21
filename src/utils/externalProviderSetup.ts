@@ -132,7 +132,10 @@ export function getSavedOrConfiguredModelForProvider(
   for (const envVar of defaults.modelEnvVars) {
     const model = process.env[envVar]?.trim()
     if (model) {
-      return model
+      // Ignore fully-qualified refs like `openai:gpt-5.4` when resolving a provider-local saved model.
+      if (!model.includes('.') && !model.includes(':')) {
+        return model
+      }
     }
   }
 

@@ -95,7 +95,7 @@ export function isProcessRunning(pid: number): boolean {
 }
 
 /**
- * Validate that a running process is actually a Claude process
+ * Validate that a running process is actually an OpenJaws process
  * This helps mitigate PID reuse issues
  */
 function isOpenJawsProcess(pid: number, expectedExecPath: string): boolean {
@@ -104,7 +104,8 @@ function isOpenJawsProcess(pid: number, expectedExecPath: string): boolean {
   }
 
   // If the PID matches our current process, we know it's valid
-  // This handles test environments where the command might not contain 'claude'
+  // This handles test environments where the command might not contain the
+  // expected CLI name.
   if (pid === process.pid) {
     return true
   }
@@ -117,11 +118,13 @@ function isOpenJawsProcess(pid: number, expectedExecPath: string): boolean {
       return true
     }
 
-    // Check if the command contains 'claude' or the expected exec path
+    // Check if the command contains the current or legacy CLI name, or the
+    // expected exec path.
     const normalizedCommand = command.toLowerCase()
     const normalizedExecPath = expectedExecPath.toLowerCase()
 
     return (
+      normalizedCommand.includes('openjaws') ||
       normalizedCommand.includes('claude') ||
       normalizedCommand.includes(normalizedExecPath)
     )
@@ -175,11 +178,11 @@ export function isLockActive(lockFilePath: string): boolean {
     return false
   }
 
-  // Secondary validation: is it actually a Claude process?
+  // Secondary validation: is it actually an OpenJaws process?
   // This helps with PID reuse scenarios
   if (!isOpenJawsProcess(pid, execPath)) {
     logForDebugging(
-      `Lock PID ${pid} is running but does not appear to be Claude - treating as stale`,
+      `Lock PID ${pid} is running but does not appear to be OpenJaws - treating as stale`,
     )
     return false
   }

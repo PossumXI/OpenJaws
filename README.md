@@ -324,6 +324,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - The private Discord operator surface now has explicit commands for `workspaces`, `openjaws-status`, `start-openjaws`, `ask-openjaws`, `github-status`, `ask-github-openjaws`, `pending-pushes`, `confirm-push`, and `stop-openjaws`, all behind the same approved-root and operator/trainer gate instead of a hidden shell.
 - The private roundtable lane now uses a queued action ledger with per-project leases, so Q, Viola, and Blackbeak can take bounded repo actions without piling duplicate work onto the same project scope.
 - The tracked roundtable scheduler policy now owns fallback root scoring, approval TTL resolution, and reply/PASS inspection, so the private Discord loop can reduce empty turns without reintroducing policy drift.
+- The tracked roundtable runtime now emits queue transition receipts and `roundtable-status` summaries, so approval-ready branches, skipped jobs, and rejected jobs are visible to operators without scraping local runtime logs.
 - That same roundtable lane now rolls forward in continuous 4-hour windows, understands direct project requests like `start an openjaws session for project sealed and ...`, keeps `SEALED` in its shared codebase knowledge scope, and limits autonomous branch/worktree execution to git-backed roots so manual-only demo folders do not poison the queue.
 - Firecrawl dataset skill for crawl/search -> structured dataset pipelines.
 - Remote Control, environment validation, startup harness receipts, and fail-closed configuration checks.
@@ -439,6 +440,7 @@ OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
 - the private Discord operator lane can now launch bounded OpenJaws jobs into isolated worktrees and per-job branches, report changed files plus verification results back into Discord, and hold upstream pushes behind explicit approval checkpoints
 - the tracked `src/utils/discordOperatorWork.ts` plus `src/utils/discordOperatorExecution.ts` modules now own the shared parser, worktree, verification, commit, and approval-push helpers that both the Discord operator lane and the private roundtable lane consume, so those two execution paths stop drifting
 - the tracked `src/utils/discordExecutionQueue.ts` plus `src/utils/discordRoundtableExecution.ts` modules now own the shared lease, dedupe, approval-target, and roundtable-executor semantics too, so direct operator jobs and roundtable jobs stop diverging at the approval boundary
+- the tracked roundtable runtime now also formats queue transition receipts directly, so `roundtable-status` can surface the same branch, receipt, verification, and `confirm-push` path the live operator queue uses
 - that shared roundtable execution classifier now fails mixed code-plus-artifact outputs closed, so only verified code-bearing branches without generated audit or artifact spillover reach the approval lane
 - that same operator lane now also supports `github-status` plus `ask-github-openjaws`, which opens a prepared `@openjaws` GitHub issue against the target repo so bounded work can continue remotely when the local machine goes offline
 - the roundtable lane now deduplicates work by canonical project scope and uses a queued lease ledger, so the bots can keep taking bounded 4-hour actions without piling multiple helpers onto the same repo path at once
@@ -488,6 +490,7 @@ Public hosted-Q website target:
 - the local release sweep now also includes a live same-site `qline.site` smoke, so the published Netlify handler/runtime/content state is checked alongside the repo build before a local ship pass is called clean
 - the release sweep now fails closed on real `system:check` failures, and the unit-test lane is scoped to the live repo `src/` and `scripts/` trees so mirrored benchmark artifacts cannot poison a ship pass
 - the CI lane now enforces a bounded Phase 0 hygiene gate too: `scripts/` dead-file scan via `knip` plus a `15%` non-test line-coverage floor for `scripts/` before the main verify sweep runs
+- the `Security` workflow now fetches full git history before gitleaks runs, which fixes the shallow-checkout commit-range failure that was leaving `main` red without an actual secret finding
 - Stripe webhook target for that hosted lane is `https://qline.site/api/webhooks/stripe`
 - `https://aura-genesis.org` stays the company path, not the hosted-Q checkout surface
 - the live `qline.site` source of truth is no longer this OpenJaws repo; production publishing now belongs to `https://github.com/PossumXI/q-s-unfolding-story`

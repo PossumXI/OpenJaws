@@ -120,6 +120,7 @@ describe('q-terminalbench provenance', () => {
       sessionId: 'run-123',
       sessionMetadata: metadata,
     })
+    expect(metadata.tracePath).toBe(writer.path)
     const firstLine = (await Bun.file(writer.path).text()).split(/\r?\n/)[0]
     expect(firstLine).toBeTruthy()
     expect(JSON.parse(firstLine)).toMatchObject({

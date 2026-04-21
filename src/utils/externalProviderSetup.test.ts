@@ -87,6 +87,12 @@ describe('externalProviderSetup', () => {
     expect(getSavedOrConfiguredModelForProvider('oci', null)).toBe('Q')
   })
 
+  test('ignores provider-prefixed env defaults when resolving a provider-local model', () => {
+    process.env.Q_MODEL = 'oci:Q'
+
+    expect(getSavedOrConfiguredModelForProvider('oci', null)).toBe('Q')
+  })
+
   test('keeps an Ollama fallback when nothing else is configured', () => {
     expect(getSavedOrConfiguredModelForProvider('ollama', null)).toBeTruthy()
   })

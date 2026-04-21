@@ -141,6 +141,72 @@ describe('discordRoundtableScheduler', () => {
     ).toBe(false)
   })
 
+  it('keeps forcing contribution while older pending approval work is still unresolved', () => {
+    expect(
+      shouldForceRoundtableContribution({
+        turnCount: 12,
+        latestHumanQuestion: null,
+        roundtableMemory: {
+          summary: 'Keep the roundtable moving on repo-grounded work.',
+          openThreads: [],
+        },
+        recentActions: [
+          {
+            status: 'awaiting_approval',
+            approvalState: 'pending',
+            changedFiles: ['src/utils/discordRoundtableRuntime.ts'],
+            completedAt: '2026-04-20T20:00:00.000Z',
+            commitSha: 'pending-approval-sha',
+            verificationSummary: 'Verification passed: bun run build',
+          },
+          {
+            status: 'completed',
+            changedFiles: ['src/utils/discordRoundtableScheduler.ts'],
+            completedAt: '2026-04-20T20:05:00.000Z',
+            commitSha: 'sha-1',
+            verificationSummary: 'Verification passed: bun run test',
+          },
+          {
+            status: 'completed',
+            changedFiles: ['src/utils/discordRoundtableRuntime.ts'],
+            completedAt: '2026-04-20T20:07:00.000Z',
+            commitSha: 'sha-2',
+            verificationSummary: 'Verification passed: bun run build',
+          },
+          {
+            status: 'completed',
+            changedFiles: ['src/utils/discordExecutionQueue.ts'],
+            completedAt: '2026-04-20T20:10:00.000Z',
+            commitSha: 'sha-3',
+            verificationSummary: 'Verification passed: bun run test',
+          },
+          {
+            status: 'completed',
+            changedFiles: ['src/utils/discordRoundtableExecution.ts'],
+            completedAt: '2026-04-20T20:12:00.000Z',
+            commitSha: 'sha-4',
+            verificationSummary: 'Verification passed: bun run build',
+          },
+          {
+            status: 'completed',
+            changedFiles: ['src/utils/discordProjectTargets.ts'],
+            completedAt: '2026-04-20T20:15:00.000Z',
+            commitSha: 'sha-5',
+            verificationSummary: 'Verification passed: bun run test',
+          },
+          {
+            status: 'completed',
+            changedFiles: ['src/utils/discordOperatorWork.ts'],
+            completedAt: '2026-04-20T20:18:00.000Z',
+            commitSha: 'sha-6',
+            verificationSummary: 'Verification passed: bun run build',
+          },
+        ],
+        nowMs: Date.parse('2026-04-20T20:19:00.000Z'),
+      }),
+    ).toBe(true)
+  })
+
   it('inspects replies so PASS is retried when contribution is required', () => {
     expect(
       inspectRoundtableReply({

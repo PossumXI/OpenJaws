@@ -36,9 +36,12 @@ type BenchmarkSnapshot = {
     taskName: string
     scope: string
     status: string
+    submissionState: string
     agent: string
     model: string
     outcome: string
+    executionErrorTrials: number
+    benchmarkFailedTrials: number
     summary: string
     submissionUrl?: string
   }
@@ -368,10 +371,12 @@ export function buildSnapshot(
     runId: string
     generatedAt: string
     officialSubmission?: boolean
+    status?: string
     tasks?: Array<{ taskName?: string }>
     aggregate?: {
       totalTrials?: number
       executionErrorTrials?: number
+      benchmarkFailedTrials?: number
       avgReward?: number
     }
     agent?: string
@@ -417,8 +422,17 @@ export function buildSnapshot(
   const totalTrials = terminalBench.aggregate?.totalTrials ?? 0
   const avgReward = terminalBench.aggregate?.avgReward ?? 0
   const executionErrorTrials = terminalBench.aggregate?.executionErrorTrials ?? 0
+  const benchmarkFailedTrials = terminalBench.aggregate?.benchmarkFailedTrials ?? 0
   const taskName = terminalBench.tasks?.[0]?.taskName ?? 'unknown'
   const submissionUrl = options.terminalBenchSubmissionUrl ?? undefined
+  const terminalBenchStatus =
+    typeof terminalBench.status === 'string' && terminalBench.status.length > 0
+      ? terminalBench.status
+      : executionErrorTrials > 0 || benchmarkFailedTrials > 0
+        ? 'completed_with_errors'
+        : totalTrials > 0
+          ? 'completed'
+          : 'unknown'
   const soakTaskName = terminalBenchSoak.tasks?.[0]?.taskName ?? 'unknown'
   const soakCycleCount = terminalBenchSoak.cycles?.length ?? 0
   const soakTotalTrials = terminalBenchSoak.aggregate?.totalTrials ?? 0
@@ -452,11 +466,14 @@ export function buildSnapshot(
       scope: terminalBench.officialSubmission
         ? 'Official TerminalBench 2.0 public task'
         : 'TerminalBench task receipt',
-      status: submissionUrl ? 'submitted' : executionErrorTrials > 0 ? 'completed_with_errors' : 'completed',
+      status: terminalBenchStatus,
+      submissionState: submissionUrl ? 'submitted' : 'not_submitted',
       agent: terminalBench.agent ?? 'unknown',
       model: terminalBench.model ?? 'unknown',
       outcome: `reward ${formatNumber(avgReward, 1).toFixed(1)} // ${totalTrials} trials`,
-      summary: `OpenJaws ran ${taskName} on OCI Q with ${totalTrials} trials and ${executionErrorTrials} runtime errors. Mean reward: ${formatNumber(avgReward, 1).toFixed(1)}.${submissionUrl ? ' The official leaderboard submission discussion is linked here.' : ''}`,
+      executionErrorTrials,
+      benchmarkFailedTrials,
+      summary: `OpenJaws ran ${taskName} on OCI Q with ${totalTrials} trials, ${executionErrorTrials} runtime errors, and ${benchmarkFailedTrials} benchmark-failing trials. Mean reward: ${formatNumber(avgReward, 1).toFixed(1)}.${submissionUrl ? ' The official leaderboard submission discussion is linked here.' : ''}`,
       submissionUrl,
     },
     terminalBenchSoak: {

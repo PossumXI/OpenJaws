@@ -1,4 +1,5 @@
 import {
+  formatDiscordRoundtableTransitionReceipt,
   getDiscordRoundtableStatePath,
   processDiscordRoundtableRuntime,
 } from '../src/utils/discordRoundtableRuntime.js'
@@ -138,6 +139,7 @@ async function runIteration(options: CliOptions) {
           awaitingApprovalCount: result.awaitingApprovalCount,
           durationHours: result.durationHours,
           approvalTtlHours: result.approvalTtlHours,
+          transitionReceipts: result.transitionReceipts,
           status: result.state.status,
           summary: result.state.lastSummary,
           error: result.state.lastError,
@@ -156,6 +158,14 @@ async function runIteration(options: CliOptions) {
         `Approval TTL hours: ${result.approvalTtlHours}`,
         `Summary: ${result.state.lastSummary ?? 'none'}`,
         ...(result.state.lastError ? [`Error: ${result.state.lastError}`] : []),
+        ...(result.transitionReceipts.length > 0
+          ? [
+              'Transitions:',
+              ...result.transitionReceipts.map(receipt =>
+                formatDiscordRoundtableTransitionReceipt(receipt),
+              ),
+            ]
+          : []),
       ].join('\n')
   console.log(output)
 }

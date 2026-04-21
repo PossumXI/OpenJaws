@@ -145,6 +145,7 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 - the tracked shared Discord operator modules now own the parser, worktree creation, verification, commit, and approval-push helpers that the operator lane and roundtable lane both consume, so the two bounded execution paths stop diverging
 - the tracked roundtable scheduler policy now owns fallback root scoring, approval TTL resolution, and reply/PASS inspection too, so the live Discord loop can pull fewer empty turns without drifting away from the tested shared code
 - the tracked shared Discord execution modules now also own the queued lease, dedupe, approval-target, and roundtable-executor path, so direct operator jobs and roundtable jobs now reconcile through one tracked job model instead of two private queue variants
+- the tracked roundtable runtime now emits explicit queue transition receipts plus `roundtable-status` summaries, so approval-ready branches, skipped jobs, and rejected jobs stay visible without scraping private runtime logs
 - that shared roundtable execution classifier now fails mixed code-plus-artifact outputs closed, so only verified code-bearing branches without generated audit or artifact spillover enter the approval lane
 - that same operator lane can now hand off bounded work to the hosted `@openjaws` GitHub App by opening a prepared issue against the target repo, which lets supervised work continue remotely when the local machine goes offline
 
@@ -162,6 +163,7 @@ Honest boundary:
 - the private roundtable lane now deduplicates work by canonical project scope and uses a queued lease ledger plus approval checkpoints before pushes, so the bots can keep taking bounded 4-hour actions without stacking multiple helpers onto the same repo path at once
 - that roundtable lane now also rolls forward in continuous 4-hour windows, accepts direct project commands like `start an openjaws session for project sealed and ...`, keeps `SEALED` in its shared codebase scope, and limits autonomous branch/worktree execution to git-backed roots so manual-only paths do not clog the queue
 - the same approval ledger now makes it straightforward to reject unsafe note-only or artifact-mixed autonomous branches without holding the OpenJaws/Immaculate/Asgard project lease open after review
+- the `Security` workflow now fetches full repository history before gitleaks runs, so the release branch is not blocked by shallow-checkout range failures that have nothing to do with an actual secret leak
 - the private Discord operator lane can now hand off bounded work to the hosted `@openjaws` GitHub App for remote execution, but that GitHub worker is still a private/internal operator surface rather than a public consumer feature
 
 For who should bring their own key, what can stay free, and where credits/rate limits actually belong, see [Q Access and Limits](Q-Access-and-Limits.md).

@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import {
   createDiscordRoundtableRuntimeState,
+  formatDiscordRoundtableRuntimeStatus,
+  formatDiscordRoundtableTransitionReceipt,
   getOpenJawsOperatorStatePath,
   ingestDiscordRoundtableHandoff,
   processDiscordRoundtableRuntime,
@@ -77,6 +79,53 @@ describe('discordRoundtableRuntime', () => {
     expect(ingested.state.jobs[0]?.action.prompt).toContain(
       'Objective: Harden the orchestrator',
     )
+  })
+
+  it('rejects handoffs that are not authority-bound execution lanes', () => {
+    const repoRoot = createRepoRoot('oj-roundtable-unsafe-repo-')
+    const nestedWorkspace = join(repoRoot, 'packages', 'discord')
+    mkdirSync(nestedWorkspace, { recursive: true })
+    const handoffPath = join(repoRoot, 'handoff-unsafe.json')
+    writeFileSync(
+      handoffPath,
+      JSON.stringify(
+        {
+          sessionId: 'session-unsafe',
+          actions: [
+            {
+              id: 'action-unsafe',
+              repoId: 'openjaws',
+              repoLabel: 'OpenJaws',
+              role: 'Viola',
+              objective: 'Run from a manually checked out workspace',
+              rationale: 'This should never queue.',
+              workspaceScope: {
+                repoPath: nestedWorkspace,
+              },
+              executionArtifact: {
+                executionReady: true,
+                requiresManualCheckout: true,
+                workspaceMaterialized: false,
+                authorityBound: false,
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const ingested = ingestDiscordRoundtableHandoff({
+      state: createDiscordRoundtableRuntimeState(),
+      handoffPath,
+      allowedRoots: [repoRoot],
+      now: new Date('2026-04-20T20:01:00.000Z'),
+    })
+
+    expect(ingested.ingestedCount).toBe(0)
+    expect(ingested.state.jobs).toHaveLength(0)
   })
 
   it('processes mergeable jobs into awaiting-approval operator pushes', async () => {
@@ -214,6 +263,11 @@ describe('discordRoundtableRuntime', () => {
     expect(operatorState.pendingPushes?.[0]?.branchName).toBe(
       'discord-viola-openjaws-action-b',
     )
+    expect(result.transitionReceipts).toHaveLength(1)
+    expect(result.transitionReceipts[0]?.status).toBe('awaiting_approval')
+    expect(result.transitionReceipts[0]?.branchName).toBe(
+      'discord-viola-openjaws-action-b',
+    )
     expect(result.durationHours).toBe(4)
     expect(result.approvalTtlHours).toBe(1)
   })
@@ -242,6 +296,8 @@ describe('discordRoundtableRuntime', () => {
               },
               executionArtifact: {
                 executionReady: true,
+                workspaceMaterialized: true,
+                authorityBound: true,
               },
             },
           ],
@@ -335,8 +391,11 @@ describe('discordRoundtableRuntime', () => {
         }),
     })
 
-    expect(result.state.jobs[0]?.status).toBe('rejected')
+    expect(
+      result.state.jobs.some(job => job.status === 'awaiting_approval'),
+    ).toBe(false)
     expect(existsSync(getOpenJawsOperatorStatePath(root))).toBe(false)
+    expect(result.transitionReceipts[0]?.status).toBe('rejected')
   })
 
   it('resolves explicit duration and approval TTL options through the tracked scheduler policy', async () => {
@@ -361,5 +420,136 @@ describe('discordRoundtableRuntime', () => {
 
     expect(result.durationHours).toBe(6)
     expect(result.approvalTtlHours).toBe(0.5)
+  })
+
+  it('prunes expired roundtable approval branches from operator state', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-prune-'))
+    tempDirs.push(root)
+    const repoRoot = join(root, 'repo')
+    mkdirSync(join(repoRoot, '.git'), { recursive: true })
+    mkdirSync(dirname(getOpenJawsOperatorStatePath(root)), { recursive: true })
+    writeFileSync(
+      getOpenJawsOperatorStatePath(root),
+      JSON.stringify(
+        {
+          pendingPushes: [
+            {
+              id: 'job-expired',
+              jobId: 'job-expired',
+              branchName: 'discord-viola-expired',
+              worktreePath: repoRoot,
+              workspacePath: repoRoot,
+              changedFiles: ['src/runtime.ts'],
+              summary: 'Expired roundtable branch',
+              gitRoot: repoRoot,
+              baseWorkspace: repoRoot,
+              requestedByUserId: 'roundtable:viola',
+              requestedByChannelId: null,
+              requestedAt: '2026-04-20T20:00:00.000Z',
+              prompt: 'do the work',
+              commitSha: 'abc123',
+              verificationPassed: true,
+              outputDir: null,
+              status: 'awaiting_approval',
+              approvalState: 'pending',
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    await processDiscordRoundtableRuntime({
+      root,
+      allowedRoots: [repoRoot],
+      ingestInbox: false,
+      maxActionsPerRun: 0,
+      approvalTtlHours: 0.5,
+      model: 'oci:Q',
+      runnerScriptPath: 'D:\\openjaws\\OpenJaws\\local-command-station\\launch-openjaws-visible.ps1',
+      worktreeRoot: join(root, 'worktrees'),
+      outputRoot: join(root, 'outputs'),
+      now: () => new Date('2026-04-20T21:00:00.000Z'),
+    })
+
+    const operatorState = JSON.parse(
+      readFileSync(getOpenJawsOperatorStatePath(root), 'utf8'),
+    ) as {
+      pendingPushes?: Array<{ jobId: string }>
+    }
+    expect(operatorState.pendingPushes ?? []).toHaveLength(0)
+  })
+
+  it('formats queue summaries and operator confirmation receipts', () => {
+    const status = formatDiscordRoundtableRuntimeStatus({
+      ...createDiscordRoundtableRuntimeState({
+        roundtableChannelName: 'q-roundtable',
+      }),
+      status: 'awaiting_approval',
+      jobs: [
+        {
+          kind: 'roundtable',
+          id: 'job-1',
+          branchName: 'discord-viola-job-1',
+          worktreePath: 'D:\\worktree',
+          workspacePath: 'D:\\repo',
+          changedFiles: [],
+          summary: 'OpenJaws · Viola · Runtime hardening · Verification passed: bun run build',
+          verificationSummary: 'Verification passed: bun run build',
+          commitSha: 'abc123',
+          status: 'awaiting_approval',
+          approvalState: 'pending',
+          workKey: 'openjaws::.',
+          projectKey: 'openjaws',
+          sourcePath: 'D:\\handoff.json',
+          sourceSessionId: 'session-1',
+          sourceScheduleId: 'schedule-1',
+          handoffKey: 'handoff-1',
+          repoId: 'openjaws',
+          repoLabel: 'OpenJaws',
+          role: 'Viola',
+          objective: 'Runtime hardening',
+          rationale: 'Close the audit loop.',
+          commandHint: null,
+          targetPath: 'D:\\repo',
+          targetRootLabel: 'OpenJaws',
+          receiptPath: 'D:\\receipt.json',
+          outputDir: 'D:\\output',
+          commitStatement: null,
+          decisionTraceId: null,
+          routeSuggestion: null,
+          executionReady: true,
+          requiresManualCheckout: false,
+          workspaceMaterialized: true,
+          authorityBound: true,
+          completedAt: '2026-04-20T20:05:00.000Z',
+          rejectedAt: null,
+          rejectionReason: null,
+          leaseClaimedAt: null,
+          leaseExpiresAt: null,
+          leaseOwner: null,
+        },
+      ],
+    })
+
+    expect(status).toContain('Awaiting approval · job-1')
+    expect(status).toContain('receipt D:\\receipt.json')
+    expect(
+      formatDiscordRoundtableTransitionReceipt({
+        jobId: 'job-1',
+        repoLabel: 'OpenJaws',
+        role: 'Viola',
+        objective: 'Runtime hardening',
+        status: 'awaiting_approval',
+        branchName: 'discord-viola-job-1',
+        commitSha: 'abc123',
+        verificationSummary: 'Verification passed: bun run build',
+        receiptPath: 'D:\\receipt.json',
+        rejectionReason: null,
+        summary: 'Runtime hardening',
+      }),
+    ).toContain('Confirm: @Q operator confirm-push discord-viola-job-1')
   })
 })

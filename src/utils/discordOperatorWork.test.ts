@@ -44,6 +44,14 @@ describe('discordOperatorWork', () => {
     })
   })
 
+  it('parses direct roundtable status commands', () => {
+    expect(parseDirectOperatorChatCommand('openjaws roundtable')).toEqual({
+      action: 'roundtable-status',
+      cwd: null,
+      text: null,
+    })
+  })
+
   it('resolves workspace aliases inside approved roots', () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-operator-root-'))
     tempDirs.push(root)

@@ -7,6 +7,34 @@ function formatSnapshotDate(value: string): string {
   }).format(new Date(value))
 }
 
+function formatStatusLabel(value: string): string {
+  return value.replace(/_/g, ' ')
+}
+
+function formatTerminalBenchHeadline(): string {
+  const terminalBench = BENCHMARK_SNAPSHOT.terminalBench
+  if (terminalBench.status !== 'completed_with_errors') {
+    return terminalBench.outcome
+  }
+
+  if (
+    terminalBench.benchmarkFailedTrials > 0 &&
+    terminalBench.executionErrorTrials > 0
+  ) {
+    return `${terminalBench.benchmarkFailedTrials} benchmark failures // ${terminalBench.executionErrorTrials} runtime errors`
+  }
+
+  if (terminalBench.benchmarkFailedTrials > 0) {
+    return `${terminalBench.benchmarkFailedTrials} benchmark failures`
+  }
+
+  if (terminalBench.executionErrorTrials > 0) {
+    return `${terminalBench.executionErrorTrials} runtime errors`
+  }
+
+  return formatStatusLabel(terminalBench.status)
+}
+
 export function BenchmarkSnapshotSection(): React.ReactNode {
   return (
     <section
@@ -54,14 +82,24 @@ export function BenchmarkSnapshotSection(): React.ReactNode {
 
         <article className="benchmark-card">
           <span className="benchmark-label">Public TerminalBench</span>
-          <strong>{BENCHMARK_SNAPSHOT.terminalBench.outcome}</strong>
+          <strong>{formatTerminalBenchHeadline()}</strong>
           <p>{BENCHMARK_SNAPSHOT.terminalBench.summary}</p>
           <div className="benchmark-card-footnote">
             <span>{BENCHMARK_SNAPSHOT.terminalBench.scope}</span>
             <span>Task: {BENCHMARK_SNAPSHOT.terminalBench.taskName}</span>
             <span>Agent: {BENCHMARK_SNAPSHOT.terminalBench.agent}</span>
             <span>Model: {BENCHMARK_SNAPSHOT.terminalBench.model}</span>
-            <span>Status: {BENCHMARK_SNAPSHOT.terminalBench.status}</span>
+            <span>Outcome: {BENCHMARK_SNAPSHOT.terminalBench.outcome}</span>
+            <span>Status: {formatStatusLabel(BENCHMARK_SNAPSHOT.terminalBench.status)}</span>
+            <span>
+              Runtime errors: {BENCHMARK_SNAPSHOT.terminalBench.executionErrorTrials}
+            </span>
+            <span>
+              Benchmark failures: {BENCHMARK_SNAPSHOT.terminalBench.benchmarkFailedTrials}
+            </span>
+            <span>
+              Submission: {formatStatusLabel(BENCHMARK_SNAPSHOT.terminalBench.submissionState)}
+            </span>
             {BENCHMARK_SNAPSHOT.terminalBench.submissionUrl ? (
               <a
                 href={BENCHMARK_SNAPSHOT.terminalBench.submissionUrl}
