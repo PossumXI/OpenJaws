@@ -6,6 +6,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 
 - Immaculate or an operator can stage governed handoff JSON files into `local-command-station/roundtable-runtime/handoffs/`.
 - OpenJaws ingests those handoffs into a persisted queue at `local-command-station/roundtable-runtime/discord-roundtable-queue.state.json`.
+- Malformed or non-JSON handoffs now fail closed into `local-command-station/roundtable-runtime/handoff-quarantine/` with a sidecar metadata receipt, so the runtime keeps processing later valid work instead of aborting the whole pass.
 - Live roundtable session metadata now belongs in `local-command-station/roundtable-runtime/discord-roundtable.session.json` instead of being mixed into the tracked queue file.
 - Each queued action runs through the same isolated worktree path as the direct Discord operator lane.
 - Verified code-bearing branches move into the existing approval queue in `local-command-station/openjaws-operator-state.json`.

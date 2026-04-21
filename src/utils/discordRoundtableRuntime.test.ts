@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs'
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import {
@@ -7,6 +15,7 @@ import {
   loadDiscordRoundtableSessionState,
   formatDiscordRoundtableRuntimeStatus,
   formatDiscordRoundtableTransitionReceipt,
+  getDiscordRoundtableQuarantineDir,
   getDiscordRoundtableSessionStatePath,
   getOpenJawsOperatorStatePath,
   ingestDiscordRoundtableHandoff,
@@ -489,6 +498,73 @@ describe('discordRoundtableRuntime', () => {
         'OpenJaws roundtable action session-b-openjaws-action-b is awaiting approval on discord-viola-openjaws-action-b.',
       lastError: null,
     })
+  })
+
+  it('quarantines malformed handoffs without aborting later valid work', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-quarantine-'))
+    tempDirs.push(root)
+    const repoRoot = join(root, 'repo')
+    mkdirSync(join(repoRoot, '.git'), { recursive: true })
+    const malformedPath = join(root, 'handoff-bad.json')
+    writeFileSync(malformedPath, '# not json\nobjective: nope\n', 'utf8')
+    const validPath = join(root, 'handoff-good.json')
+    writeFileSync(
+      validPath,
+      JSON.stringify(
+        {
+          sessionId: 'session-quarantine',
+          actions: [
+            {
+              id: 'action-good',
+              repoId: 'openjaws',
+              repoLabel: 'OpenJaws',
+              role: 'Q',
+              objective: 'Ship the safe path',
+              rationale: 'Keep the runtime alive after malformed input.',
+              workspaceScope: {
+                repoPath: repoRoot,
+              },
+              executionArtifact: {
+                executionReady: true,
+                workspaceMaterialized: true,
+                authorityBound: true,
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const result = await processDiscordRoundtableRuntime({
+      root,
+      allowedRoots: [repoRoot],
+      handoffPaths: [malformedPath, validPath],
+      ingestInbox: false,
+      maxActionsPerRun: 0,
+      model: 'oci:Q',
+      runnerScriptPath:
+        'D:\\openjaws\\OpenJaws\\local-command-station\\run-openjaws-visible.ps1',
+      worktreeRoot: join(root, 'worktrees'),
+      outputRoot: join(root, 'outputs'),
+      now: () => new Date('2026-04-21T16:00:00.000Z'),
+    })
+
+    const quarantineDir = getDiscordRoundtableQuarantineDir(root)
+    const quarantinedEntries = readdirSync(quarantineDir)
+    expect(quarantinedEntries.some(entry => entry.endsWith('.json'))).toBe(true)
+    expect(quarantinedEntries.some(entry => entry.endsWith('.meta.json'))).toBe(
+      true,
+    )
+    expect(result.ingestedCount).toBe(1)
+    expect(result.state.jobs).toHaveLength(1)
+    expect(result.state.jobs[0]?.status).toBe('queued')
+    expect(result.state.lastError).toBeNull()
+    expect(result.state.lastSummary).toMatch(
+      /^Ingested 1 roundtable action from .*handoff-good\.json\.$/,
+    )
   })
 
   it('holds back mixed artifact output instead of creating an approval candidate', async () => {

@@ -36,19 +36,19 @@ function scanTrackedSourceFiles(): string[] {
     )
 }
 
-function scanFilesWithRipgrep(): Array<{ file: string; matches: string[] }> {
+function scanFilesWithGitGrep(): Array<{ file: string; matches: string[] }> {
   const result = Bun.spawnSync({
     cmd: [
-      'rg',
+      'git',
+      'grep',
       '-n',
-      '--no-heading',
-      '--glob',
-      '!**/*.test.*',
-      '--glob',
-      '!**/*.spec.*',
+      '-I',
+      '-E',
       `require\\((['"])src/.+?\\1\\)`,
-      srcDir,
+      '--',
+      'src',
     ],
+    cwd: rootDir,
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -58,7 +58,7 @@ function scanFilesWithRipgrep(): Array<{ file: string; matches: string[] }> {
   }
   if (result.exitCode !== 0) {
     throw new Error(
-      `ripgrep scan failed: ${Buffer.from(result.stderr).toString('utf8').trim() || `exit ${result.exitCode}`}`,
+      `git grep scan failed: ${Buffer.from(result.stderr).toString('utf8').trim() || `exit ${result.exitCode}`}`,
     )
   }
 
@@ -92,7 +92,7 @@ function scanFilesWithRipgrep(): Array<{ file: string; matches: string[] }> {
 
 function scanOffendersWithFallback(): Array<{ file: string; matches: string[] }> {
   try {
-    return scanFilesWithRipgrep()
+    return scanFilesWithGitGrep()
   } catch {
     return scanTrackedSourceFiles()
       .map(file => {

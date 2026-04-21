@@ -327,6 +327,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - The tracked roundtable runtime now emits queue transition receipts and `roundtable-status` summaries, so approval-ready branches, skipped jobs, and rejected jobs are visible to operators without scraping local runtime logs.
 - The tracked roundtable/runtime readers now reconcile the live Discord log too, so `roundtable-status` and `runtime:coherence` show the actual active channel and freshest approval summary when the persisted session file drifts.
 - The tracked roundtable/runtime contract now separates queue state from live roundtable session metadata, with a legacy fallback reader for older mixed files, so queue summaries stop inheriting stale live-session fields by accident.
+- Malformed roundtable handoffs now fail closed into `local-command-station/roundtable-runtime/handoff-quarantine/` with metadata receipts, so one bad non-JSON payload no longer aborts the rest of the governed queue.
 - That same roundtable lane now rolls forward in continuous 4-hour windows, understands direct project requests like `start an openjaws session for project sealed and ...`, keeps `SEALED` in its shared codebase knowledge scope, and limits autonomous branch/worktree execution to git-backed roots so manual-only demo folders do not poison the queue.
 - Firecrawl dataset skill for crawl/search -> structured dataset pipelines.
 - Remote Control, environment validation, startup harness receipts, and fail-closed configuration checks.

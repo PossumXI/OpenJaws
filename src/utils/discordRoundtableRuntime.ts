@@ -4,10 +4,11 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   statSync,
   writeFileSync,
 } from 'fs'
-import { basename, dirname, join, resolve } from 'path'
+import { basename, dirname, extname, join, resolve } from 'path'
 import {
   executeDiscordRoundtableAction,
   type DiscordRoundtableExecutableAction,
@@ -431,6 +432,10 @@ export function getDiscordRoundtableInboxDir(root = process.cwd()): string {
   return join(getDiscordRoundtableRuntimeDir(root), 'handoffs')
 }
 
+export function getDiscordRoundtableQuarantineDir(root = process.cwd()): string {
+  return join(getDiscordRoundtableRuntimeDir(root), 'handoff-quarantine')
+}
+
 export function getOpenJawsOperatorStatePath(root = process.cwd()): string {
   return resolve(root, 'local-command-station', 'openjaws-operator-state.json')
 }
@@ -797,6 +802,35 @@ function readRoundtableHandoff(path: string): RawRoundtableHandoff {
       })
       .filter((entry): entry is RawRoundtableAction => Boolean(entry)),
   }
+}
+
+function quarantineDiscordRoundtableHandoff(args: {
+  root?: string
+  handoffPath: string
+  reason: string
+  now?: Date
+}): string {
+  const runtimeRoot = args.root ?? process.cwd()
+  const sourcePath = resolve(args.handoffPath)
+  const quarantineDir = getDiscordRoundtableQuarantineDir(runtimeRoot)
+  mkdirSync(quarantineDir, { recursive: true })
+  const stamp = (args.now ?? new Date())
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\..+/, '')
+  const sourceBase = basename(sourcePath, extname(sourcePath))
+  const sourceExt = extname(sourcePath) || '.json'
+  const targetPath = join(
+    quarantineDir,
+    `${stamp}-${sanitizeSegment(sourceBase)}${sourceExt}`,
+  )
+  renameSync(sourcePath, targetPath)
+  writeJsonFile(`${targetPath}.meta.json`, {
+    sourcePath,
+    quarantinedAt: (args.now ?? new Date()).toISOString(),
+    reason: args.reason,
+  })
+  return targetPath
 }
 
 function buildActionPrompt(args: {
@@ -1412,15 +1446,38 @@ export async function processDiscordRoundtableRuntime(
     if (state.ingestedHandoffs.includes(handoffPath)) {
       continue
     }
-    const ingested = ingestDiscordRoundtableHandoff({
-      state,
-      handoffPath,
-      allowedRoots,
-      roundtableChannelName: options.roundtableChannelName,
-      now: options.now?.() ?? new Date(),
-    })
-    state = ingested.state
-    ingestedCount += ingested.ingestedCount
+    const handoffNow = options.now?.() ?? new Date()
+    try {
+      const ingested = ingestDiscordRoundtableHandoff({
+        state,
+        handoffPath,
+        allowedRoots,
+        roundtableChannelName: options.roundtableChannelName,
+        now: handoffNow,
+      })
+      state = ingested.state
+      ingestedCount += ingested.ingestedCount
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const quarantinedPath = quarantineDiscordRoundtableHandoff({
+        root: runtimeRoot,
+        handoffPath,
+        reason: message,
+        now: handoffNow,
+      })
+      state = {
+        ...state,
+        updatedAt: handoffNow.toISOString(),
+        roundtableChannelName:
+          options.roundtableChannelName ?? state.roundtableChannelName ?? null,
+        ingestedHandoffs: state.ingestedHandoffs.includes(handoffPath)
+          ? state.ingestedHandoffs
+          : [...state.ingestedHandoffs, handoffPath],
+        lastSummary: `Quarantined malformed roundtable handoff ${basename(handoffPath)} -> ${basename(quarantinedPath)}.`,
+        lastError: null,
+      }
+      state.status = normalizeRuntimeStatus(state.jobs, state.lastError, state.status)
+    }
   }
 
   let executedCount = 0
