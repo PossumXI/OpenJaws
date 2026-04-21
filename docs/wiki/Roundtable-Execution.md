@@ -33,6 +33,9 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 
 - `src/utils/discordRoundtableScheduler.ts` is the tracked policy source for fallback root selection, approval TTL, and reply/PASS reduction heuristics.
 - `scripts/roundtable-runtime.ts` is the tracked CLI wrapper around the shared runtime path.
+- The tracked CLI now resolves the repo root from the script location instead of ambient `cwd`, so it stops writing queue/session state into accidental nested station directories.
+- The tracked CLI now targets `local-command-station/run-openjaws-visible.ps1` for bounded prompt jobs; `launch-openjaws-visible.ps1` stays reserved for interactive visible shell launches.
+- The tracked CLI hard-fails if the roundtable model is anything other than `oci:Q`.
 - the CLI now prints both the tracked queue path and the live session path explicitly so operator reads do not silently point at the wrong file after the queue/session split.
 - The live Discord runtime now posts roundtable transition receipts back into the configured `q-roundtable` lane, with a fallback to `openjaws-updates` if the dedicated roundtable channel is not present yet.
 - The tracked runtime readers now reconcile both the live `discord-roundtable.log` and the split session metadata, so `@Q operator roundtable-status` and `bun run runtime:coherence` show the actual active lane such as `#dev_support` when older persisted files drift from the bound Discord channel.

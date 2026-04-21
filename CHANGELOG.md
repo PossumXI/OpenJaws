@@ -11,6 +11,7 @@
 - Fixed the live roundtable log classifier so `executing queued action` now stays `running` instead of being misread as merely `queued`, which keeps the governed session snapshot honest during active autonomous work.
 - Hardened TerminalBench and repeated TerminalBench snapshot selection so newer partial artifacts no longer override older complete public receipts in the generated website benchmark data.
 - Taught the tracked roundtable readers to detect the nested `roundtable-runtime/roundtable-runtime` bundle fallback output, so runtime/coherence/status surfaces keep following the live Discord lane instead of stale top-level session files.
+- Re-rooted the tracked roundtable CLI on the repo path, pointed it at the bounded `run-openjaws-visible.ps1` prompt runner, and hard-failed standalone launches that drift off the required `oci:Q` model pin.
 - Aged completed Immaculate and Q traces into `stale` after a freshness window, and taught `runtime:coherence` to warn on stale Discord receipts, stale patrol cadence, and expired roundtable windows instead of treating them as current by default.
 - Sanitized the public benchmark snapshot source line so release surfaces stop leaking local absolute receipt paths while still documenting that BridgeBench, soak, TerminalBench, and W&B receipts back the published claims.
 - Kept the public benchmark and release surfaces aligned with real receipts, typed traces, and signed benchmark artifacts.

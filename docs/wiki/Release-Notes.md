@@ -208,3 +208,4 @@ This pass also tightens the public `Q` runtime story:
 - more release-safe installed-user update paths without breaking local source workflows
 - broader live walkthrough coverage for operator surfaces beyond settings and deferred launch controls
 - continued tightening of compatibility shims where it is safe and does not break provider contracts
+- the tracked roundtable CLI now resolves the repo root from the script path, uses the bounded `run-openjaws-visible.ps1` prompt runner, and refuses to start unless the model pin stays on `oci:Q`

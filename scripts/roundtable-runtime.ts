@@ -1,9 +1,14 @@
+import { dirname, resolve } from 'path'
+import { fileURLToPath } from 'url'
 import {
   formatDiscordRoundtableTransitionReceipt,
   getDiscordRoundtableSessionStatePath,
   getDiscordRoundtableStatePath,
   processDiscordRoundtableRuntime,
 } from '../src/utils/discordRoundtableRuntime.js'
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const REQUIRED_ROUNDTABLE_MODEL = 'oci:Q'
 
 type CliOptions = {
   handoffPaths: string[]
@@ -103,10 +108,25 @@ function resolveAllowedRoots(cliRoots: string[]): string[] {
     .split(',')
     .map(value => value.trim())
     .filter(Boolean)
-  return Array.from(new Set([...cliRoots, ...envRoots, process.cwd()]))
+  return Array.from(new Set([...cliRoots, ...envRoots, REPO_ROOT]))
+}
+
+function resolveRoundtableModel(): string {
+  const model =
+    process.env.DISCORD_Q_MODEL?.trim() ||
+    process.env.Q_AGENT_MODEL?.trim() ||
+    REQUIRED_ROUNDTABLE_MODEL
+  if (model !== REQUIRED_ROUNDTABLE_MODEL) {
+    throw new Error(
+      `Roundtable runtime must stay on ${REQUIRED_ROUNDTABLE_MODEL}. Set DISCORD_Q_MODEL to ${REQUIRED_ROUNDTABLE_MODEL} instead of ${model}.`,
+    )
+  }
+  return model
 }
 
 async function runIteration(options: CliOptions) {
+  const root = REPO_ROOT
+  const stationRoot = resolve(root, 'local-command-station')
   const durationHours =
     options.durationHours ??
     (process.env.DISCORD_ROUNDTABLE_DURATION_HOURS
@@ -118,23 +138,23 @@ async function runIteration(options: CliOptions) {
       ? Number.parseFloat(process.env.DISCORD_ROUNDTABLE_APPROVAL_TTL_HOURS)
       : undefined)
   const result = await processDiscordRoundtableRuntime({
-    root: process.cwd(),
+    root,
     allowedRoots: resolveAllowedRoots(options.allowRoots),
     handoffPaths: options.handoffPaths,
     maxActionsPerRun: options.maxActionsPerRun,
     durationHours,
     approvalTtlHours,
-    model: process.env.DISCORD_Q_MODEL?.trim() || process.env.Q_AGENT_MODEL?.trim() || 'oci:Q',
-    runnerScriptPath: `${process.cwd()}\\local-command-station\\launch-openjaws-visible.ps1`,
-    worktreeRoot: `${process.cwd()}\\local-command-station\\openjaws-operator-worktrees`,
-    outputRoot: `${process.cwd()}\\local-command-station\\openjaws-operator-outputs`,
+    model: resolveRoundtableModel(),
+    runnerScriptPath: resolve(stationRoot, 'run-openjaws-visible.ps1'),
+    worktreeRoot: resolve(stationRoot, 'openjaws-operator-worktrees'),
+    outputRoot: resolve(stationRoot, 'openjaws-operator-outputs'),
     roundtableChannelName: options.channelName,
   })
   const output = options.json
     ? JSON.stringify(
         {
-          queueStatePath: getDiscordRoundtableStatePath(process.cwd()),
-          sessionStatePath: getDiscordRoundtableSessionStatePath(process.cwd()),
+          queueStatePath: getDiscordRoundtableStatePath(root),
+          sessionStatePath: getDiscordRoundtableSessionStatePath(root),
           ingestedCount: result.ingestedCount,
           executedCount: result.executedCount,
           queuedCount: result.queuedCount,
@@ -151,8 +171,8 @@ async function runIteration(options: CliOptions) {
       )
     : [
         `Roundtable status: ${result.state.status}`,
-        `Queue path: ${getDiscordRoundtableStatePath(process.cwd())}`,
-        `Session path: ${getDiscordRoundtableSessionStatePath(process.cwd())}`,
+        `Queue path: ${getDiscordRoundtableStatePath(root)}`,
+        `Session path: ${getDiscordRoundtableSessionStatePath(root)}`,
         `Ingested: ${result.ingestedCount}`,
         `Executed: ${result.executedCount}`,
         `Queued: ${result.queuedCount}`,
