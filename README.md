@@ -46,6 +46,7 @@ The Q mark above is sourced from `src/components/LogoV2/qMarkData.ts` and can be
 - [Apex Workspace Bridge](docs/wiki/Apex-Workspace.md)
 - [Accountable Browser Preview](docs/wiki/Browser-Preview.md)
 - [Immaculate Integration](docs/wiki/Immaculate-Integration.md)
+- [Roundtable Execution](docs/wiki/Roundtable-Execution.md)
 - [Benchmark Status](docs/wiki/Benchmark-Status.md)
 - [Release Notes](docs/wiki/Release-Notes.md)
 - [Roadmap](docs/wiki/Roadmap.md)
@@ -322,6 +323,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - That same private Discord lane can now stage isolated OpenJaws runs in disposable git worktrees and per-job branches, run verification before any publish step, and hold pushes behind explicit approval checkpoints instead of auto-pushing code upstream.
 - The private Discord operator surface now has explicit commands for `workspaces`, `openjaws-status`, `start-openjaws`, `ask-openjaws`, `github-status`, `ask-github-openjaws`, `pending-pushes`, `confirm-push`, and `stop-openjaws`, all behind the same approved-root and operator/trainer gate instead of a hidden shell.
 - The private roundtable lane now uses a queued action ledger with per-project leases, so Q, Viola, and Blackbeak can take bounded repo actions without piling duplicate work onto the same project scope.
+- The tracked roundtable scheduler policy now owns fallback root scoring, approval TTL resolution, and reply/PASS inspection, so the private Discord loop can reduce empty turns without reintroducing policy drift.
 - That same roundtable lane now rolls forward in continuous 4-hour windows, understands direct project requests like `start an openjaws session for project sealed and ...`, keeps `SEALED` in its shared codebase knowledge scope, and limits autonomous branch/worktree execution to git-backed roots so manual-only demo folders do not poison the queue.
 - Firecrawl dataset skill for crawl/search -> structured dataset pipelines.
 - Remote Control, environment validation, startup harness receipts, and fail-closed configuration checks.

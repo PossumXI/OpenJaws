@@ -46,6 +46,7 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 - [Apex Workspace Bridge](Apex-Workspace.md)
 - [Accountable Browser Preview](Browser-Preview.md)
 - [Immaculate Integration](Immaculate-Integration.md)
+- [Roundtable Execution](Roundtable-Execution.md)
 - [Benchmark Status](Benchmark-Status.md)
 - [Release Notes](Release-Notes.md)
 - [Roadmap](Roadmap.md)
@@ -142,6 +143,7 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 - that same private Discord lane can now stage isolated OpenJaws runs in disposable git worktrees and per-job branches, run verification before any publish step, and hold pushes behind explicit approval checkpoints in Discord
 - that private Discord operator surface now exposes explicit `workspaces`, `openjaws-status`, `start-openjaws`, `ask-openjaws`, `github-status`, `ask-github-openjaws`, `pending-pushes`, `confirm-push`, and `stop-openjaws` commands behind the same approved-root and operator/trainer gate instead of a hidden shell
 - the tracked shared Discord operator modules now own the parser, worktree creation, verification, commit, and approval-push helpers that the operator lane and roundtable lane both consume, so the two bounded execution paths stop diverging
+- the tracked roundtable scheduler policy now owns fallback root scoring, approval TTL resolution, and reply/PASS inspection too, so the live Discord loop can pull fewer empty turns without drifting away from the tested shared code
 - the tracked shared Discord execution modules now also own the queued lease, dedupe, approval-target, and roundtable-executor path, so direct operator jobs and roundtable jobs now reconcile through one tracked job model instead of two private queue variants
 - that shared roundtable execution classifier now fails mixed code-plus-artifact outputs closed, so only verified code-bearing branches without generated audit or artifact spillover enter the approval lane
 - that same operator lane can now hand off bounded work to the hosted `@openjaws` GitHub App by opening a prepared issue against the target repo, which lets supervised work continue remotely when the local machine goes offline

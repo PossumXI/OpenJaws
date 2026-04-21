@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   buildDiscordRoundtableReceipt,
   classifyDiscordRoundtableExecution,
+  inspectDiscordRoundtableExecution,
 } from './discordRoundtableExecution.js'
 
 describe('discordRoundtableExecution', () => {
@@ -83,6 +84,21 @@ describe('discordRoundtableExecution', () => {
       verificationPassed: false,
       mergeable: false,
     })
+  })
+
+  it('only allows commits for clean verified code changes', () => {
+    expect(
+      inspectDiscordRoundtableExecution({
+        changedFiles: ['src/utils/managedEnv.ts'],
+        verificationPassed: true,
+      }).commitAllowed,
+    ).toBe(true)
+    expect(
+      inspectDiscordRoundtableExecution({
+        changedFiles: ['src/utils/managedEnv.ts', 'receipt.json'],
+        verificationPassed: true,
+      }).commitAllowed,
+    ).toBe(false)
   })
 
   it('builds an isolated roundtable receipt with worktree metadata', () => {

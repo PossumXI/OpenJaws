@@ -1,0 +1,35 @@
+# Roundtable Execution
+
+The Discord roundtable now has a tracked execution lane instead of stopping at planning text.
+
+## What It Does
+
+- Immaculate or an operator can stage governed handoff JSON files into `local-command-station/roundtable-runtime/handoffs/`.
+- OpenJaws ingests those handoffs into a persisted queue at `local-command-station/roundtable-runtime/discord-roundtable.state.json`.
+- Each queued action runs through the same isolated worktree path as the direct Discord operator lane.
+- Verified code-bearing branches move into the existing approval queue in `local-command-station/openjaws-operator-state.json`.
+- Nothing is pushed automatically.
+
+## Safety Rules
+
+- Execution is limited to approved roots.
+- Every job is materialized in an isolated worktree.
+- Mixed code-plus-artifact output is held back and never promoted into the approval lane.
+- Artifact-only output is held back and never promoted into the approval lane.
+- Verification must pass before a branch is eligible for approval.
+- Fallback root scoring, approval TTL resolution, and reply/PASS inspection live in tracked shared scheduler code so the private Discord loop does not have to carry its own drifting policy copy.
+
+## Operator Commands
+
+- Start the runtime once: `bun run roundtable:runtime -- --allow-root "C:\Users\Knight\Desktop\Immaculate" --allow-root "C:\Users\Knight\Desktop\cheeks\Asgard"`
+- Run it continuously: `bun run roundtable:runtime -- --loop --allow-root "C:\Users\Knight\Desktop\Immaculate" --allow-root "C:\Users\Knight\Desktop\cheeks\Asgard"`
+- Override the 4-hour window or approval TTL when you need a tighter operator pass: `bun run roundtable:runtime -- --duration-hours 2 --approval-ttl-hours 0.5`
+- Inspect state: `bun run roundtable:runtime`
+- Approve a generated branch after review: `@Q operator confirm-push <job-id-or-branch>`
+
+## Runtime Notes
+
+- `src/utils/discordRoundtableScheduler.ts` is the tracked policy source for fallback root selection, approval TTL, and reply/PASS reduction heuristics.
+- `scripts/roundtable-runtime.ts` is the tracked CLI wrapper around the shared runtime path.
+- `runtime:coherence` reads the roundtable state file directly, so coherence checks can see whether the lane is idle, queued, running, or waiting for approval.
+- The queue is repo-scoped on purpose. It does not stack multiple active roundtable jobs onto the same project lane at once.
