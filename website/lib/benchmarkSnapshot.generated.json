@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-04-18T01:12:14.192Z",
-  "source": "Generated from benchmark receipts: D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260418-proof\\bridgebench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-soak-live-20260416\\q-soak-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-official-public-20260416-circuit-fibsqrt-v2\\terminalbench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3\\terminalbench-report.json, and D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260415\\bridgebench-report.json.",
+  "source": "Generated from audited BridgeBench, soak, public TerminalBench, repeated TerminalBench, and W&B receipts.",
   "bridgeBench": {
     "benchmarkId": "q-bridgebench-20260418T011029",
     "bestPack": "all",
@@ -18,15 +18,15 @@
   "terminalBench": {
     "runId": "q-terminalbench-20260416T160708",
     "taskName": "circuit-fibsqrt",
-    "scope": "Official TerminalBench 2.0 public task",
+    "scope": "Official TerminalBench 2.0 public task record",
     "status": "completed_with_errors",
-    "submissionState": "submitted",
+    "submissionState": "task_recorded",
     "agent": "openjaws",
     "model": "oci:Q",
     "outcome": "reward 0.0 // 5 trials",
     "executionErrorTrials": 0,
     "benchmarkFailedTrials": 5,
-    "summary": "OpenJaws ran circuit-fibsqrt on OCI Q with 5 trials, 0 runtime errors, and 5 benchmark-failing trials. Mean reward: 0.0. The official leaderboard submission discussion is linked here.",
+    "summary": "OpenJaws ran circuit-fibsqrt on OCI Q with 5 trials, 0 runtime errors, and 5 benchmark-failing trials. Mean reward: 0.0. The public task discussion is linked here.",
     "submissionUrl": "https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard/discussions/141"
   },
   "terminalBenchSoak": {
@@ -43,7 +43,6 @@
     "status": "auth missing",
     "enabled": false,
     "source": "cli",
-    "url": "https://wandb.ai/arobi-arobi-technology-alliance/immaculate",
     "summary": "A live W&B project target was configured for this benchmark pass, but no local WANDB login/API key was available, so the receipts stayed local only."
   }
 }

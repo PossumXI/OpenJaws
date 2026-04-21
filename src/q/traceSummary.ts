@@ -13,6 +13,7 @@ export type QTraceSummary = ImmaculateTraceSummary & {
 type QTraceSummaryReadOptions = {
   referenceTimeMs?: number
   activeWindowMs?: number
+  completedWindowMs?: number
 }
 
 export function listQTraceFiles(root = process.cwd()): string[] {

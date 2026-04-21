@@ -31,12 +31,12 @@ type BenchmarkSnapshot = {
     errorCount: number
     summary: string
   }
-  terminalBench: {
-    runId: string
-    taskName: string
-    scope: string
-    status: string
-    submissionState: string
+    terminalBench: {
+      runId: string
+      taskName: string
+      scope: string
+      status: string
+      submissionState: string
     agent: string
     model: string
     outcome: string
@@ -234,6 +234,10 @@ export function formatNumber(value: number, digits = 2): number {
   return Number(value.toFixed(digits))
 }
 
+export function buildPublicBenchmarkSource(): string {
+  return 'Generated from audited BridgeBench, soak, public TerminalBench, repeated TerminalBench, and W&B receipts.'
+}
+
 export function buildWandbSummary(wandb: {
   enabled?: boolean
   apiKeyPresent?: boolean
@@ -250,7 +254,6 @@ export function buildWandbSummary(wandb: {
       status: 'auth missing',
       enabled: false,
       source,
-      url,
       summary:
         'A live W&B project target was configured for this benchmark pass, but no local WANDB login/API key was available, so the receipts stayed local only.',
     }
@@ -443,7 +446,7 @@ export function buildSnapshot(
 
   return {
     generatedAt,
-    source: `Generated from benchmark receipts: ${bridgeBenchReportPath}, ${soakReportPath}, ${terminalBenchReportPath}, ${terminalBenchSoakReportPath}, and ${wandbReportPath}.`,
+    source: buildPublicBenchmarkSource(),
     bridgeBench: {
       benchmarkId: bridgeBench.benchmarkId,
       bestPack: bridgeBench.bestResult?.pack ?? 'unknown',
@@ -464,16 +467,16 @@ export function buildSnapshot(
       runId: terminalBench.runId,
       taskName,
       scope: terminalBench.officialSubmission
-        ? 'Official TerminalBench 2.0 public task'
+        ? 'Official TerminalBench 2.0 public task record'
         : 'TerminalBench task receipt',
       status: terminalBenchStatus,
-      submissionState: submissionUrl ? 'submitted' : 'not_submitted',
+      submissionState: submissionUrl ? 'task_recorded' : 'local_only',
       agent: terminalBench.agent ?? 'unknown',
       model: terminalBench.model ?? 'unknown',
       outcome: `reward ${formatNumber(avgReward, 1).toFixed(1)} // ${totalTrials} trials`,
       executionErrorTrials,
       benchmarkFailedTrials,
-      summary: `OpenJaws ran ${taskName} on OCI Q with ${totalTrials} trials, ${executionErrorTrials} runtime errors, and ${benchmarkFailedTrials} benchmark-failing trials. Mean reward: ${formatNumber(avgReward, 1).toFixed(1)}.${submissionUrl ? ' The official leaderboard submission discussion is linked here.' : ''}`,
+      summary: `OpenJaws ran ${taskName} on OCI Q with ${totalTrials} trials, ${executionErrorTrials} runtime errors, and ${benchmarkFailedTrials} benchmark-failing trials. Mean reward: ${formatNumber(avgReward, 1).toFixed(1)}.${submissionUrl ? ' The public task discussion is linked here.' : ''}`,
       submissionUrl,
     },
     terminalBenchSoak: {

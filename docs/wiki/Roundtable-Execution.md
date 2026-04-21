@@ -6,6 +6,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 
 - Immaculate or an operator can stage governed handoff JSON files into `local-command-station/roundtable-runtime/handoffs/`.
 - OpenJaws ingests those handoffs into a persisted queue at `local-command-station/roundtable-runtime/discord-roundtable.state.json`.
+- Live roundtable session metadata now belongs in `local-command-station/roundtable-runtime/discord-roundtable.session.json` instead of being mixed into the tracked queue file.
 - Each queued action runs through the same isolated worktree path as the direct Discord operator lane.
 - Verified code-bearing branches move into the existing approval queue in `local-command-station/openjaws-operator-state.json`.
 - Nothing is pushed automatically.
@@ -33,10 +34,11 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - `src/utils/discordRoundtableScheduler.ts` is the tracked policy source for fallback root selection, approval TTL, and reply/PASS reduction heuristics.
 - `scripts/roundtable-runtime.ts` is the tracked CLI wrapper around the shared runtime path.
 - The live Discord runtime now posts roundtable transition receipts back into the configured `q-roundtable` lane, with a fallback to `openjaws-updates` if the dedicated roundtable channel is not present yet.
-- The tracked runtime readers now also reconcile the live `discord-roundtable.log`, so `@Q operator roundtable-status` and `bun run runtime:coherence` show the actual active lane such as `#dev_support` when the persisted session file drifts from the bound Discord channel.
+- The tracked runtime readers now reconcile both the live `discord-roundtable.log` and the split session metadata, so `@Q operator roundtable-status` and `bun run runtime:coherence` show the actual active lane such as `#dev_support` when older persisted files drift from the bound Discord channel.
 - Approval-ready transitions include the generated branch, verification summary, and attached `receipt.json` so operators can confirm from Discord without opening the local state file first.
-- `runtime:coherence` reads the roundtable state file directly, so coherence checks can see whether the lane is idle, queued, running, or waiting for approval.
+- `runtime:coherence` now reads the tracked queue state plus the live session snapshot together, so it can warn when a roundtable window has expired or when the live session has stopped updating even if the queue file still says `running`.
 - The queue is repo-scoped on purpose. It does not stack multiple active roundtable jobs onto the same project lane at once.
+- Legacy mixed state files are still read as a fallback for live session metadata, but they no longer pollute the tracked queue schema on load.
 
 ## Discord Agent Pass
 

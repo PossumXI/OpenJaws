@@ -47,6 +47,31 @@ export type DiscordRoundtableRuntimeState = {
   jobs: DiscordRoundtableTrackedJob[]
 }
 
+export type DiscordRoundtableSessionStatus =
+  | DiscordRoundtableRuntimeState['status']
+  | 'completed'
+
+export type DiscordRoundtableSessionState = {
+  version: 1
+  status: DiscordRoundtableSessionStatus
+  updatedAt: string
+  startedAt: string | null
+  endsAt: string | null
+  guildId: string | null
+  roundtableChannelId: string | null
+  roundtableChannelName: string | null
+  generalChannelId: string | null
+  generalChannelName: string | null
+  violaVoiceChannelId: string | null
+  violaVoiceChannelName: string | null
+  turnCount: number
+  nextPersona: string | null
+  lastSpeaker: string | null
+  lastSummary: string | null
+  lastError: string | null
+  processedCommandMessageIds: string[]
+}
+
 export type DiscordRoundtableTrackedJob = DiscordExecutionTrackedJob & {
   kind: 'roundtable'
   action: DiscordRoundtableExecutableAction
@@ -214,6 +239,10 @@ function asBoolean(value: unknown, fallback = false): boolean {
   return typeof value === 'boolean' ? value : fallback
 }
 
+function asNumber(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.map(asString).filter((entry): entry is string => Boolean(entry))
@@ -372,6 +401,10 @@ export function getDiscordRoundtableStatePath(root = process.cwd()): string {
   return join(getDiscordRoundtableRuntimeDir(root), 'discord-roundtable.state.json')
 }
 
+export function getDiscordRoundtableSessionStatePath(root = process.cwd()): string {
+  return join(getDiscordRoundtableRuntimeDir(root), 'discord-roundtable.session.json')
+}
+
 export function getDiscordRoundtableInboxDir(root = process.cwd()): string {
   return join(getDiscordRoundtableRuntimeDir(root), 'handoffs')
 }
@@ -398,6 +431,76 @@ export function createDiscordRoundtableRuntimeState(args?: {
   }
 }
 
+export function createDiscordRoundtableSessionState(args?: {
+  now?: Date
+  roundtableChannelName?: string | null
+}): DiscordRoundtableSessionState {
+  const nowIso = (args?.now ?? new Date()).toISOString()
+  return {
+    version: 1,
+    status: 'idle',
+    updatedAt: nowIso,
+    startedAt: null,
+    endsAt: null,
+    guildId: null,
+    roundtableChannelId: null,
+    roundtableChannelName: args?.roundtableChannelName ?? null,
+    generalChannelId: null,
+    generalChannelName: null,
+    violaVoiceChannelId: null,
+    violaVoiceChannelName: null,
+    turnCount: 0,
+    nextPersona: null,
+    lastSpeaker: null,
+    lastSummary: null,
+    lastError: null,
+    processedCommandMessageIds: [],
+  }
+}
+
+function normalizeDiscordRoundtableSessionStatus(
+  value: unknown,
+): DiscordRoundtableSessionStatus {
+  switch (value) {
+    case 'idle':
+    case 'queued':
+    case 'running':
+    case 'awaiting_approval':
+    case 'error':
+    case 'completed':
+      return value
+    default:
+      return 'idle'
+  }
+}
+
+function readLegacyDiscordRoundtableSessionState(
+  root = process.cwd(),
+): Partial<DiscordRoundtableSessionState> | null {
+  const parsed = readJsonFile<JsonRecord>(getDiscordRoundtableStatePath(root))
+  if (!parsed) {
+    return null
+  }
+  const legacySessionFields = [
+    'startedAt',
+    'endsAt',
+    'guildId',
+    'roundtableChannelId',
+    'generalChannelId',
+    'generalChannelName',
+    'violaVoiceChannelId',
+    'violaVoiceChannelName',
+    'turnCount',
+    'nextPersona',
+    'lastSpeaker',
+    'processedCommandMessageIds',
+  ]
+  if (!legacySessionFields.some(field => field in parsed)) {
+    return null
+  }
+  return parsed as Partial<DiscordRoundtableSessionState>
+}
+
 export function loadDiscordRoundtableRuntimeState(
   root = process.cwd(),
 ): DiscordRoundtableRuntimeState {
@@ -408,9 +511,17 @@ export function loadDiscordRoundtableRuntimeState(
   if (!parsed) {
     return base
   }
-  const state = {
-    ...base,
-    ...parsed,
+  const state: DiscordRoundtableRuntimeState = {
+    version: 1,
+    status:
+      parsed.status === 'idle' ||
+      parsed.status === 'queued' ||
+      parsed.status === 'running' ||
+      parsed.status === 'awaiting_approval' ||
+      parsed.status === 'error'
+        ? parsed.status
+        : base.status,
+    updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : base.updatedAt,
     roundtableChannelName:
       typeof parsed.roundtableChannelName === 'string'
         ? parsed.roundtableChannelName
@@ -433,11 +544,94 @@ export function loadDiscordRoundtableRuntimeState(
   })
 }
 
+export function loadDiscordRoundtableSessionState(
+  root = process.cwd(),
+): DiscordRoundtableSessionState | null {
+  const parsed =
+    readJsonFile<Partial<DiscordRoundtableSessionState>>(
+      getDiscordRoundtableSessionStatePath(root),
+    ) ?? readLegacyDiscordRoundtableSessionState(root)
+  if (!parsed) {
+    return null
+  }
+  const now =
+    typeof parsed.updatedAt === 'string' ? new Date(parsed.updatedAt) : new Date()
+  const base = createDiscordRoundtableSessionState({
+    now,
+    roundtableChannelName:
+      typeof parsed.roundtableChannelName === 'string'
+        ? parsed.roundtableChannelName
+        : null,
+  })
+  const state: DiscordRoundtableSessionState = {
+    version: 1,
+    status: normalizeDiscordRoundtableSessionStatus(parsed.status),
+    updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : base.updatedAt,
+    startedAt: asString(parsed.startedAt),
+    endsAt: asString(parsed.endsAt),
+    guildId: asString(parsed.guildId),
+    roundtableChannelId: asString(parsed.roundtableChannelId),
+    roundtableChannelName:
+      typeof parsed.roundtableChannelName === 'string'
+        ? parsed.roundtableChannelName
+        : base.roundtableChannelName,
+    generalChannelId: asString(parsed.generalChannelId),
+    generalChannelName: asString(parsed.generalChannelName),
+    violaVoiceChannelId: asString(parsed.violaVoiceChannelId),
+    violaVoiceChannelName: asString(parsed.violaVoiceChannelName),
+    turnCount: asNumber(parsed.turnCount),
+    nextPersona: asString(parsed.nextPersona),
+    lastSpeaker: asString(parsed.lastSpeaker),
+    lastSummary: asString(parsed.lastSummary),
+    lastError: asString(parsed.lastError),
+    processedCommandMessageIds: asStringArray(parsed.processedCommandMessageIds),
+  }
+
+  const logSnapshot = readDiscordRoundtableLogSnapshot(root)
+  if (!logSnapshot) {
+    return state
+  }
+
+  const stateUpdatedAtMs = parseIsoTimestampMs(state.updatedAt)
+  const logUpdatedAtMs = parseIsoTimestampMs(logSnapshot.updatedAt)
+  const logIsNewer =
+    logUpdatedAtMs !== null &&
+    (stateUpdatedAtMs === null || logUpdatedAtMs >= stateUpdatedAtMs)
+  const currentChannelName = state.roundtableChannelName?.trim() || null
+  const currentChannelLooksPreferredAlias =
+    currentChannelName !== null &&
+    ['q-roundtable', 'q-roundtable-live'].includes(currentChannelName.toLowerCase())
+  return {
+    ...state,
+    updatedAt: logIsNewer && logSnapshot.updatedAt ? logSnapshot.updatedAt : state.updatedAt,
+    roundtableChannelName:
+      logSnapshot.channelName &&
+      (!currentChannelName || currentChannelLooksPreferredAlias || logIsNewer)
+        ? logSnapshot.channelName
+        : currentChannelName,
+    lastSummary:
+      logIsNewer && logSnapshot.lastSummary ? logSnapshot.lastSummary : state.lastSummary,
+    status:
+      logIsNewer
+        ? normalizeDiscordRoundtableSessionStatus(
+            deriveRoundtableStatusFromSummary(logSnapshot.lastSummary) ?? state.status,
+          )
+        : state.status,
+  }
+}
+
 export function saveDiscordRoundtableRuntimeState(args: {
   root?: string
   state: DiscordRoundtableRuntimeState
 }) {
   writeJsonFile(getDiscordRoundtableStatePath(args.root), args.state)
+}
+
+export function saveDiscordRoundtableSessionState(args: {
+  root?: string
+  state: DiscordRoundtableSessionState
+}) {
+  writeJsonFile(getDiscordRoundtableSessionStatePath(args.root), args.state)
 }
 
 export function stageDiscordRoundtableHandoff(args: {
@@ -1148,6 +1342,13 @@ export async function processDiscordRoundtableRuntime(
           durationHours,
         })
   let state = loadDiscordRoundtableRuntimeState(runtimeRoot)
+  let sessionState =
+    loadDiscordRoundtableSessionState(runtimeRoot) ??
+    createDiscordRoundtableSessionState({
+      now: options.now?.() ?? new Date(),
+      roundtableChannelName:
+        options.roundtableChannelName ?? state.roundtableChannelName ?? null,
+    })
   const previousJobs = state.jobs.map(job => ({ ...job }))
   state = {
     ...state,
@@ -1240,6 +1441,21 @@ export async function processDiscordRoundtableRuntime(
 
   state.updatedAt = (options.now?.() ?? new Date()).toISOString()
   state.status = normalizeRuntimeStatus(state.jobs, state.lastError, state.status)
+  sessionState = {
+    ...sessionState,
+    updatedAt: state.updatedAt,
+    status:
+      sessionState.status === 'completed' && state.status === 'idle'
+        ? 'completed'
+        : state.status,
+    roundtableChannelName:
+      options.roundtableChannelName ??
+      sessionState.roundtableChannelName ??
+      state.roundtableChannelName ??
+      null,
+    lastSummary: state.lastSummary,
+    lastError: state.lastError,
+  }
   pruneOperatorPendingPushes({
     path:
       options.operatorStatePath ??
@@ -1249,6 +1465,10 @@ export async function processDiscordRoundtableRuntime(
   saveDiscordRoundtableRuntimeState({
     root: runtimeRoot,
     state,
+  })
+  saveDiscordRoundtableSessionState({
+    root: runtimeRoot,
+    state: sessionState,
   })
   return {
     state,

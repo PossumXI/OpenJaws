@@ -147,6 +147,7 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 - the tracked shared Discord execution modules now also own the queued lease, dedupe, approval-target, and roundtable-executor path, so direct operator jobs and roundtable jobs now reconcile through one tracked job model instead of two private queue variants
 - the tracked roundtable runtime now emits explicit queue transition receipts plus `roundtable-status` summaries, so approval-ready branches, skipped jobs, and rejected jobs stay visible without scraping private runtime logs
 - the tracked roundtable/runtime readers now also reconcile the live Discord log when the persisted session file drifts, so coherence and status surfaces show the actual active channel and freshest approval summary instead of a stale preferred-channel alias
+- the tracked roundtable/runtime contract now separates queue state from live session metadata, with a legacy fallback reader for older mixed state files, so queue status stops inheriting stale roundtable-window fields by accident
 - that shared roundtable execution classifier now fails mixed code-plus-artifact outputs closed, so only verified code-bearing branches without generated audit or artifact spillover enter the approval lane
 - that same operator lane can now hand off bounded work to the hosted `@openjaws` GitHub App by opening a prepared issue against the target repo, which lets supervised work continue remotely when the local machine goes offline
 
@@ -159,6 +160,7 @@ Honest boundary:
 - the newest local repeated Terminal-Bench soak receipt is useful for stability tuning, not a public leaderboard claim
 - the Immaculate trace lane now uses a typed event union under `src/immaculate/events.ts`, and benchmark lanes now emit deterministic trace-backed receipts with signature blocks when a signing key is configured
 - `/status` and `/immaculate` now prefer the active typed Immaculate trace for the run in flight, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
+- completed Immaculate and Q traces now age into `stale` after a freshness window, and `runtime:coherence` now warns on stale Discord receipts, stale patrol cadence, and expired roundtable windows instead of treating them as current by default
 - the private Discord station now supports live voice-channel presence for the internal lane, but that voice path is still local/private and should be treated as an experimental operator surface rather than a public hosted feature
 - the private Discord station can search a secret-safe local corpus and run explicit operator-only OpenJaws workflows, but it is not a hidden shell surface
 - the private roundtable lane now deduplicates work by canonical project scope and uses a queued lease ledger plus approval checkpoints before pushes, so the bots can keep taking bounded 4-hour actions without stacking multiple helpers onto the same repo path at once
@@ -176,6 +178,7 @@ The intended public hosted-Q surface is `https://qline.site`. `https://aura-gene
 `https://qline.site` now also foregrounds OpenJaws, Q_agents, Agent Co-Work, the public GitHub repo, and the latest verified benchmark snapshot instead of looking like a billing-only landing page.
 The canonical live website source is now `https://github.com/PossumXI/q-s-unfolding-story`; the `website/` folder in OpenJaws is a legacy mirror and must not be used for routine production publishes anymore.
 That public benchmark snapshot is now generated from checked-in benchmark receipts and validated during CI instead of being left as hand-maintained copy.
+The public benchmark snapshot source line is now sanitized too, so the published BridgeBench / soak / TerminalBench / W&B backing stays visible without leaking local absolute artifact paths.
 The local release sweep now also includes a live same-site `qline.site` smoke, so the published Netlify handler/runtime/content state is checked alongside the repo build before a local ship pass is called clean.
 The release sweep now also fails closed on real `system:check` failures, and the unit-test lane is scoped to the live repo `src/` and `scripts/` trees so mirrored benchmark artifacts cannot quietly contaminate a public ship pass.
 The CI lane now also enforces a bounded Phase 0 hygiene gate: a `scripts/` dead-file scan via `knip` plus a `15%` non-test scripts coverage floor before the main verify sweep runs.

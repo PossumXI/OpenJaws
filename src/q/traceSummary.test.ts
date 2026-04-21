@@ -125,4 +125,37 @@ describe('q trace summary', () => {
       path: writer.path,
     })
   })
+
+  test('marks an old completed Q trace as stale', () => {
+    const root = mkdtempSync(join(tmpdir(), 'openjaws-q-trace-stale-'))
+    tempRoots.push(root)
+    const outputDir = join(root, 'artifacts', 'q-stale')
+    mkdirSync(outputDir, { recursive: true })
+    const writer = createBenchmarkTraceWriter({
+      outputDir,
+      sessionId: 'q-stale-session',
+    })
+    appendBenchmarkTraceEvent(writer, 'route.dispatched', {
+      routeId: 'route-stale',
+      runId: 'run-stale',
+      provider: 'oci',
+      model: 'Q',
+    })
+    closeBenchmarkTraceWriter(writer)
+
+    const baseline = readLatestQTraceSummary(root)
+    const completedAtMs = Date.parse(
+      baseline?.endedAt ?? baseline?.lastTimestamp ?? baseline?.startedAt ?? '',
+    )
+
+    expect(
+      readLatestQTraceSummary(root, {
+        referenceTimeMs: completedAtMs + 2 * 60 * 60 * 1000,
+        completedWindowMs: 60 * 60 * 1000,
+      }),
+    ).toMatchObject({
+      sessionId: 'q-stale-session',
+      runState: 'stale',
+    })
+  })
 })

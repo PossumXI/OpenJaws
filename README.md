@@ -326,6 +326,7 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - The tracked roundtable scheduler policy now owns fallback root scoring, approval TTL resolution, and reply/PASS inspection, so the private Discord loop can reduce empty turns without reintroducing policy drift.
 - The tracked roundtable runtime now emits queue transition receipts and `roundtable-status` summaries, so approval-ready branches, skipped jobs, and rejected jobs are visible to operators without scraping local runtime logs.
 - The tracked roundtable/runtime readers now reconcile the live Discord log too, so `roundtable-status` and `runtime:coherence` show the actual active channel and freshest approval summary when the persisted session file drifts.
+- The tracked roundtable/runtime contract now separates queue state from live roundtable session metadata, with a legacy fallback reader for older mixed files, so queue summaries stop inheriting stale live-session fields by accident.
 - That same roundtable lane now rolls forward in continuous 4-hour windows, understands direct project requests like `start an openjaws session for project sealed and ...`, keeps `SEALED` in its shared codebase knowledge scope, and limits autonomous branch/worktree execution to git-backed roots so manual-only demo folders do not poison the queue.
 - Firecrawl dataset skill for crawl/search -> structured dataset pipelines.
 - Remote Control, environment validation, startup harness receipts, and fail-closed configuration checks.
@@ -387,6 +388,8 @@ OpenJaws treats Immaculate as the orchestration core rather than an optional add
 - `/status` and the flight-deck surfaces expose the same route and worker state to installed users, not just internal operators.
 - the tracing lane now has a typed `src/immaculate/events.ts` contract plus structured session-trace writing, and benchmark lanes now emit deterministic trace-backed receipt files with signature blocks when a signing key is configured
 - `/status` and `/immaculate` now prefer the active typed Immaculate trace for the run in flight, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
+- completed Immaculate and Q traces now age into `stale` after a freshness window, so `/status` and `runtime:coherence` stop treating day-old finished traces as current audit context
+- `runtime:coherence` now also warns when the Q Discord receipt is stale, when patrol/training cadence has gone cold, and when a roundtable window has expired without fresh session updates
 
 Details:
 
@@ -488,6 +491,7 @@ Public hosted-Q website target:
 - `https://qline.site` now serves valid HTTPS on the live Netlify surface and should be treated as the canonical public signup and checkout domain
 - `https://qline.site` now also surfaces OpenJaws, Q_agents, Agent Co-Work, the public GitHub repo, and the latest verified benchmark snapshot instead of acting like a billing-only landing page
 - the public `qline.site` benchmark block is now generated from checked-in benchmark receipts and fails CI if it drifts from those artifacts
+- the public benchmark snapshot source line is now sanitized to describe BridgeBench, soak, TerminalBench, and W&B receipt backing without leaking local absolute Windows artifact paths
 - the local release sweep now also includes a live same-site `qline.site` smoke, so the published Netlify handler/runtime/content state is checked alongside the repo build before a local ship pass is called clean
 - the release sweep now fails closed on real `system:check` failures, and the unit-test lane is scoped to the live repo `src/` and `scripts/` trees so mirrored benchmark artifacts cannot poison a ship pass
 - the CI lane now enforces a bounded Phase 0 hygiene gate too: `scripts/` dead-file scan via `knip` plus a `15%` non-test line-coverage floor for `scripts/` before the main verify sweep runs

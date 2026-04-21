@@ -531,4 +531,94 @@ describe('runtimeCoherence', () => {
       'warning',
     )
   })
+
+  test('warns on stale Discord receipts and an expired roundtable window', () => {
+    const realDateNow = Date.now
+    Date.now = () => Date.parse('2026-04-21T12:00:00.000Z')
+    try {
+      const report = buildRuntimeCoherenceReport({
+        harnessStatus: {
+          enabled: true,
+          reachable: true,
+          harnessUrl: 'http://127.0.0.1:8787',
+        },
+        qAgentReceipt: {
+          version: 1,
+          updatedAt: '2026-04-21T10:00:00.000Z',
+          startedAt: '2026-04-21T08:00:00.000Z',
+          status: 'ready',
+          backend: 'Q backend',
+          guilds: [{ id: '1', name: 'Arobi' }],
+          gateway: {
+            connected: true,
+            userId: 'bot-1',
+            guildCount: 1,
+            lastSequence: 42,
+          },
+          schedule: {
+            enabled: true,
+            intervalMs: 900_000,
+            cycleCount: 2,
+            lastCompletedAt: '2026-04-21T09:00:00.000Z',
+          },
+          routing: {
+            lastDecision: null,
+            lastPostedChannelName: null,
+            lastPostedReason: null,
+            channels: [],
+          },
+          voice: {
+            enabled: false,
+            provider: 'system',
+            ready: false,
+            connected: false,
+          },
+          patrol: {
+            lastCompletedAt: '2026-04-21T09:00:00.000Z',
+            snapshot: {
+              harnessReachable: true,
+              harnessSummary: 'reachable',
+              deckSummary: null,
+              workerSummary: null,
+              trainingSummary: null,
+              hybridSummary: null,
+              routeQueueSummary: null,
+              queueLength: 0,
+              recommendedLayerId: null,
+            },
+          },
+          knowledge: {
+            enabled: false,
+            ready: false,
+            fileCount: 0,
+            chunkCount: 0,
+          },
+          operator: {},
+          events: [],
+        },
+        immaculateTrace: null,
+        qTrace: null,
+        routeQueueDepth: 0,
+        roundtable: {
+          status: 'running',
+          updatedAt: '2026-04-21T10:15:00.000Z',
+          endsAt: '2026-04-21T10:30:00.000Z',
+          channelName: 'dev_support',
+        },
+      })
+
+      expect(report.status).toBe('warning')
+      expect(
+        report.checks.find(check => check.id === 'discord-q-receipt-freshness')?.status,
+      ).toBe('warning')
+      expect(
+        report.checks.find(check => check.id === 'discord-q-patrol-freshness')?.status,
+      ).toBe('warning')
+      expect(
+        report.checks.find(check => check.id === 'roundtable-freshness')?.status,
+      ).toBe('warning')
+    } finally {
+      Date.now = realDateNow
+    }
+  })
 })

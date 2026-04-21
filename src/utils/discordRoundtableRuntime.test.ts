@@ -4,8 +4,10 @@ import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import {
   createDiscordRoundtableRuntimeState,
+  loadDiscordRoundtableSessionState,
   formatDiscordRoundtableRuntimeStatus,
   formatDiscordRoundtableTransitionReceipt,
+  getDiscordRoundtableSessionStatePath,
   getOpenJawsOperatorStatePath,
   ingestDiscordRoundtableHandoff,
   loadDiscordRoundtableRuntimeState,
@@ -172,6 +174,54 @@ describe('discordRoundtableRuntime', () => {
     expect(state.status).toBe('awaiting_approval')
   })
 
+  it('loads live session metadata from the legacy mixed state file without polluting the tracked queue state', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-session-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    mkdirSync(runtimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T00:25:52.409Z',
+          roundtableChannelName: 'q-roundtable',
+          lastSummary: 'Viola action queued',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [],
+          startedAt: '2026-04-20T23:58:32.098Z',
+          endsAt: '2026-04-21T03:58:32.098Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          turnCount: 5,
+          nextPersona: 'blackbeak',
+          lastSpeaker: 'viola',
+          processedCommandMessageIds: ['msg-1'],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const queueState = loadDiscordRoundtableRuntimeState(root)
+    const sessionState = loadDiscordRoundtableSessionState(root)
+
+    expect('startedAt' in queueState).toBe(false)
+    expect(sessionState).toMatchObject({
+      startedAt: '2026-04-20T23:58:32.098Z',
+      endsAt: '2026-04-21T03:58:32.098Z',
+      guildId: 'guild-1',
+      roundtableChannelId: 'channel-1',
+      turnCount: 5,
+      nextPersona: 'blackbeak',
+      lastSpeaker: 'viola',
+    })
+  })
+
   it('processes mergeable jobs into awaiting-approval operator pushes', async () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-'))
     tempDirs.push(root)
@@ -314,6 +364,15 @@ describe('discordRoundtableRuntime', () => {
     )
     expect(result.durationHours).toBe(4)
     expect(result.approvalTtlHours).toBe(1)
+    expect(existsSync(getDiscordRoundtableSessionStatePath(root))).toBe(true)
+    expect(loadDiscordRoundtableSessionState(root)).toMatchObject({
+      updatedAt: '2026-04-20T20:05:00.000Z',
+      status: 'awaiting_approval',
+      roundtableChannelName: null,
+      lastSummary:
+        'OpenJaws roundtable action session-b-openjaws-action-b is awaiting approval on discord-viola-openjaws-action-b.',
+      lastError: null,
+    })
   })
 
   it('holds back mixed artifact output instead of creating an approval candidate', async () => {

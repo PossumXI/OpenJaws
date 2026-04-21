@@ -34,9 +34,11 @@ export type ImmaculateTraceSummary = {
 type TraceSummaryReadOptions = {
   referenceTimeMs?: number
   activeWindowMs?: number
+  completedWindowMs?: number
 }
 
 export const IMMACULATE_ACTIVE_TRACE_WINDOW_MS = 15 * 60 * 1000
+export const IMMACULATE_COMPLETED_TRACE_FRESH_WINDOW_MS = 24 * 60 * 60 * 1000
 
 function percentile(sorted: number[], ratio: number): number | null {
   if (sorted.length === 0) {
@@ -106,18 +108,28 @@ export function classifyImmaculateTraceRunState(
   },
   options: TraceSummaryReadOptions = {},
 ): ImmaculateTraceRunState {
+  const referenceTimeMs = options.referenceTimeMs ?? Date.now()
+  const activeWindowMs =
+    options.activeWindowMs ?? IMMACULATE_ACTIVE_TRACE_WINDOW_MS
+  const completedWindowMs =
+    options.completedWindowMs ?? IMMACULATE_COMPLETED_TRACE_FRESH_WINDOW_MS
+
   if (summary.endedAt) {
-    return 'completed'
+    const completedTimestampMs =
+      parseTraceTimestampMs(summary.endedAt) ??
+      getTraceActivityTimestampMs(summary)
+    if (completedTimestampMs === null) {
+      return 'stale'
+    }
+    return referenceTimeMs - completedTimestampMs <= completedWindowMs
+      ? 'completed'
+      : 'stale'
   }
 
   const activityTimestampMs = getTraceActivityTimestampMs(summary)
   if (activityTimestampMs === null) {
     return 'stale'
   }
-
-  const referenceTimeMs = options.referenceTimeMs ?? Date.now()
-  const activeWindowMs =
-    options.activeWindowMs ?? IMMACULATE_ACTIVE_TRACE_WINDOW_MS
 
   return referenceTimeMs - activityTimestampMs <= activeWindowMs
     ? 'active'

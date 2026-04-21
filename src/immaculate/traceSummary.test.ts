@@ -122,4 +122,33 @@ describe('traceSummary', () => {
       runState: 'active',
     })
   })
+
+  test('ages an old completed trace into stale state', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'openjaws-trace-stale-completed-'))
+    cleanupDirs.push(tempDir)
+    mkdirSync(tempDir, { recursive: true })
+    const writer = createBenchmarkTraceWriter({
+      outputDir: tempDir,
+      sessionId: 'completed-stale-session',
+    })
+    appendBenchmarkTraceEvent(writer, 'route.dispatched', {
+      routeId: 'route-stale',
+      runId: 'run-stale',
+      provider: 'oci',
+      model: 'Q',
+    })
+    closeBenchmarkTraceWriter(writer)
+
+    const tracePath = join(tempDir, 'completed-stale-session.trace.jsonl')
+    const baseline = readImmaculateTraceSummary(tracePath)
+    const completedAtMs =
+      Date.parse(baseline.endedAt ?? baseline.lastTimestamp ?? baseline.startedAt ?? '')
+
+    const summary = readImmaculateTraceSummary(tracePath, {
+      referenceTimeMs: completedAtMs + 2 * 60 * 60 * 1000,
+      completedWindowMs: 60 * 60 * 1000,
+    })
+
+    expect(summary.runState).toBe('stale')
+  })
 })

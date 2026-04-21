@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import {
+  buildPublicBenchmarkSource,
   buildSnapshot,
   buildSnapshotForCheck,
   buildWandbSummary,
@@ -134,7 +135,6 @@ describe('generate-website-benchmark-snapshot helpers', () => {
       status: 'auth missing',
       enabled: false,
       source: 'env',
-      url: 'https://wandb.ai/example/run',
       summary:
         'A live W&B project target was configured for this benchmark pass, but no local WANDB login/API key was available, so the receipts stayed local only.',
     })
@@ -293,15 +293,15 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
     expect(snapshot.bridgeBench.bestPack).toBe('all')
     expect(snapshot.bridgeBench.scorePercent).toBe(42.11)
     expect(snapshot.soak.summary).toContain('52/52 probes succeeded')
-    expect(snapshot.terminalBench.scope).toBe('Official TerminalBench 2.0 public task')
+    expect(snapshot.terminalBench.scope).toBe('Official TerminalBench 2.0 public task record')
     expect(snapshot.terminalBench.status).toBe('completed_with_errors')
-    expect(snapshot.terminalBench.submissionState).toBe('submitted')
+    expect(snapshot.terminalBench.submissionState).toBe('task_recorded')
     expect(snapshot.terminalBench.benchmarkFailedTrials).toBe(5)
-    expect(snapshot.terminalBench.summary).toContain('official leaderboard submission')
+    expect(snapshot.terminalBench.summary).toContain('public task discussion')
     expect(snapshot.terminalBench.summary).toContain('5 benchmark-failing trials')
     expect(snapshot.terminalBenchSoak.cycleCount).toBe(2)
     expect(snapshot.wandb.status).toBe('auth missing')
-    expect(snapshot.source).toContain(fakePaths.bridge)
+    expect(snapshot.source).toBe(buildPublicBenchmarkSource())
   })
 
   test('buildSnapshot prefers the latest clean soak and the latest authful W&B receipt', () => {
@@ -427,7 +427,7 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
     expect(snapshot.soak.runId).toBe('soak-clean')
     expect(snapshot.soak.summary).toContain('30-minute bounded soak.')
     expect(snapshot.wandb.status).toBe('auth missing')
-    expect(snapshot.wandb.url).toBe('https://wandb.ai/example/project')
+    expect(snapshot.wandb.url).toBeUndefined()
   })
 
   test('buildSnapshot derives completed_with_errors from benchmark-failing trials when receipt status is absent', () => {
@@ -528,7 +528,7 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
     })
 
     expect(snapshot.terminalBench.status).toBe('completed_with_errors')
-    expect(snapshot.terminalBench.submissionState).toBe('not_submitted')
+    expect(snapshot.terminalBench.submissionState).toBe('local_only')
     expect(snapshot.terminalBench.benchmarkFailedTrials).toBe(3)
   })
 

@@ -24,6 +24,8 @@ export type RuntimeCoherenceProbe = {
 export type RoundtableRuntimeSnapshot = {
   status: string | null
   updatedAt?: string | null
+  startedAt?: string | null
+  endsAt?: string | null
   channelName?: string | null
   lastSummary?: string | null
   lastError?: string | null
@@ -61,6 +63,32 @@ function aggregateStatus(
     return 'warning'
   }
   return 'ok'
+}
+
+const DISCORD_Q_RECEIPT_STALE_MS = 30 * 60 * 1000
+const DISCORD_Q_PATROL_STALE_FLOOR_MS = 60 * 60 * 1000
+const ROUNDTABLE_RUNTIME_STALE_MS = 30 * 60 * 1000
+
+function toMillis(value: string | null | undefined): number | null {
+  if (!value) {
+    return null
+  }
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function summarizeAge(referenceTimeMs: number, timestampMs: number | null): string | null {
+  if (timestampMs === null) {
+    return null
+  }
+  const ageMs = Math.max(0, referenceTimeMs - timestampMs)
+  const totalMinutes = Math.round(ageMs / 60_000)
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m old`
+  }
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return minutes > 0 ? `${hours}h ${minutes}m old` : `${hours}h old`
 }
 
 function traceSummaryPathExists(path: string | null | undefined): boolean {
@@ -107,6 +135,7 @@ export function buildRuntimeCoherenceReport(args: {
   probes?: RuntimeCoherenceProbe[]
 }): RuntimeCoherenceReport {
   const checks: RuntimeCoherenceCheck[] = []
+  const referenceTimeMs = Date.now()
   const queueDepth = args.routeQueueDepth ?? null
   const harnessReachable = args.harnessStatus.enabled && args.harnessStatus.reachable
   const qReceipt = args.qAgentReceipt
@@ -144,6 +173,26 @@ export function buildRuntimeCoherenceReport(args: {
       detail: qReceipt.gateway.lastReplyAt ?? qReceipt.gateway.lastHeartbeatAt ?? null,
     })
 
+    const receiptUpdatedAtMs = toMillis(qReceipt.updatedAt)
+    checks.push({
+      id: 'discord-q-receipt-freshness',
+      status:
+        receiptUpdatedAtMs !== null &&
+        referenceTimeMs - receiptUpdatedAtMs <= DISCORD_Q_RECEIPT_STALE_MS
+          ? 'ok'
+          : 'warning',
+      summary:
+        receiptUpdatedAtMs !== null &&
+        referenceTimeMs - receiptUpdatedAtMs <= DISCORD_Q_RECEIPT_STALE_MS
+          ? 'Q Discord receipt is fresh enough for live operator status.'
+          : 'Q Discord receipt is stale for live operator status.',
+      detail:
+        qReceipt.updatedAt +
+        (receiptUpdatedAtMs !== null
+          ? ` · ${summarizeAge(referenceTimeMs, receiptUpdatedAtMs)}`
+          : ''),
+    })
+
     if (voiceEnabled) {
       const voiceRuntimeHealthy = voiceReady && voiceConnected
       checks.push({
@@ -161,6 +210,35 @@ export function buildRuntimeCoherenceReport(args: {
           null,
       })
     }
+
+    const patrolTimestampMs = toMillis(
+      qReceipt.patrol.lastCompletedAt ??
+        qReceipt.patrol.lastStartedAt ??
+        qReceipt.schedule.lastCompletedAt ??
+        qReceipt.schedule.lastStartedAt ??
+        null,
+    )
+    const patrolStaleWindowMs = Math.max(
+      DISCORD_Q_PATROL_STALE_FLOOR_MS,
+      (qReceipt.schedule.intervalMs || 0) * 2,
+    )
+    checks.push({
+      id: 'discord-q-patrol-freshness',
+      status:
+        patrolTimestampMs !== null &&
+        referenceTimeMs - patrolTimestampMs <= patrolStaleWindowMs
+          ? 'ok'
+          : 'warning',
+      summary:
+        patrolTimestampMs !== null &&
+        referenceTimeMs - patrolTimestampMs <= patrolStaleWindowMs
+          ? 'Q patrol/training receipt cadence is fresh enough.'
+          : 'Q patrol/training receipt cadence is stale.',
+      detail:
+        patrolTimestampMs !== null
+          ? `${new Date(patrolTimestampMs).toISOString()} · ${summarizeAge(referenceTimeMs, patrolTimestampMs)}`
+          : 'no completed patrol/training timestamp',
+    })
 
     if (qReceipt.patrol.snapshot) {
       checks.push({
@@ -205,6 +283,21 @@ export function buildRuntimeCoherenceReport(args: {
       summary: `Immaculate trace: ${
         args.immaculateTrace ? summarizeTrace(args.immaculateTrace) : 'missing'
       } | Q trace: ${args.qTrace ? summarizeTrace(args.qTrace) : 'missing'}`,
+    })
+  }
+
+  const staleTraceIds = [
+    args.immaculateTrace?.runState === 'stale' ? 'Immaculate' : null,
+    args.qTrace?.runState === 'stale' ? 'Q' : null,
+  ].filter((entry): entry is string => Boolean(entry))
+  if (args.immaculateTrace || args.qTrace) {
+    checks.push({
+      id: 'trace-freshness',
+      status: staleTraceIds.length > 0 ? 'warning' : 'ok',
+      summary:
+        staleTraceIds.length > 0
+          ? `${staleTraceIds.join(' + ')} trace summaries are stale.`
+          : 'Latest Immaculate/Q trace summaries are fresh enough for audit use.',
     })
   }
 
@@ -288,6 +381,31 @@ export function buildRuntimeCoherenceReport(args: {
         args.roundtable.lastError ??
         args.roundtable.lastSummary ??
         args.roundtable.updatedAt ??
+        null,
+    })
+
+    const roundtableUpdatedAtMs = toMillis(args.roundtable.updatedAt ?? null)
+    const roundtableEndsAtMs = toMillis(args.roundtable.endsAt ?? null)
+    const roundtableIsExpired =
+      args.roundtable.status === 'running' &&
+      roundtableEndsAtMs !== null &&
+      referenceTimeMs > roundtableEndsAtMs
+    const roundtableIsStale =
+      args.roundtable.status === 'running' &&
+      roundtableUpdatedAtMs !== null &&
+      referenceTimeMs - roundtableUpdatedAtMs > ROUNDTABLE_RUNTIME_STALE_MS
+    checks.push({
+      id: 'roundtable-freshness',
+      status: roundtableIsExpired || roundtableIsStale ? 'warning' : 'ok',
+      summary:
+        roundtableIsExpired
+          ? 'Roundtable runtime is past its declared window.'
+          : roundtableIsStale
+            ? 'Roundtable runtime has not updated recently.'
+            : 'Roundtable runtime timing is consistent.',
+      detail:
+        args.roundtable.updatedAt ??
+        args.roundtable.endsAt ??
         null,
     })
   }
