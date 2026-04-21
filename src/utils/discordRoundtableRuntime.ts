@@ -75,6 +75,12 @@ export type DiscordRoundtableTrackedJob = DiscordExecutionTrackedJob & {
   commitSha: string | null
 }
 
+export type DiscordRoundtableLogSnapshot = {
+  updatedAt: string | null
+  channelName: string | null
+  lastSummary: string | null
+}
+
 export type DiscordRoundtableProcessResult = {
   state: DiscordRoundtableRuntimeState
   ingestedCount: number
@@ -222,6 +228,126 @@ function sanitizeSegment(value: string): string {
   return normalized || 'job'
 }
 
+function parseIsoTimestampMs(value: string | null | undefined): number | null {
+  if (!value) {
+    return null
+  }
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function getDiscordRoundtableLogPath(root = process.cwd()): string {
+  return join(getDiscordRoundtableRuntimeDir(root), 'discord-roundtable.log')
+}
+
+function extractRoundtableChannelNameFromLogLine(line: string): string | null {
+  const match = /roundtable window \d+ live in #([a-z0-9._-]+)/i.exec(line)
+  return match?.[1]?.trim() || null
+}
+
+function deriveRoundtableStatusFromSummary(
+  summary: string | null,
+): DiscordRoundtableRuntimeState['status'] | null {
+  if (!summary) {
+    return null
+  }
+  if (/awaiting_approval/i.test(summary)) {
+    return 'awaiting_approval'
+  }
+  if (/queued action/i.test(summary)) {
+    return 'queued'
+  }
+  if (/executing queued action/i.test(summary)) {
+    return 'running'
+  }
+  if (/failed/i.test(summary) || /\berror\b/i.test(summary)) {
+    return 'error'
+  }
+  return null
+}
+
+export function readDiscordRoundtableLogSnapshot(
+  root = process.cwd(),
+): DiscordRoundtableLogSnapshot | null {
+  const logPath = getDiscordRoundtableLogPath(root)
+  if (!existsSync(logPath)) {
+    return null
+  }
+  const lines = readFileSync(logPath, 'utf8')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+  if (lines.length === 0) {
+    return null
+  }
+
+  let updatedAt: string | null = null
+  let channelName: string | null = null
+  let lastSummary: string | null = null
+
+  for (const line of lines) {
+    const timestampMatch = /^\[([^\]]+)\]\s*(.*)$/.exec(line)
+    const timestamp = timestampMatch?.[1]?.trim() || null
+    const summary = timestampMatch?.[2]?.trim() || line
+    if (timestamp) {
+      updatedAt = timestamp
+    }
+    if (summary) {
+      lastSummary = summary
+    }
+    const channel = extractRoundtableChannelNameFromLogLine(summary)
+    if (channel) {
+      channelName = channel
+    }
+  }
+
+  return {
+    updatedAt,
+    channelName,
+    lastSummary,
+  }
+}
+
+function overlayRoundtableLogSnapshot(args: {
+  state: DiscordRoundtableRuntimeState
+  logSnapshot: DiscordRoundtableLogSnapshot | null
+}): DiscordRoundtableRuntimeState {
+  const { state, logSnapshot } = args
+  if (!logSnapshot) {
+    return state
+  }
+
+  const stateUpdatedAtMs = parseIsoTimestampMs(state.updatedAt)
+  const logUpdatedAtMs = parseIsoTimestampMs(logSnapshot.updatedAt)
+  const logIsNewer =
+    logUpdatedAtMs !== null &&
+    (stateUpdatedAtMs === null || logUpdatedAtMs >= stateUpdatedAtMs)
+
+  const currentChannelName = state.roundtableChannelName?.trim() || null
+  const currentChannelLooksPreferredAlias =
+    currentChannelName !== null &&
+    ['q-roundtable', 'q-roundtable-live'].includes(currentChannelName.toLowerCase())
+  const nextChannelName =
+    logSnapshot.channelName &&
+    (!currentChannelName || currentChannelLooksPreferredAlias || logIsNewer)
+      ? logSnapshot.channelName
+      : currentChannelName
+
+  let nextStatus = state.status
+  if (logIsNewer && state.activeJobId === null && state.jobs.length === 0) {
+    nextStatus = deriveRoundtableStatusFromSummary(logSnapshot.lastSummary) ?? state.status
+  }
+
+  return {
+    ...state,
+    updatedAt: logIsNewer && logSnapshot.updatedAt ? logSnapshot.updatedAt : state.updatedAt,
+    roundtableChannelName: nextChannelName,
+    lastSummary:
+      logIsNewer && logSnapshot.lastSummary ? logSnapshot.lastSummary : state.lastSummary,
+    status: nextStatus,
+  }
+}
+
 function readJsonFile<T>(path: string): T | null {
   if (!existsSync(path)) {
     return null
@@ -282,7 +408,7 @@ export function loadDiscordRoundtableRuntimeState(
   if (!parsed) {
     return base
   }
-  return {
+  const state = {
     ...base,
     ...parsed,
     roundtableChannelName:
@@ -301,6 +427,10 @@ export function loadDiscordRoundtableRuntimeState(
       : [],
     jobs: Array.isArray(parsed.jobs) ? (parsed.jobs as DiscordRoundtableTrackedJob[]) : [],
   }
+  return overlayRoundtableLogSnapshot({
+    state,
+    logSnapshot: readDiscordRoundtableLogSnapshot(root),
+  })
 }
 
 export function saveDiscordRoundtableRuntimeState(args: {
