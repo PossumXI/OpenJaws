@@ -283,11 +283,11 @@ function deriveRoundtableStatusFromSummary(
   if (/awaiting_approval/i.test(summary)) {
     return 'awaiting_approval'
   }
-  if (/queued action/i.test(summary)) {
-    return 'queued'
-  }
   if (/executing queued action/i.test(summary)) {
     return 'running'
+  }
+  if (/queued action/i.test(summary)) {
+    return 'queued'
   }
   if (/failed/i.test(summary) || /\berror\b/i.test(summary)) {
     return 'error'

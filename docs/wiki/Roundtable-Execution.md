@@ -5,7 +5,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 ## What It Does
 
 - Immaculate or an operator can stage governed handoff JSON files into `local-command-station/roundtable-runtime/handoffs/`.
-- OpenJaws ingests those handoffs into a persisted queue at `local-command-station/roundtable-runtime/discord-roundtable.state.json`.
+- OpenJaws ingests those handoffs into a persisted queue at `local-command-station/roundtable-runtime/discord-roundtable-queue.state.json`.
 - Live roundtable session metadata now belongs in `local-command-station/roundtable-runtime/discord-roundtable.session.json` instead of being mixed into the tracked queue file.
 - Each queued action runs through the same isolated worktree path as the direct Discord operator lane.
 - Verified code-bearing branches move into the existing approval queue in `local-command-station/openjaws-operator-state.json`.
@@ -33,6 +33,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 
 - `src/utils/discordRoundtableScheduler.ts` is the tracked policy source for fallback root selection, approval TTL, and reply/PASS reduction heuristics.
 - `scripts/roundtable-runtime.ts` is the tracked CLI wrapper around the shared runtime path.
+- the CLI now prints both the tracked queue path and the live session path explicitly so operator reads do not silently point at the wrong file after the queue/session split.
 - The live Discord runtime now posts roundtable transition receipts back into the configured `q-roundtable` lane, with a fallback to `openjaws-updates` if the dedicated roundtable channel is not present yet.
 - The tracked runtime readers now reconcile both the live `discord-roundtable.log` and the split session metadata, so `@Q operator roundtable-status` and `bun run runtime:coherence` show the actual active lane such as `#dev_support` when older persisted files drift from the bound Discord channel.
 - Approval-ready transitions include the generated branch, verification summary, and attached `receipt.json` so operators can confirm from Discord without opening the local state file first.

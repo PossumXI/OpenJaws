@@ -174,6 +174,47 @@ describe('discordRoundtableRuntime', () => {
     expect(state.status).toBe('awaiting_approval')
   })
 
+  it('classifies executing queued actions as running instead of queued', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-executing-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    mkdirSync(runtimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T00:00:00.000Z',
+          roundtableChannelName: 'q-roundtable',
+          lastSummary: 'roundtable booting',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.log'),
+      [
+        '[2026-04-21T00:01:00.000Z] roundtable window 1 live in #dev_support (1426904647313916014), ends 2026-04-21T04:01:00.000Z',
+        '[2026-04-21T00:02:00.000Z] Q executing queued action "Q audit-and-tighten pass" in D:\\openjaws\\OpenJaws\\src',
+      ].join('\n'),
+      'utf8',
+    )
+
+    const state = loadDiscordRoundtableRuntimeState(root)
+
+    expect(state.status).toBe('running')
+    expect(state.lastSummary).toBe(
+      'Q executing queued action "Q audit-and-tighten pass" in D:\\openjaws\\OpenJaws\\src',
+    )
+  })
+
   it('loads live session metadata from the legacy mixed state file without polluting the tracked queue state', () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-session-'))
     tempDirs.push(root)

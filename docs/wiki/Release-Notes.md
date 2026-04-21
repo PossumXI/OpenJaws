@@ -37,6 +37,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - the new tracked Discord execution queue and roundtable executor modules now also own shared lease, dedupe, approval-target, and bounded roundtable job execution semantics, so direct operator runs and roundtable runs stop diverging at the approval checkpoint
 - the tracked roundtable scheduler policy now owns fallback root scoring, approval TTL resolution, and reply/PASS inspection as well, which gives the private Discord loop a tested way to prefer repo-grounded progress over idle `PASS` turns
 - the shared roundtable execution classifier now fails mixed code-plus-artifact outputs closed, so only verified code-bearing branches without generated audit or artifact spillover reach the approval checkpoint
+- the governed roundtable session reader now keeps `executing queued action` in the `running` state instead of collapsing it back to `queued`, which fixes one of the last live-session truth leaks during autonomous runs
 
 ## Agent Co-Work
 
@@ -85,6 +86,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - the Immaculate integration notes now carry the verified hybrid-session, OCI-training, W&B, and benchmark publication contracts that OpenJaws is aligning against
 - the tracing lane now has a typed `src/immaculate/events.ts` schema plus structured session-trace writing, and benchmark lanes now emit deterministic trace-backed receipt files with signature blocks when a signing key is configured
 - `/status` and `/immaculate` now prefer the active typed trace for the run in flight, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
+- the benchmark snapshot generator now applies the same complete-receipt preference to TerminalBench and repeated TerminalBench that BridgeBench, soak, and W&B already use, so newer partial artifacts no longer outrank older complete public receipts
 - routed `Q` fallback thresholds, route lease timing, worker lease duration, and Immaculate crew pressure delays now come from one shared policy layer instead of drifting across launch, routing, and worker helpers
 - `bun run runtime:coherence` now audits live harness reachability against Discord receipts, route queue depth, trace summaries, roundtable state, and local bot health
 - `system:check` now includes that live runtime coherence pass as an allow-failure audit instead of leaving the live-control surface unverified

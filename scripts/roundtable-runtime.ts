@@ -1,5 +1,6 @@
 import {
   formatDiscordRoundtableTransitionReceipt,
+  getDiscordRoundtableSessionStatePath,
   getDiscordRoundtableStatePath,
   processDiscordRoundtableRuntime,
 } from '../src/utils/discordRoundtableRuntime.js'
@@ -132,7 +133,8 @@ async function runIteration(options: CliOptions) {
   const output = options.json
     ? JSON.stringify(
         {
-          statePath: getDiscordRoundtableStatePath(process.cwd()),
+          queueStatePath: getDiscordRoundtableStatePath(process.cwd()),
+          sessionStatePath: getDiscordRoundtableSessionStatePath(process.cwd()),
           ingestedCount: result.ingestedCount,
           executedCount: result.executedCount,
           queuedCount: result.queuedCount,
@@ -149,7 +151,8 @@ async function runIteration(options: CliOptions) {
       )
     : [
         `Roundtable status: ${result.state.status}`,
-        `State path: ${getDiscordRoundtableStatePath(process.cwd())}`,
+        `Queue path: ${getDiscordRoundtableStatePath(process.cwd())}`,
+        `Session path: ${getDiscordRoundtableSessionStatePath(process.cwd())}`,
         `Ingested: ${result.ingestedCount}`,
         `Executed: ${result.executedCount}`,
         `Queued: ${result.queuedCount}`,

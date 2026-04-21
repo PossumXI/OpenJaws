@@ -5,6 +5,8 @@ import {
   buildSnapshotForCheck,
   buildWandbSummary,
   collectMatchingReceiptPaths,
+  isPreferredTerminalBenchReceipt,
+  isPreferredTerminalBenchSoakReceipt,
   isValidExistingReceiptPath,
   parseArgs,
   resolveLatestReceipt,
@@ -175,6 +177,56 @@ describe('generate-website-benchmark-snapshot helpers', () => {
 
     expect(resolved).toBe(olderPassedReceipt)
   })
+
+  test('recognizes complete TerminalBench receipts and rejects partial ones', () => {
+    expect(
+      isPreferredTerminalBenchReceipt({
+        officialSubmission: true,
+        tasks: [{ taskName: 'terminal-bench/circuit-fibsqrt' }],
+        aggregate: {
+          totalTrials: 5,
+          executionErrorTrials: 0,
+          benchmarkFailedTrials: 5,
+        },
+      }),
+    ).toBe(true)
+    expect(
+      isPreferredTerminalBenchReceipt({
+        officialSubmission: true,
+        tasks: [],
+        aggregate: {
+          totalTrials: 5,
+          executionErrorTrials: 0,
+          benchmarkFailedTrials: 5,
+        },
+      }),
+    ).toBe(false)
+
+    expect(
+      isPreferredTerminalBenchSoakReceipt({
+        status: 'completed_with_errors',
+        tasks: [{ taskName: 'terminal-bench/circuit-fibsqrt' }],
+        cycles: [{}, {}],
+        aggregate: {
+          totalTrials: 4,
+          executionErrorTrials: 0,
+          benchmarkFailedTrials: 2,
+        },
+      }),
+    ).toBe(true)
+    expect(
+      isPreferredTerminalBenchSoakReceipt({
+        status: 'completed_with_errors',
+        tasks: [{ taskName: 'terminal-bench/circuit-fibsqrt' }],
+        cycles: [],
+        aggregate: {
+          totalTrials: 4,
+          executionErrorTrials: 0,
+          benchmarkFailedTrials: 2,
+        },
+      }),
+    ).toBe(false)
+  })
 })
 
 describe('generate-website-benchmark-snapshot integration helpers', () => {
@@ -318,12 +370,6 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
 
     const snapshot = buildSnapshot(options, {
       resolveLatestReceipt: (patterns, fallbackPath) => {
-        if (patterns.some(pattern => pattern.includes('q-terminalbench-official-public-'))) {
-          return fakePaths.terminal
-        }
-        if (patterns.some(pattern => pattern.includes('q-terminalbench-soak-live-'))) {
-          return fakePaths.terminalSoak
-        }
         return fallbackPath
       },
       collectMatchingReceiptPaths: patterns => {
@@ -333,6 +379,12 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
         }
         if (first.includes('q-soak-live-')) {
           return [fakePaths.soakFailed, fakePaths.soakPreferred]
+        }
+        if (first.includes('q-terminalbench-official-public-')) {
+          return [fakePaths.terminal]
+        }
+        if (first.includes('q-terminalbench-soak-live-')) {
+          return [fakePaths.terminalSoak]
         }
         return []
       },
@@ -430,6 +482,121 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
     expect(snapshot.wandb.url).toBeUndefined()
   })
 
+  test('buildSnapshot prefers complete TerminalBench receipts over newer partial artifacts', () => {
+    const options = parseArgs([])
+
+    const fakePaths = {
+      bridge: 'fake://bridgebench',
+      soak: 'fake://soak',
+      terminalPreferred: 'fake://terminalbench-preferred',
+      terminalPartial: 'fake://terminalbench-partial',
+      terminalSoakPreferred: 'fake://terminalbench-soak-preferred',
+      terminalSoakPartial: 'fake://terminalbench-soak-partial',
+      wandb: 'fake://wandb',
+    }
+
+    const snapshot = buildSnapshot(options, {
+      resolveLatestReceipt: (_patterns, fallbackPath) => fallbackPath,
+      collectMatchingReceiptPaths: patterns => {
+        const first = patterns[0] ?? ''
+        if (first.includes('q-bridgebench-live-')) {
+          return [fakePaths.bridge, fakePaths.wandb]
+        }
+        if (first.includes('q-soak-live-')) {
+          return [fakePaths.soak]
+        }
+        if (first.includes('q-terminalbench-official-public-')) {
+          return [fakePaths.terminalPartial, fakePaths.terminalPreferred]
+        }
+        if (first.includes('q-terminalbench-soak-live-')) {
+          return [fakePaths.terminalSoakPartial, fakePaths.terminalSoakPreferred]
+        }
+        return []
+      },
+      readJson: path => {
+        switch (path) {
+          case fakePaths.bridge:
+            return {
+              benchmarkId: 'bridge-1',
+              generatedAt: '2026-04-16T00:00:00.000Z',
+              bestResult: { pack: 'all', score: 42.11, summary: 'BridgeBench summary' },
+            }
+          case fakePaths.soak:
+            return {
+              runId: 'soak-1',
+              generatedAt: '2026-04-16T00:05:00.000Z',
+              durationMinutes: 30,
+              summary: { totalProbes: 52, successCount: 52, errorCount: 0 },
+            }
+          case fakePaths.terminalPartial:
+            return {
+              runId: 'terminal-partial',
+              generatedAt: '2026-04-18T00:10:00.000Z',
+              officialSubmission: true,
+              tasks: [],
+              aggregate: {
+                totalTrials: 5,
+                executionErrorTrials: 0,
+              },
+              agent: 'openjaws',
+              model: 'oci:Q',
+            }
+          case fakePaths.terminalPreferred:
+            return {
+              runId: 'terminal-preferred',
+              generatedAt: '2026-04-17T00:10:00.000Z',
+              officialSubmission: true,
+              status: 'completed_with_errors',
+              tasks: [{ taskName: 'terminal-bench/circuit-fibsqrt' }],
+              aggregate: {
+                totalTrials: 5,
+                executionErrorTrials: 0,
+                benchmarkFailedTrials: 5,
+                avgReward: 0,
+              },
+              agent: 'openjaws',
+              model: 'oci:Q',
+            }
+          case fakePaths.terminalSoakPartial:
+            return {
+              runId: 'terminal-soak-partial',
+              generatedAt: '2026-04-18T00:12:00.000Z',
+              status: 'completed_with_errors',
+              tasks: [{ taskName: 'terminal-bench/circuit-fibsqrt' }],
+              cycles: [],
+              aggregate: {
+                totalTrials: 4,
+                executionErrorTrials: 0,
+              },
+            }
+          case fakePaths.terminalSoakPreferred:
+            return {
+              runId: 'terminal-soak-preferred',
+              generatedAt: '2026-04-17T00:12:00.000Z',
+              status: 'completed_with_errors',
+              tasks: [{ taskName: 'terminal-bench/circuit-fibsqrt' }],
+              cycles: [{}, {}],
+              aggregate: {
+                totalTrials: 4,
+                executionErrorTrials: 0,
+                benchmarkFailedTrials: 2,
+              },
+            }
+          case fakePaths.wandb:
+            return {
+              generatedAt: '2026-04-16T00:15:00.000Z',
+              wandb: { enabled: false, apiKeyPresent: false, source: 'none' },
+            }
+          default:
+            throw new Error(`Unexpected path ${path}`)
+        }
+      },
+    })
+
+    expect(snapshot.terminalBench.runId).toBe('terminal-preferred')
+    expect(snapshot.terminalBenchSoak.runId).toBe('terminal-soak-preferred')
+  })
+
   test('buildSnapshot derives completed_with_errors from benchmark-failing trials when receipt status is absent', () => {
     const options = parseArgs(['--terminalbench-submission-url', 'none'])
 
@@ -443,12 +610,6 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
 
     const snapshot = buildSnapshot(options, {
       resolveLatestReceipt: (patterns, fallbackPath) => {
-        if (patterns.some(pattern => pattern.includes('q-terminalbench-official-public-'))) {
-          return fakePaths.terminal
-        }
-        if (patterns.some(pattern => pattern.includes('q-terminalbench-soak-live-'))) {
-          return fakePaths.terminalSoak
-        }
         return fallbackPath
       },
       collectMatchingReceiptPaths: patterns => {
@@ -458,6 +619,12 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
         }
         if (first.includes('q-soak-live-')) {
           return [fakePaths.soak]
+        }
+        if (first.includes('q-terminalbench-official-public-')) {
+          return [fakePaths.terminal]
+        }
+        if (first.includes('q-terminalbench-soak-live-')) {
+          return [fakePaths.terminalSoak]
         }
         return []
       },

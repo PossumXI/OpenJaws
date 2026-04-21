@@ -277,6 +277,60 @@ export function buildWandbSummary(wandb: {
   }
 }
 
+type TerminalBenchReceipt = {
+  officialSubmission?: unknown
+  status?: unknown
+  tasks?: Array<{ taskName?: unknown }>
+  aggregate?: {
+    totalTrials?: unknown
+    executionErrorTrials?: unknown
+    benchmarkFailedTrials?: unknown
+  }
+}
+
+function hasTaskName(tasks: Array<{ taskName?: unknown }> | undefined): boolean {
+  return Boolean(
+    tasks?.some(
+      task => typeof task?.taskName === 'string' && task.taskName.trim().length > 0,
+    ),
+  )
+}
+
+export function isPreferredTerminalBenchReceipt(receipt: TerminalBenchReceipt): boolean {
+  return (
+    hasTaskName(receipt.tasks) &&
+    typeof receipt.aggregate?.totalTrials === 'number' &&
+    typeof receipt.aggregate?.executionErrorTrials === 'number' &&
+    typeof receipt.aggregate?.benchmarkFailedTrials === 'number' &&
+    (receipt.officialSubmission === true || typeof receipt.status === 'string')
+  )
+}
+
+type TerminalBenchSoakReceipt = {
+  status?: unknown
+  tasks?: Array<{ taskName?: unknown }>
+  cycles?: Array<unknown>
+  aggregate?: {
+    totalTrials?: unknown
+    executionErrorTrials?: unknown
+    benchmarkFailedTrials?: unknown
+  }
+}
+
+export function isPreferredTerminalBenchSoakReceipt(
+  receipt: TerminalBenchSoakReceipt,
+): boolean {
+  return (
+    hasTaskName(receipt.tasks) &&
+    Array.isArray(receipt.cycles) &&
+    receipt.cycles.length > 0 &&
+    typeof receipt.aggregate?.totalTrials === 'number' &&
+    typeof receipt.aggregate?.executionErrorTrials === 'number' &&
+    typeof receipt.aggregate?.benchmarkFailedTrials === 'number' &&
+    typeof receipt.status === 'string'
+  )
+}
+
 export function buildSnapshot(
   options: CliOptions,
   deps: SnapshotDeps = {
@@ -318,20 +372,28 @@ export function buildSnapshot(
       )
     },
   )
-  const terminalBenchReportPath = deps.resolveLatestReceipt(
+  const terminalBenchReportPath = resolveLatestPreferredReceipt(
     [
       resolve(repoRoot, 'artifacts', 'q-terminalbench-official-public-*', 'terminalbench-report.json'),
       resolve(repoRoot, 'artifacts', 'q-terminalbench-public-*', 'terminalbench-report.json'),
       resolve(repoRoot, 'artifacts', 'q-terminalbench-live-*', 'terminalbench-report.json'),
     ],
     options.terminalBenchReportPath,
+    deps.collectMatchingReceiptPaths,
+    deps.readJson,
+    receipt =>
+      isPreferredTerminalBenchReceipt(receipt as TerminalBenchReceipt),
   )
-  const terminalBenchSoakReportPath = deps.resolveLatestReceipt(
+  const terminalBenchSoakReportPath = resolveLatestPreferredReceipt(
     [
       resolve(repoRoot, 'artifacts', 'q-terminalbench-soak-live-*', 'terminalbench-report.json'),
       resolve(repoRoot, 'artifacts', 'q-terminalbench-soak-*', 'terminalbench-report.json'),
     ],
     options.terminalBenchSoakReportPath,
+    deps.collectMatchingReceiptPaths,
+    deps.readJson,
+    receipt =>
+      isPreferredTerminalBenchSoakReceipt(receipt as TerminalBenchSoakReceipt),
   )
   const wandbReportPath = resolveLatestPreferredReceipt(
     [resolve(repoRoot, 'artifacts', 'q-bridgebench-live-*', 'bridgebench-report.json')],
