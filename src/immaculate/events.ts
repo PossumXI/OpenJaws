@@ -14,6 +14,12 @@ const baseEventSchema = z.object({
 const sessionStartedEventSchema = baseEventSchema.extend({
   type: z.literal('session.started'),
   tracePath: z.string().min(1),
+  runId: z.string().min(1).optional(),
+  sessionScope: z.string().min(1).optional(),
+  repoPath: z.string().min(1).optional(),
+  worktreePath: z.string().min(1).optional(),
+  gitBranch: z.string().min(1).optional(),
+  repoSha: z.string().min(1).optional(),
 })
 
 const sessionEndedEventSchema = baseEventSchema.extend({

@@ -250,10 +250,12 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
               runId: 'terminal-1',
               generatedAt: '2026-04-16T00:10:00.000Z',
               officialSubmission: true,
+              status: 'completed_with_errors',
               tasks: [{ taskName: 'terminal-bench/circuit-fibsqrt' }],
               aggregate: {
                 totalTrials: 5,
                 executionErrorTrials: 0,
+                benchmarkFailedTrials: 5,
                 avgReward: 0,
               },
               agent: 'openjaws',
@@ -292,8 +294,11 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
     expect(snapshot.bridgeBench.scorePercent).toBe(42.11)
     expect(snapshot.soak.summary).toContain('52/52 probes succeeded')
     expect(snapshot.terminalBench.scope).toBe('Official TerminalBench 2.0 public task')
-    expect(snapshot.terminalBench.status).toBe('submitted')
+    expect(snapshot.terminalBench.status).toBe('completed_with_errors')
+    expect(snapshot.terminalBench.submissionState).toBe('submitted')
+    expect(snapshot.terminalBench.benchmarkFailedTrials).toBe(5)
     expect(snapshot.terminalBench.summary).toContain('official leaderboard submission')
+    expect(snapshot.terminalBench.summary).toContain('5 benchmark-failing trials')
     expect(snapshot.terminalBenchSoak.cycleCount).toBe(2)
     expect(snapshot.wandb.status).toBe('auth missing')
     expect(snapshot.source).toContain(fakePaths.bridge)
@@ -425,6 +430,108 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
     expect(snapshot.wandb.url).toBe('https://wandb.ai/example/project')
   })
 
+  test('buildSnapshot derives completed_with_errors from benchmark-failing trials when receipt status is absent', () => {
+    const options = parseArgs(['--terminalbench-submission-url', 'none'])
+
+    const fakePaths = {
+      bridge: 'fake://bridgebench',
+      soak: 'fake://soak',
+      terminal: 'fake://terminalbench',
+      terminalSoak: 'fake://terminalbench-soak',
+      wandb: 'fake://wandb',
+    }
+
+    const snapshot = buildSnapshot(options, {
+      resolveLatestReceipt: (patterns, fallbackPath) => {
+        if (patterns.some(pattern => pattern.includes('q-terminalbench-official-public-'))) {
+          return fakePaths.terminal
+        }
+        if (patterns.some(pattern => pattern.includes('q-terminalbench-soak-live-'))) {
+          return fakePaths.terminalSoak
+        }
+        return fallbackPath
+      },
+      collectMatchingReceiptPaths: patterns => {
+        const first = patterns[0] ?? ''
+        if (first.includes('q-bridgebench-live-')) {
+          return [fakePaths.bridge, fakePaths.wandb]
+        }
+        if (first.includes('q-soak-live-')) {
+          return [fakePaths.soak]
+        }
+        return []
+      },
+      readJson: path => {
+        switch (path) {
+          case fakePaths.bridge:
+            return {
+              benchmarkId: 'bridge-1',
+              generatedAt: '2026-04-16T00:00:00.000Z',
+              bestResult: {
+                pack: 'all',
+                score: 42.11,
+                summary: 'BridgeBench summary',
+              },
+            }
+          case fakePaths.soak:
+            return {
+              runId: 'soak-1',
+              generatedAt: '2026-04-16T00:05:00.000Z',
+              durationMinutes: 30,
+              summary: {
+                totalProbes: 52,
+                successCount: 52,
+                errorCount: 0,
+              },
+            }
+          case fakePaths.terminal:
+            return {
+              runId: 'terminal-1',
+              generatedAt: '2026-04-16T00:10:00.000Z',
+              officialSubmission: true,
+              tasks: [{ taskName: 'terminal-bench/circuit-fibsqrt' }],
+              aggregate: {
+                totalTrials: 5,
+                executionErrorTrials: 0,
+                benchmarkFailedTrials: 3,
+                avgReward: 0,
+              },
+              agent: 'openjaws',
+              model: 'oci:Q',
+            }
+          case fakePaths.terminalSoak:
+            return {
+              runId: 'terminal-soak-1',
+              generatedAt: '2026-04-16T00:12:00.000Z',
+              status: 'completed',
+              tasks: [{ taskName: 'terminal-bench/circuit-fibsqrt' }],
+              cycles: [{}, {}],
+              aggregate: {
+                totalTrials: 4,
+                executionErrorTrials: 0,
+                benchmarkFailedTrials: 0,
+              },
+            }
+          case fakePaths.wandb:
+            return {
+              generatedAt: '2026-04-16T00:15:00.000Z',
+              wandb: {
+                enabled: false,
+                apiKeyPresent: false,
+                source: 'none',
+              },
+            }
+          default:
+            throw new Error(`Unexpected path ${path}`)
+        }
+      },
+    })
+
+    expect(snapshot.terminalBench.status).toBe('completed_with_errors')
+    expect(snapshot.terminalBench.submissionState).toBe('not_submitted')
+    expect(snapshot.terminalBench.benchmarkFailedTrials).toBe(3)
+  })
+
   test('writeIfChanged only touches disk when the content changes', () => {
     const dir = makeTempDir('openjaws-snapshot-write-')
     const file = resolve(dir, 'benchmarkSnapshot.generated.json')
@@ -458,10 +565,13 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
         runId: 'fallback-terminal',
         taskName: 'circuit-fibsqrt',
         scope: 'Official TerminalBench 2.0 public task',
-        status: 'submitted',
+        status: 'completed_with_errors',
+        submissionState: 'submitted',
         agent: 'openjaws',
         model: 'oci:Q',
         outcome: 'reward 0.0 // 5 trials',
+        executionErrorTrials: 0,
+        benchmarkFailedTrials: 5,
         summary: 'Fallback terminal summary',
         submissionUrl: 'https://example.com/submission',
       },

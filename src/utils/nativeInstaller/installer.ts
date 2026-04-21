@@ -109,7 +109,7 @@ export function getPlatform(): string {
 }
 
 export function getBinaryName(platform: string): string {
-  return platform.startsWith('win32') ? 'claude.exe' : 'claude'
+  return platform.startsWith('win32') ? 'openjaws.exe' : 'openjaws'
 }
 
 function getBaseDirectories() {
@@ -118,13 +118,13 @@ function getBaseDirectories() {
 
   return {
     // Data directories (permanent storage)
-    versions: join(getXDGDataHome(), 'claude', 'versions'),
+    versions: join(getXDGDataHome(), 'openjaws', 'versions'),
 
     // Cache directories (can be deleted)
-    staging: join(getXDGCacheHome(), 'claude', 'staging'),
+    staging: join(getXDGCacheHome(), 'openjaws', 'staging'),
 
     // State directories
-    locks: join(getXDGStateHome(), 'claude', 'locks'),
+    locks: join(getXDGStateHome(), 'openjaws', 'locks'),
 
     // User bin
     executable: join(getUserBinDir(), executableName),
@@ -465,7 +465,7 @@ async function performVersionUpdate(
     logForDebugging(`Version ${version} already installed, updating symlink`)
   }
 
-  // Create direct symlink from ~/.local/bin/claude to the version binary
+  // Create direct symlink from ~/.local/bin/openjaws to the version binary
   await removeDirectoryIfEmpty(executablePath)
   await updateSymlink(executablePath, installPath)
 
@@ -845,7 +845,7 @@ export async function checkInstall(
     })
   }
 
-  // Check if claude executable exists and is valid.
+  // Check if the OpenJaws executable exists and is valid.
   // On non-Windows, call readlink directly and route errno — ENOENT means
   // the executable is missing, EINVAL means it exists but isn't a symlink.
   // This avoids an access()→readlink() TOCTOU where deletion between the
@@ -856,7 +856,7 @@ export async function checkInstall(
     // On Windows it's a copied executable, not a symlink
     if (!(await isPossibleOpenJawsBinary(dirs.executable))) {
       messages.push({
-        message: `installMethod is native, but claude command is missing or invalid at ${dirs.executable}`,
+        message: `installMethod is native, but openjaws command is missing or invalid at ${dirs.executable}`,
         userActionRequired: true,
         type: 'error',
       })
@@ -875,7 +875,7 @@ export async function checkInstall(
     } catch (e) {
       if (isENOENT(e)) {
         messages.push({
-          message: `installMethod is native, but claude command not found at ${dirs.executable}`,
+          message: `installMethod is native, but openjaws command not found at ${dirs.executable}`,
           userActionRequired: true,
           type: 'error',
         })
@@ -1195,7 +1195,7 @@ export async function cleanupOldVersions(): Promise<void> {
       const files = await readdir(executableDir)
       let cleanedCount = 0
       for (const file of files) {
-        if (!/^claude\.exe\.old\.\d+$/.test(file)) continue
+        if (!/^(?:openjaws|claude)\.exe\.old\.\d+$/.test(file)) continue
         try {
           await unlink(join(executableDir, file))
           cleanedCount++
@@ -1458,7 +1458,7 @@ async function isNpmSymlink(executablePath: string): Promise<boolean> {
 }
 
 /**
- * Remove the claude symlink from the executable directory
+ * Remove the OpenJaws symlink from the executable directory
  * This is used when switching away from native installation
  * Will only remove if it's a native binary symlink, not npm-managed JS files
  */
@@ -1476,12 +1476,12 @@ export async function removeInstalledSymlink(): Promise<void> {
 
     // It's a native binary symlink, safe to remove
     await unlink(dirs.executable)
-    logForDebugging(`Removed claude symlink at ${dirs.executable}`)
+    logForDebugging(`Removed OpenJaws symlink at ${dirs.executable}`)
   } catch (error) {
     if (isENOENT(error)) {
       return
     }
-    logError(new Error(`Failed to remove claude symlink: ${error}`))
+    logError(new Error(`Failed to remove OpenJaws symlink: ${error}`))
   }
 }
 
@@ -1560,27 +1560,31 @@ async function manualRemoveNpmPackage(
 
     if (getPlatform().startsWith('win32')) {
       // Windows - only remove executables, not the package directory
-      const binCmd = join(globalPrefix, 'claude.cmd')
-      const binPs1 = join(globalPrefix, 'claude.ps1')
-      const binExe = join(globalPrefix, 'claude')
+      for (const binaryName of ['openjaws', 'claude']) {
+        const binCmd = join(globalPrefix, `${binaryName}.cmd`)
+        const binPs1 = join(globalPrefix, `${binaryName}.ps1`)
+        const binExe = join(globalPrefix, binaryName)
 
-      if (await tryRemove(binCmd, 'bin script')) {
-        manuallyRemoved = true
-      }
+        if (await tryRemove(binCmd, 'bin script')) {
+          manuallyRemoved = true
+        }
 
-      if (await tryRemove(binPs1, 'PowerShell script')) {
-        manuallyRemoved = true
-      }
+        if (await tryRemove(binPs1, 'PowerShell script')) {
+          manuallyRemoved = true
+        }
 
-      if (await tryRemove(binExe, 'bin executable')) {
-        manuallyRemoved = true
+        if (await tryRemove(binExe, 'bin executable')) {
+          manuallyRemoved = true
+        }
       }
     } else {
       // Unix/Mac - only remove symlink, not the package directory
-      const binSymlink = join(globalPrefix, 'bin', 'claude')
+      for (const binaryName of ['openjaws', 'claude']) {
+        const binSymlink = join(globalPrefix, 'bin', binaryName)
 
-      if (await tryRemove(binSymlink, 'bin symlink')) {
-        manuallyRemoved = true
+        if (await tryRemove(binSymlink, 'bin symlink')) {
+          manuallyRemoved = true
+        }
       }
     }
 

@@ -132,6 +132,9 @@ export function parseDirectOperatorChatCommand(
       return { action: 'workspaces', cwd: null, text: null }
     case 'status':
       return { action: 'openjaws-status', cwd: null, text: null }
+    case 'roundtable':
+    case 'roundtable-status':
+      return { action: 'roundtable-status', cwd: null, text: null }
     case 'stop':
       return { action: 'stop-openjaws', cwd: null, text: null }
     case 'pending':

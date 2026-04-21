@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+import { mkdtempSync, writeFileSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import { buildRuntimeCoherenceReport } from './runtimeCoherence.js'
 
 describe('runtimeCoherence', () => {
@@ -200,5 +203,332 @@ describe('runtimeCoherence', () => {
     expect(
       report.checks.find(check => check.id === 'active-trace-vs-harness')?.status,
     ).toBe('failed')
+  })
+
+  test('warns when the voice runtime is enabled but not actually connected', () => {
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: {
+        version: 1,
+        updatedAt: '2026-04-20T12:00:00.000Z',
+        startedAt: '2026-04-20T10:00:00.000Z',
+        status: 'ready',
+        backend: 'Q backend',
+        guilds: [{ id: '1', name: 'Arobi' }],
+        gateway: {
+          connected: true,
+          userId: 'bot-1',
+          guildCount: 1,
+          lastSequence: 42,
+        },
+        schedule: {
+          enabled: true,
+          intervalMs: 900_000,
+          cycleCount: 2,
+        },
+        routing: {
+          lastDecision: null,
+          lastPostedChannelName: null,
+          lastPostedReason: null,
+          channels: [],
+        },
+        voice: {
+          enabled: true,
+          provider: 'system',
+          ready: true,
+          connected: false,
+          runtimeUrl: 'ws://127.0.0.1:8791',
+        },
+        patrol: {
+          snapshot: {
+            harnessReachable: true,
+            harnessSummary: 'reachable',
+            deckSummary: null,
+            workerSummary: null,
+            trainingSummary: null,
+            hybridSummary: null,
+            routeQueueSummary: null,
+            queueLength: 0,
+            recommendedLayerId: null,
+          },
+        },
+        knowledge: {
+          enabled: false,
+          ready: false,
+          fileCount: 0,
+          chunkCount: 0,
+        },
+        operator: {},
+        events: [],
+      },
+      immaculateTrace: null,
+      qTrace: null,
+      routeQueueDepth: 0,
+      roundtable: {
+        status: 'completed',
+        channelName: 'dev_support',
+      },
+    })
+
+    expect(report.status).toBe('warning')
+    expect(
+      report.checks.find(check => check.id === 'voice-runtime')?.status,
+    ).toBe('warning')
+  })
+
+  test('warns when the latest local trace summary points to a missing file path', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'openjaws-runtime-coherence-'))
+    const missingImmaculateTracePath = join(tempDir, 'missing-immaculate.trace.jsonl')
+    const missingQTracePath = join(tempDir, 'missing-q.trace.jsonl')
+
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: {
+        version: 1,
+        updatedAt: '2026-04-20T12:00:00.000Z',
+        startedAt: '2026-04-20T10:00:00.000Z',
+        status: 'ready',
+        backend: 'Q backend',
+        guilds: [{ id: '1', name: 'Arobi' }],
+        gateway: {
+          connected: true,
+          userId: 'bot-1',
+          guildCount: 1,
+          lastSequence: 42,
+        },
+        schedule: {
+          enabled: true,
+          intervalMs: 900_000,
+          cycleCount: 2,
+        },
+        routing: {
+          lastDecision: null,
+          lastPostedChannelName: null,
+          lastPostedReason: null,
+          channels: [],
+        },
+        voice: {
+          enabled: false,
+          provider: 'system',
+          ready: false,
+          connected: false,
+        },
+        patrol: {
+          snapshot: {
+            harnessReachable: true,
+            harnessSummary: 'reachable',
+            deckSummary: null,
+            workerSummary: null,
+            trainingSummary: null,
+            hybridSummary: null,
+            routeQueueSummary: null,
+            queueLength: 0,
+            recommendedLayerId: null,
+          },
+        },
+        knowledge: {
+          enabled: false,
+          ready: false,
+          fileCount: 0,
+          chunkCount: 0,
+        },
+        operator: {},
+        events: [],
+      },
+      immaculateTrace: {
+        path: missingImmaculateTracePath,
+        sessionId: 'immaculate-1',
+        eventCount: 5,
+        startedAt: '2026-04-20T10:00:00.000Z',
+        endedAt: null,
+        lastTimestamp: '2026-04-20T10:05:00.000Z',
+        runState: 'completed',
+        countsByType: {},
+        routeDispatchCount: 1,
+        routeLeaseCount: 1,
+        workerAssignmentCount: 1,
+        latestRouteId: 'route-1',
+        latestWorkerId: 'worker-1',
+        interactionLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        llmLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        reflexLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        cognitiveLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+      },
+      qTrace: {
+        path: missingQTracePath,
+        kind: 'benchmark',
+        sessionId: 'q-1',
+        eventCount: 2,
+        startedAt: '2026-04-20T10:00:00.000Z',
+        endedAt: null,
+        lastTimestamp: '2026-04-20T10:05:00.000Z',
+        runState: 'completed',
+        countsByType: {},
+        routeDispatchCount: 0,
+        routeLeaseCount: 0,
+        workerAssignmentCount: 0,
+        latestRouteId: null,
+        latestWorkerId: null,
+        interactionLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        llmLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        reflexLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        cognitiveLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+      },
+    })
+
+    expect(report.status).toBe('warning')
+    expect(report.checks.find(check => check.id === 'immaculate-trace-path')?.status).toBe(
+      'warning',
+    )
+    expect(report.checks.find(check => check.id === 'q-trace-path')?.status).toBe('warning')
+  })
+
+  test('warns when the trace provenance path in session.started diverges from the summary path', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'openjaws-runtime-coherence-provenance-'))
+    const immaculateTracePath = join(tempDir, 'immaculate.trace.jsonl')
+    const qTracePath = join(tempDir, 'q.trace.jsonl')
+
+    writeFileSync(
+      immaculateTracePath,
+      [
+        JSON.stringify({
+          schemaVersion: 'immaculate.event.v1',
+          timestamp: '2026-04-20T10:00:00.000Z',
+          sessionId: 'immaculate-1',
+          type: 'session.started',
+          tracePath: join(tempDir, 'elsewhere.trace.jsonl'),
+        }),
+      ].join('\n'),
+      'utf8',
+    )
+
+    writeFileSync(
+      qTracePath,
+      [
+        JSON.stringify({
+          schemaVersion: 'immaculate.event.v1',
+          timestamp: '2026-04-20T10:00:00.000Z',
+          sessionId: 'q-1',
+          type: 'session.started',
+          tracePath: join(tempDir, 'elsewhere-q.trace.jsonl'),
+        }),
+      ].join('\n'),
+      'utf8',
+    )
+
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: {
+        version: 1,
+        updatedAt: '2026-04-20T12:00:00.000Z',
+        startedAt: '2026-04-20T10:00:00.000Z',
+        status: 'ready',
+        backend: 'Q backend',
+        guilds: [{ id: '1', name: 'Arobi' }],
+        gateway: {
+          connected: true,
+          userId: 'bot-1',
+          guildCount: 1,
+          lastSequence: 42,
+        },
+        schedule: {
+          enabled: true,
+          intervalMs: 900_000,
+          cycleCount: 2,
+        },
+        routing: {
+          lastDecision: null,
+          lastPostedChannelName: null,
+          lastPostedReason: null,
+          channels: [],
+        },
+        voice: {
+          enabled: false,
+          provider: 'system',
+          ready: false,
+          connected: false,
+        },
+        patrol: {
+          snapshot: {
+            harnessReachable: true,
+            harnessSummary: 'reachable',
+            deckSummary: null,
+            workerSummary: null,
+            trainingSummary: null,
+            hybridSummary: null,
+            routeQueueSummary: null,
+            queueLength: 0,
+            recommendedLayerId: null,
+          },
+        },
+        knowledge: {
+          enabled: false,
+          ready: false,
+          fileCount: 0,
+          chunkCount: 0,
+        },
+        operator: {},
+        events: [],
+      },
+      immaculateTrace: {
+        path: immaculateTracePath,
+        sessionId: 'immaculate-1',
+        eventCount: 1,
+        startedAt: '2026-04-20T10:00:00.000Z',
+        endedAt: null,
+        lastTimestamp: '2026-04-20T10:00:00.000Z',
+        runState: 'completed',
+        countsByType: {},
+        routeDispatchCount: 0,
+        routeLeaseCount: 0,
+        workerAssignmentCount: 0,
+        latestRouteId: null,
+        latestWorkerId: null,
+        interactionLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        llmLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        reflexLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        cognitiveLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+      },
+      qTrace: {
+        path: qTracePath,
+        kind: 'benchmark',
+        sessionId: 'q-1',
+        eventCount: 1,
+        startedAt: '2026-04-20T10:00:00.000Z',
+        endedAt: null,
+        lastTimestamp: '2026-04-20T10:00:00.000Z',
+        runState: 'completed',
+        countsByType: {},
+        routeDispatchCount: 0,
+        routeLeaseCount: 0,
+        workerAssignmentCount: 0,
+        latestRouteId: null,
+        latestWorkerId: null,
+        interactionLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        llmLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        reflexLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        cognitiveLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+      },
+    })
+
+    expect(report.status).toBe('warning')
+    expect(
+      report.checks.find(check => check.id === 'immaculate-trace-provenance')?.status,
+    ).toBe('warning')
+    expect(report.checks.find(check => check.id === 'q-trace-provenance')?.status).toBe(
+      'warning',
+    )
   })
 })

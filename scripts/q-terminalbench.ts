@@ -14,6 +14,7 @@ import {
   appendBenchmarkTraceEvent,
   closeBenchmarkTraceWriter,
   createBenchmarkTraceWriter,
+  type BenchmarkTraceSessionMetadata,
 } from '../src/immaculate/benchmarkTrace.js'
 import {
   buildBenchmarkSeedEnv,
@@ -52,6 +53,7 @@ import {
 import { resolveOciQRuntime } from '../src/utils/ociQRuntime.js'
 
 type AgentMode = 'openjaws' | 'oracle'
+type TerminalBenchSessionMetadata = BenchmarkTraceSessionMetadata
 
 type CliOptions = {
   root: string
@@ -390,6 +392,48 @@ function sanitizeSubmissionSlug(value: string): string {
     .replace(/^-+|-+$/g, '') || 'submission'
 }
 
+function buildTerminalBenchSessionScope(options: Pick<CliOptions, 'officialSubmission' | 'soak'>): string {
+  if (options.officialSubmission) {
+    return 'terminalbench:official'
+  }
+  return options.soak ? 'terminalbench:soak' : 'terminalbench:bounded'
+}
+
+async function readGitText(args: {
+  cwd: string
+  argv: string[]
+}): Promise<string | null> {
+  const result = await execa('git', ['-C', args.cwd, ...args.argv], {
+    reject: false,
+    windowsHide: true,
+    timeout: 10_000,
+  })
+  const text = (result.stdout || result.stderr || '').trim()
+  return result.exitCode === 0 && text ? text : null
+}
+
+export async function resolveTerminalBenchSessionMetadata(args: {
+  root: string
+  runId: string
+  options: Pick<CliOptions, 'officialSubmission' | 'soak'>
+}): Promise<TerminalBenchSessionMetadata> {
+  const repoPath = resolve(args.root)
+  const [worktreePath, gitBranch, repoSha] = await Promise.all([
+    readGitText({ cwd: repoPath, argv: ['rev-parse', '--show-toplevel'] }),
+    readGitText({ cwd: repoPath, argv: ['rev-parse', '--abbrev-ref', 'HEAD'] }),
+    readGitText({ cwd: repoPath, argv: ['rev-parse', 'HEAD'] }),
+  ])
+
+  return {
+    runId: args.runId,
+    sessionScope: buildTerminalBenchSessionScope(args.options),
+    repoPath,
+    worktreePath: worktreePath ?? repoPath,
+    gitBranch: gitBranch && gitBranch !== 'HEAD' ? gitBranch : null,
+    repoSha,
+  }
+}
+
 function collectAgentEnv(options?: { officialSubmission?: boolean; model?: string | null }): Record<string, string> {
   const envNames = [
     'Q_API_KEY',
@@ -462,10 +506,6 @@ function normalizeTaskFilter(options: CliOptions, value: string): string {
 
 function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): string[] {
   const attemptJobName = resolveAttemptJobName(options, cycle, attempt)
-  const agentEnv = collectAgentEnv({
-    officialSubmission: options.officialSubmission,
-    model: options.model,
-  })
   const args = [
     'run',
     '--dataset',
@@ -513,12 +553,6 @@ function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): s
     if (options.model) {
       args.push('--model', options.model)
     }
-    for (const [name, value] of Object.entries(agentEnv)) {
-      args.push('--ek', `${name}=${value}`)
-    }
-    for (const [name, value] of Object.entries(buildBenchmarkSeedEnv(options.seed))) {
-      args.push('--ek', `${name}=${value}`)
-    }
   }
 
   if (options.exportTraces) {
@@ -535,6 +569,27 @@ function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): s
   }
 
   return args
+}
+
+function buildHarborProcessEnv(options: CliOptions): Record<string, string> {
+  const env: Record<string, string> = {
+    ...buildBenchmarkSeedEnv(options.seed),
+    PYTHONUTF8: '1',
+    PYTHONIOENCODING: 'utf-8',
+    NO_COLOR: '1',
+    FORCE_COLOR: '0',
+    TERM: 'dumb',
+  }
+  if (options.agent === 'openjaws') {
+    Object.assign(
+      env,
+      collectAgentEnv({
+        officialSubmission: options.officialSubmission,
+        model: options.model,
+      }),
+    )
+  }
+  return env
 }
 
 function redactHarborArgs(args: string[]): string[] {
@@ -1023,14 +1078,7 @@ async function runHarborAttempt(args: {
     reject: false,
     windowsHide: true,
     timeout: args.options.timeoutMs,
-    env: {
-      ...buildBenchmarkSeedEnv(args.options.seed),
-      PYTHONUTF8: '1',
-      PYTHONIOENCODING: 'utf-8',
-      NO_COLOR: '1',
-      FORCE_COLOR: '0',
-      TERM: 'dumb',
-    },
+    env: buildHarborProcessEnv(args.options),
   })
 
   const expectedJobName = resolveAttemptJobName(args.options, args.cycle, args.attempt)
@@ -1134,6 +1182,7 @@ function writeSignedBenchmarkArtifacts(args: {
     reportSha256: sha256File(reportPath),
     seed: args.report.seed ?? null,
     traceReferences: args.report.traceReferences,
+    provenance: args.report.provenance ?? null,
     summary: args.report.summary ?? null,
     status: args.report.status ?? null,
   }
@@ -1170,9 +1219,15 @@ async function main() {
     options.jobName = options.jobName ?? `${runId}-official`
   }
   validateOfficialSubmissionOptions(options)
+  const sessionMetadata = await resolveTerminalBenchSessionMetadata({
+    root: options.root,
+    runId,
+    options,
+  })
   const traceWriter = createBenchmarkTraceWriter({
     outputDir,
     sessionId: runId,
+    sessionMetadata,
   })
 
   const checks: PreflightCheck[] = await runQPreflightChecks({
@@ -1230,6 +1285,7 @@ async function main() {
     officialSubmission: options.officialSubmission,
     harborCommand: options.harborCommand,
     harborArgs: redactHarborArgs(representativeHarborArgs),
+    provenance: sessionMetadata,
     agentEnvNames:
       options.agent === 'openjaws'
         ? Object.keys(

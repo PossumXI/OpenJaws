@@ -134,6 +134,10 @@ export async function runScriptedOpenJawsOperatorJob(args: {
   commitAuthorName?: string
   commitAuthorEmail?: string
   commitMessage?: string
+  commitWhen?: (args: {
+    changedFiles: string[]
+    verification: DiscordOperatorVerificationResult
+  }) => boolean
 }): Promise<DiscordOperatorExecutionResult> {
   mkdirSync(args.outputDir, { recursive: true })
   const transientConfigDir =
@@ -194,8 +198,17 @@ export async function runScriptedOpenJawsOperatorJob(args: {
           stdout: null,
           stderr: null,
         }
+  const shouldCommit =
+    changedFiles.length > 0 &&
+    verification.passed &&
+    (args.commitWhen
+      ? args.commitWhen({
+          changedFiles,
+          verification,
+        })
+      : true)
   const commitSha =
-    args.runContext.worktreePath && changedFiles.length > 0 && verification.passed
+    args.runContext.worktreePath && shouldCommit
       ? commitOperatorWorktree({
           worktreePath: args.runContext.worktreePath,
           prompt: args.prompt,

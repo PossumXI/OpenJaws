@@ -116,16 +116,15 @@ function isCodeChangePath(path: string): boolean {
   )
 }
 
-export function classifyDiscordRoundtableExecution(args: {
+export function inspectDiscordRoundtableExecution(args: {
   changedFiles: string[]
   verificationPassed: boolean
-  commitSha: string | null
 }): {
   hasCodeChanges: boolean
   artifactOnly: boolean
   hasDisallowedChanges: boolean
   verificationPassed: boolean
-  mergeable: boolean
+  commitAllowed: boolean
 } {
   const normalized = args.changedFiles
     .map(path => path.replace(/\\/g, '/').replace(/^\.\//, '').trim())
@@ -137,18 +136,40 @@ export function classifyDiscordRoundtableExecution(args: {
   const artifactOnly =
     normalized.length > 0 && normalized.every(path => isNonMergeablePath(path))
   const verificationPassed = args.verificationPassed
-  const mergeable =
-    Boolean(args.commitSha) &&
-    verificationPassed &&
-    hasCodeChanges &&
-    !artifactOnly &&
-    !hasDisallowedChanges
   return {
     hasCodeChanges,
     artifactOnly,
     hasDisallowedChanges,
     verificationPassed,
-    mergeable,
+    commitAllowed:
+      verificationPassed &&
+      hasCodeChanges &&
+      !artifactOnly &&
+      !hasDisallowedChanges,
+  }
+}
+
+export function classifyDiscordRoundtableExecution(args: {
+  changedFiles: string[]
+  verificationPassed: boolean
+  commitSha: string | null
+}): {
+  hasCodeChanges: boolean
+  artifactOnly: boolean
+  hasDisallowedChanges: boolean
+  verificationPassed: boolean
+  mergeable: boolean
+} {
+  const inspected = inspectDiscordRoundtableExecution({
+    changedFiles: args.changedFiles,
+    verificationPassed: args.verificationPassed,
+  })
+  return {
+    hasCodeChanges: inspected.hasCodeChanges,
+    artifactOnly: inspected.artifactOnly,
+    hasDisallowedChanges: inspected.hasDisallowedChanges,
+    verificationPassed: inspected.verificationPassed,
+    mergeable: Boolean(args.commitSha) && inspected.commitAllowed,
   }
 }
 
@@ -264,6 +285,11 @@ export async function executeDiscordRoundtableAction(args: {
     commitAuthorName: `${args.personaName} Roundtable`,
     commitAuthorEmail: `${args.personaId}-roundtable@local.invalid`,
     commitMessage: `[roundtable/${args.personaId}] ${args.action.title}`,
+    commitWhen: ({ changedFiles, verification }) =>
+      inspectDiscordRoundtableExecution({
+        changedFiles,
+        verificationPassed: verification.passed,
+      }).commitAllowed,
   })
 
   const receiptPath = join(outputDir, 'receipt.json')
