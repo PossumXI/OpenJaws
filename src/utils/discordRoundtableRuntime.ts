@@ -265,12 +265,34 @@ function parseIsoTimestampMs(value: string | null | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function getDiscordRoundtableObservedRuntimeDirs(root = process.cwd()): string[] {
+  const primary = getDiscordRoundtableRuntimeDir(root)
+  const nested = join(primary, 'roundtable-runtime')
+  return existsSync(nested) ? [primary, nested] : [primary]
+}
+
 function getDiscordRoundtableLogPath(root = process.cwd()): string {
-  return join(getDiscordRoundtableRuntimeDir(root), 'discord-roundtable.log')
+  const candidates = getDiscordRoundtableObservedRuntimeDirs(root)
+    .map(dir => join(dir, 'discord-roundtable.log'))
+    .filter(path => existsSync(path))
+
+  if (candidates.length === 0) {
+    return join(getDiscordRoundtableRuntimeDir(root), 'discord-roundtable.log')
+  }
+
+  const ranked = candidates.sort((left, right) => {
+    try {
+      return statSync(right).mtimeMs - statSync(left).mtimeMs
+    } catch {
+      return 0
+    }
+  })
+  return ranked[0]!
 }
 
 function extractRoundtableChannelNameFromLogLine(line: string): string | null {
-  const match = /roundtable window \d+ live in #([a-z0-9._-]+)/i.exec(line)
+  const match =
+    /roundtable(?: window \d+)? live in #([a-z0-9._-]+)/i.exec(line)
   return match?.[1]?.trim() || null
 }
 
@@ -477,10 +499,6 @@ function normalizeDiscordRoundtableSessionStatus(
 function readLegacyDiscordRoundtableSessionState(
   root = process.cwd(),
 ): Partial<DiscordRoundtableSessionState> | null {
-  const parsed = readJsonFile<JsonRecord>(getDiscordRoundtableStatePath(root))
-  if (!parsed) {
-    return null
-  }
   const legacySessionFields = [
     'startedAt',
     'endsAt',
@@ -495,10 +513,24 @@ function readLegacyDiscordRoundtableSessionState(
     'lastSpeaker',
     'processedCommandMessageIds',
   ]
-  if (!legacySessionFields.some(field => field in parsed)) {
-    return null
+
+  let selected: JsonRecord | null = null
+  let selectedUpdatedAtMs = Number.NEGATIVE_INFINITY
+  for (const runtimeDir of getDiscordRoundtableObservedRuntimeDirs(root)) {
+    const parsed = readJsonFile<JsonRecord>(join(runtimeDir, 'discord-roundtable.state.json'))
+    if (!parsed || !legacySessionFields.some(field => field in parsed)) {
+      continue
+    }
+    const parsedUpdatedAtMs = parseIsoTimestampMs(asString(parsed.updatedAt))
+    const rank =
+      parsedUpdatedAtMs ?? (selected === null ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY)
+    if (selected === null || rank >= selectedUpdatedAtMs) {
+      selected = parsed
+      selectedUpdatedAtMs = rank
+    }
   }
-  return parsed as Partial<DiscordRoundtableSessionState>
+
+  return selected as Partial<DiscordRoundtableSessionState> | null
 }
 
 export function loadDiscordRoundtableRuntimeState(

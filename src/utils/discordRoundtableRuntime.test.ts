@@ -263,6 +263,81 @@ describe('discordRoundtableRuntime', () => {
     })
   })
 
+  it('prefers nested bundle runtime session and log data when the live roundtable falls back to the bundled entrypoint', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-bundle-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    const nestedRuntimeDir = join(runtimeDir, 'roundtable-runtime')
+    mkdirSync(nestedRuntimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T12:00:00.000Z',
+          roundtableChannelName: 'q-roundtable',
+          lastSummary: 'stale top-level state',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(nestedRuntimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T13:14:57.078Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'Q posted turn 1',
+          lastError: null,
+          startedAt: '2026-04-21T13:14:12.770Z',
+          endsAt: '2026-04-21T17:14:12.770Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          turnCount: 1,
+          nextPersona: 'viola',
+          lastSpeaker: 'q',
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(nestedRuntimeDir, 'discord-roundtable.log'),
+      [
+        '[2026-04-21T13:14:13.838Z] roundtable live in #dev_support (1426904647313916014), ends 2026-04-21T17:14:12.770Z',
+        '[2026-04-21T13:14:57.074Z] Q posted turn 1',
+      ].join('\n'),
+      'utf8',
+    )
+
+    const queueState = loadDiscordRoundtableRuntimeState(root)
+    const sessionState = loadDiscordRoundtableSessionState(root)
+
+    expect(queueState.roundtableChannelName).toBe('dev_support')
+    expect(queueState.lastSummary).toBe('Q posted turn 1')
+    expect(queueState.updatedAt).toBe('2026-04-21T13:14:57.074Z')
+    expect(sessionState).toMatchObject({
+      roundtableChannelName: 'dev_support',
+      startedAt: '2026-04-21T13:14:12.770Z',
+      endsAt: '2026-04-21T17:14:12.770Z',
+      turnCount: 1,
+      nextPersona: 'viola',
+      lastSpeaker: 'q',
+      lastSummary: 'Q posted turn 1',
+    })
+  })
+
   it('processes mergeable jobs into awaiting-approval operator pushes', async () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-'))
     tempDirs.push(root)

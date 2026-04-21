@@ -38,6 +38,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - the tracked roundtable scheduler policy now owns fallback root scoring, approval TTL resolution, and reply/PASS inspection as well, which gives the private Discord loop a tested way to prefer repo-grounded progress over idle `PASS` turns
 - the shared roundtable execution classifier now fails mixed code-plus-artifact outputs closed, so only verified code-bearing branches without generated audit or artifact spillover reach the approval checkpoint
 - the governed roundtable session reader now keeps `executing queued action` in the `running` state instead of collapsing it back to `queued`, which fixes one of the last live-session truth leaks during autonomous runs
+- the tracked roundtable readers now also detect the nested `roundtable-runtime/roundtable-runtime` output that the bundled private fallback writes, so status/coherence surfaces stop reading stale top-level files when the live Discord lane is healthy
 
 ## Agent Co-Work
 
