@@ -1,9 +1,10 @@
-import { existsSync, readFileSync } from 'fs'
+import { existsSync } from 'fs'
 import { resolve } from 'path'
 import { buildRuntimeCoherenceReport } from '../src/immaculate/runtimeCoherence.js'
 import { readLatestImmaculateTraceSummary } from '../src/immaculate/traceSummary.js'
 import { readLatestQTraceSummary } from '../src/q/traceSummary.js'
 import { readDiscordQAgentReceipt } from '../src/utils/discordQAgentRuntime.js'
+import { loadDiscordRoundtableRuntimeState } from '../src/utils/discordRoundtableRuntime.js'
 import { getImmaculateHarnessStatus } from '../src/utils/immaculateHarness.js'
 import { readQTrainingRouteQueue } from '../src/utils/qTraining.js'
 
@@ -61,29 +62,17 @@ async function probeJsonHealth(
 }
 
 function readRoundtableState(root: string) {
-  const statePath = resolve(
-    root,
-    'local-command-station',
-    'roundtable-runtime',
-    'discord-roundtable.state.json',
-  )
+  const statePath = resolve(root, 'local-command-station', 'roundtable-runtime')
   if (!existsSync(statePath)) {
     return null
   }
-  const parsed = JSON.parse(readFileSync(statePath, 'utf8')) as Record<
-    string,
-    unknown
-  >
+  const parsed = loadDiscordRoundtableRuntimeState(root)
   return {
-    status: typeof parsed.status === 'string' ? parsed.status : null,
-    updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null,
-    channelName:
-      typeof parsed.roundtableChannelName === 'string'
-        ? parsed.roundtableChannelName
-        : null,
-    lastSummary:
-      typeof parsed.lastSummary === 'string' ? parsed.lastSummary : null,
-    lastError: typeof parsed.lastError === 'string' ? parsed.lastError : null,
+    status: parsed.status,
+    updatedAt: parsed.updatedAt,
+    channelName: parsed.roundtableChannelName,
+    lastSummary: parsed.lastSummary,
+    lastError: parsed.lastError,
   }
 }
 

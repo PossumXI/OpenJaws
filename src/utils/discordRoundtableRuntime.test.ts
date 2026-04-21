@@ -8,6 +8,7 @@ import {
   formatDiscordRoundtableTransitionReceipt,
   getOpenJawsOperatorStatePath,
   ingestDiscordRoundtableHandoff,
+  loadDiscordRoundtableRuntimeState,
   processDiscordRoundtableRuntime,
   type DiscordRoundtableTrackedJob,
 } from './discordRoundtableRuntime.js'
@@ -126,6 +127,49 @@ describe('discordRoundtableRuntime', () => {
 
     expect(ingested.ingestedCount).toBe(0)
     expect(ingested.state.jobs).toHaveLength(0)
+  })
+
+  it('reconciles stale state with the live roundtable log snapshot', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-log-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    mkdirSync(runtimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T00:00:00.000Z',
+          roundtableChannelName: 'q-roundtable',
+          lastSummary: 'roundtable booting',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.log'),
+      [
+        '[2026-04-21T00:01:00.000Z] roundtable window 1 live in #dev_support (1426904647313916014), ends 2026-04-21T04:01:00.000Z',
+        '[2026-04-21T00:07:09.643Z] Q action awaiting_approval: Q audit-and-tighten pass',
+      ].join('\n'),
+      'utf8',
+    )
+
+    const state = loadDiscordRoundtableRuntimeState(root)
+
+    expect(state.roundtableChannelName).toBe('dev_support')
+    expect(state.updatedAt).toBe('2026-04-21T00:07:09.643Z')
+    expect(state.lastSummary).toBe(
+      'Q action awaiting_approval: Q audit-and-tighten pass',
+    )
+    expect(state.status).toBe('awaiting_approval')
   })
 
   it('processes mergeable jobs into awaiting-approval operator pushes', async () => {

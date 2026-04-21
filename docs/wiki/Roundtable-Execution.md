@@ -33,6 +33,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - `src/utils/discordRoundtableScheduler.ts` is the tracked policy source for fallback root selection, approval TTL, and reply/PASS reduction heuristics.
 - `scripts/roundtable-runtime.ts` is the tracked CLI wrapper around the shared runtime path.
 - The live Discord runtime now posts roundtable transition receipts back into the configured `q-roundtable` lane, with a fallback to `openjaws-updates` if the dedicated roundtable channel is not present yet.
+- The tracked runtime readers now also reconcile the live `discord-roundtable.log`, so `@Q operator roundtable-status` and `bun run runtime:coherence` show the actual active lane such as `#dev_support` when the persisted session file drifts from the bound Discord channel.
 - Approval-ready transitions include the generated branch, verification summary, and attached `receipt.json` so operators can confirm from Discord without opening the local state file first.
 - `runtime:coherence` reads the roundtable state file directly, so coherence checks can see whether the lane is idle, queued, running, or waiting for approval.
 - The queue is repo-scoped on purpose. It does not stack multiple active roundtable jobs onto the same project lane at once.

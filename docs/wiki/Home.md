@@ -146,6 +146,7 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 - the tracked roundtable scheduler policy now owns fallback root scoring, approval TTL resolution, and reply/PASS inspection too, so the live Discord loop can pull fewer empty turns without drifting away from the tested shared code
 - the tracked shared Discord execution modules now also own the queued lease, dedupe, approval-target, and roundtable-executor path, so direct operator jobs and roundtable jobs now reconcile through one tracked job model instead of two private queue variants
 - the tracked roundtable runtime now emits explicit queue transition receipts plus `roundtable-status` summaries, so approval-ready branches, skipped jobs, and rejected jobs stay visible without scraping private runtime logs
+- the tracked roundtable/runtime readers now also reconcile the live Discord log when the persisted session file drifts, so coherence and status surfaces show the actual active channel and freshest approval summary instead of a stale preferred-channel alias
 - that shared roundtable execution classifier now fails mixed code-plus-artifact outputs closed, so only verified code-bearing branches without generated audit or artifact spillover enter the approval lane
 - that same operator lane can now hand off bounded work to the hosted `@openjaws` GitHub App by opening a prepared issue against the target repo, which lets supervised work continue remotely when the local machine goes offline
 
