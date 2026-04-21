@@ -20,6 +20,24 @@ Switch OpenJaws to the local `Q` path:
 That stores `ollama:q` as a first-class model option and makes plain
 `/provider use ollama` resolve to your local `Q` default.
 
+Default local Ollama traffic stays on the normal Ollama lane at
+`http://127.0.0.1:11434`.
+
+If you want local `Q` specifically to follow the dedicated Immaculate-style lane
+while other Ollama models stay on the normal port, set `OPENJAWS_OLLAMA_Q_BASE_URL`
+or, if you need the shared alias, `OLLAMA_Q_BASE_URL`:
+
+```powershell
+$env:OPENJAWS_OLLAMA_Q_BASE_URL = 'http://127.0.0.1:11435'
+/provider use ollama q
+/provider test ollama q
+```
+
+That override only applies to `ollama:q` or `ollama:q:latest`, and it beats the
+generic provider-level Ollama base URL. Generic Ollama models still follow
+`OLLAMA_BASE_URL` or the default `http://127.0.0.1:11434`. An explicit
+per-model override for `ollama:q` still wins if you set one in `settings.json`.
+
 ## Dataset Export
 
 Export real OpenJaws transcripts into JSONL:

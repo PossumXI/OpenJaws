@@ -2,7 +2,9 @@ import { existsSync } from 'fs'
 import { resolve } from 'path'
 import { execa } from 'execa'
 import {
+  buildSkippedQProviderProbeCheck,
   buildQProviderProbeCheck,
+  isDedicatedLocalQModelRef,
   probeQProviderModel,
   runOpenJawsProviderPreflight,
   type QPreflightCheck,
@@ -13,6 +15,7 @@ export const DEFAULT_CLOCK_SKEW_MAX_MS = 30_000
 
 export type QPreflightRequirement =
   | 'openjaws-binary'
+  | 'q-provider-runtime'
   | 'oci-q-runtime'
   | 'openjaws-provider-preflight'
   | 'bundle-manifest'
@@ -188,9 +191,9 @@ export function resolveQPreflightRequirementsForBench(
 ): readonly QPreflightRequirement[] {
   switch (bench) {
     case 'bridgebench':
-      return ['bundle-manifest', 'python-runtime', 'oci-q-runtime']
+      return ['bundle-manifest', 'python-runtime', 'q-provider-runtime']
     case 'soak':
-      return ['openjaws-binary', 'oci-q-runtime']
+      return ['openjaws-binary', 'q-provider-runtime']
     case 'terminalbench':
       return ['harbor', 'docker', 'openjaws-provider-preflight', 'clock-skew']
     default:
@@ -218,7 +221,10 @@ export async function runQPreflightChecks(
         })
         break
       }
+      case 'q-provider-runtime':
       case 'oci-q-runtime': {
+        const checkName =
+          requirement === 'oci-q-runtime' ? 'oci-q-runtime' : 'q-provider-runtime'
         const providerProbe = await probeQProviderModel({
           preferDirectQ: options.preferDirectQ,
           model: options.model,
@@ -227,9 +233,20 @@ export async function runQPreflightChecks(
         if (providerProbe) {
           checks.push(
             buildQProviderProbeCheck({
-              name: 'oci-q-runtime',
+              name: checkName,
               result: providerProbe,
               warnOnFailure: options.warnOnProviderFailure,
+            }),
+          )
+        } else if (
+          checkName === 'q-provider-runtime' &&
+          !options.preferDirectQ &&
+          isDedicatedLocalQModelRef(options.model)
+        ) {
+          checks.push(
+            buildSkippedQProviderProbeCheck({
+              name: checkName,
+              model: options.model!,
             }),
           )
         }

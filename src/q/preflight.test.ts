@@ -24,11 +24,11 @@ describe('q preflight helpers', () => {
     expect(resolveQPreflightRequirementsForBench('bridgebench')).toEqual([
       'bundle-manifest',
       'python-runtime',
-      'oci-q-runtime',
+      'q-provider-runtime',
     ])
     expect(resolveQPreflightRequirementsForBench('soak')).toEqual([
       'openjaws-binary',
-      'oci-q-runtime',
+      'q-provider-runtime',
     ])
     expect(resolveQPreflightRequirementsForBench('terminalbench')).toEqual([
       'harbor',

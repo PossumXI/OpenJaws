@@ -62,6 +62,11 @@ export type ConfiguredExternalModel = {
   description: string
 }
 
+const DEDICATED_LOCAL_Q_OLLAMA_BASE_URL_ENV_VARS = [
+  'OPENJAWS_OLLAMA_Q_BASE_URL',
+  'OLLAMA_Q_BASE_URL',
+] as const
+
 const PROVIDER_DEFAULTS: Record<ExternalModelProvider, ProviderDefaults> = {
   oci: {
     label: 'Q on OCI',
@@ -197,6 +202,15 @@ function getBaseUrlFromEnvChain(
   return { baseURL: null, baseURLSource: null }
 }
 
+function isDedicatedLocalQOllamaModel(modelRef: ExternalModelRef): boolean {
+  if (modelRef.provider !== 'ollama') {
+    return false
+  }
+
+  const normalized = modelRef.model.trim().toLowerCase()
+  return normalized === 'q' || normalized === 'q:latest'
+}
+
 function resolveModelPrefix(rawModel: string): ExternalModelRef | null {
   const match = rawModel.match(/^([a-z0-9_-]+)([:/])(.+)$/i)
   if (!match) {
@@ -282,17 +296,31 @@ export function resolveExternalModelConfig(
   }
 
   let baseURLSource: string | null = null
-  let baseURL =
-    modelOverride.baseURL?.trim() || providerSettings.baseURL?.trim() || null
+  let baseURL = modelOverride.baseURL?.trim() || null
   if (modelOverride.baseURL?.trim()) {
     baseURLSource = `settings.llmModelOverrides.${modelRef.rawModel}.baseURL`
-  } else if (providerSettings.baseURL?.trim()) {
-    baseURLSource = `settings.llmProviders.${modelRef.provider}.baseURL`
   } else {
-    const envBaseURL = getBaseUrlFromEnvChain(defaults.baseURLEnvVars)
-    if (envBaseURL.baseURL) {
-      baseURL = envBaseURL.baseURL
-      baseURLSource = envBaseURL.baseURLSource
+    if (isDedicatedLocalQOllamaModel(modelRef)) {
+      const dedicatedQBaseURL = getBaseUrlFromEnvChain([
+        ...DEDICATED_LOCAL_Q_OLLAMA_BASE_URL_ENV_VARS,
+      ])
+      if (dedicatedQBaseURL.baseURL) {
+        baseURL = dedicatedQBaseURL.baseURL
+        baseURLSource = dedicatedQBaseURL.baseURLSource
+      }
+    }
+
+    if (!baseURL && providerSettings.baseURL?.trim()) {
+      baseURL = providerSettings.baseURL.trim()
+      baseURLSource = `settings.llmProviders.${modelRef.provider}.baseURL`
+    }
+
+    if (!baseURL) {
+      const envBaseURL = getBaseUrlFromEnvChain(defaults.baseURLEnvVars)
+      if (envBaseURL.baseURL) {
+        baseURL = envBaseURL.baseURL
+        baseURLSource = envBaseURL.baseURLSource
+      }
     }
   }
 

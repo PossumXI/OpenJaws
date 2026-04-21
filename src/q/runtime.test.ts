@@ -3,7 +3,9 @@ import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
+  buildSkippedQProviderProbeCheck,
   buildQProviderProbeCheck,
+  isDedicatedLocalQModelRef,
   resolveQProviderProbeModel,
   runOpenJawsProviderPreflight,
 } from './runtime.js'
@@ -38,6 +40,29 @@ describe('q runtime provider helpers', () => {
     ).toBe('oci:Q')
   })
 
+  test('keeps dedicated local q lanes off the OCI probe path by default', () => {
+    expect(isDedicatedLocalQModelRef('ollama:q')).toBe(true)
+    expect(isDedicatedLocalQModelRef('ollama:q:latest')).toBe(true)
+    expect(
+      resolveQProviderProbeModel({
+        preferDirectQ: false,
+        model: 'ollama:q',
+      }),
+    ).toBeNull()
+    expect(
+      resolveQProviderProbeModel({
+        preferDirectQ: false,
+        model: 'ollama:q:latest',
+      }),
+    ).toBeNull()
+    expect(
+      resolveQProviderProbeModel({
+        preferDirectQ: true,
+        model: 'ollama:q',
+      }),
+    ).toBe('oci:Q')
+  })
+
   test('keeps missing-key probes as hard failures by default', () => {
     expect(
       buildQProviderProbeCheck({
@@ -60,6 +85,19 @@ describe('q runtime provider helpers', () => {
         },
       }).status,
     ).toBe('failed')
+  })
+
+  test('reports dedicated local q lanes as explicit probe skips', () => {
+    expect(
+      buildSkippedQProviderProbeCheck({
+        name: 'q-provider-runtime',
+        model: 'ollama:q',
+      }),
+    ).toEqual({
+      name: 'q-provider-runtime',
+      status: 'passed',
+      summary: 'Local Q lane ollama:q selected; separate OCI probe not required.',
+    })
   })
 
   test('fails closed when the OpenJaws binary is missing', async () => {

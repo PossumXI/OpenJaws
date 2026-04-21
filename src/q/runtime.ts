@@ -54,6 +54,22 @@ export function isOciModelRef(value: string | null | undefined): boolean {
   return typeof value === 'string' && value.trim().toLowerCase().startsWith('oci:')
 }
 
+export function isDedicatedLocalQModelRef(
+  value: string | null | undefined,
+): boolean {
+  if (!value) {
+    return false
+  }
+
+  const modelRef = resolveExternalModelRef(value)
+  if (!modelRef || modelRef.provider !== 'ollama') {
+    return false
+  }
+
+  const normalizedModel = modelRef.model.trim().toLowerCase()
+  return normalizedModel === 'q' || normalizedModel === 'q:latest'
+}
+
 export function resolveQProviderProbeModel(options: ProbeQProviderOptions): string | null {
   if (options.preferDirectQ) {
     return 'oci:Q'
@@ -91,6 +107,17 @@ export function buildQProviderProbeCheck(args: {
       warnOnFailure: args.warnOnFailure,
     }),
     summary: args.result.summary,
+  }
+}
+
+export function buildSkippedQProviderProbeCheck(args: {
+  name: string
+  model: string
+}): QPreflightCheck {
+  return {
+    name: args.name,
+    status: 'passed',
+    summary: `Local Q lane ${args.model} selected; separate OCI probe not required.`,
   }
 }
 

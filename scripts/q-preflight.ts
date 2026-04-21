@@ -31,8 +31,12 @@ function parseOptionalInt(value: string | undefined): number | null {
 
 function parseRequirement(value: string): QPreflightRequirement | null {
   const normalized = value.trim().toLowerCase()
+  if (normalized === 'oci-q-runtime') {
+    return 'q-provider-runtime'
+  }
   const allowed = new Set<QPreflightRequirement>([
     'openjaws-binary',
+    'q-provider-runtime',
     'oci-q-runtime',
     'openjaws-provider-preflight',
     'bundle-manifest',
@@ -142,9 +146,9 @@ function printHelpAndExit(): never {
       '',
       'Options:',
       '  --bench <name>           bridgebench | soak | terminalbench',
-      '  --requirement <name>     Additional requirement: openjaws-binary | oci-q-runtime | openjaws-provider-preflight | bundle-manifest | python-runtime | harbor | docker | clock-skew',
-      '  --model <name>           Provider model reference used for OCI/OpenJaws preflight',
-      '  --prefer-direct-q        Force direct oci:Q probe selection',
+      '  --requirement <name>     Additional requirement: openjaws-binary | q-provider-runtime | openjaws-provider-preflight | bundle-manifest | python-runtime | harbor | docker | clock-skew',
+      '  --model <name>           Provider model reference used for Q/OpenJaws preflight',
+      '  --prefer-direct-q        Force direct oci:Q probe selection even when a local Q lane is configured',
       '  --bundle-dir <path>      Bundle directory for bundle-manifest checks',
       '  --python <command>       Python command for python-runtime checks',
       '  --harbor <command>       Harbor command for harbor checks',

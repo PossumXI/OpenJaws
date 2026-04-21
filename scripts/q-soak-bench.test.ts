@@ -28,6 +28,15 @@ describe('q-soak-bench OCI probe selection', () => {
       }),
     ).toBeNull()
   })
+
+  test('keeps dedicated local q lanes off the OCI probe path', () => {
+    expect(
+      resolveQProviderProbeModel({
+        preferDirectQ: false,
+        model: 'ollama:q',
+      }),
+    ).toBeNull()
+  })
 })
 
 describe('q-soak-bench OCI probe checks', () => {
