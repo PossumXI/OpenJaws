@@ -102,4 +102,27 @@ describe('q trace summary', () => {
       path: activeWriter.path,
     })
   })
+
+  test('finds nested q trace files without relying on glob expansion', () => {
+    const root = mkdtempSync(join(tmpdir(), 'openjaws-q-trace-nested-'))
+    tempRoots.push(root)
+    const nestedOutputDir = join(root, 'artifacts', 'q-nested', 'receipts')
+    mkdirSync(nestedOutputDir, { recursive: true })
+    const writer = createBenchmarkTraceWriter({
+      outputDir: nestedOutputDir,
+      sessionId: 'q-nested-session',
+    })
+    appendBenchmarkTraceEvent(writer, 'route.dispatched', {
+      routeId: 'route-nested',
+      runId: 'run-nested',
+      provider: 'oci',
+      model: 'Q',
+    })
+    closeBenchmarkTraceWriter(writer)
+
+    expect(readLatestQTraceSummary(root)).toMatchObject({
+      sessionId: 'q-nested-session',
+      path: writer.path,
+    })
+  })
 })

@@ -1,5 +1,5 @@
-import { existsSync } from 'fs'
-import { resolve } from 'path'
+import { existsSync, readdirSync, statSync } from 'fs'
+import { join, resolve } from 'path'
 import {
   readImmaculateTraceSummary,
   selectPreferredImmaculateTraceSummary,
@@ -15,27 +15,68 @@ type QTraceSummaryReadOptions = {
   activeWindowMs?: number
 }
 
-function normalizeGlobPattern(path: string): string {
-  return path.replace(/\\/g, '/')
-}
-
 export function listQTraceFiles(root = process.cwd()): string[] {
-  const patterns = [
-    resolve(root, 'artifacts', 'q-*.trace.jsonl'),
-    resolve(root, 'artifacts', 'q-*', '*.trace.jsonl'),
-    resolve(root, 'artifacts', 'q-*', '**', '*.trace.jsonl'),
-  ]
+  const artifactsDir = resolve(root, 'artifacts')
+  if (!existsSync(artifactsDir)) {
+    return []
+  }
 
-  return Array.from(
-    new Set(
-      patterns.flatMap(pattern =>
-        Array.from(new Bun.Glob(normalizeGlobPattern(pattern)).scanSync()),
-      ),
-    ),
-  )
-    .map(path => resolve(path))
-    .filter(path => existsSync(path))
-    .sort((left, right) => right.localeCompare(left))
+  const queue: Array<{ dir: string; inQScope: boolean }> = [
+    { dir: artifactsDir, inQScope: false },
+  ]
+  const traces: string[] = []
+
+  while (queue.length > 0) {
+    const current = queue.shift()
+    if (!current) {
+      continue
+    }
+    const currentDir = current.dir
+    let entries: string[]
+    try {
+      entries = readdirSync(currentDir)
+    } catch {
+      continue
+    }
+
+    for (const entry of entries) {
+      if (!entry || entry.includes('\u0000')) {
+        continue
+      }
+      const path = join(currentDir, entry)
+      let stats: ReturnType<typeof statSync>
+      try {
+        stats = statSync(path)
+      } catch {
+        continue
+      }
+      if (stats.isDirectory()) {
+        const inQScope = current.inQScope || (currentDir === artifactsDir && entry.startsWith('q-'))
+        if (inQScope) {
+          queue.push({ dir: path, inQScope })
+        }
+        continue
+      }
+      if (
+        stats.isFile() &&
+        entry.endsWith('.trace.jsonl') &&
+        (
+          (currentDir === artifactsDir && entry.startsWith('q-')) ||
+          current.inQScope
+        )
+      ) {
+        traces.push(resolve(path))
+      }
+    }
+  }
+
+  return traces.sort((left, right) => {
+    try {
+      return statSync(right).mtimeMs - statSync(left).mtimeMs
+    } catch {
+      return right.localeCompare(left)
+    }
+  })
 }
 
 export function listQTraceSummaries(
