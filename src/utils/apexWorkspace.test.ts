@@ -8,13 +8,15 @@ import {
   writeFileSync,
 } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { dirname, join, resolve } from 'path'
+import { fileURLToPath } from 'url'
 import {
   getSessionIngressToken,
   setSessionIngressToken,
 } from '../bootstrap/state.js'
 import {
   APEX_PROJECT_ROOT,
+  buildApexGovernanceRecommendations,
   buildWindowsApexLaunchCommand,
   getApexTenantGovernanceSummary,
   getApexTenantGovernanceMirrorPath,
@@ -330,6 +332,53 @@ describe('apexWorkspace', () => {
       'This should stay out of the public-safe summary',
     )
     expect(summary?.details.join(' ')).not.toContain('apex-mail')
+  })
+
+  it('builds governance-driven operator recommendations for the Apex TUI', () => {
+    const recommendations = buildApexGovernanceRecommendations({
+      totalDecisions: 12,
+      ethicsPassed: 9,
+      ethicsFailed: 3,
+      avgConfidence: 0.74,
+      avgRiskScore: 0.8,
+      detectionEventCount: 2,
+      telemetryScopeCount: 4,
+      latestActivityAt: '2026-04-22T12:14:20Z',
+      highRiskCalls: 3,
+      criticalCalls: 1,
+      pendingReviewCalls: 4,
+      operatorActionBreakdown: [
+        { name: 'security_review', count: 3 },
+        { name: 'system_tuning', count: 2 },
+        { name: 'mail_triage', count: 2 },
+        { name: 'store_update_review', count: 1 },
+      ],
+      governedActionBreakdown: [],
+      governanceSignalBreakdown: [{ name: 'policy_guard', count: 1 }],
+      reviewStatusBreakdown: [{ name: 'pending_review', count: 4 }],
+      categoryBreakdown: [],
+      topSources: [
+        { name: 'security_center', count: 3 },
+        { name: 'app_store', count: 1 },
+      ],
+      topModels: [{ name: 'workspace_api_local', count: 12 }],
+      narrative: 'Governed operator recommendations ready.',
+    })
+
+    expect(recommendations).toEqual([
+      expect.objectContaining({ id: 'security', tab: 'Security' }),
+      expect.objectContaining({ id: 'system', tab: 'System' }),
+      expect.objectContaining({ id: 'mail', tab: 'Mail' }),
+      expect.objectContaining({ id: 'store', tab: 'Store' }),
+    ])
+  })
+
+  it('anchors the default tenant governance mirror to the OpenJaws repo root', () => {
+    const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+
+    expect(getApexTenantGovernanceMirrorPath()).toBe(
+      join(repoRoot, 'docs', 'wiki', 'Apex-Tenant-Governance.json'),
+    )
   })
 
   it('prefers explicit tenant governance mirror overrides', () => {

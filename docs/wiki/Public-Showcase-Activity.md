@@ -2,7 +2,7 @@
 
 OpenJaws now emits a sanitized public activity overlay to `.arobi-public/showcase-activity.json`.
 
-It also mirrors the same sanitized feed into the repo at `docs/wiki/Public-Showcase-Activity.json` so Immaculate and other local agents can consume the producer output directly without reading the live public overlay file back out of `.arobi-public`.
+The explicit sync command also mirrors the same sanitized feed into the repo at `docs/wiki/Public-Showcase-Activity.json` so Immaculate and other local agents can consume a documented snapshot without the live runtime constantly dirtying the working tree.
 
 Asgard merges that overlay into the existing `fabric.showcase.activityFeed` lane on the public status surface. It does not replace or modify the raw public ledger feed.
 
@@ -57,7 +57,7 @@ The shared overlay reader now aggregates persona receipts from `local-command-st
 
 The same overlay also reads the mirrored Apex governance summary from `docs/wiki/Apex-Tenant-Governance.json`, so the public-safe `tenant_governance` entry stays aligned with `/apex` and `/status` without adding a second live tenant-analytics fetch path.
 
-The live `scripts/discord-q-agent.ts` runtime now also queues background overlay refreshes automatically whenever a persona receipt changes, so the sanctioned public showcase lane keeps filling without a separate manual status-file splice.
+The live `scripts/discord-q-agent.ts` runtime now also queues background overlay refreshes automatically whenever a persona receipt changes, so the sanctioned public showcase lane keeps filling without a separate manual status-file splice. Those automatic refreshes update the public `.arobi-public` overlay and ledger sync lane, but they no longer rewrite the tracked repo mirror on every patrol cycle.
 
 If the Nysus activity entry falls back to older lifecycle badges after a code update, the usual cause is a long-lived bun process that loaded the older overlay builder before the patch. Force-bounce the supervised writers from the canonical `D:\openjaws\OpenJaws` root:
 

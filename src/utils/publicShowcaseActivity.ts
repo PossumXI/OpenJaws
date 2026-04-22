@@ -43,6 +43,7 @@ type PublicShowcaseActivitySyncArgs = {
   qEntry?: PublicShowcaseActivityEntry | null
   roundtableSession?: DiscordRoundtableSessionState | null
   roundtableRuntime?: DiscordRoundtableRuntimeState | null
+  writeMirror?: boolean
 }
 
 type NysusPublicAgentActivityEntry = {
@@ -1190,7 +1191,7 @@ export function syncPublicShowcaseActivityFromRoot(
   const outputPath = writePublicShowcaseActivityFeed(
     feed,
     getPublicShowcaseActivityPath(),
-    getPublicShowcaseActivityMirrorPath(root),
+    args.writeMirror === false ? undefined : getPublicShowcaseActivityMirrorPath(root),
   )
   queuePublicShowcaseLedgerAutoSync(root, outputPath)
   return feed
@@ -1223,6 +1224,7 @@ export function queuePublicShowcaseActivitySync(
       args.roundtableSession ?? current.roundtableSession ?? null,
     roundtableRuntime:
       args.roundtableRuntime ?? current.roundtableRuntime ?? null,
+    writeMirror: args.writeMirror ?? current.writeMirror ?? false,
   })
 
   if (flushScheduled) {

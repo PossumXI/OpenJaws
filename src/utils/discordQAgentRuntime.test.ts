@@ -9,6 +9,7 @@ import {
   getDiscordQAgentRoutePolicies,
   readDiscordQAgentReceipt,
   recordDiscordQAgentEvent,
+  resolveDiscordQAgentPublicShowcaseStatusMetadata,
   upsertDiscordQAgentRouteState,
 } from './discordQAgentRuntime.js'
 
@@ -159,6 +160,89 @@ describe('discordQAgentRuntime', () => {
       kind: 'patrol',
       tags: ['q', 'discord', 'status', 'bounded'],
     })
+  })
+
+  it('preserves a richer controlled public operator line when q is idle', () => {
+    const receipt = createDiscordQAgentReceipt({
+      backend: 'Q backend',
+      scheduleEnabled: true,
+      scheduleIntervalMs: 900_000,
+      voiceEnabled: false,
+      voiceReady: false,
+    })
+    receipt.gateway.connected = true
+    receipt.updatedAt = '2026-04-22T12:19:17.128Z'
+
+    expect(
+      resolveDiscordQAgentPublicShowcaseStatusMetadata({
+        receipt,
+        currentShowcase: {
+          operatorLine:
+            'Q patrol is ready; roundtable is ready on #dev_support; 21 bounded action receipts are present; 2/3 bot receipts are ready; operator state is ready; OCI-backed Q is ready; Discord transport is ready; public-safe aggregate publication verified on the Arobi public lane (2 audit records accepted at height 35656)',
+          operatorUpdatedAt: '2026-04-22T12:08:37.852Z',
+        },
+      }),
+    ).toEqual({
+      operatorLine:
+        'Q patrol is ready; roundtable is ready on #dev_support; 21 bounded action receipts are present; 2/3 bot receipts are ready; operator state is ready; OCI-backed Q is ready; Discord transport is ready; public-safe aggregate publication verified on the Arobi public lane (2 audit records accepted at height 35656)',
+      operatorUpdatedAt: '2026-04-22T12:08:37.852Z',
+    })
+  })
+
+  it('recovers the richer controlled headline from showcase summary when operator line drifted', () => {
+    const receipt = createDiscordQAgentReceipt({
+      backend: 'Q backend',
+      scheduleEnabled: true,
+      scheduleIntervalMs: 900_000,
+      voiceEnabled: false,
+      voiceReady: false,
+    })
+    receipt.gateway.connected = true
+    receipt.updatedAt = '2026-04-22T12:23:16.628Z'
+
+    expect(
+      resolveDiscordQAgentPublicShowcaseStatusMetadata({
+        receipt,
+        currentShowcase: {
+          operatorLine:
+            'Q is online through the supervised OCI-backed Discord operator lane with no active bounded task.',
+          summary:
+            'Q patrol is ready; roundtable is ready on #dev_support; 21 bounded action receipts are present; 2/3 bot receipts are ready; operator state is ready; OCI-backed Q is ready; Discord transport is ready; public-safe aggregate publication verified on the Arobi public lane (2 audit records accepted at height 35656)',
+          operatorUpdatedAt: '2026-04-22T12:08:37.852Z',
+        },
+      }),
+    ).toEqual({
+      operatorLine:
+        'Q patrol is ready; roundtable is ready on #dev_support; 21 bounded action receipts are present; 2/3 bot receipts are ready; operator state is ready; OCI-backed Q is ready; Discord transport is ready; public-safe aggregate publication verified on the Arobi public lane (2 audit records accepted at height 35656)',
+      operatorUpdatedAt: '2026-04-22T12:08:37.852Z',
+    })
+  })
+
+  it('allows active bounded q work to replace the idle aggregate headline', () => {
+    const receipt = createDiscordQAgentReceipt({
+      backend: 'Q backend',
+      scheduleEnabled: true,
+      scheduleIntervalMs: 900_000,
+      voiceEnabled: false,
+      voiceReady: false,
+    })
+    receipt.gateway.connected = true
+    receipt.updatedAt = '2026-04-22T12:20:17.128Z'
+    receipt.operator.lastAction = 'ask-openjaws'
+    receipt.operator.activeProcessCwd = 'D:\\openjaws\\OpenJaws'
+
+    expect(
+      resolveDiscordQAgentPublicShowcaseStatusMetadata({
+        receipt,
+        currentShowcase: {
+          operatorLine:
+            'Q patrol is ready; roundtable is ready on #dev_support; 21 bounded action receipts are present; 2/3 bot receipts are ready; operator state is ready; OCI-backed Q is ready; Discord transport is ready; public-safe aggregate publication verified on the Arobi public lane (2 audit records accepted at height 35656)',
+          operatorUpdatedAt: '2026-04-22T12:08:37.852Z',
+        },
+      }).operatorLine,
+    ).toBe(
+      'Q is executing a bounded OpenJaws task in OpenJaws through the supervised OCI-backed Discord operator lane.',
+    )
   })
 
   it('normalizes older receipt payloads when reading from disk', () => {

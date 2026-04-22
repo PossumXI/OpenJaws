@@ -11,6 +11,7 @@ import { tmpdir } from 'os'
 import { dirname, join, resolve, sep } from 'path'
 import { spawn } from 'child_process'
 import { randomUUID } from 'crypto'
+import { fileURLToPath } from 'url'
 import { execFileNoThrow } from './execFileNoThrow.js'
 import { openPath } from './browser.js'
 import { getSessionIngressAuthHeaders } from './sessionIngressAuth.js'
@@ -49,8 +50,13 @@ export const APEX_TENANT_GOVERNANCE_API_URL =
   process.env.OPENJAWS_APEX_TENANT_GOVERNANCE_API_URL?.trim() ||
   process.env.OPENJAWS_APEX_TENANT_API_URL?.trim() ||
   'http://127.0.0.1:3000'
+const OPENJAWS_REPO_ROOT = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+)
 export function getApexTenantGovernanceMirrorPath(
-  root = process.cwd(),
+  root = OPENJAWS_REPO_ROOT,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   const configured = env.OPENJAWS_APEX_TENANT_GOVERNANCE_MIRROR_FILE?.trim()
@@ -289,6 +295,13 @@ export type ApexTenantGovernanceSummary = {
   topSources: ApexBreakdownEntry[]
   topModels: ApexBreakdownEntry[]
   narrative: string
+}
+
+export type ApexGovernanceRecommendation = {
+  id: 'security' | 'system' | 'mail' | 'store'
+  label: string
+  description: string
+  tab: 'Security' | 'System' | 'Mail' | 'Store'
 }
 
 export type ApexBrowserLink = {
@@ -2163,6 +2176,111 @@ export function summarizeApexTenantGovernance(
       `Latest activity ${latest}`,
     ],
   }
+}
+
+function findBreakdownCount(
+  entries: ApexBreakdownEntry[],
+  name: string,
+): number {
+  return entries.find(entry => entry.name === name)?.count ?? 0
+}
+
+function formatBreakdownName(name: string | null | undefined): string {
+  return (name ?? 'routine').replace(/_/g, ' ')
+}
+
+export function buildApexGovernanceRecommendations(
+  summary: ApexTenantGovernanceSummary | null,
+): ApexGovernanceRecommendation[] {
+  if (!summary) {
+    return []
+  }
+
+  const recommendations: ApexGovernanceRecommendation[] = []
+  const seen = new Set<ApexGovernanceRecommendation['id']>()
+  const topSource = formatBreakdownName(summary.topSources[0]?.name)
+  const topSignal = formatBreakdownName(
+    summary.governanceSignalBreakdown[0]?.name,
+  )
+  const addRecommendation = (
+    recommendation: ApexGovernanceRecommendation,
+  ): void => {
+    if (seen.has(recommendation.id)) {
+      return
+    }
+    seen.add(recommendation.id)
+    recommendations.push(recommendation)
+  }
+
+  const securityReviewCount = findBreakdownCount(
+    summary.operatorActionBreakdown,
+    'security_review',
+  )
+  if (
+    summary.criticalCalls > 0 ||
+    summary.ethicsFailed > 0 ||
+    securityReviewCount > 0
+  ) {
+    addRecommendation({
+      id: 'security',
+      label: 'Review Security pressure',
+      description: `${Math.max(summary.criticalCalls, securityReviewCount)} gated call${Math.max(summary.criticalCalls, securityReviewCount) === 1 ? '' : 's'} · top signal ${topSignal}`,
+      tab: 'Security',
+    })
+  }
+
+  const systemTuningCount = findBreakdownCount(
+    summary.operatorActionBreakdown,
+    'system_tuning',
+  )
+  if (summary.highRiskCalls > 0 || systemTuningCount > 0) {
+    addRecommendation({
+      id: 'system',
+      label: 'Inspect System posture',
+      description: `${Math.max(summary.highRiskCalls, systemTuningCount)} high-pressure signal${Math.max(summary.highRiskCalls, systemTuningCount) === 1 ? '' : 's'} · source ${topSource}`,
+      tab: 'System',
+    })
+  }
+
+  const mailTriageCount = findBreakdownCount(
+    summary.operatorActionBreakdown,
+    'mail_triage',
+  )
+  if (mailTriageCount > 0 || summary.detectionEventCount > 0) {
+    addRecommendation({
+      id: 'mail',
+      label: 'Triage governed Mail pressure',
+      description: `${Math.max(mailTriageCount, summary.detectionEventCount)} mail-side signal${Math.max(mailTriageCount, summary.detectionEventCount) === 1 ? '' : 's'} · detections ${summary.detectionEventCount}`,
+      tab: 'Mail',
+    })
+  }
+
+  const storeReviewCount = findBreakdownCount(
+    summary.operatorActionBreakdown,
+    'store_update_review',
+  )
+  if (
+    storeReviewCount > 0 ||
+    summary.topSources.some(source => source.name === 'app_store')
+  ) {
+    addRecommendation({
+      id: 'store',
+      label: 'Inspect Store rollout pressure',
+      description: `${Math.max(storeReviewCount, 1)} rollout review${Math.max(storeReviewCount, 1) === 1 ? '' : 's'} · source app store`,
+      tab: 'Store',
+    })
+  }
+
+  if (recommendations.length === 0 && summary.pendingReviewCalls > 0) {
+    addRecommendation({
+      id: 'system',
+      label: 'Inspect governed review queue',
+      description: `${summary.pendingReviewCalls} pending review call${summary.pendingReviewCalls === 1 ? '' : 's'} · source ${topSource}`,
+      tab: 'System',
+    })
+  }
+
+  return recommendations
 }
 
 export function summarizePublicApexTenantGovernance(
