@@ -38,3 +38,4 @@
 - Aged completed Immaculate and Q traces into `stale` after a freshness window, and taught `runtime:coherence` to warn on stale Discord receipts, stale patrol cadence, and expired roundtable windows instead of treating them as current by default.
 - Sanitized the public benchmark snapshot source line so release surfaces stop leaking local absolute receipt paths while still documenting that BridgeBench, soak, TerminalBench, and W&B receipts back the published claims.
 - Kept the public benchmark and release surfaces aligned with real receipts, typed traces, and signed benchmark artifacts.
+- The tracked roundtable sync sidecar now stages one scoped synthetic follow-through handoff when the live Discord window is still running but the tracked queue is idle and the conversation has degraded into PASS/no-diff drift, which keeps the governed execution lane moving without reopening broad repo-root audits.
