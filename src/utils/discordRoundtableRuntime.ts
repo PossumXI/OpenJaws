@@ -292,6 +292,22 @@ function getDiscordRoundtableObservedRuntimeDirs(root = process.cwd()): string[]
 }
 
 function getDiscordRoundtableLogPath(root = process.cwd()): string {
+  const getTimestampedStdoutLogScore = (path: string): number => {
+    const match = /discord-roundtable-(\d{8}T\d{6}Z)\.stdout\.log$/i.exec(
+      path.replace(/\\/g, '/'),
+    )
+    if (!match?.[1]) {
+      return 0
+    }
+    const stamp = match[1]
+    const isoLike = `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(
+      6,
+      8,
+    )}T${stamp.slice(9, 11)}:${stamp.slice(11, 13)}:${stamp.slice(13, 15)}.000Z`
+    const parsed = Date.parse(isoLike)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
   const candidates = getDiscordRoundtableObservedRuntimeDirs(root)
     .flatMap(dir => {
       const paths = [join(dir, 'discord-roundtable.log')].filter(path =>
@@ -313,11 +329,25 @@ function getDiscordRoundtableLogPath(root = process.cwd()): string {
   }
 
   const ranked = candidates.sort((left, right) => {
-    try {
-      return statSync(right).mtimeMs - statSync(left).mtimeMs
-    } catch {
-      return 0
+    const rightTimestampedScore = getTimestampedStdoutLogScore(right)
+    const leftTimestampedScore = getTimestampedStdoutLogScore(left)
+    if (rightTimestampedScore !== leftTimestampedScore) {
+      return rightTimestampedScore - leftTimestampedScore
     }
+    try {
+      const mtimeDelta = statSync(right).mtimeMs - statSync(left).mtimeMs
+      if (mtimeDelta !== 0) {
+        return mtimeDelta
+      }
+    } catch {
+      // fall through to deterministic tie-breakers
+    }
+    const rightIsTimestamped = /\.stdout\.log$/i.test(right)
+    const leftIsTimestamped = /\.stdout\.log$/i.test(left)
+    if (rightIsTimestamped !== leftIsTimestamped) {
+      return rightIsTimestamped ? 1 : -1
+    }
+    return right.localeCompare(left)
   })
   return ranked[0]!
 }
