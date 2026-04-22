@@ -622,6 +622,7 @@ describe('publicShowcaseActivity', () => {
   it('queues a coalesced microtask sync without throwing', async () => {
     const root = mkdtempSync(join(tmpdir(), 'openjaws-public-showcase-queue-'))
     const overlayPath = join(root, 'showcase-activity.json')
+    const mirrorPath = join(root, 'docs', 'wiki', 'Public-Showcase-Activity.json')
     const originalPath = process.env.AROBI_PUBLIC_SHOWCASE_ACTIVITY_FILE
     process.env.AROBI_PUBLIC_SHOWCASE_ACTIVITY_FILE = overlayPath
     try {
@@ -652,6 +653,7 @@ describe('publicShowcaseActivity', () => {
           }),
         ]),
       })
+      expect(existsSync(mirrorPath)).toBe(false)
     } finally {
       if (originalPath) {
         process.env.AROBI_PUBLIC_SHOWCASE_ACTIVITY_FILE = originalPath

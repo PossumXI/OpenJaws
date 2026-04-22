@@ -1,9 +1,9 @@
 {
-  "updatedAt": "2026-04-22T12:16:50.969Z",
+  "updatedAt": "2026-04-22T12:24:26.643Z",
   "entries": [
     {
-      "id": "runtime-audit-2026-04-22T12:16:50.969Z",
-      "timestamp": "2026-04-22T12:16:50.969Z",
+      "id": "runtime-audit-2026-04-22T12:24:26.643Z",
+      "timestamp": "2026-04-22T12:24:26.643Z",
       "title": "Supervised runtime activity refreshed",
       "summary": "Supervised OpenJaws audit surfaces are live but still show bounded warnings or incomplete runtime coverage.",
       "kind": "runtime_audit",
@@ -32,8 +32,8 @@
       ]
     },
     {
-      "id": "roundtable-completed-2026-04-22T12:16:10.303Z",
-      "timestamp": "2026-04-22T12:16:10.303Z",
+      "id": "roundtable-completed-2026-04-22T12:24:15.165Z",
+      "timestamp": "2026-04-22T12:24:15.165Z",
       "title": "Roundtable runtime",
       "summary": "Roundtable is completed in #dev_support. roundtable completed",
       "kind": "roundtable_runtime",
@@ -55,6 +55,32 @@
         "roundtable",
         "bounded",
         "supervised"
+      ]
+    },
+    {
+      "id": "discord-q-2026-04-22T12:23:42.756Z",
+      "timestamp": "2026-04-22T12:23:42.756Z",
+      "title": "Supervised Q patrol update",
+      "summary": "3 patrol posts sent",
+      "kind": "patrol",
+      "status": "ok",
+      "source": "OpenJaws Discord lane",
+      "operatorActions": [
+        "q_operator_patrol"
+      ],
+      "subsystems": [
+        "openjaws",
+        "discord",
+        "q"
+      ],
+      "artifacts": [
+        "discord:q-agent-receipt"
+      ],
+      "tags": [
+        "q",
+        "discord",
+        "openjaws",
+        "bounded"
       ]
     },
     {
@@ -135,32 +161,6 @@
       ],
       "tags": [
         "blackbeak",
-        "discord",
-        "openjaws",
-        "bounded"
-      ]
-    },
-    {
-      "id": "discord-q-2026-04-22T12:13:34.165Z",
-      "timestamp": "2026-04-22T12:13:34.165Z",
-      "title": "Supervised Q patrol update",
-      "summary": "3 patrol posts sent",
-      "kind": "patrol",
-      "status": "ok",
-      "source": "OpenJaws Discord lane",
-      "operatorActions": [
-        "q_operator_patrol"
-      ],
-      "subsystems": [
-        "openjaws",
-        "discord",
-        "q"
-      ],
-      "artifacts": [
-        "discord:q-agent-receipt"
-      ],
-      "tags": [
-        "q",
         "discord",
         "openjaws",
         "bounded"

@@ -18,6 +18,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   const root = process.cwd()
   const feed = syncPublicShowcaseActivityFromRoot({
     root,
+    writeMirror: true,
   })
   const payload = {
     path: process.env.ASGARD_PUBLIC_SHOWCASE_ACTIVITY_FILE ??
