@@ -23,6 +23,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - the local Settings deck now includes a Privacy mode for telemetry/nonessential-traffic policy and clearer `auto` / `dark` / `light` theme behavior so installed users can tell what the app will actually render
 - command rediscovery is clearer too: `/help`, `/config`, `/theme`, and `/privacy-settings` now form the obvious public-safe entry points for operator setup
 - `/help` now pulls its quick-start section from the real command registry and shows aliases plus argument hints in the command browser instead of a static bare-name list
+- the tracked Discord receipt and roundtable runtime now emit a bounded public showcase activity feed, and `showcase:activity:sync` writes that feed into the Arobi public handoff surface so Aura Genesis can publish sanitized operator and runtime snippets without opening raw 00 traces
 
 ## OpenCheek Agents and Task Deck
 

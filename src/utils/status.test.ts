@@ -144,6 +144,8 @@ describe('buildProviderGuidanceProperties', () => {
           '/provider test ollama <model>',
           '/provider base-url ollama <url>',
           'env OLLAMA_BASE_URL',
+          'env OPENJAWS_OLLAMA_Q_BASE_URL / OLLAMA_Q_BASE_URL for ollama:q',
+          'settings override: llmModelOverrides.ollama:q.baseURL wins over env',
         ],
       },
     ])
@@ -447,7 +449,13 @@ describe('buildDiscordQAgentProperties', () => {
       },
       {
         label: 'Q operator',
-        value: ['PossumX', 'start-openjaws', 'pid 4.2k', 'D:\\repo'],
+        value: [
+          'PossumX',
+          'start-openjaws',
+          'Q is opening a bounded OpenJaws workspace in repo through the supervised OCI-backed Discord operator lane.',
+          'pid 4.2k',
+          'D:\\repo',
+        ],
       },
     ])
   })
@@ -576,9 +584,20 @@ describe('buildApexWorkspaceProperties', () => {
         label: 'Apex summary',
         value: [
           'Workspace mode live · system 83% · security 92%',
+          'security 1 active alert',
           'Mail 0 messages · 2 accounts · 1 alerts',
           'Chat 1/2 active sessions · 16 messages',
           'Store 5 installed · 1 updates',
+        ],
+      },
+      {
+        label: 'Apex posture',
+        value: [
+          'system 83%',
+          'security 92%',
+          '0 host alerts · 1 security alert',
+          '0 degraded services · 0 incidents',
+          '0 recommendations',
         ],
       },
       {
@@ -588,6 +607,14 @@ describe('buildApexWorkspaceProperties', () => {
           'Chrono 1/3 active jobs · 2.0 GB across 5 backups',
           'Workspace Snapshot · running · D:\\backups',
           '1 backup · every 24h · retain 30d',
+        ],
+      },
+      {
+        label: 'Apex browser',
+        value: [
+          'bridge offline',
+          'Browser bridge offline',
+          'Start the browser bridge to keep native web previews inside the OpenJaws TUI instead of launching an external browser.',
         ],
       },
     ])

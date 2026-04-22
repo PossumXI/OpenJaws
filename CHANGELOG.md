@@ -2,6 +2,9 @@
 
 ## 2.1.86 - 2026-04-21
 
+- Added a tracked public showcase activity feed builder plus `showcase:activity:sync`, so bounded Q/Discord/roundtable/runtime snippets can be projected onto the public Arobi showcase lane without exposing raw 00 traces or private control routes.
+- Taught the tracked Discord Q receipt and roundtable runtime writers to emit sanitized public-safe operator/runtime activity entries, which keeps the Aura Genesis showcase aligned with the real supervised OpenJaws lane instead of a hand-maintained summary.
+- `/status` now surfaces the same bounded operator line the public showcase uses, so local operators and the public-safe audit lane stop drifting on what Q is actually doing.
 - Preserved the authoritative live roundtable channel across sync passes, so stale caller or stored aliases no longer overwrite the bound Discord lane in tracked queue/session state.
 - Quarantine malformed roundtable handoffs fail-closed into `local-command-station/roundtable-runtime/handoff-quarantine/` without aborting later valid governed work.
 - Tightened roundtable holdback classification so no-diff outcomes are marked `skipped`, not `completed`, and recent weak outcomes keep contribution forcing active longer.

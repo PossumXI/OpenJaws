@@ -62,15 +62,21 @@ import { getGitBashStatus } from './windowsPaths.js';
 import { evaluateStartupHarness, summarizeStartupHarness } from './startupHarness.js';
 import { getElevenLabsConfig } from '../services/voiceOutput.js';
 import type { ExternalProviderProbeResult } from './externalProviderProbe.js';
-import { readDiscordQAgentReceipt, type DiscordQAgentReceipt } from './discordQAgentRuntime.js';
+import {
+  buildDiscordQAgentPublicOperatorLine,
+  readDiscordQAgentReceipt,
+  type DiscordQAgentReceipt,
+} from './discordQAgentRuntime.js';
 import {
   getApexChronoHealth,
   getApexChronoSummary,
   getApexWorkspaceAvailability,
   getApexWorkspaceHealth,
   getApexWorkspaceSummary,
+  summarizeApexBrowser,
   summarizeApexChrono,
   summarizeApexWorkspace,
+  type ApexBrowserSummary,
   type ApexChronoSummary,
   type ApexWorkspaceAvailability,
   type ApexWorkspaceHealth,
@@ -511,6 +517,8 @@ export function buildProviderGuidanceProperties(
           '/provider test ollama <model>',
           '/provider base-url ollama <url>',
           `env ${defaults.baseURLEnvVars.join(' / ')}`,
+          'env OPENJAWS_OLLAMA_Q_BASE_URL / OLLAMA_Q_BASE_URL for ollama:q',
+          'settings override: llmModelOverrides.ollama:q.baseURL wins over env',
         ],
     })
     return properties
@@ -727,6 +735,9 @@ export function buildDiscordQAgentProperties(
     value: [
       receipt.operator.operatorLabel ?? 'operator unset',
       receipt.operator.lastAction ?? 'no operator action yet',
+      ...(buildDiscordQAgentPublicOperatorLine(receipt)
+        ? [buildDiscordQAgentPublicOperatorLine(receipt)!]
+        : []),
       ...(receipt.operator.activeProcessPid
         ? [`pid ${formatNumber(receipt.operator.activeProcessPid)}`]
         : []),
@@ -744,12 +755,30 @@ export function buildApexWorkspaceProperties(
   summary: ApexWorkspaceSummary | null = null,
   chronoHealth: ApexWorkspaceHealth | null = null,
   chronoSummary: ApexChronoSummary | null = null,
+  browserHealth: ApexWorkspaceHealth | null = null,
+  browserSummary: ApexBrowserSummary | null = null,
 ): Property[] {
-  if (!availability.configured && !health && !summary && !chronoHealth && !chronoSummary) {
+  if (
+    !availability.configured &&
+    !health &&
+    !summary &&
+    !chronoHealth &&
+    !chronoSummary &&
+    !browserHealth &&
+    !browserSummary
+  ) {
     return []
   }
   const workspace = summarizeApexWorkspace(summary)
   const chrono = summarizeApexChrono(chronoSummary)
+  const browser = summarizeApexBrowser(browserSummary)
+  const degradedServiceCount =
+    summary?.system.services.filter(
+      service =>
+        service.status.trim().toLowerCase() !== 'ok' &&
+        service.status.trim().toLowerCase() !== 'healthy' &&
+        service.status.trim().toLowerCase() !== 'running',
+    ).length ?? 0
   const properties: Property[] = [
     {
       label: 'Apex workspace',
@@ -763,14 +792,44 @@ export function buildApexWorkspaceProperties(
     },
     {
       label: 'Apex summary',
-      value: [workspace.headline, ...workspace.details.slice(0, 3)],
+      value: [
+        workspace.headline,
+        ...(summary
+          ? [
+              `security ${formatNumber(summary.security.activeAlerts)} active alert${summary.security.activeAlerts === 1 ? '' : 's'}`,
+            ]
+          : []),
+        ...workspace.details.slice(0, 3),
+      ],
     },
+    ...(summary
+      ? [
+          {
+            label: 'Apex posture',
+            value: [
+              `system ${(summary.system.healthScore * 100).toFixed(0)}%`,
+              `security ${(summary.security.overallHealth * 100).toFixed(0)}%`,
+              `${formatNumber(summary.system.alerts.length)} host alert${summary.system.alerts.length === 1 ? '' : 's'} · ${formatNumber(summary.security.activeAlerts)} security alert${summary.security.activeAlerts === 1 ? '' : 's'}`,
+              `${formatNumber(degradedServiceCount)} degraded service${degradedServiceCount === 1 ? '' : 's'} · ${formatNumber(summary.security.incidents.length)} incident${summary.security.incidents.length === 1 ? '' : 's'}`,
+              `${formatNumber(summary.security.recommendations.length)} recommendation${summary.security.recommendations.length === 1 ? '' : 's'}`,
+            ],
+          } satisfies Property,
+        ]
+      : []),
     {
       label: 'Apex chrono',
       value: [
         chronoHealth?.status === 'ok' ? 'bridge online' : 'bridge offline',
         chrono.headline,
         ...chrono.details.slice(0, 2),
+      ],
+    },
+    {
+      label: 'Apex browser',
+      value: [
+        browserHealth?.status === 'ok' ? 'bridge online' : 'bridge offline',
+        browser.headline,
+        ...browser.details.slice(0, 2),
       ],
     },
   ]

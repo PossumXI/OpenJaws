@@ -333,6 +333,8 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - The roundtable scheduler now only treats recent diff-bearing completed commits as concrete progress, which keeps fresh sessions driving toward scoped code-bearing actions instead of relaxing early after no-diff or rejected audit receipts.
 - Sync passes now preserve the authoritative live roundtable channel, quarantine malformed handoffs instead of aborting the loop, and keep no-diff outcomes out of the approval lane as explicit `skipped` work.
 - That same roundtable lane now rolls forward in continuous 4-hour windows, understands direct project requests like `start an openjaws session for project sealed and ...`, keeps `SEALED` in its shared codebase knowledge scope, and limits autonomous branch/worktree execution to git-backed roots so manual-only demo folders do not poison the queue.
+- The tracked Discord Q receipt and roundtable runtime now also feed a bounded public showcase activity projection, so Aura Genesis can display sanitized operator, roundtable, and trace snippets without publishing raw mission receipts or private control paths.
+- `bun run showcase:activity:sync -- --json` writes the local bounded showcase feed into `~/.arobi-public/showcase-activity.json`, which is the handoff surface for the public showcase adapter.
 - Firecrawl dataset skill for crawl/search -> structured dataset pipelines.
 - Remote Control, environment validation, startup harness receipts, and fail-closed configuration checks.
 
