@@ -21,7 +21,9 @@ The current OpenJaws side exposes:
 - trusted Store install with structured install receipts from inside `/apex`
 - dedicated `chrono-bridge` health, summary, and bounded backup actions from inside `/apex`
 - browser bridge health plus native session summary inside `/apex`
+- bounded operator handoff receipts from `/apex` Browser into accountable `/preview`
 - `/status` now surfaces Apex browser bridge truth separately from the general browser preview receipt
+- `/status` now fuses Apex system and security posture instead of only showing bridge reachability
 - guarded launchers for:
   - `workspace_api`
   - `chrono-bridge`
@@ -91,7 +93,7 @@ Typical local operator path:
 
 If you need deeper browser control, keep ownership with `/preview`.
 
-`/apex` now shows the native Apex browser bridge and session truth, but it does not try to become a second browser editor.
+`/apex` now shows the native Apex browser bridge and session truth, can record an accountable operator handoff into `/preview`, but it still does not try to become a second browser editor.
 
 This lane assumes the external Apex checkout is present and that its `workspace_api` sidecar can build or already exists on the local machine. OpenJaws does not vendor the Apex Rust toolchain for you.
 

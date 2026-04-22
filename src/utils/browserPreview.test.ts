@@ -81,7 +81,7 @@ describe('browserPreview', () => {
     ).toBe(true)
   })
 
-  test('filters non-accountable user sessions out of persisted receipts', async () => {
+  test('filters only private user sessions out of persisted receipts', async () => {
     const receiptPath = getBrowserPreviewReceiptPath()
     await mkdir(dirname(receiptPath), { recursive: true })
     await writeFile(
@@ -105,6 +105,18 @@ describe('browserPreview', () => {
               url: 'http://127.0.0.1:3000/',
             },
             {
+              id: 'session-2',
+              action: 'handoff_session',
+              intent: 'preview',
+              rationale: 'Operator handed off a live browser session into /preview.',
+              requestedBy: 'operator',
+              startedAt: '2026-04-18T21:30:00.000Z',
+              handler: 'openjaws-browser',
+              opened: true,
+              note: 'Handed off into the accountable /preview lane.',
+              url: 'https://ops.example.com/',
+            },
+            {
               id: 'session-0',
               action: 'open_url',
               intent: 'research',
@@ -125,9 +137,15 @@ describe('browserPreview', () => {
     )
 
     const receipt = await readBrowserPreviewReceipt()
-    expect(receipt.sessions).toHaveLength(1)
-    expect(receipt.sessions[0]?.requestedBy).toBe('agent')
-    expect(receipt.sessions[0]?.url).toBe('https://docs.example.com/')
+    expect(receipt.sessions).toHaveLength(2)
+    expect(receipt.sessions.map(session => session.requestedBy)).toEqual([
+      'operator',
+      'agent',
+    ])
+    expect(receipt.sessions.map(session => session.url)).toEqual([
+      'https://ops.example.com/',
+      'https://docs.example.com/',
+    ])
   })
 
   test('summarizes the native in-TUI browser runtime distinctly from the external shell', () => {
@@ -264,7 +282,57 @@ describe('browserPreview', () => {
 
     expect(access.ok).toBe(false)
     expect(access.message).toContain(
-      'Agent browser mutations cannot navigate or close private user sessions.',
+      'Accountable browser mutations cannot navigate or close private user sessions.',
+    )
+  })
+
+  test('blocks operator mutations against private user sessions', () => {
+    const access = assessBrowserPreviewMutationAccess({
+      sessionId: 'session-1',
+      requestedBy: 'operator',
+      summary: {
+        mode: 'live',
+        renderMode: 'tui',
+        activeSessionId: 'session-1',
+        sessionCount: 1,
+        privacy: {
+          doNotTrack: true,
+          blockThirdPartyCookies: true,
+          clearOnExit: true,
+          userHistoryPersisted: false,
+          agentHistoryPersisted: true,
+        },
+        sessions: [
+          {
+            id: 'session-1',
+            intent: 'preview',
+            rationale: 'User is checking a local build.',
+            requestedBy: 'user',
+            recordHistory: false,
+            title: 'SEALED demo',
+            url: 'http://127.0.0.1:3000/',
+            state: 'ready',
+            openedAt: '2026-04-18T22:05:00.000Z',
+            updatedAt: '2026-04-18T22:05:03.000Z',
+            excerpt: 'Digital clock preview',
+            statusCode: 200,
+            loadTimeMs: 92,
+            imageCount: 3,
+            metadata: {
+              description: 'Clock preview',
+              keywords: ['clock', 'preview'],
+              author: null,
+              contentType: 'text/html',
+            },
+            links: [],
+          },
+        ],
+      },
+    })
+
+    expect(access.ok).toBe(false)
+    expect(access.message).toContain(
+      'Accountable browser mutations cannot navigate or close private user sessions.',
     )
   })
 

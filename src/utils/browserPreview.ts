@@ -34,14 +34,17 @@ export type BrowserPreviewAction =
   | 'open_url'
   | 'navigate_session'
   | 'close_session'
+  | 'handoff_session'
   | 'launch_apex_browser'
+
+export type BrowserPreviewRequester = 'user' | 'agent' | 'operator'
 
 export type BrowserPreviewSession = {
   id: string
   action: BrowserPreviewAction
   intent: BrowserPreviewIntent
   rationale: string
-  requestedBy: 'user' | 'agent'
+  requestedBy: BrowserPreviewRequester
   startedAt: string
   handler: BrowserPreviewHandler
   opened: boolean
@@ -144,10 +147,13 @@ function isBrowserPreviewSession(value: unknown): value is BrowserPreviewSession
     (record.action === 'open_url' ||
       record.action === 'navigate_session' ||
       record.action === 'close_session' ||
+      record.action === 'handoff_session' ||
       record.action === 'launch_apex_browser') &&
     typeof record.intent === 'string' &&
     typeof record.rationale === 'string' &&
-    (record.requestedBy === 'user' || record.requestedBy === 'agent') &&
+    (record.requestedBy === 'user' ||
+      record.requestedBy === 'agent' ||
+      record.requestedBy === 'operator') &&
     typeof record.startedAt === 'string' &&
     (record.handler === 'openjaws-browser' ||
       record.handler === 'chrome' ||
@@ -162,7 +168,7 @@ function isBrowserPreviewSession(value: unknown): value is BrowserPreviewSession
 function isAccountableBrowserPreviewSession(
   session: BrowserPreviewSession,
 ): boolean {
-  return session.requestedBy === 'agent'
+  return session.requestedBy !== 'user'
 }
 
 function isPrivateUserApexBrowserSession(session: ApexBrowserSession): boolean {
@@ -372,7 +378,7 @@ function createPreviewSession(
   input: {
     intent: BrowserPreviewIntent
     rationale: string
-    requestedBy: 'user' | 'agent'
+    requestedBy: BrowserPreviewRequester
     opened: boolean
     note: string
     url?: string
@@ -392,13 +398,19 @@ function createPreviewSession(
   }
 }
 
-function shouldPersistSession(requestedBy: 'user' | 'agent'): boolean {
-  return requestedBy === 'agent'
+function isAccountableBrowserPreviewRequester(
+  requestedBy: BrowserPreviewRequester,
+): boolean {
+  return requestedBy !== 'user'
+}
+
+function shouldPersistSession(requestedBy: BrowserPreviewRequester): boolean {
+  return isAccountableBrowserPreviewRequester(requestedBy)
 }
 
 export function assessBrowserPreviewMutationAccess(args: {
   sessionId: string
-  requestedBy: 'user' | 'agent'
+  requestedBy: BrowserPreviewRequester
   summary: ApexBrowserSummary | null
   runtimeMessage?: string | null
 }): BrowserPreviewMutationAccess {
@@ -411,7 +423,7 @@ export function assessBrowserPreviewMutationAccess(args: {
     }
   }
 
-  if (args.requestedBy !== 'agent') {
+  if (!isAccountableBrowserPreviewRequester(args.requestedBy)) {
     const session =
       args.summary?.sessions.find(candidate => candidate.id === sessionId) ?? null
     return {
@@ -445,7 +457,7 @@ export function assessBrowserPreviewMutationAccess(args: {
     return {
       ok: false,
       message:
-        'Agent browser mutations cannot navigate or close private user sessions. Launch an accountable preview session instead.',
+        'Accountable browser mutations cannot navigate or close private user sessions. Launch an accountable preview session instead.',
       session,
     }
   }
@@ -458,15 +470,15 @@ export function assessBrowserPreviewMutationAccess(args: {
 }
 
 function buildOpenMessage(
-  requestedBy: 'user' | 'agent',
+  requestedBy: BrowserPreviewRequester,
   session: ApexBrowserSession | null,
 ): string {
   if (!session) {
-    return requestedBy === 'agent'
-      ? 'Opened a Q-directed browser session.'
+    return isAccountableBrowserPreviewRequester(requestedBy)
+      ? 'Opened an accountable browser session.'
       : 'Opened an in-TUI browser session.'
   }
-  return requestedBy === 'agent'
+  return isAccountableBrowserPreviewRequester(requestedBy)
     ? `Opened ${session.url} in the OpenJaws browser and recorded the accountable handoff.`
     : `Opened ${session.url} in the OpenJaws browser. User browsing history is not persisted.`
 }
@@ -479,7 +491,7 @@ export async function openAccountableBrowserPreview(args: {
   url: string
   intent: BrowserPreviewIntent
   rationale: string
-  requestedBy?: 'user' | 'agent'
+  requestedBy?: BrowserPreviewRequester
 }): Promise<{
   ok: boolean
   message: string
@@ -515,7 +527,7 @@ export async function openAccountableBrowserPreview(args: {
     intent,
     rationale,
     requestedBy,
-    recordHistory: requestedBy === 'agent',
+    recordHistory: isAccountableBrowserPreviewRequester(requestedBy),
   })
   const session = createPreviewSession('open_url', {
     intent,
@@ -544,7 +556,7 @@ export async function openAccountableBrowserPreview(args: {
 export async function navigateBrowserPreviewSession(args: {
   sessionId: string
   url: string
-  requestedBy?: 'user' | 'agent'
+  requestedBy?: BrowserPreviewRequester
   intent?: BrowserPreviewIntent
   rationale?: string
 }): Promise<{
@@ -617,7 +629,7 @@ export async function navigateBrowserPreviewSession(args: {
 
 export async function closeBrowserPreviewSession(args: {
   sessionId: string
-  requestedBy?: 'user' | 'agent'
+  requestedBy?: BrowserPreviewRequester
 }): Promise<{
   ok: boolean
   message: string
@@ -679,7 +691,7 @@ export async function closeBrowserPreviewSession(args: {
 export async function launchApexBrowserShell(args: {
   intent: BrowserPreviewIntent
   rationale: string
-  requestedBy?: 'user' | 'agent'
+  requestedBy?: BrowserPreviewRequester
 }): Promise<{
   ok: boolean
   message: string
@@ -709,6 +721,72 @@ export async function launchApexBrowserShell(args: {
   }
 }
 
+export async function handoffBrowserPreviewSession(args: {
+  sessionId: string
+  rationale: string
+  intent?: BrowserPreviewIntent
+  requestedBy?: Extract<BrowserPreviewRequester, 'agent' | 'operator'>
+}): Promise<{
+  ok: boolean
+  message: string
+  session: BrowserPreviewSession
+  receipt: BrowserPreviewReceipt
+  runtime: BrowserPreviewRuntime
+}> {
+  const sessionId = args.sessionId.trim()
+  if (!sessionId) {
+    throw new Error('A browser session id is required.')
+  }
+  const requestedBy = args.requestedBy ?? 'operator'
+  const rationale = normalizeRationale(args.rationale)
+  const runtime = await resolveBrowserPreviewRuntime()
+  const access = assessBrowserPreviewMutationAccess({
+    sessionId,
+    requestedBy,
+    summary: runtime.summary,
+    runtimeMessage: runtime.message,
+  })
+  const intent = coerceIntent(args.intent ?? access.session?.intent)
+  if (!access.ok || !access.session) {
+    const session = createPreviewSession('handoff_session', {
+      intent,
+      rationale,
+      requestedBy,
+      opened: false,
+      note: access.message ?? 'Browser session handoff was blocked.',
+    })
+    const receipt = shouldPersistSession(requestedBy)
+      ? await appendSession(session)
+      : await readBrowserPreviewReceipt()
+    return {
+      ok: false,
+      message: access.message ?? 'Browser session handoff was blocked.',
+      session,
+      receipt,
+      runtime,
+    }
+  }
+
+  const session = createPreviewSession('handoff_session', {
+    intent,
+    rationale,
+    requestedBy,
+    opened: true,
+    note: `Handed off ${access.session.url} into the accountable /preview lane.`,
+    url: access.session.url,
+  })
+  const receipt = shouldPersistSession(requestedBy)
+    ? await appendSession(session)
+    : await readBrowserPreviewReceipt()
+  return {
+    ok: true,
+    message: `Handed off ${access.session.url} into the accountable /preview lane.`,
+    session,
+    receipt,
+    runtime,
+  }
+}
+
 export function summarizeBrowserPreviewReceipt(
   receipt: BrowserPreviewReceipt | null,
 ): BrowserPreviewSummary {
@@ -717,7 +795,7 @@ export function summarizeBrowserPreviewReceipt(
       headline: 'No accountable browser handoffs recorded yet.',
       details: [
         'User browser sessions stay inside the TUI and do not persist browsing history by default.',
-        'Q or agent-led browsing on the user’s behalf is the only lane that lands in accountable receipts.',
+        'Q, agents, and explicit operator handoffs are the only lanes that land in accountable receipts.',
       ],
     }
   }

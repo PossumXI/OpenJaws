@@ -40,6 +40,13 @@ import {
   summarizeApexChrono,
   summarizeApexWorkspace,
 } from '../../utils/apexWorkspace.js'
+import {
+  handoffBrowserPreviewSession,
+  readBrowserPreviewReceipt,
+  summarizeBrowserPreviewReceipt,
+  type BrowserPreviewIntent,
+  type BrowserPreviewReceipt,
+} from '../../utils/browserPreview.js'
 import { formatNumber } from '../../utils/format.js'
 import { useKeybinding } from '../../keybindings/useKeybinding.js'
 import { Box, Text } from '../../ink.js'
@@ -88,6 +95,35 @@ type ChronoAction =
   | 'chrono-cleanup'
   | 'chrono-refresh'
   | `chrono-use-${string}`
+type BrowserAction =
+  | 'browser-session'
+  | 'browser-rationale'
+  | 'browser-intent-preview'
+  | 'browser-intent-research'
+  | 'browser-intent-browse'
+  | 'browser-intent-watch'
+  | 'browser-intent-music'
+  | 'browser-handoff'
+  | 'browser-refresh'
+
+function getBrowserIntentFromAction(
+  action: BrowserAction,
+): BrowserPreviewIntent | null {
+  switch (action) {
+    case 'browser-intent-research':
+      return 'research'
+    case 'browser-intent-browse':
+      return 'browse'
+    case 'browser-intent-watch':
+      return 'watch'
+    case 'browser-intent-music':
+      return 'music'
+    case 'browser-intent-preview':
+      return 'preview'
+    default:
+      return null
+  }
+}
 
 function SectionTitle({
   children,
@@ -543,15 +579,39 @@ function ApexOverviewTab({
 function ApexBrowserTab({
   health,
   summary,
+  receipt,
+  selectedSessionId,
+  handoffIntent,
+  handoffRationale,
+  setSelectedSessionId,
+  setHandoffIntent,
+  setHandoffRationale,
+  onHandoff,
+  onRefresh,
+  actionMessage,
 }: {
   health: ApexWorkspaceHealth | null
   summary: ApexBrowserSummary | null
+  receipt: BrowserPreviewReceipt | null
+  selectedSessionId: string
+  handoffIntent: BrowserPreviewIntent
+  handoffRationale: string
+  setSelectedSessionId: (value: string) => void
+  setHandoffIntent: (value: BrowserPreviewIntent) => void
+  setHandoffRationale: (value: string) => void
+  onHandoff: () => void
+  onRefresh: () => void
+  actionMessage: string | null
 }): React.ReactNode {
+  const { headerFocused, focusHeader } = useTabHeaderFocus()
   const browser = summarizeApexBrowser(summary)
   const activeSession =
     summary?.sessions.find(session => session.id === summary.activeSessionId) ??
     summary?.sessions[0] ??
     null
+  const selectedSession =
+    summary?.sessions.find(session => session.id === selectedSessionId) ??
+    activeSession
   const sessionPreview =
     summary?.sessions.slice(0, 5).map(session => {
       const privateUserSession =
@@ -576,49 +636,192 @@ function ApexBrowserTab({
           : 'agent history not persisted',
       ]
     : []
+  const selectedSessionIsPrivateUser =
+    selectedSession?.requestedBy === 'user' && !selectedSession.recordHistory
   const linkPreview =
-    activeSession?.links.slice(0, 5).map(link => {
+    selectedSessionIsPrivateUser
+      ? []
+      : selectedSession?.links.slice(0, 5).map(link => {
       const text = truncateLine(link.text || link.url, 72)
       return `${link.linkType} · ${text}`
+      }) ?? []
+  const handoffSummary = summarizeBrowserPreviewReceipt(receipt)
+  const handoffPreview =
+    receipt?.sessions.slice(0, 5).map(session => {
+      const target = session.url ?? session.note
+      return `${session.requestedBy} · ${session.intent} · ${target}`
     }) ?? []
+  const options = useMemo<OptionWithDescription<BrowserAction>[]>(() => {
+    const sessionOptions =
+      summary?.sessions.slice(0, 8).map(session => ({
+        label: `Use ${truncateLine(session.title || session.id, 28)}`,
+        value: `browser-use-${session.id}` as BrowserAction,
+        description:
+          session.requestedBy === 'user' && !session.recordHistory
+            ? `private user session · ${session.state}`
+            : `${session.requestedBy} · ${session.state} · ${truncateLine(session.url, 60)}`,
+      })) ?? []
+
+    return [
+      {
+        label: 'Session id',
+        value: 'browser-session',
+        type: 'input',
+        initialValue: selectedSessionId,
+        onChange: setSelectedSessionId,
+        allowEmptySubmitToCancel: true,
+      },
+      {
+        label: 'Handoff rationale',
+        value: 'browser-rationale',
+        type: 'input',
+        initialValue: handoffRationale,
+        onChange: setHandoffRationale,
+        allowEmptySubmitToCancel: true,
+      },
+      {
+        label: 'Intent: preview',
+        value: 'browser-intent-preview',
+        description: 'Local app QA or interactive preview inside the accountable browser lane.',
+      },
+      {
+        label: 'Intent: research',
+        value: 'browser-intent-research',
+        description: 'Document or reference work that should remain auditable.',
+      },
+      {
+        label: 'Intent: browse',
+        value: 'browser-intent-browse',
+        description: 'General supervised browsing that still needs an accountable handoff.',
+      },
+      {
+        label: 'Intent: watch',
+        value: 'browser-intent-watch',
+        description: 'Longer viewing sessions that should still hand off into /preview.',
+      },
+      {
+        label: 'Intent: music',
+        value: 'browser-intent-music',
+        description: 'Audio sessions that still need an accountable operator receipt.',
+      },
+      ...sessionOptions,
+      {
+        label: 'Handoff to /preview receipt',
+        value: 'browser-handoff',
+        description:
+          'Record the selected live browser session as an accountable /preview handoff without launching a second browser.',
+      },
+      {
+        label: 'Refresh browser state',
+        value: 'browser-refresh',
+        description: 'Reload the live browser bridge state and the accountable preview receipts.',
+      },
+    ]
+  }, [
+    handoffRationale,
+    selectedSessionId,
+    setHandoffRationale,
+    setSelectedSessionId,
+    summary,
+  ])
 
   return (
-    <Box flexDirection="column" gap={1}>
-      <SectionTitle>Browser bridge health</SectionTitle>
-      <Text>
-        {health
-          ? `${health.service} ${health.version} · ${health.status} · ${health.timestamp}`
-          : `offline · expected ${'http://127.0.0.1:8799'}`}
-      </Text>
+    <Box flexDirection="row" gap={3}>
+      <Box width={38} flexDirection="column">
+        <Select
+          options={options}
+          layout="compact-vertical"
+          visibleOptionCount={10}
+          defaultFocusValue="browser-session"
+          onChange={value => {
+            if (value.startsWith('browser-use-')) {
+              setSelectedSessionId(value.slice('browser-use-'.length))
+              return
+            }
+            const intentAction = getBrowserIntentFromAction(value as BrowserAction)
+            if (intentAction) {
+              setHandoffIntent(intentAction)
+              return
+            }
+            if (value === 'browser-handoff') {
+              onHandoff()
+              return
+            }
+            if (value === 'browser-refresh') {
+              onRefresh()
+            }
+          }}
+          isDisabled={headerFocused}
+          onUpFromFirstItem={focusHeader}
+        />
+      </Box>
 
-      <SectionTitle>Active browser session</SectionTitle>
-      <Text wrap="wrap">{browser.headline}</Text>
-      <DetailList items={browser.details} />
+      <Box flexDirection="column" flexGrow={1} gap={1}>
+        <SectionTitle>Browser bridge health</SectionTitle>
+        <Text>
+          {health
+            ? `${health.service} ${health.version} · ${health.status} · ${health.timestamp}`
+            : `offline · expected ${'http://127.0.0.1:8799'}`}
+        </Text>
 
-      <SectionTitle>Recent sessions</SectionTitle>
-      <DetailList
-        items={sessionPreview}
-        empty="No browser sessions are visible until the Apex browser bridge is online."
-      />
+        <SectionTitle>Active browser session</SectionTitle>
+        <Text wrap="wrap">{browser.headline}</Text>
+        <DetailList items={browser.details} />
 
-      <SectionTitle>Privacy posture</SectionTitle>
-      <DetailList
-        items={privacy}
-        empty="Privacy controls will surface once the Apex browser bridge is online."
-      />
+        <SectionTitle>Selected session</SectionTitle>
+        {selectedSession ? (
+          <Box flexDirection="column">
+            <Text wrap="wrap">
+              {selectedSessionIsPrivateUser
+                ? `private user session · ${selectedSession.state}`
+                : `${selectedSession.title} · ${selectedSession.requestedBy} · ${selectedSession.state}`}
+            </Text>
+            <Text dimColor wrap="wrap">
+              {selectedSession.id}
+              {selectedSessionIsPrivateUser ? '' : ` · ${selectedSession.url}`}
+            </Text>
+            <Text dimColor wrap="wrap">
+              intent {handoffIntent} · rationale {handoffRationale || 'not set'}
+            </Text>
+          </Box>
+        ) : (
+          <Text dimColor wrap="wrap">
+            Choose a live browser session on the left before handing it off into /preview.
+          </Text>
+        )}
 
-      <SectionTitle>Active session links</SectionTitle>
-      <DetailList
-        items={linkPreview}
-        empty="No accountable links are visible for the active browser session."
-      />
+        <SectionTitle>Recent sessions</SectionTitle>
+        <DetailList
+          items={sessionPreview}
+          empty="No browser sessions are visible until the Apex browser bridge is online."
+        />
 
-      <SectionTitle>Operator handoff</SectionTitle>
-      <Text wrap="wrap">
-        Start the browser bridge from Launch when needed. Use /preview for
-        deeper browsing and navigation control, and launch Flowspace Browser
-        only when you explicitly need the external native window.
-      </Text>
+        <SectionTitle>Privacy posture</SectionTitle>
+        <DetailList
+          items={privacy}
+          empty="Privacy controls will surface once the Apex browser bridge is online."
+        />
+
+        <SectionTitle>Selected session links</SectionTitle>
+        <DetailList
+          items={linkPreview}
+          empty={
+            selectedSessionIsPrivateUser
+              ? 'Private user session links stay redacted until you launch an accountable preview session.'
+              : 'No accountable links are visible for the selected browser session.'
+          }
+        />
+
+        <SectionTitle>Accountable /preview handoffs</SectionTitle>
+        <Text wrap="wrap">{handoffSummary.headline}</Text>
+        <DetailList items={handoffPreview} empty={handoffSummary.details[0]} />
+
+        <SectionTitle>Operator handoff</SectionTitle>
+        <Text wrap="wrap">
+          {actionMessage ??
+            'Record the selected live session into the accountable /preview lane here, then keep deeper navigation and mutations inside /preview.'}
+        </Text>
+      </Box>
     </Box>
   )
 }
@@ -1263,6 +1466,17 @@ function ApexCommandCenter({
   const [summary, setSummary] = useState<ApexWorkspaceSummary | null>(null)
   const [browserHealth, setBrowserHealth] = useState<ApexWorkspaceHealth | null>(null)
   const [browserSummary, setBrowserSummary] = useState<ApexBrowserSummary | null>(null)
+  const [browserPreviewReceipt, setBrowserPreviewReceipt] =
+    useState<BrowserPreviewReceipt | null>(null)
+  const [browserSelectedSessionId, setBrowserSelectedSessionId] = useState('')
+  const [browserHandoffIntent, setBrowserHandoffIntent] =
+    useState<BrowserPreviewIntent>('preview')
+  const [browserHandoffRationale, setBrowserHandoffRationale] = useState(
+    'Hand off the active Apex browser session into the accountable /preview lane.',
+  )
+  const [browserActionMessage, setBrowserActionMessage] = useState<string | null>(
+    null,
+  )
   const [chronoHealth, setChronoHealth] = useState<ApexWorkspaceHealth | null>(null)
   const [chronoSummary, setChronoSummary] = useState<ApexChronoSummary | null>(null)
   const [launchMessage, setLaunchMessage] = useState<string | null>(null)
@@ -1299,6 +1513,7 @@ function ApexCommandCenter({
       nextSummary,
       nextBrowserHealth,
       nextBrowserSummary,
+      nextBrowserPreviewReceipt,
       nextChronoHealth,
       nextChronoSummary,
     ] = await Promise.all([
@@ -1306,6 +1521,7 @@ function ApexCommandCenter({
       getApexWorkspaceSummary(),
       getApexBrowserHealth(),
       getApexBrowserSummary(),
+      readBrowserPreviewReceipt(),
       getApexChronoHealth(),
       getApexChronoSummary(),
     ])
@@ -1313,6 +1529,7 @@ function ApexCommandCenter({
     setSummary(nextSummary)
     setBrowserHealth(nextBrowserHealth)
     setBrowserSummary(nextBrowserSummary)
+    setBrowserPreviewReceipt(nextBrowserPreviewReceipt)
     setChronoHealth(nextChronoHealth)
     setChronoSummary(nextChronoSummary)
     setLoading(false)
@@ -1360,6 +1577,13 @@ function ApexCommandCenter({
         setSelectedStoreAppId(preferredApp?.id ?? '')
       }
     }
+    if (browserSummary) {
+      if (!browserSelectedSessionId) {
+        setBrowserSelectedSessionId(
+          browserSummary.activeSessionId ?? browserSummary.sessions[0]?.id ?? '',
+        )
+      }
+    }
     if (chronoSummary) {
       if (!selectedChronoJobId && chronoSummary.jobs.length > 0) {
         setSelectedChronoJobId(chronoSummary.jobs[0]!.id)
@@ -1370,6 +1594,8 @@ function ApexCommandCenter({
     }
   }, [
     chatSessionId,
+    browserSelectedSessionId,
+    browserSummary,
     chronoDestinationPath,
     chronoSummary,
     selectedChronoJobId,
@@ -1624,6 +1850,36 @@ function ApexCommandCenter({
     }
   }, [refreshWorkspace])
 
+  const handleBrowserHandoff = useCallback(async () => {
+    const sessionId =
+      browserSelectedSessionId.trim() ||
+      browserSummary?.activeSessionId ||
+      browserSummary?.sessions[0]?.id ||
+      ''
+    if (!sessionId) {
+      setBrowserActionMessage(
+        'Choose a live browser session before handing it off into /preview.',
+      )
+      return
+    }
+    const result = await handoffBrowserPreviewSession({
+      sessionId,
+      intent: browserHandoffIntent,
+      rationale: browserHandoffRationale,
+      requestedBy: 'operator',
+    })
+    setBrowserActionMessage(result.message)
+    setBrowserPreviewReceipt(result.receipt)
+    if (result.ok) {
+      setSelectedTab('Browser')
+    }
+  }, [
+    browserHandoffIntent,
+    browserHandoffRationale,
+    browserSelectedSessionId,
+    browserSummary,
+  ])
+
   const banner = (
     <Box flexDirection="row" gap={2}>
       <Text>
@@ -1760,7 +2016,24 @@ function ApexCommandCenter({
           <ApexSystemTab summary={summary} />
         </Tab>
         <Tab title="Browser">
-          <ApexBrowserTab health={browserHealth} summary={browserSummary} />
+          <ApexBrowserTab
+            health={browserHealth}
+            summary={browserSummary}
+            receipt={browserPreviewReceipt}
+            selectedSessionId={browserSelectedSessionId}
+            handoffIntent={browserHandoffIntent}
+            handoffRationale={browserHandoffRationale}
+            setSelectedSessionId={setBrowserSelectedSessionId}
+            setHandoffIntent={setBrowserHandoffIntent}
+            setHandoffRationale={setBrowserHandoffRationale}
+            onHandoff={() => {
+              void handleBrowserHandoff()
+            }}
+            onRefresh={() => {
+              void refreshWorkspace()
+            }}
+            actionMessage={browserActionMessage}
+          />
         </Tab>
         <Tab title="Chrono">
           <ApexChronoTab

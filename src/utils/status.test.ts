@@ -578,9 +578,20 @@ describe('buildApexWorkspaceProperties', () => {
         label: 'Apex summary',
         value: [
           'Workspace mode live · system 83% · security 92%',
+          'security 1 active alert',
           'Mail 0 messages · 2 accounts · 1 alerts',
           'Chat 1/2 active sessions · 16 messages',
           'Store 5 installed · 1 updates',
+        ],
+      },
+      {
+        label: 'Apex posture',
+        value: [
+          'system 83%',
+          'security 92%',
+          '0 host alerts · 1 security alert',
+          '0 degraded services · 0 incidents',
+          '0 recommendations',
         ],
       },
       {
