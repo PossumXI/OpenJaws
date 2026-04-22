@@ -34,6 +34,7 @@ import {
   resolveRoundtableDurationHours,
   resolveRoundtableApprovalTtlHours,
 } from './discordRoundtableScheduler.js'
+import { queuePublicShowcaseActivitySync } from './publicShowcaseActivity.js'
 
 type JsonRecord = Record<string, unknown>
 
@@ -1255,6 +1256,10 @@ export function saveDiscordRoundtableRuntimeState(args: {
 }) {
   writeJsonFile(getDiscordRoundtableStatePath(args.root), args.state)
   writeJsonFile(getDiscordRoundtableQueueStatePath(args.root), args.state)
+  queuePublicShowcaseActivitySync({
+    root: args.root,
+    roundtableRuntime: args.state,
+  })
 }
 
 export function saveDiscordRoundtableSessionState(args: {
@@ -1262,6 +1267,10 @@ export function saveDiscordRoundtableSessionState(args: {
   state: DiscordRoundtableSessionState
 }) {
   writeJsonFile(getDiscordRoundtableSessionStatePath(args.root), args.state)
+  queuePublicShowcaseActivitySync({
+    root: args.root,
+    roundtableSession: args.state,
+  })
 }
 
 export function stageDiscordRoundtableHandoff(args: {

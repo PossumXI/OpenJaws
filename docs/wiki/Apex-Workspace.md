@@ -100,3 +100,25 @@ The cleaner next steps are:
 - more bounded mail/chat/store operator actions over `workspace_api`
 - launcher-backed browser/security/vault actions with better receipts
 - keep launcher-backed browser actions separate, and add stable bridge endpoints first whenever deeper OpenJaws browser control is needed
+
+## Tenant Governance Parity
+
+As of 2026-04-22, `/apex` and `/status` can also consume the shared tenant-governance summary lane that the protected Apex operator surfaces already use.
+
+Current contract:
+
+- `src/utils/apexWorkspace.ts`
+  - fetches `GET /api/v1/tenant/analytics` through session-ingress auth
+  - normalizes the result into `ApexTenantGovernanceSummary`
+- `src/commands/apex/apex.tsx`
+  - renders the governed tenant lane in the Overview tab
+  - shows governance readiness in the TUI banner
+  - keeps Chrono, mail, chat, store, and security surfaces intact
+- `src/utils/status.tsx`
+  - now surfaces an `Apex governance` property block in the shared status panel when the tenant lane is available
+
+Important boundary:
+
+- the TUI should consume the shared tenant-governance summary, not invent a second analytics shape
+- forward-looking producers should seed `analytics_dimensions.operator_actions`
+- OpenJaws keeps `governedActionBreakdown` only as a compatibility fallback for older data already in the lane

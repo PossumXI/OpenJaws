@@ -24,6 +24,8 @@ This page summarizes the current public OpenJaws surface that is already working
 - command rediscovery is clearer too: `/help`, `/config`, `/theme`, and `/privacy-settings` now form the obvious public-safe entry points for operator setup
 - `/help` now pulls its quick-start section from the real command registry and shows aliases plus argument hints in the command browser instead of a static bare-name list
 - the tracked Discord receipt and roundtable runtime now emit a bounded public showcase activity feed, and `showcase:activity:sync` writes that feed into the Arobi public handoff surface so Aura Genesis can publish sanitized operator and runtime snippets without opening raw 00 traces
+- the bounded public showcase feed now aggregates `Q`, `Viola`, `Blackbeak`, roundtable runtime, sanitized Immaculate actionability summaries, and typed trace summaries into one mirrored public-safe overlay
+- OpenJaws now mirrors that bounded overlay into `docs/wiki/Public-Showcase-Activity.json`, so other repos and public surfaces can consume the same sanctioned snapshot without scraping local runtime state files
 
 ## OpenCheek Agents and Task Deck
 
@@ -65,6 +67,7 @@ This page summarizes the current public OpenJaws surface that is already working
 
 - `/apex` now gives OpenJaws a bounded local command-center lane for an external Apex workspace
 - the typed `workspace_api` bridge can surface mail, chat, store, system, and security summaries directly into OpenJaws
+- `/apex` and `/status` now also consume the shared Apex tenant-governance summary through session-ingress auth, so governed operator-action visibility stays aligned across the TUI and the protected Apex operator surfaces
 - the new dedicated `chrono-bridge` wraps `apps/chrono/src/lib.rs` into a bounded localhost backup surface instead of pretending the desktop GUI is native TUI UI
 - the `/apex` deck now exposes those bridge-backed surfaces through dedicated `Mail`, `Chat`, `Store`, `System`, `Chrono`, and `Security` tabs
 - `/apex` can now send Aegis Mail drafts, move/delete/flag selected mail items, create Shadow Chat sessions, post into those sessions, and install Store apps with a structured receipt through the same trusted bridge contract

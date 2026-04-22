@@ -44,6 +44,7 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 - [Release and Update Policy](Release-and-Update-Policy.md)
 - [Features and Capabilities](Features-and-Capabilities.md)
 - [Apex Workspace Bridge](Apex-Workspace.md)
+- [Public Showcase Activity](Public-Showcase-Activity.md)
 - [Accountable Browser Preview](Browser-Preview.md)
 - [Immaculate Integration](Immaculate-Integration.md)
 - [Roundtable Execution](Roundtable-Execution.md)

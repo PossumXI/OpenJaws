@@ -1,4 +1,7 @@
-import { syncPublicShowcaseActivityFromRoot } from '../src/utils/publicShowcaseActivity.js'
+import {
+  getPublicShowcaseActivityMirrorPath,
+  syncPublicShowcaseActivityFromRoot,
+} from '../src/utils/publicShowcaseActivity.js'
 
 type PublicShowcaseActivityCliOptions = {
   json: boolean
@@ -12,13 +15,15 @@ export function parseArgs(argv: string[]): PublicShowcaseActivityCliOptions {
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   const options = parseArgs(argv)
+  const root = process.cwd()
   const feed = syncPublicShowcaseActivityFromRoot({
-    root: process.cwd(),
+    root,
   })
   const payload = {
     path: process.env.ASGARD_PUBLIC_SHOWCASE_ACTIVITY_FILE ??
       process.env.AROBI_PUBLIC_SHOWCASE_ACTIVITY_FILE ??
       'C:\\Users\\Knight\\.arobi-public\\showcase-activity.json',
+    mirrorPath: getPublicShowcaseActivityMirrorPath(root),
     ...feed,
   }
 

@@ -44,6 +44,7 @@ The Q mark above is sourced from `src/components/LogoV2/qMarkData.ts` and can be
 - [Release and Update Policy](docs/wiki/Release-and-Update-Policy.md)
 - [Features and Capabilities](docs/wiki/Features-and-Capabilities.md)
 - [Apex Workspace Bridge](docs/wiki/Apex-Workspace.md)
+- [Public Showcase Activity](docs/wiki/Public-Showcase-Activity.md)
 - [Accountable Browser Preview](docs/wiki/Browser-Preview.md)
 - [Immaculate Integration](docs/wiki/Immaculate-Integration.md)
 - [Roundtable Execution](docs/wiki/Roundtable-Execution.md)

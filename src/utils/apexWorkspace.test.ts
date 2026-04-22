@@ -6,6 +6,7 @@ import {
   getApexLaunchTarget,
   getApexLaunchTargets,
   summarizeApexChrono,
+  summarizeApexTenantGovernance,
   summarizeApexWorkspace,
 } from './apexWorkspace.js'
 
@@ -225,5 +226,45 @@ describe('apexWorkspace', () => {
     expect(summary.headline).toContain('native tui preview')
     expect(summary.details[0]).toContain('redacted from shared status surfaces')
     expect(summary.details[2]).toContain('200')
+  })
+
+  it('summarizes tenant governance into concise operator strings', () => {
+    const summary = summarizeApexTenantGovernance({
+      totalDecisions: 12,
+      ethicsPassed: 12,
+      ethicsFailed: 0,
+      avgConfidence: 0.93,
+      avgRiskScore: 0.2,
+      detectionEventCount: 4,
+      telemetryScopeCount: 3,
+      latestActivityAt: '2026-04-21T12:31:06Z',
+      highRiskCalls: 1,
+      criticalCalls: 0,
+      pendingReviewCalls: 2,
+      operatorActionBreakdown: [
+        { name: 'operator_runtime', count: 5 },
+        { name: 'payments', count: 2 },
+      ],
+      governedActionBreakdown: [
+        { name: 'payments', count: 2 },
+        { name: 'email', count: 4 },
+      ],
+      governanceSignalBreakdown: [{ name: 'policy_guard', count: 3 }],
+      reviewStatusBreakdown: [{ name: 'approved', count: 10 }],
+      categoryBreakdown: [],
+      topSources: [{ name: 'apex-mail', count: 4 }],
+      topModels: [{ name: 'q-oci-operator', count: 6 }],
+      narrative:
+        'Governed payment, email, and access actions are reconstructed into one audit lane.',
+    })
+
+    expect(summary.headline).toContain('Governed tenant actions 12')
+    expect(summary.details[1]).toContain(
+      'Top operator action operator runtime',
+    )
+    expect(summary.details[2]).toContain('Ethics passed 12')
+    expect(summary.details[3]).toContain(
+      'Latest activity 2026-04-21T12:31:06Z',
+    )
   })
 })

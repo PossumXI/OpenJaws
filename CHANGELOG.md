@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.88 - 2026-04-22
+
+- The bounded public showcase feed now aggregates `Q`, `Viola`, `Blackbeak`, roundtable runtime, sanitized Immaculate actionability summaries, and typed trace summaries into one mirrored overlay, which gives the Arobi public showcase lane a current operator/activity snapshot without exposing private control receipts.
+- OpenJaws now mirrors that bounded overlay into `docs/wiki/Public-Showcase-Activity.json`, so other repos and public surfaces can consume the same public-safe snapshot without scraping local runtime files directly.
+- `/apex` and `/status` now consume the shared Apex tenant-governance summary through session-ingress auth, which keeps governed operator action visibility aligned across the TUI and the protected Apex operator surfaces.
+
 ## 2.1.87 - 2026-04-22
 
 - Roundtable repo-root jobs now narrow onto deeper code-bearing paths like `src/utils`, `src/commands`, and `apps/harness/src` before they enter the autonomous worktree lane, which reduces broad repo passes and improves mergeability.

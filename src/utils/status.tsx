@@ -75,9 +75,11 @@ import {
   getApexWorkspaceSummary,
   summarizeApexBrowser,
   summarizeApexChrono,
+  summarizeApexTenantGovernance,
   summarizeApexWorkspace,
   type ApexBrowserSummary,
   type ApexChronoSummary,
+  type ApexTenantGovernanceSummary,
   type ApexWorkspaceAvailability,
   type ApexWorkspaceHealth,
   type ApexWorkspaceSummary,
@@ -753,6 +755,7 @@ export function buildApexWorkspaceProperties(
   availability: ApexWorkspaceAvailability = getApexWorkspaceAvailability(),
   health: ApexWorkspaceHealth | null = null,
   summary: ApexWorkspaceSummary | null = null,
+  governanceSummary: ApexTenantGovernanceSummary | null = null,
   chronoHealth: ApexWorkspaceHealth | null = null,
   chronoSummary: ApexChronoSummary | null = null,
   browserHealth: ApexWorkspaceHealth | null = null,
@@ -770,6 +773,7 @@ export function buildApexWorkspaceProperties(
     return []
   }
   const workspace = summarizeApexWorkspace(summary)
+  const governance = summarizeApexTenantGovernance(governanceSummary)
   const chrono = summarizeApexChrono(chronoSummary)
   const browser = summarizeApexBrowser(browserSummary)
   const degradedServiceCount =
@@ -802,6 +806,17 @@ export function buildApexWorkspaceProperties(
         ...workspace.details.slice(0, 3),
       ],
     },
+    ...(governanceSummary
+      ? [
+          {
+            label: 'Apex governance',
+            value: [
+              governance.headline,
+              ...governance.details.slice(0, 3),
+            ],
+          } satisfies Property,
+        ]
+      : []),
     ...(summary
       ? [
           {

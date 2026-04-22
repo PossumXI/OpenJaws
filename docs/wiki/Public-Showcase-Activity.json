@@ -1,0 +1,212 @@
+{
+  "updatedAt": "2026-04-22T02:19:59.673Z",
+  "entries": [
+    {
+      "id": "runtime-audit-2026-04-22T02:19:59.673Z",
+      "timestamp": "2026-04-22T02:19:59.673Z",
+      "title": "Supervised runtime activity refreshed",
+      "summary": "Supervised OpenJaws audit surfaces are live but still show bounded warnings or incomplete runtime coverage.",
+      "kind": "runtime_audit",
+      "status": "warning",
+      "source": "OpenJaws public showcase sync",
+      "operatorActions": [
+        "runtime_audit",
+        "public_showcase_sync"
+      ],
+      "subsystems": [
+        "openjaws",
+        "q",
+        "roundtable",
+        "immaculate",
+        "discord"
+      ],
+      "artifacts": [
+        "showcase:activity"
+      ],
+      "tags": [
+        "public",
+        "audit",
+        "bounded"
+      ]
+    },
+    {
+      "id": "roundtable-running-2026-04-22T02:19:09.514Z",
+      "timestamp": "2026-04-22T02:19:09.514Z",
+      "title": "Roundtable runtime",
+      "summary": "Roundtable is running in #dev_support. Viola passed turn 8",
+      "kind": "roundtable_runtime",
+      "status": "warning",
+      "source": "OpenJaws roundtable lane",
+      "operatorActions": [
+        "roundtable_runtime",
+        "immaculate_handoff"
+      ],
+      "subsystems": [
+        "openjaws",
+        "immaculate",
+        "discord"
+      ],
+      "artifacts": [
+        "roundtable:session"
+      ],
+      "tags": [
+        "roundtable",
+        "bounded",
+        "supervised"
+      ]
+    },
+    {
+      "id": "discord-q-2026-04-22T02:17:32.793Z",
+      "timestamp": "2026-04-22T02:17:32.793Z",
+      "title": "Supervised Q patrol update",
+      "summary": "state changed but routing cooldown held",
+      "kind": "patrol",
+      "status": "ok",
+      "source": "OpenJaws Discord lane",
+      "operatorActions": [
+        "q_operator_patrol"
+      ],
+      "subsystems": [
+        "openjaws",
+        "discord",
+        "q"
+      ],
+      "artifacts": [
+        "discord:q-agent-receipt"
+      ],
+      "tags": [
+        "q",
+        "discord",
+        "openjaws",
+        "bounded"
+      ]
+    },
+    {
+      "id": "discord-blackbeak-2026-04-22T02:00:56.325Z",
+      "timestamp": "2026-04-22T02:00:56.325Z",
+      "title": "Supervised Blackbeak patrol update",
+      "summary": "Blackbeak Discord runtime is online through the supervised bounded operator lane.",
+      "kind": "patrol",
+      "status": "ok",
+      "source": "OpenJaws Discord lane",
+      "operatorActions": [
+        "blackbeak_operator_patrol"
+      ],
+      "subsystems": [
+        "openjaws",
+        "discord",
+        "blackbeak"
+      ],
+      "artifacts": [
+        "discord:blackbeak-agent-receipt"
+      ],
+      "tags": [
+        "blackbeak",
+        "discord",
+        "openjaws",
+        "bounded"
+      ]
+    },
+    {
+      "id": "discord-viola-2026-04-22T00:48:39.358Z",
+      "timestamp": "2026-04-22T00:48:39.358Z",
+      "title": "Supervised Viola patrol update",
+      "summary": "Viola Discord runtime is online through the supervised bounded operator lane.",
+      "kind": "patrol",
+      "status": "ok",
+      "source": "OpenJaws Discord lane",
+      "operatorActions": [
+        "viola_operator_patrol"
+      ],
+      "subsystems": [
+        "openjaws",
+        "discord",
+        "viola"
+      ],
+      "artifacts": [
+        "discord:viola-agent-receipt"
+      ],
+      "tags": [
+        "viola",
+        "discord",
+        "openjaws",
+        "bounded"
+      ]
+    },
+    {
+      "id": "q-trace-2026-04-21T23:58:46.873Z",
+      "timestamp": "2026-04-21T23:58:46.873Z",
+      "title": "Q reasoning trace",
+      "summary": "Q session q-runtime-coherence-20260421T235846 is completed with 5 trace events.",
+      "kind": "q_trace",
+      "status": "ok",
+      "source": "Q trace",
+      "operatorActions": [
+        "q_reasoning_trace",
+        "model_trace"
+      ],
+      "subsystems": [
+        "q",
+        "openjaws"
+      ],
+      "artifacts": [
+        "q:trace-summary"
+      ],
+      "tags": [
+        "q",
+        "trace",
+        "bounded"
+      ]
+    },
+    {
+      "id": "immaculate-trace-2026-04-21T23:58:46.870Z",
+      "timestamp": "2026-04-21T23:58:46.870Z",
+      "title": "Immaculate orchestration trace",
+      "summary": "Immaculate session immaculate-coherence-20260421T235846 is completed with 5 trace events.",
+      "kind": "orchestration_trace",
+      "status": "ok",
+      "source": "Immaculate trace",
+      "operatorActions": [
+        "immaculate_trace",
+        "orchestration_trace"
+      ],
+      "subsystems": [
+        "immaculate",
+        "openjaws"
+      ],
+      "artifacts": [
+        "immaculate:trace-summary"
+      ],
+      "tags": [
+        "immaculate",
+        "trace",
+        "bounded"
+      ]
+    },
+    {
+      "id": "immaculate-actionability-2026-04-20T02:38:44.879Z",
+      "timestamp": "2026-04-20T02:38:44.879Z",
+      "title": "Immaculate roundtable actionability plan",
+      "summary": "hybrid quorum planner covers 3 repos with 3 isolated actions 3 ready. Repos: Immaculate, OpenJaws, Asgard. Isolation: worktree, branch. Authority: agent-branch-only. Roundtable hybrid-quorum plan across 3 repo(s) with 3 isolated agent action(s); 3 ready for immediate worktree materialization..",
+      "kind": "roundtable_actionability",
+      "status": "ok",
+      "source": "Immaculate planner",
+      "operatorActions": [],
+      "subsystems": [
+        "immaculate",
+        "Immaculate",
+        "OpenJaws",
+        "Asgard"
+      ],
+      "artifacts": [
+        "roundtable:actionability"
+      ],
+      "tags": [
+        "immaculate",
+        "planner",
+        "bounded",
+        "public"
+      ]
+    }
+  ]
+}

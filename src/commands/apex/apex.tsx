@@ -10,6 +10,7 @@ import {
 import {
   type ApexChronoSummary,
   type ApexLaunchTarget,
+  type ApexTenantGovernanceSummary,
   type ApexWorkspaceHealth,
   type ApexWorkspaceSummary,
   cleanupApexChronoBackups,
@@ -23,6 +24,7 @@ import {
   getApexChronoSummary,
   getApexLaunchTarget,
   getApexLaunchTargets,
+  getApexTenantGovernanceSummary,
   getApexWorkspaceHealth,
   getApexWorkspaceSummary,
   installApexStoreAppWithReceipt,
@@ -34,6 +36,7 @@ import {
   startApexChronoJob,
   startApexWorkspaceApi,
   summarizeApexChrono,
+  summarizeApexTenantGovernance,
   summarizeApexWorkspace,
 } from '../../utils/apexWorkspace.js'
 import { formatNumber } from '../../utils/format.js'
@@ -472,12 +475,19 @@ function ApexOverviewTab({
   loading,
   health,
   summary,
+  governanceSummary,
 }: {
   loading: boolean
   health: ApexWorkspaceHealth | null
   summary: ApexWorkspaceSummary | null
+  governanceSummary: ApexTenantGovernanceSummary | null
 }): React.ReactNode {
   const workspace = summarizeApexWorkspace(summary)
+  const governance = summarizeApexTenantGovernance(governanceSummary)
+  const governanceActions =
+    governanceSummary?.operatorActionBreakdown
+      .slice(0, 4)
+      .map(action => `${action.name.replace(/_/g, ' ')} · ${action.count}`) ?? []
   const topApps =
     summary?.store.apps
       .slice(0, 5)
@@ -501,6 +511,22 @@ function ApexOverviewTab({
       <SectionTitle>Workspace summary</SectionTitle>
       <Text>{workspace.headline}</Text>
       <DetailList items={workspace.details} />
+
+      <SectionTitle>Tenant governance</SectionTitle>
+      <Text wrap="wrap">{governance.headline}</Text>
+      <DetailList items={governance.details} />
+      {governanceSummary ? (
+        <>
+          <SectionTitle>Operator actions</SectionTitle>
+          <DetailList
+            items={governanceActions}
+            empty="No governed operator actions are visible yet."
+          />
+          <Text dimColor wrap="wrap">
+            {governanceSummary.narrative}
+          </Text>
+        </>
+      ) : null}
 
       <SectionTitle>Top conversations</SectionTitle>
       <DetailList
@@ -1155,6 +1181,8 @@ function ApexCommandCenter({
   const [loading, setLoading] = useState(true)
   const [health, setHealth] = useState<ApexWorkspaceHealth | null>(null)
   const [summary, setSummary] = useState<ApexWorkspaceSummary | null>(null)
+  const [tenantGovernanceSummary, setTenantGovernanceSummary] =
+    useState<ApexTenantGovernanceSummary | null>(null)
   const [chronoHealth, setChronoHealth] = useState<ApexWorkspaceHealth | null>(null)
   const [chronoSummary, setChronoSummary] = useState<ApexChronoSummary | null>(null)
   const [launchMessage, setLaunchMessage] = useState<string | null>(null)
@@ -1186,21 +1214,35 @@ function ApexCommandCenter({
     if (!silent) {
       setLoading(true)
     }
-    const [nextHealth, nextSummary, nextChronoHealth, nextChronoSummary] = await Promise.all([
+    const [
+      nextHealth,
+      nextSummary,
+      nextTenantGovernanceSummary,
+      nextChronoHealth,
+      nextChronoSummary,
+    ] = await Promise.all([
       getApexWorkspaceHealth(),
       getApexWorkspaceSummary(),
+      getApexTenantGovernanceSummary(),
       getApexChronoHealth(),
       getApexChronoSummary(),
     ])
     setHealth(nextHealth)
     setSummary(nextSummary)
+    setTenantGovernanceSummary(nextTenantGovernanceSummary)
     setChronoHealth(nextChronoHealth)
     setChronoSummary(nextChronoSummary)
     setLoading(false)
     return {
-      ok: nextHealth !== null || nextChronoHealth !== null,
+      ok:
+        nextHealth !== null ||
+        nextTenantGovernanceSummary !== null ||
+        nextChronoHealth !== null,
       message: [
         nextHealth !== null ? 'workspace bridge ready' : 'workspace bridge offline',
+        nextTenantGovernanceSummary !== null
+          ? 'tenant governance ready'
+          : 'tenant governance offline',
         nextChronoHealth !== null ? 'chrono bridge ready' : 'chrono bridge offline',
       ].join(' · '),
     }
@@ -1519,9 +1561,18 @@ function ApexCommandCenter({
           <Text color="warning">offline</Text>
         )}
       </Text>
+      <Text>
+        Governance:{' '}
+        {tenantGovernanceSummary ? (
+          <Text color="success">ready</Text>
+        ) : (
+          <Text color="warning">offline</Text>
+        )}
+      </Text>
       <Text dimColor>
         Guardrails: allowlisted Apex roots only · Esc closes · Workspace API
-        feeds mail/chat/store/system/security · Chrono bridge handles backup jobs
+        feeds mail/chat/store/system/security · Chrono bridge handles backup
+        jobs · tenant governance rides the existing session-ingress lane
       </Text>
     </Box>
   )
@@ -1537,7 +1588,12 @@ function ApexCommandCenter({
         contentHeight={insideModal ? undefined : contentHeight}
       >
         <Tab title="Overview">
-          <ApexOverviewTab loading={loading} health={health} summary={summary} />
+          <ApexOverviewTab
+            loading={loading}
+            health={health}
+            summary={summary}
+            governanceSummary={tenantGovernanceSummary}
+          />
         </Tab>
         <Tab title="Launch">
           <ApexLaunchTab

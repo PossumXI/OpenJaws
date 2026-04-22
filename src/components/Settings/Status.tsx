@@ -17,6 +17,7 @@ import { resolveExternalModelConfig } from '../../utils/model/externalProviders.
 import {
   getApexChronoHealth,
   getApexChronoSummary,
+  getApexTenantGovernanceSummary,
   getApexWorkspaceHealth,
   getApexWorkspaceSummary,
 } from '../../utils/apexWorkspace.js';
@@ -75,6 +76,7 @@ function buildSecondarySection({
   immaculateWorkers: Awaited<ReturnType<typeof getImmaculateHarnessWorkers>> | null;
   apexWorkspaceHealth: Awaited<ReturnType<typeof getApexWorkspaceHealth>> | null;
   apexWorkspaceSummary: Awaited<ReturnType<typeof getApexWorkspaceSummary>> | null;
+  apexTenantGovernanceSummary: Awaited<ReturnType<typeof getApexTenantGovernanceSummary>> | null;
   apexChronoHealth: Awaited<ReturnType<typeof getApexChronoHealth>> | null;
   apexChronoSummary: Awaited<ReturnType<typeof getApexChronoSummary>> | null;
   browserPreviewRuntime: Awaited<ReturnType<typeof readBrowserPreviewRuntime>> | null;
@@ -93,7 +95,7 @@ function buildSecondarySection({
     configuredDefaultEnvironmentId: environmentSelection?.configuredDefaultEnvironmentId ?? null,
     missingConfiguredDefaultEnvironment: environmentSelection?.missingConfiguredDefaultEnvironment ?? false,
     suggestedEnvironmentLabel: environmentSelection?.suggestedEnvironment ? `${environmentSelection.suggestedEnvironment.name} (${environmentSelection.suggestedEnvironment.environment_id})` : null
-  }), ...buildPrivacyProperties(), ...buildProviderProbeProperties(externalModel, externalProviderProbe), ...buildProviderGuidanceProperties(externalModel), ...buildImmaculateProperties(immaculateHarnessStatus, immaculateDeckReceipt, immaculateWorkers), ...buildImmaculateTraceProperties(), ...buildQTraceProperties(), ...buildImmaculateGuidanceProperties(immaculateHarnessStatus), ...buildAgentCoworkProperties(teamContext), ...buildApexWorkspaceProperties(undefined, apexWorkspaceHealth, apexWorkspaceSummary, apexChronoHealth, apexChronoSummary), ...buildBrowserPreviewProperties(browserPreviewReceipt, browserPreviewRuntime), ...buildDiscordQAgentProperties(), ...buildIDEProperties(mcp.clients, context.options.ideInstallationStatus, theme), ...buildMcpProperties(mcp.clients, theme), ...buildSandboxProperties(), ...buildToolchainProperties(), ...buildVoiceProperties(), ...buildQTrainingProperties(immaculateWorkers), ...buildSessionUsageProperties(), ...buildSettingSourcesProperties()];
+  }), ...buildPrivacyProperties(), ...buildProviderProbeProperties(externalModel, externalProviderProbe), ...buildProviderGuidanceProperties(externalModel), ...buildImmaculateProperties(immaculateHarnessStatus, immaculateDeckReceipt, immaculateWorkers), ...buildImmaculateTraceProperties(), ...buildQTraceProperties(), ...buildImmaculateGuidanceProperties(immaculateHarnessStatus), ...buildAgentCoworkProperties(teamContext), ...buildApexWorkspaceProperties(undefined, apexWorkspaceHealth, apexWorkspaceSummary, apexTenantGovernanceSummary, apexChronoHealth, apexChronoSummary), ...buildBrowserPreviewProperties(browserPreviewReceipt, browserPreviewRuntime), ...buildDiscordQAgentProperties(), ...buildIDEProperties(mcp.clients, context.options.ideInstallationStatus, theme), ...buildMcpProperties(mcp.clients, theme), ...buildSandboxProperties(), ...buildToolchainProperties(), ...buildVoiceProperties(), ...buildQTrainingProperties(immaculateWorkers), ...buildSessionUsageProperties(), ...buildSettingSourcesProperties()];
 }
 export async function buildDiagnostics(): Promise<Diagnostic[]> {
   return [...(await buildInstallationDiagnostics()), ...(await buildInstallationHealthDiagnostics()), ...(await buildStartupHarnessDiagnostics()), ...(await buildImmaculateDiagnostics()), ...(await buildMemoryDiagnostics())];
@@ -131,6 +133,7 @@ export function Status({
   const [immaculateWorkersPromise] = React.useState(() => getImmaculateHarnessWorkers().catch(() => null));
   const [apexWorkspaceHealthPromise] = React.useState(() => getApexWorkspaceHealth().catch(() => null));
   const [apexWorkspaceSummaryPromise] = React.useState(() => getApexWorkspaceSummary().catch(() => null));
+  const [apexTenantGovernanceSummaryPromise] = React.useState(() => getApexTenantGovernanceSummary().catch(() => null));
   const [apexChronoHealthPromise] = React.useState(() => getApexChronoHealth().catch(() => null));
   const [apexChronoSummaryPromise] = React.useState(() => getApexChronoSummary().catch(() => null));
   const [browserPreviewRuntimePromise] = React.useState(() => readBrowserPreviewRuntime().catch(() => null));
@@ -141,6 +144,7 @@ export function Status({
   const immaculateWorkers = use(immaculateWorkersPromise);
   const apexWorkspaceHealth = use(apexWorkspaceHealthPromise);
   const apexWorkspaceSummary = use(apexWorkspaceSummaryPromise);
+  const apexTenantGovernanceSummary = use(apexTenantGovernanceSummaryPromise);
   const apexChronoHealth = use(apexChronoHealthPromise);
   const apexChronoSummary = use(apexChronoSummaryPromise);
   const browserPreviewRuntime = use(browserPreviewRuntimePromise);
@@ -162,6 +166,7 @@ export function Status({
       immaculateWorkers,
       apexWorkspaceHealth,
       apexWorkspaceSummary,
+      apexTenantGovernanceSummary,
       apexChronoHealth,
       apexChronoSummary,
       browserPreviewRuntime,
@@ -169,7 +174,7 @@ export function Status({
       externalProviderProbe,
       teamContext
     })
-  ], [apexChronoHealth, apexChronoSummary, apexWorkspaceHealth, apexWorkspaceSummary, browserPreviewReceipt, browserPreviewRuntime, context, environmentSelection, externalProviderProbe, immaculateDeckReceipt, immaculateHarnessStatus, immaculateWorkers, mainLoopModel, mcp, primarySection, replBridgeStartupIssue, teamContext, theme]);
+  ], [apexChronoHealth, apexChronoSummary, apexTenantGovernanceSummary, apexWorkspaceHealth, apexWorkspaceSummary, browserPreviewReceipt, browserPreviewRuntime, context, environmentSelection, externalProviderProbe, immaculateDeckReceipt, immaculateHarnessStatus, immaculateWorkers, mainLoopModel, mcp, primarySection, replBridgeStartupIssue, teamContext, theme]);
   const grow = useIsInsideModal() ? 1 : undefined;
 
   return <Box flexDirection="column" flexGrow={grow}>

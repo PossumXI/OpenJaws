@@ -13,6 +13,7 @@ import { spawn } from 'child_process'
 import { randomUUID } from 'crypto'
 import { execFileNoThrow } from './execFileNoThrow.js'
 import { openPath } from './browser.js'
+import { getSessionIngressAuthHeaders } from './sessionIngressAuth.js'
 import { which } from './which.js'
 
 const DEFAULT_WINDOWS_HOME =
@@ -44,6 +45,10 @@ export const APEX_CHRONO_API_URL =
 export const APEX_BROWSER_API_URL =
   process.env.OPENJAWS_APEX_BROWSER_API_URL?.trim() ||
   'http://127.0.0.1:8799'
+export const APEX_TENANT_GOVERNANCE_API_URL =
+  process.env.OPENJAWS_APEX_TENANT_GOVERNANCE_API_URL?.trim() ||
+  process.env.OPENJAWS_APEX_TENANT_API_URL?.trim() ||
+  'http://127.0.0.1:3000'
 const APEX_RUNTIME_DIR = join(tmpdir(), 'openjaws-apex')
 const APEX_WORKSPACE_API_LOG = join(APEX_RUNTIME_DIR, 'workspace-api.log')
 const APEX_WORKSPACE_API_STATE = join(APEX_RUNTIME_DIR, 'workspace-api-state.json')
@@ -249,6 +254,33 @@ export type ApexWorkspaceSummary = {
   }
 }
 
+export type ApexBreakdownEntry = {
+  name: string
+  count: number
+}
+
+export type ApexTenantGovernanceSummary = {
+  totalDecisions: number
+  ethicsPassed: number
+  ethicsFailed: number
+  avgConfidence: number
+  avgRiskScore: number
+  detectionEventCount: number
+  telemetryScopeCount: number
+  latestActivityAt: string | null
+  highRiskCalls: number
+  criticalCalls: number
+  pendingReviewCalls: number
+  operatorActionBreakdown: ApexBreakdownEntry[]
+  governedActionBreakdown: ApexBreakdownEntry[]
+  governanceSignalBreakdown: ApexBreakdownEntry[]
+  reviewStatusBreakdown: ApexBreakdownEntry[]
+  categoryBreakdown: ApexBreakdownEntry[]
+  topSources: ApexBreakdownEntry[]
+  topModels: ApexBreakdownEntry[]
+  narrative: string
+}
+
 export type ApexBrowserLink = {
   url: string
   text: string
@@ -320,6 +352,32 @@ type ApexWorkspaceApiState = {
   startedAt: string
   token: string
   workspaceApiUrl: string
+}
+
+type ApexTenantAnalyticsResponse = {
+  total_decisions?: number
+  ethics_passed?: number
+  ethics_failed?: number
+  avg_confidence?: number
+  avg_risk_score?: number
+  detection_event_count?: number
+  telemetry_scope_count?: number
+  by_review_status?: ApexBreakdownEntry[]
+  by_category?: ApexBreakdownEntry[]
+  by_source?: ApexBreakdownEntry[]
+  by_model?: ApexBreakdownEntry[]
+  decision_analysis?: {
+    latestActivityAt?: string | null
+    highRiskCalls?: number
+    criticalCalls?: number
+    pendingReviewCalls?: number
+    operatorActionBreakdown?: ApexBreakdownEntry[]
+    governedActionBreakdown?: ApexBreakdownEntry[]
+    governanceSignalBreakdown?: ApexBreakdownEntry[]
+    topSources?: ApexBreakdownEntry[]
+    topModels?: ApexBreakdownEntry[]
+    narrative?: string
+  } | null
 }
 
 const APEX_TARGETS: ApexLaunchTarget[] = [
@@ -740,6 +798,37 @@ async function fetchApexJson<T>(
   }
 }
 
+async function fetchSessionIngressJson<T>(
+  baseUrl: string,
+  pathname: string,
+  timeoutMs: number,
+): Promise<T | null> {
+  const authHeaders = getSessionIngressAuthHeaders()
+  if (Object.keys(authHeaders).length === 0) {
+    return null
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(new URL(pathname, `${baseUrl}/`), {
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        ...authHeaders,
+      },
+    })
+    if (!response.ok) {
+      return null
+    }
+    return (await response.json()) as T
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function isApexSidecarHealthy(baseUrl: string): Promise<boolean> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 1000)
@@ -878,6 +967,49 @@ export async function getApexWorkspaceSummary(): Promise<ApexWorkspaceSummary | 
     return null
   }
   return payload.data
+}
+
+export async function getApexTenantGovernanceSummary(): Promise<ApexTenantGovernanceSummary | null> {
+  const analyticsPayload = await fetchSessionIngressJson<ApexTenantAnalyticsResponse>(
+    APEX_TENANT_GOVERNANCE_API_URL,
+    '/api/v1/tenant/analytics',
+    3000,
+  )
+  if (!analyticsPayload) {
+    return null
+  }
+
+  const analysis = analyticsPayload.decision_analysis
+
+  return {
+    totalDecisions: analyticsPayload.total_decisions ?? 0,
+    ethicsPassed: analyticsPayload.ethics_passed ?? 0,
+    ethicsFailed: analyticsPayload.ethics_failed ?? 0,
+    avgConfidence: analyticsPayload.avg_confidence ?? 0,
+    avgRiskScore: analyticsPayload.avg_risk_score ?? 0,
+    detectionEventCount: analyticsPayload.detection_event_count ?? 0,
+    telemetryScopeCount: analyticsPayload.telemetry_scope_count ?? 0,
+    latestActivityAt: analysis?.latestActivityAt ?? null,
+    highRiskCalls: analysis?.highRiskCalls ?? 0,
+    criticalCalls: analysis?.criticalCalls ?? 0,
+    pendingReviewCalls: analysis?.pendingReviewCalls ?? 0,
+    operatorActionBreakdown:
+      analysis?.operatorActionBreakdown ??
+      analysis?.governedActionBreakdown ??
+      [],
+    governedActionBreakdown:
+      analysis?.governedActionBreakdown ??
+      analysis?.operatorActionBreakdown ??
+      [],
+    governanceSignalBreakdown: analysis?.governanceSignalBreakdown ?? [],
+    reviewStatusBreakdown: analyticsPayload.by_review_status ?? [],
+    categoryBreakdown: analyticsPayload.by_category ?? [],
+    topSources: analysis?.topSources ?? analyticsPayload.by_source ?? [],
+    topModels: analysis?.topModels ?? analyticsPayload.by_model ?? [],
+    narrative:
+      analysis?.narrative?.trim() ||
+      'No governed tenant action narrative is available yet.',
+  }
 }
 
 export async function composeApexMail(input: {
@@ -1861,6 +1993,40 @@ export function summarizeApexWorkspace(summary: ApexWorkspaceSummary | null): {
       `Chat ${summary.chat.statistics.activeSessions}/${summary.chat.statistics.totalSessions} active sessions · ${summary.chat.statistics.totalMessages} messages`,
       `Store ${summary.store.installedCount} installed · ${summary.store.updateCount} updates`,
       `Host ${summary.system.metrics.cpuUsage.toFixed(1)}% CPU · ${summary.system.metrics.memoryUsage.toFixed(1)}% memory · ${summary.system.metrics.processCount} processes`,
+    ],
+  }
+}
+
+export function summarizeApexTenantGovernance(
+  summary: ApexTenantGovernanceSummary | null,
+): {
+  headline: string
+  details: string[]
+} {
+  if (!summary) {
+    return {
+      headline: 'Tenant governance summary unavailable',
+      details: [
+        `Session ingress auth or ${APEX_TENANT_GOVERNANCE_API_URL}/api/v1/tenant/analytics is unavailable.`,
+      ],
+    }
+  }
+
+  const topOperatorAction =
+    summary.operatorActionBreakdown?.[0]?.name ??
+    summary.governedActionBreakdown[0]?.name ??
+    'none'
+  const topSignal = summary.governanceSignalBreakdown[0]?.name ?? 'routine'
+  const topReview = summary.reviewStatusBreakdown[0]?.name ?? 'approved'
+  const latest = summary.latestActivityAt ?? 'no recent activity'
+
+  return {
+    headline: `Governed tenant actions ${summary.totalDecisions} · pending ${summary.pendingReviewCalls} · high risk ${summary.highRiskCalls}`,
+    details: [
+      `Confidence ${summary.avgConfidence.toFixed(2)} · avg risk ${summary.avgRiskScore.toFixed(1)} · detections ${summary.detectionEventCount}`,
+      `Top operator action ${topOperatorAction.replace(/_/g, ' ')} · top signal ${topSignal.replace(/_/g, ' ')} · review ${topReview.replace(/_/g, ' ')}`,
+      `Ethics passed ${summary.ethicsPassed} · failed ${summary.ethicsFailed} · telemetry scopes ${summary.telemetryScopeCount}`,
+      `Latest activity ${latest}`,
     ],
   }
 }

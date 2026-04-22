@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'fs'
 import { dirname, join, resolve } from 'path'
 import { readLatestImmaculateTraceSummary } from '../immaculate/traceSummary.js'
 import { readLatestQTraceSummary } from '../q/traceSummary.js'
@@ -16,6 +16,7 @@ export type PublicShowcaseActivityEntry = {
   kind: string | null
   status: string | null
   source: string | null
+  operatorActions: string[]
   subsystems: string[]
   artifacts: string[]
   tags: string[]
@@ -32,6 +33,12 @@ type PublicShowcaseActivitySyncArgs = {
   qEntry?: PublicShowcaseActivityEntry | null
   roundtableSession?: DiscordRoundtableSessionState | null
   roundtableRuntime?: DiscordRoundtableRuntimeState | null
+}
+
+type StoredDiscordAgentReceipt = {
+  profileKey: string
+  displayName: string
+  receipt: DiscordQAgentReceipt
 }
 
 const MAX_PUBLIC_SHOWCASE_ACTIVITY_ENTRIES = 8
@@ -81,6 +88,7 @@ function createEntry(args: {
   kind?: string | null
   status?: string | null
   source?: string | null
+  operatorActions?: Array<string | null | undefined>
   subsystems?: Array<string | null | undefined>
   artifacts?: Array<string | null | undefined>
   tags?: Array<string | null | undefined>
@@ -93,10 +101,25 @@ function createEntry(args: {
     kind: sanitizeInlineText(args.kind ?? null, 40),
     status: sanitizeInlineText(args.status ?? null, 24),
     source: sanitizeInlineText(args.source ?? null, 64),
+    operatorActions: uniqueStrings(args.operatorActions ?? []),
     subsystems: uniqueStrings(args.subsystems ?? []),
     artifacts: uniqueStrings(args.artifacts ?? []),
     tags: uniqueStrings(args.tags ?? []),
   }
+}
+
+function normalizeOperatorAction(
+  value: string | null | undefined,
+): string | null {
+  if (!value) {
+    return null
+  }
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return normalized || null
 }
 
 function getPublicShowcaseActivityRoot(root = process.cwd()): string {
@@ -121,6 +144,18 @@ export function getPublicShowcaseActivityPath(
   return resolve(process.cwd(), 'local-command-station', 'showcase-activity.json')
 }
 
+export function getPublicShowcaseActivityMirrorPath(
+  root = process.cwd(),
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const configured = env.OPENJAWS_PUBLIC_SHOWCASE_ACTIVITY_MIRROR_FILE?.trim()
+  if (configured) {
+    return resolve(configured)
+  }
+
+  return resolve(root, 'docs', 'wiki', 'Public-Showcase-Activity.json')
+}
+
 function readJsonFile(path: string): Record<string, unknown> | null {
   if (!existsSync(path)) {
     return null
@@ -135,10 +170,292 @@ function readJsonFile(path: string): Record<string, unknown> | null {
   }
 }
 
+function resolveImmaculateActionabilityPath(
+  root: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const configured =
+    env.OPENJAWS_IMMACULATE_ACTIONABILITY_FILE?.trim() ||
+    env.IMMACULATE_ROUNDTABLE_ACTIONABILITY_FILE?.trim()
+  if (configured) {
+    return resolve(configured)
+  }
+
+  const configuredRoot =
+    env.OPENJAWS_IMMACULATE_ROOT?.trim() ||
+    env.IMMACULATE_ROOT?.trim()
+  if (configuredRoot) {
+    return resolve(
+      configuredRoot,
+      'docs',
+      'wiki',
+      'Roundtable-Actionability.json',
+    )
+  }
+
+  const home = env.USERPROFILE?.trim() || env.HOME?.trim()
+  const candidates = [
+    home
+      ? join(
+          home,
+          'Desktop',
+          'Immaculate',
+          'docs',
+          'wiki',
+          'Roundtable-Actionability.json',
+        )
+      : null,
+    join(
+      root,
+      '..',
+      '..',
+      'Immaculate',
+      'docs',
+      'wiki',
+      'Roundtable-Actionability.json',
+    ),
+  ].filter((candidate): candidate is string => Boolean(candidate))
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return resolve(candidate)
+    }
+  }
+
+  return null
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function normalizeDiscordAgentProfileKey(
+  value: string | null | undefined,
+): string {
+  const normalized = value?.trim().toLowerCase()
+  return normalized && normalized.length > 0 ? normalized : 'discord-agent'
+}
+
+function humanizeDiscordAgentDisplayName(profileKey: string): string {
+  switch (normalizeDiscordAgentProfileKey(profileKey)) {
+    case 'q':
+      return 'Q'
+    case 'viola':
+      return 'Viola'
+    case 'blackbeak':
+      return 'Blackbeak'
+    default:
+      return profileKey
+        .split(/[-_]+/g)
+        .filter(Boolean)
+        .map(part => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+        .join(' ')
+    }
+}
+
+function getDiscordReceiptFreshness(receipt: DiscordQAgentReceipt): number {
+  const timestamp = normalizeTimestamp(
+    receipt.operator.lastCompletedAt ??
+      receipt.schedule.lastCompletedAt ??
+      receipt.patrol.lastCompletedAt ??
+      receipt.updatedAt,
+  )
+  return timestamp ? Date.parse(timestamp) : 0
+}
+
+function buildImmaculateActionabilityEntry(
+  root: string,
+): PublicShowcaseActivityEntry | null {
+  const path = resolveImmaculateActionabilityPath(root)
+  if (!path) {
+    return null
+  }
+
+  const parsed = readJsonFile(path)
+  if (!parsed) {
+    return null
+  }
+
+  const planner = asRecord(parsed.planner)
+  if (!planner) {
+    return null
+  }
+
+  const generatedAt = normalizeTimestamp(
+    parsed.generatedAt as string | null | undefined,
+  )
+  const parallelFormationMode = sanitizeInlineText(
+    planner.parallelFormationMode as string | null | undefined,
+    40,
+  )
+  const parallelFormationSummary = sanitizeInlineText(
+    planner.parallelFormationSummary as string | null | undefined,
+    180,
+  )
+  const repoCount = asNumber(planner.repoCount)
+  const actionCount = asNumber(planner.actionCount)
+  const readyCount = asNumber(planner.readyCount)
+  const repositories = Array.isArray(parsed.repositories)
+    ? parsed.repositories
+        .map(entry => asRecord(entry))
+        .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+        .map(entry =>
+          sanitizeInlineText(entry.repoLabel as string | null | undefined, 32),
+        )
+        .filter((entry): entry is string => Boolean(entry))
+    : []
+  const actions = Array.isArray(parsed.actions)
+    ? parsed.actions
+        .map(entry => asRecord(entry))
+        .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+    : []
+  const isolationModes = uniqueStrings(
+    actions.map(action =>
+      sanitizeInlineText(action.isolationMode as string | null | undefined, 24),
+    ),
+  )
+  const writeAuthorities = uniqueStrings(
+    actions.map(action =>
+      sanitizeInlineText(action.writeAuthority as string | null | undefined, 32),
+    ),
+  )
+
+  if (
+    !generatedAt &&
+    repoCount === null &&
+    actionCount === null &&
+    readyCount === null &&
+    repositories.length === 0 &&
+    !parallelFormationSummary
+  ) {
+    return null
+  }
+
+  const summaryParts = [
+    parallelFormationMode
+      ? `${parallelFormationMode.replace(/[-_]+/g, ' ')} planner`
+      : 'Immaculate planner',
+    typeof repoCount === 'number'
+      ? `covers ${repoCount.toLocaleString()} repos`
+      : null,
+    typeof actionCount === 'number'
+      ? `with ${actionCount.toLocaleString()} isolated action${
+          actionCount === 1 ? '' : 's'
+        }`
+      : null,
+    typeof readyCount === 'number' && typeof actionCount === 'number'
+      ? `${readyCount.toLocaleString()} ready`
+      : null,
+  ].filter(Boolean)
+
+  const governanceParts = [
+    repositories.length > 0 ? `Repos: ${repositories.join(', ')}.` : null,
+    isolationModes.length > 0
+      ? `Isolation: ${isolationModes.join(', ')}.`
+      : null,
+    writeAuthorities.length > 0
+      ? `Authority: ${writeAuthorities.join(', ')}.`
+      : null,
+    parallelFormationSummary ? `${parallelFormationSummary}.` : null,
+  ].filter(Boolean)
+
+  return createEntry({
+    id: `immaculate-actionability-${generatedAt ?? 'latest'}`,
+    timestamp: generatedAt,
+    title: 'Immaculate roundtable actionability plan',
+    summary: `${summaryParts.join(' ')}. ${governanceParts.join(' ')}`.trim(),
+    kind: 'roundtable_actionability',
+    status:
+      typeof readyCount === 'number' && readyCount > 0
+        ? 'ok'
+        : typeof actionCount === 'number' && actionCount > 0
+          ? 'warning'
+          : 'info',
+    source: 'Immaculate planner',
+    subsystems: uniqueStrings(['immaculate', ...repositories]),
+    artifacts: ['roundtable:actionability'],
+    tags: ['immaculate', 'planner', 'bounded', 'public'],
+  })
+}
+
 function readStoredDiscordQAgentReceipt(root: string): DiscordQAgentReceipt | null {
   const receiptPath = resolve(root, 'local-command-station', 'discord-q-agent-receipt.json')
   const parsed = readJsonFile(receiptPath)
   return parsed ? (parsed as unknown as DiscordQAgentReceipt) : null
+}
+
+function upsertStoredDiscordAgentReceipt(
+  receipts: Map<string, StoredDiscordAgentReceipt>,
+  next: StoredDiscordAgentReceipt,
+) {
+  const current = receipts.get(next.profileKey)
+  if (!current) {
+    receipts.set(next.profileKey, next)
+    return
+  }
+
+  if (
+    getDiscordReceiptFreshness(next.receipt) >=
+    getDiscordReceiptFreshness(current.receipt)
+  ) {
+    receipts.set(next.profileKey, next)
+  }
+}
+
+function readStoredDiscordAgentReceipts(
+  root: string,
+): StoredDiscordAgentReceipt[] {
+  const receipts = new Map<string, StoredDiscordAgentReceipt>()
+  const legacyQReceipt = readStoredDiscordQAgentReceipt(root)
+  if (legacyQReceipt) {
+    upsertStoredDiscordAgentReceipt(receipts, {
+      profileKey: 'q',
+      displayName: 'Q',
+      receipt: legacyQReceipt,
+    })
+  }
+
+  const botsDir = resolve(root, 'local-command-station', 'bots')
+  if (!existsSync(botsDir)) {
+    return Array.from(receipts.values())
+  }
+
+  for (const entry of readdirSync(botsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue
+    }
+    const profileKey = normalizeDiscordAgentProfileKey(entry.name)
+    const receiptPath = resolve(
+      botsDir,
+      entry.name,
+      'discord-agent-receipt.json',
+    )
+    const parsed = readJsonFile(receiptPath)
+    if (!parsed) {
+      continue
+    }
+    upsertStoredDiscordAgentReceipt(receipts, {
+      profileKey,
+      displayName: humanizeDiscordAgentDisplayName(profileKey),
+      receipt: parsed as unknown as DiscordQAgentReceipt,
+    })
+  }
+
+  return Array.from(receipts.values()).sort((left, right) => {
+    const freshness =
+      getDiscordReceiptFreshness(right.receipt) -
+      getDiscordReceiptFreshness(left.receipt)
+    if (freshness !== 0) {
+      return freshness
+    }
+    return left.displayName.localeCompare(right.displayName)
+  })
 }
 
 function readStoredRoundtableSession(
@@ -167,7 +484,16 @@ function readStoredRoundtableRuntime(
   return parsed ? (parsed as unknown as DiscordRoundtableRuntimeState) : null
 }
 
-function buildFallbackQEntry(receipt: DiscordQAgentReceipt): PublicShowcaseActivityEntry | null {
+function buildFallbackDiscordAgentEntry(args: {
+  receipt: DiscordQAgentReceipt
+  profileKey: string
+  displayName: string
+}): PublicShowcaseActivityEntry | null {
+  const profileKey = normalizeDiscordAgentProfileKey(args.profileKey)
+  const displayName =
+    sanitizeInlineText(args.displayName, 48) ??
+    humanizeDiscordAgentDisplayName(profileKey)
+  const receipt = args.receipt
   if (!receipt.gateway.connected && !receipt.operator.lastAction && !receipt.patrol.lastSummary) {
     return null
   }
@@ -178,24 +504,24 @@ function buildFallbackQEntry(receipt: DiscordQAgentReceipt): PublicShowcaseActiv
     receipt.patrol.lastCompletedAt ??
     receipt.updatedAt
   const operatorLine = receipt.operator.lastAction
-    ? `Q is ${sanitizeInlineText(receipt.operator.lastAction?.replace(/[-_]+/g, ' '), 72)} through the supervised Discord/OpenJaws lane.`
+    ? `${displayName} is ${sanitizeInlineText(receipt.operator.lastAction?.replace(/[-_]+/g, ' '), 72)} through the supervised Discord/OpenJaws lane.`
     : null
   const patrolLine = sanitizeInlineText(
     receipt.operator.lastSummary ??
       receipt.patrol.lastSummary ??
       receipt.schedule.lastSummary ??
       (receipt.gateway.connected
-        ? 'Q Discord runtime is online through the supervised bounded operator lane.'
-        : 'Q Discord runtime is currently offline on the supervised bounded operator lane.'),
+        ? `${displayName} Discord runtime is online through the supervised bounded operator lane.`
+        : `${displayName} Discord runtime is currently offline on the supervised bounded operator lane.`),
     220,
   )
 
   return createEntry({
-    id: `discord-q-${timestamp ?? 'latest'}`,
+    id: `discord-${profileKey}-${timestamp ?? 'latest'}`,
     timestamp,
     title: receipt.operator.lastAction
-      ? 'Supervised Q operator activity'
-      : 'Supervised Q patrol update',
+      ? `Supervised ${displayName} operator activity`
+      : `Supervised ${displayName} patrol update`,
     summary: [operatorLine, patrolLine].filter(Boolean).join(' '),
     kind: receipt.operator.lastAction ? 'operator' : 'patrol',
     status:
@@ -205,9 +531,25 @@ function buildFallbackQEntry(receipt: DiscordQAgentReceipt): PublicShowcaseActiv
           ? 'ok'
           : 'warning',
     source: 'OpenJaws Discord lane',
-    subsystems: ['openjaws', 'q', 'discord'],
-    artifacts: ['discord:q-agent-receipt'],
-    tags: ['q', 'discord', 'openjaws', 'bounded'],
+    operatorActions: [
+      normalizeOperatorAction(receipt.operator.lastAction),
+      receipt.operator.lastAction
+        ? `${profileKey}_operator_runtime`
+        : `${profileKey}_operator_patrol`,
+    ],
+    subsystems: uniqueStrings(['openjaws', 'discord', profileKey]),
+    artifacts: [`discord:${profileKey}-agent-receipt`],
+    tags: [profileKey, 'discord', 'openjaws', 'bounded'],
+  })
+}
+
+function buildFallbackQEntry(
+  receipt: DiscordQAgentReceipt,
+): PublicShowcaseActivityEntry | null {
+  return buildFallbackDiscordAgentEntry({
+    receipt,
+    profileKey: 'q',
+    displayName: 'Q',
   })
 }
 
@@ -244,6 +586,7 @@ function buildRoundtableEntry(args: {
           ? 'warning'
           : 'ok',
     source: 'OpenJaws roundtable lane',
+    operatorActions: ['roundtable_runtime', 'immaculate_handoff'],
     subsystems: ['openjaws', 'immaculate', 'discord'],
     artifacts: ['roundtable:session'],
     tags: ['roundtable', 'bounded', 'supervised'],
@@ -260,6 +603,7 @@ function buildTraceEntry(args: {
   eventCount: number
   timestamp: string | null | undefined
   summaryPrefix: string
+  operatorActions?: string[]
   subsystems: string[]
   artifacts: string[]
   tags: string[]
@@ -277,6 +621,7 @@ function buildTraceEntry(args: {
           ? 'warning'
           : 'info',
     source: args.source,
+    operatorActions: args.operatorActions ?? ['trace_summary'],
     subsystems: args.subsystems,
     artifacts: args.artifacts,
     tags: args.tags,
@@ -315,6 +660,7 @@ function buildRuntimeSummaryEntry(args: {
     kind: 'runtime_audit',
     status,
     source: 'OpenJaws public showcase sync',
+    operatorActions: ['runtime_audit', 'public_showcase_sync'],
     subsystems: uniqueStrings([
       'openjaws',
       args.qReceipt ? 'q' : null,
@@ -337,20 +683,37 @@ export function buildPublicShowcaseActivityFeed(args: {
 }): PublicShowcaseActivityFeed {
   const root = getPublicShowcaseActivityRoot(args.root)
   const generatedAt = normalizeTimestamp(args.generatedAt ?? new Date().toISOString()) ?? new Date().toISOString()
-  const qReceipt = args.qAgentReceipt ?? readStoredDiscordQAgentReceipt(root)
+  const storedAgentReceipts = readStoredDiscordAgentReceipts(root)
+  const qReceipt =
+    args.qAgentReceipt ??
+    storedAgentReceipts.find(entry => entry.profileKey === 'q')?.receipt ??
+    null
   const qEntry = args.qEntry ?? (qReceipt ? buildFallbackQEntry(qReceipt) : null)
+  const agentEntries = storedAgentReceipts
+    .filter(entry => !(entry.profileKey === 'q' && qEntry))
+    .map(entry =>
+      buildFallbackDiscordAgentEntry({
+        receipt: entry.receipt,
+        profileKey: entry.profileKey,
+        displayName: entry.displayName,
+      }),
+    )
+    .filter((entry): entry is PublicShowcaseActivityEntry => Boolean(entry))
   const roundtableSession = args.roundtableSession ?? readStoredRoundtableSession(root)
   const roundtableRuntime = args.roundtableRuntime ?? readStoredRoundtableRuntime(root)
   const roundtableEntry = buildRoundtableEntry({
     session: roundtableSession,
     runtime: roundtableRuntime,
   })
+  const actionabilityEntry = buildImmaculateActionabilityEntry(root)
   const immaculateTrace = readLatestImmaculateTraceSummary(root)
   const qTrace = readLatestQTraceSummary(root)
 
   const entries = [
     qEntry,
+    ...agentEntries,
     roundtableEntry,
+    actionabilityEntry,
     immaculateTrace
       ? buildTraceEntry({
           id: 'immaculate-trace',
@@ -365,6 +728,7 @@ export function buildPublicShowcaseActivityFeed(args: {
             immaculateTrace.endedAt ??
             immaculateTrace.startedAt,
           summaryPrefix: 'Immaculate',
+          operatorActions: ['immaculate_trace', 'orchestration_trace'],
           subsystems: ['immaculate', 'openjaws'],
           artifacts: ['immaculate:trace-summary'],
           tags: ['immaculate', 'trace', 'bounded'],
@@ -381,6 +745,7 @@ export function buildPublicShowcaseActivityFeed(args: {
           eventCount: qTrace.eventCount,
           timestamp: qTrace.lastTimestamp ?? qTrace.endedAt ?? qTrace.startedAt,
           summaryPrefix: 'Q',
+          operatorActions: ['q_reasoning_trace', 'model_trace'],
           subsystems: ['q', 'openjaws'],
           artifacts: ['q:trace-summary'],
           tags: ['q', 'trace', 'bounded'],
@@ -415,9 +780,14 @@ export function buildPublicShowcaseActivityFeed(args: {
 export function writePublicShowcaseActivityFeed(
   feed: PublicShowcaseActivityFeed,
   outputPath = getPublicShowcaseActivityPath(),
+  mirrorPath?: string,
 ): string {
   mkdirSync(dirname(outputPath), { recursive: true })
   writeFileSync(outputPath, `${JSON.stringify(feed, null, 2)}\n`, 'utf8')
+  if (mirrorPath) {
+    mkdirSync(dirname(mirrorPath), { recursive: true })
+    writeFileSync(mirrorPath, `${JSON.stringify(feed, null, 2)}\n`, 'utf8')
+  }
   return outputPath
 }
 
@@ -433,7 +803,11 @@ export function syncPublicShowcaseActivityFromRoot(
     roundtableSession: args.roundtableSession ?? null,
     roundtableRuntime: args.roundtableRuntime ?? null,
   })
-  writePublicShowcaseActivityFeed(feed)
+  writePublicShowcaseActivityFeed(
+    feed,
+    getPublicShowcaseActivityPath(),
+    getPublicShowcaseActivityMirrorPath(root),
+  )
   return feed
 }
 

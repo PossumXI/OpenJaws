@@ -525,6 +525,7 @@ describe('buildApexWorkspaceProperties', () => {
             auditEntries: [],
           },
         },
+        null,
         {
           status: 'ok',
           service: 'chrono-bridge',
@@ -607,6 +608,147 @@ describe('buildApexWorkspaceProperties', () => {
           'Chrono 1/3 active jobs · 2.0 GB across 5 backups',
           'Workspace Snapshot · running · D:\\backups',
           '1 backup · every 24h · retain 30d',
+        ],
+      },
+      {
+        label: 'Apex browser',
+        value: [
+          'bridge offline',
+          'Browser bridge offline',
+          'Start the browser bridge to keep native web previews inside the OpenJaws TUI instead of launching an external browser.',
+        ],
+      },
+    ])
+  })
+
+  test('surfaces governed operator actions when tenant governance is available', () => {
+    expect(
+      buildApexWorkspaceProperties(
+        {
+          configured: true,
+          projectRootExists: true,
+          notificationsRootExists: true,
+          argusRootExists: true,
+          availableTargetCount: 9,
+          envHints: [],
+        },
+        {
+          status: 'ok',
+          service: 'apex-workspace-api',
+          version: '0.2.0',
+          timestamp: '2026-04-21T20:00:00.000Z',
+        },
+        {
+          mode: 'live',
+          mail: {
+            accountCount: 1,
+            securityAlertCount: 0,
+            messages: [],
+            outbox: { pending: 0, failed: 0, sent: 1 },
+          },
+          chat: {
+            conversations: [],
+            statistics: {
+              totalSessions: 1,
+              totalContacts: 2,
+              totalMessages: 8,
+              activeSessions: 1,
+            },
+          },
+          store: {
+            featuredCount: 1,
+            installedCount: 2,
+            updateCount: 0,
+            apps: [],
+          },
+          system: {
+            healthScore: 0.9,
+            metrics: {
+              timestamp: '2026-04-21T20:00:00.000Z',
+              cpuUsage: 9,
+              memoryUsage: 40,
+              processCount: 100,
+              uptime: 1000,
+            },
+            services: [],
+            alerts: [],
+          },
+          security: {
+            overallHealth: 0.95,
+            activeAlerts: 0,
+            recommendations: [],
+            incidents: [],
+            auditEntries: [],
+          },
+        },
+        {
+          totalDecisions: 12,
+          ethicsPassed: 12,
+          ethicsFailed: 0,
+          avgConfidence: 0.93,
+          avgRiskScore: 0.2,
+          detectionEventCount: 4,
+          telemetryScopeCount: 3,
+          latestActivityAt: '2026-04-21T12:31:06Z',
+          highRiskCalls: 1,
+          criticalCalls: 0,
+          pendingReviewCalls: 2,
+          operatorActionBreakdown: [{ name: 'operator_runtime', count: 5 }],
+          governedActionBreakdown: [{ name: 'payments', count: 2 }],
+          governanceSignalBreakdown: [{ name: 'policy_guard', count: 3 }],
+          reviewStatusBreakdown: [{ name: 'approved', count: 10 }],
+          categoryBreakdown: [],
+          topSources: [{ name: 'apex-mail', count: 4 }],
+          topModels: [{ name: 'q-oci-operator', count: 6 }],
+          narrative: 'Governed operator actions are live.',
+        },
+      ),
+    ).toEqual([
+      {
+        label: 'Apex workspace',
+        value: [
+          'bridge online',
+          '9 targets',
+          'kernel/apps ready',
+          'notifications ready',
+          'argus ready',
+        ],
+      },
+      {
+        label: 'Apex summary',
+        value: [
+          'Workspace mode live · system 90% · security 95%',
+          'security 0 active alerts',
+          'Mail 0 messages · 1 accounts · 0 alerts',
+          'Chat 1/1 active sessions · 8 messages',
+          'Store 2 installed · 0 updates',
+        ],
+      },
+      {
+        label: 'Apex governance',
+        value: [
+          'Governed tenant actions 12 · pending 2 · high risk 1',
+          'Confidence 0.93 · avg risk 0.2 · detections 4',
+          'Top operator action operator runtime · top signal policy guard · review approved',
+          'Ethics passed 12 · failed 0 · telemetry scopes 3',
+        ],
+      },
+      {
+        label: 'Apex posture',
+        value: [
+          'system 90%',
+          'security 95%',
+          '0 host alerts · 0 security alerts',
+          '0 degraded services · 0 incidents',
+          '0 recommendations',
+        ],
+      },
+      {
+        label: 'Apex chrono',
+        value: [
+          'bridge offline',
+          'Chrono bridge offline',
+          'Start the Chrono bridge sidecar to stream backup jobs and run bounded backup actions into OpenJaws.',
         ],
       },
       {
