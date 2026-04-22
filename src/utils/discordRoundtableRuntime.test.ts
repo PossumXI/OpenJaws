@@ -432,6 +432,86 @@ describe('discordRoundtableRuntime', () => {
     })
   })
 
+  it('prefers the latest timestamped child stdout log when it is newer than discord-roundtable.log', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-stdout-log-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    mkdirSync(runtimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'idle',
+          updatedAt: '2026-04-22T02:47:34.853Z',
+          roundtableChannelName: 'openjaws-updates',
+          lastSummary: 'stale top-level state',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      getDiscordRoundtableSessionStatePath(root),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'idle',
+          updatedAt: '2026-04-22T02:47:34.853Z',
+          startedAt: '2026-04-22T02:47:34.853Z',
+          endsAt: '2026-04-22T06:47:34.853Z',
+          guildId: null,
+          roundtableChannelId: null,
+          roundtableChannelName: 'openjaws-updates',
+          generalChannelId: null,
+          generalChannelName: null,
+          violaVoiceChannelId: null,
+          violaVoiceChannelName: null,
+          turnCount: 0,
+          nextPersona: null,
+          lastSpeaker: null,
+          lastSummary: 'stale top-level state',
+          lastError: null,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.log'),
+      '[2026-04-22T02:47:38.970Z] roundtable live in #openjaws-updates (111)\n',
+      'utf8',
+    )
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable-20260422T024733Z.stdout.log'),
+      [
+        '[roundtable-child] entrypoint D:\\openjaws\\OpenJaws\\local-command-station\\discord-roundtable.ts',
+        '[2026-04-22T02:47:38.970Z] roundtable live in #dev_support (1426904647313916014), ends 2026-04-22T06:47:37.660Z',
+        '[2026-04-22T02:48:01.774Z] Q posted turn 1',
+      ].join('\n'),
+      'utf8',
+    )
+
+    const queueState = loadDiscordRoundtableRuntimeState(root)
+    const sessionState = loadDiscordRoundtableSessionState(root)
+
+    expect(queueState.status).toBe('running')
+    expect(queueState.roundtableChannelName).toBe('dev_support')
+    expect(queueState.lastSummary).toBe('Q posted turn 1')
+    expect(sessionState).toMatchObject({
+      status: 'running',
+      roundtableChannelName: 'dev_support',
+      lastSummary: 'Q posted turn 1',
+    })
+  })
+
   it('merges newer nested live session fields over stale tracked top-level session state', () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-merge-'))
     tempDirs.push(root)

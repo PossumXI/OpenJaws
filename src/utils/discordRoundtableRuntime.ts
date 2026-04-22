@@ -293,7 +293,19 @@ function getDiscordRoundtableObservedRuntimeDirs(root = process.cwd()): string[]
 
 function getDiscordRoundtableLogPath(root = process.cwd()): string {
   const candidates = getDiscordRoundtableObservedRuntimeDirs(root)
-    .map(dir => join(dir, 'discord-roundtable.log'))
+    .flatMap(dir => {
+      const paths = [join(dir, 'discord-roundtable.log')].filter(path =>
+        existsSync(path),
+      )
+      try {
+        const timestampedStdoutLogs = readdirSync(dir)
+          .filter(name => /^discord-roundtable-.*\.stdout\.log$/i.test(name))
+          .map(name => join(dir, name))
+        return [...paths, ...timestampedStdoutLogs]
+      } catch {
+        return paths
+      }
+    })
     .filter(path => existsSync(path))
 
   if (candidates.length === 0) {
