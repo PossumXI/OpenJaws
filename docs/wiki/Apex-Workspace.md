@@ -20,7 +20,8 @@ The current OpenJaws side exposes:
 - trusted Shadow Chat send plus chat-session creation from inside `/apex`
 - trusted Store install with structured install receipts from inside `/apex`
 - dedicated `chrono-bridge` health, summary, and bounded backup actions from inside `/apex`
-- `/status` now distinguishes the live bridge-backed preview session from plain Apex browser launcher availability
+- browser bridge health plus native session summary inside `/apex`
+- `/status` now surfaces Apex browser bridge truth separately from the general browser preview receipt
 - guarded launchers for:
   - `workspace_api`
   - `chrono-bridge`
@@ -88,6 +89,10 @@ Typical local operator path:
 5. optionally launch `Chrono Bridge`
 6. use `/status` to confirm both bridges are visible
 
+If you need deeper browser control, keep ownership with `/preview`.
+
+`/apex` now shows the native Apex browser bridge and session truth, but it does not try to become a second browser editor.
+
 This lane assumes the external Apex checkout is present and that its `workspace_api` sidecar can build or already exists on the local machine. OpenJaws does not vendor the Apex Rust toolchain for you.
 
 ## What Fits Well Next
@@ -98,5 +103,5 @@ The cleaner next steps are:
 
 - richer `/status` fusion for `system_monitor` and `security_center`
 - more bounded mail/chat/store operator actions over `workspace_api`
-- launcher-backed browser/security/vault actions with better receipts
+- launcher-backed security/vault actions with better receipts
 - keep launcher-backed browser actions separate, and add stable bridge endpoints first whenever deeper OpenJaws browser control is needed

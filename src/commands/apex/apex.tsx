@@ -8,6 +8,7 @@ import {
   Select,
 } from '../../components/CustomSelect/select.js'
 import {
+  type ApexBrowserSummary,
   type ApexChronoSummary,
   type ApexLaunchTarget,
   type ApexWorkspaceHealth,
@@ -19,6 +20,8 @@ import {
   deleteApexChronoJob,
   deleteApexMailMessage,
   flagApexMailMessage,
+  getApexBrowserHealth,
+  getApexBrowserSummary,
   getApexChronoHealth,
   getApexChronoSummary,
   getApexLaunchTarget,
@@ -33,6 +36,7 @@ import {
   startApexChronoBridge,
   startApexChronoJob,
   startApexWorkspaceApi,
+  summarizeApexBrowser,
   summarizeApexChrono,
   summarizeApexWorkspace,
 } from '../../utils/apexWorkspace.js'
@@ -472,12 +476,17 @@ function ApexOverviewTab({
   loading,
   health,
   summary,
+  browserHealth,
+  browserSummary,
 }: {
   loading: boolean
   health: ApexWorkspaceHealth | null
   summary: ApexWorkspaceSummary | null
+  browserHealth: ApexWorkspaceHealth | null
+  browserSummary: ApexBrowserSummary | null
 }): React.ReactNode {
   const workspace = summarizeApexWorkspace(summary)
+  const browser = summarizeApexBrowser(browserSummary)
   const topApps =
     summary?.store.apps
       .slice(0, 5)
@@ -502,6 +511,20 @@ function ApexOverviewTab({
       <Text>{workspace.headline}</Text>
       <DetailList items={workspace.details} />
 
+      <SectionTitle>Browser bridge</SectionTitle>
+      <Text>
+        {browserHealth
+          ? `${browserHealth.service} ${browserHealth.version} · ${browserHealth.status} · ${browserHealth.timestamp}`
+          : `offline · expected ${'http://127.0.0.1:8799'}`}
+      </Text>
+      <Text>{browser.headline}</Text>
+      <DetailList items={browser.details} />
+      <Text dimColor wrap="wrap">
+        Use /preview for deeper browser control. Apex keeps the native browser
+        bridge and session truth visible here without owning a second browser
+        editor.
+      </Text>
+
       <SectionTitle>Top conversations</SectionTitle>
       <DetailList
         items={topConversations}
@@ -513,6 +536,89 @@ function ApexOverviewTab({
         items={topApps}
         empty="The app catalog is empty until the bridge is online."
       />
+    </Box>
+  )
+}
+
+function ApexBrowserTab({
+  health,
+  summary,
+}: {
+  health: ApexWorkspaceHealth | null
+  summary: ApexBrowserSummary | null
+}): React.ReactNode {
+  const browser = summarizeApexBrowser(summary)
+  const activeSession =
+    summary?.sessions.find(session => session.id === summary.activeSessionId) ??
+    summary?.sessions[0] ??
+    null
+  const sessionPreview =
+    summary?.sessions.slice(0, 5).map(session => {
+      const privateUserSession =
+        session.requestedBy === 'user' && !session.recordHistory
+      if (privateUserSession) {
+        return `private user session · ${session.state} · ${session.loadTimeMs}ms`
+      }
+      return `${session.title} · ${session.requestedBy} · ${session.state} · ${session.url}`
+    }) ?? []
+  const privacy = summary
+    ? [
+        summary.privacy.doNotTrack ? 'DNT on' : 'DNT off',
+        summary.privacy.blockThirdPartyCookies
+          ? 'third-party cookies blocked'
+          : 'third-party cookies allowed',
+        summary.privacy.clearOnExit ? 'clear on exit' : 'history retained on exit',
+        summary.privacy.userHistoryPersisted
+          ? 'user history persisted'
+          : 'user history not persisted',
+        summary.privacy.agentHistoryPersisted
+          ? 'agent history persisted'
+          : 'agent history not persisted',
+      ]
+    : []
+  const linkPreview =
+    activeSession?.links.slice(0, 5).map(link => {
+      const text = truncateLine(link.text || link.url, 72)
+      return `${link.linkType} · ${text}`
+    }) ?? []
+
+  return (
+    <Box flexDirection="column" gap={1}>
+      <SectionTitle>Browser bridge health</SectionTitle>
+      <Text>
+        {health
+          ? `${health.service} ${health.version} · ${health.status} · ${health.timestamp}`
+          : `offline · expected ${'http://127.0.0.1:8799'}`}
+      </Text>
+
+      <SectionTitle>Active browser session</SectionTitle>
+      <Text wrap="wrap">{browser.headline}</Text>
+      <DetailList items={browser.details} />
+
+      <SectionTitle>Recent sessions</SectionTitle>
+      <DetailList
+        items={sessionPreview}
+        empty="No browser sessions are visible until the Apex browser bridge is online."
+      />
+
+      <SectionTitle>Privacy posture</SectionTitle>
+      <DetailList
+        items={privacy}
+        empty="Privacy controls will surface once the Apex browser bridge is online."
+      />
+
+      <SectionTitle>Active session links</SectionTitle>
+      <DetailList
+        items={linkPreview}
+        empty="No accountable links are visible for the active browser session."
+      />
+
+      <SectionTitle>Operator handoff</SectionTitle>
+      <Text wrap="wrap">
+        Start the browser bridge from Launch when needed. Use /preview for
+        deeper browsing and navigation control, and launch Flowspace Browser
+        only when you explicitly need the external native window.
+      </Text>
     </Box>
   )
 }
@@ -1155,6 +1261,8 @@ function ApexCommandCenter({
   const [loading, setLoading] = useState(true)
   const [health, setHealth] = useState<ApexWorkspaceHealth | null>(null)
   const [summary, setSummary] = useState<ApexWorkspaceSummary | null>(null)
+  const [browserHealth, setBrowserHealth] = useState<ApexWorkspaceHealth | null>(null)
+  const [browserSummary, setBrowserSummary] = useState<ApexBrowserSummary | null>(null)
   const [chronoHealth, setChronoHealth] = useState<ApexWorkspaceHealth | null>(null)
   const [chronoSummary, setChronoSummary] = useState<ApexChronoSummary | null>(null)
   const [launchMessage, setLaunchMessage] = useState<string | null>(null)
@@ -1186,21 +1294,36 @@ function ApexCommandCenter({
     if (!silent) {
       setLoading(true)
     }
-    const [nextHealth, nextSummary, nextChronoHealth, nextChronoSummary] = await Promise.all([
+    const [
+      nextHealth,
+      nextSummary,
+      nextBrowserHealth,
+      nextBrowserSummary,
+      nextChronoHealth,
+      nextChronoSummary,
+    ] = await Promise.all([
       getApexWorkspaceHealth(),
       getApexWorkspaceSummary(),
+      getApexBrowserHealth(),
+      getApexBrowserSummary(),
       getApexChronoHealth(),
       getApexChronoSummary(),
     ])
     setHealth(nextHealth)
     setSummary(nextSummary)
+    setBrowserHealth(nextBrowserHealth)
+    setBrowserSummary(nextBrowserSummary)
     setChronoHealth(nextChronoHealth)
     setChronoSummary(nextChronoSummary)
     setLoading(false)
     return {
-      ok: nextHealth !== null || nextChronoHealth !== null,
+      ok:
+        nextHealth !== null ||
+        nextBrowserHealth !== null ||
+        nextChronoHealth !== null,
       message: [
         nextHealth !== null ? 'workspace bridge ready' : 'workspace bridge offline',
+        nextBrowserHealth !== null ? 'browser bridge ready' : 'browser bridge offline',
         nextChronoHealth !== null ? 'chrono bridge ready' : 'chrono bridge offline',
       ].join(' · '),
     }
@@ -1519,9 +1642,18 @@ function ApexCommandCenter({
           <Text color="warning">offline</Text>
         )}
       </Text>
+      <Text>
+        Browser:{' '}
+        {browserHealth ? (
+          <Text color="success">{browserHealth.status}</Text>
+        ) : (
+          <Text color="warning">offline</Text>
+        )}
+      </Text>
       <Text dimColor>
         Guardrails: allowlisted Apex roots only · Esc closes · Workspace API
-        feeds mail/chat/store/system/security · Chrono bridge handles backup jobs
+        feeds mail/chat/store/system/security · Browser bridge keeps native
+        session truth in the TUI · Chrono bridge handles backup jobs
       </Text>
     </Box>
   )
@@ -1537,7 +1669,13 @@ function ApexCommandCenter({
         contentHeight={insideModal ? undefined : contentHeight}
       >
         <Tab title="Overview">
-          <ApexOverviewTab loading={loading} health={health} summary={summary} />
+          <ApexOverviewTab
+            loading={loading}
+            health={health}
+            summary={summary}
+            browserHealth={browserHealth}
+            browserSummary={browserSummary}
+          />
         </Tab>
         <Tab title="Launch">
           <ApexLaunchTab
@@ -1620,6 +1758,9 @@ function ApexCommandCenter({
         </Tab>
         <Tab title="System">
           <ApexSystemTab summary={summary} />
+        </Tab>
+        <Tab title="Browser">
+          <ApexBrowserTab health={browserHealth} summary={browserSummary} />
         </Tab>
         <Tab title="Chrono">
           <ApexChronoTab

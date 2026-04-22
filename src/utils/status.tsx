@@ -69,8 +69,10 @@ import {
   getApexWorkspaceAvailability,
   getApexWorkspaceHealth,
   getApexWorkspaceSummary,
+  summarizeApexBrowser,
   summarizeApexChrono,
   summarizeApexWorkspace,
+  type ApexBrowserSummary,
   type ApexChronoSummary,
   type ApexWorkspaceAvailability,
   type ApexWorkspaceHealth,
@@ -746,12 +748,23 @@ export function buildApexWorkspaceProperties(
   summary: ApexWorkspaceSummary | null = null,
   chronoHealth: ApexWorkspaceHealth | null = null,
   chronoSummary: ApexChronoSummary | null = null,
+  browserHealth: ApexWorkspaceHealth | null = null,
+  browserSummary: ApexBrowserSummary | null = null,
 ): Property[] {
-  if (!availability.configured && !health && !summary && !chronoHealth && !chronoSummary) {
+  if (
+    !availability.configured &&
+    !health &&
+    !summary &&
+    !chronoHealth &&
+    !chronoSummary &&
+    !browserHealth &&
+    !browserSummary
+  ) {
     return []
   }
   const workspace = summarizeApexWorkspace(summary)
   const chrono = summarizeApexChrono(chronoSummary)
+  const browser = summarizeApexBrowser(browserSummary)
   const properties: Property[] = [
     {
       label: 'Apex workspace',
@@ -773,6 +786,14 @@ export function buildApexWorkspaceProperties(
         chronoHealth?.status === 'ok' ? 'bridge online' : 'bridge offline',
         chrono.headline,
         ...chrono.details.slice(0, 2),
+      ],
+    },
+    {
+      label: 'Apex browser',
+      value: [
+        browserHealth?.status === 'ok' ? 'bridge online' : 'bridge offline',
+        browser.headline,
+        ...browser.details.slice(0, 2),
       ],
     },
   ]

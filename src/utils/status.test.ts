@@ -592,6 +592,14 @@ describe('buildApexWorkspaceProperties', () => {
           '1 backup · every 24h · retain 30d',
         ],
       },
+      {
+        label: 'Apex browser',
+        value: [
+          'bridge offline',
+          'Browser bridge offline',
+          'Start the browser bridge to keep native web previews inside the OpenJaws TUI instead of launching an external browser.',
+        ],
+      },
     ])
   })
 })
