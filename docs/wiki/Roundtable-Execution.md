@@ -15,6 +15,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 ## Safety Rules
 
 - Execution is limited to approved roots.
+- Read-only context can widen beyond the write roots for operator awareness, but autonomous writes stay constrained to git-backed approved roots and isolated worktrees only.
 - Every job is materialized in an isolated worktree.
 - Mixed code-plus-artifact output is held back and never promoted into the approval lane.
 - Artifact-only output is held back and never promoted into the approval lane.
@@ -28,9 +29,10 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - Run it continuously: `bun run roundtable:runtime -- --loop --allow-root "C:\Users\Knight\Desktop\Immaculate" --allow-root "C:\Users\Knight\Desktop\cheeks\Asgard"`
 - Override the 4-hour window or approval TTL when you need a tighter operator pass: `bun run roundtable:runtime -- --duration-hours 2 --approval-ttl-hours 0.5`
 - Reset the live Discord session cleanly before a bundled/private restart: `bun scripts/roundtable-bootstrap.ts --channel dev_support --duration-hours 4`
+- Keep the tracked queue/session truth synchronized with the bundled private lane: `bun scripts/roundtable-sync.ts --follow --interval-seconds 15`
 - Inspect state: `bun run roundtable:runtime`
 - Inspect state from Discord: `@Q operator roundtable-status`
-- Approve a generated branch after review: `@Q operator confirm-push <job-id-or-branch>`
+- Approve a generated branch after review: `@Q operator confirm-push <job-id>`
 
 ## Runtime Notes
 
@@ -40,14 +42,16 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - The tracked CLI now targets `local-command-station/run-openjaws-visible.ps1` for bounded prompt jobs; `launch-openjaws-visible.ps1` stays reserved for interactive visible shell launches.
 - The tracked CLI hard-fails if the roundtable model is anything other than `oci:Q`, and it no longer falls back to a generic `Q_AGENT_MODEL` override.
 - `scripts/roundtable-bootstrap.ts` now owns the live session reset contract, so a private restart rebuilds `discord-roundtable.session.json` from the tracked queue/session model, rotates stale nested bundle logs, and rewrites the bundled fallback state under `roundtable-runtime/roundtable-runtime/` before the child starts posting again.
+- `scripts/roundtable-sync.ts` is now the tracked steady-state sidecar for the bundled private lane; it mirrors the nested live bundle session back into `discord-roundtable-queue.state.json` and `discord-roundtable.session.json` every cycle so status, approvals, and coherence stop drifting after startup.
 - the CLI now prints both the tracked queue path and the live session path explicitly so operator reads do not silently point at the wrong file after the queue/session split.
 - The live Discord runtime now posts roundtable transition receipts back into the configured `q-roundtable` lane, with a fallback to `openjaws-updates` if the dedicated roundtable channel is not present yet.
 - The tracked runtime readers now reconcile both the live `discord-roundtable.log` and the split session metadata, so `@Q operator roundtable-status` and `bun run runtime:coherence` show the actual active lane such as `#dev_support` when older persisted files drift from the bound Discord channel.
 - When the private lane falls back to `discord-roundtable.bundle.js`, the live session/log can land under `local-command-station/roundtable-runtime/roundtable-runtime/`; the tracked readers now treat that nested bundle output as an observed live session instead of trusting stale top-level files.
 - Fresh sessions now keep forcing contribution until the recent queue history contains a diff-bearing completed commit, so no-diff or rejected audit receipts no longer let the planner relax into idle `PASS` turns too early.
-- Approval-ready transitions include the generated branch, verification summary, and attached `receipt.json` so operators can confirm from Discord without opening the local state file first.
+- Approval-ready transitions include the exact `jobId`, generated branch, verification summary, and attached `receipt.json` so operators can confirm from Discord without guessing which pending branch is newest.
 - `runtime:coherence` now reads the tracked queue state plus the live session snapshot together, so it can warn when a roundtable window has expired or when the live session has stopped updating even if the queue file still says `running`.
 - The queue is repo-scoped on purpose. It does not stack multiple active roundtable jobs onto the same project lane at once.
+- Queue keys are path-scoped on purpose as well, so agents working the same repo do not duplicate the same `src`/`apps` lane while another approval or execution is already active there.
 - Legacy mixed state files are still read as a fallback for live session metadata, but they no longer pollute the tracked queue schema on load.
 
 ## Discord Agent Pass

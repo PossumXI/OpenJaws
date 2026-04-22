@@ -52,6 +52,49 @@ describe('discordOperatorWork', () => {
     })
   })
 
+  it('parses plain-English OpenJaws work requests', () => {
+    expect(
+      parseDirectOperatorChatCommand(
+        'use openjaws in Immaculate to tighten the roundtable guardrails',
+      ),
+    ).toEqual({
+      action: 'ask-openjaws',
+      cwd: 'Immaculate',
+      text: 'tighten the roundtable guardrails',
+    })
+  })
+
+  it('parses plain-English workspace and status requests', () => {
+    expect(parseDirectOperatorChatCommand('show the openjaws workspaces')).toEqual({
+      action: 'workspaces',
+      cwd: null,
+      text: null,
+    })
+    expect(parseDirectOperatorChatCommand("what is the openjaws status")).toEqual({
+      action: 'openjaws-status',
+      cwd: null,
+      text: null,
+    })
+    expect(parseDirectOperatorChatCommand('check the roundtable status')).toEqual({
+      action: 'roundtable-status',
+      cwd: null,
+      text: null,
+    })
+  })
+
+  it('parses plain-English push review commands', () => {
+    expect(parseDirectOperatorChatCommand('list the pending pushes')).toEqual({
+      action: 'pending-pushes',
+      cwd: null,
+      text: null,
+    })
+    expect(parseDirectOperatorChatCommand('confirm push rt-job-42')).toEqual({
+      action: 'confirm-push',
+      cwd: null,
+      text: 'rt-job-42',
+    })
+  })
+
   it('resolves workspace aliases inside approved roots', () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-operator-root-'))
     tempDirs.push(root)

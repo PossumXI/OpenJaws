@@ -91,6 +91,7 @@ export function parseDirectOperatorChatCommand(
   content: string,
 ): DiscordOperatorParsedCommand | null {
   const trimmed = content.trim()
+  const normalized = trimmed.toLowerCase()
   const naturalStartMatch = trimmed.match(
     /^start (?:an )?openjaws session(?: for project)?\s+(.+?)(?:\s+and\s+(.+))?$/i,
   )
@@ -110,6 +111,77 @@ export function parseDirectOperatorChatCommand(
         cwd: workspace,
         text: null,
       }
+    }
+  }
+  const naturalAskMatch = trimmed.match(
+    /^(?:use|run)\s+openjaws(?:\s+in|\s+on|\s+for(?: project)?)?\s+(.+?)\s+(?:to|and)\s+(.+)$/i,
+  )
+  if (naturalAskMatch) {
+    return {
+      action: 'ask-openjaws',
+      cwd: naturalAskMatch[1]?.trim() || null,
+      text: naturalAskMatch[2]?.trim() || null,
+    }
+  }
+  if (
+    /^(?:show|check|list)\s+(?:the\s+)?(?:openjaws\s+)?workspaces\b/i.test(
+      trimmed,
+    )
+  ) {
+    return {
+      action: 'workspaces',
+      cwd: null,
+      text: null,
+    }
+  }
+  if (
+    /^(?:show|check|what(?:'s| is))\s+(?:the\s+)?openjaws status\b/i.test(
+      trimmed,
+    )
+  ) {
+    return {
+      action: 'openjaws-status',
+      cwd: null,
+      text: null,
+    }
+  }
+  if (
+    /^(?:show|check|what(?:'s| is))\s+(?:the\s+)?roundtable status\b/i.test(
+      trimmed,
+    )
+  ) {
+    return {
+      action: 'roundtable-status',
+      cwd: null,
+      text: null,
+    }
+  }
+  if (
+    /^(?:show|check|list)\s+(?:the\s+)?(?:pending\s+)?push(?:es)?\b/i.test(
+      trimmed,
+    )
+  ) {
+    return {
+      action: 'pending-pushes',
+      cwd: null,
+      text: null,
+    }
+  }
+  const confirmMatch = trimmed.match(
+    /^(?:confirm|approve)\s+push(?:\s+for)?\s+(.+)$/i,
+  )
+  if (confirmMatch) {
+    return {
+      action: 'confirm-push',
+      cwd: null,
+      text: confirmMatch[1]?.trim() || null,
+    }
+  }
+  if (normalized === 'what can openjaws do' || normalized === 'what can openjaws do?') {
+    return {
+      action: 'workspaces',
+      cwd: null,
+      text: null,
     }
   }
   if (!/^openjaws\b/i.test(trimmed)) {

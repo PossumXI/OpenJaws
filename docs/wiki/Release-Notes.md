@@ -41,6 +41,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - the governed roundtable session reader now keeps `executing queued action` in the `running` state instead of collapsing it back to `queued`, which fixes one of the last live-session truth leaks during autonomous runs
 - the tracked roundtable readers now also detect the nested `roundtable-runtime/roundtable-runtime` output that the bundled private fallback writes, so status/coherence surfaces stop reading stale top-level files when the live Discord lane is healthy
 - the tracked roundtable bootstrap path now rebuilds fresh live session metadata from the canonical queue/session model before the bundled private lane starts, rotates stale nested bundle logs, and rewrites the fallback `roundtable-runtime/roundtable-runtime` state so a restart does not resurrect a completed window
+- the new tracked `roundtable-sync` sidecar now mirrors the bundled private live session back into the canonical queue/session files every cycle, so `roundtable-status`, approvals, and runtime coherence keep matching the actual `#dev_support` lane after startup
 - the tracked scheduler now only relaxes after a recent diff-bearing completed commit, so no-diff or rejected audit receipts stop counting as real progress and fresh sessions keep driving toward scoped code-bearing work longer
 
 ## Agent Co-Work

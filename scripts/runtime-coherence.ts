@@ -4,10 +4,7 @@ import { buildRuntimeCoherenceReport } from '../src/immaculate/runtimeCoherence.
 import { readLatestImmaculateTraceSummary } from '../src/immaculate/traceSummary.js'
 import { readLatestQTraceSummary } from '../src/q/traceSummary.js'
 import { readDiscordQAgentReceipt } from '../src/utils/discordQAgentRuntime.js'
-import {
-  loadDiscordRoundtableRuntimeState,
-  loadDiscordRoundtableSessionState,
-} from '../src/utils/discordRoundtableRuntime.js'
+import { readDiscordRoundtableSessionSnapshot } from '../src/utils/discordRoundtableRuntime.js'
 import { getImmaculateHarnessStatus } from '../src/utils/immaculateHarness.js'
 import { readQTrainingRouteQueue } from '../src/utils/qTraining.js'
 
@@ -65,21 +62,20 @@ async function probeJsonHealth(
 }
 
 function readRoundtableState(root: string) {
-  const statePath = resolve(root, 'local-command-station', 'roundtable-runtime')
-  if (!existsSync(statePath)) {
+  const runtimeDir = resolve(root, 'local-command-station', 'roundtable-runtime')
+  if (!existsSync(runtimeDir)) {
     return null
   }
-  const sessionState = loadDiscordRoundtableSessionState(root)
-  const queueState = loadDiscordRoundtableRuntimeState(root)
+  const parsed = readDiscordRoundtableSessionSnapshot(root)
+  if (!parsed) {
+    return null
+  }
   return {
-    status: sessionState?.status ?? queueState.status,
-    updatedAt: sessionState?.updatedAt ?? queueState.updatedAt,
-    startedAt: sessionState?.startedAt ?? null,
-    endsAt: sessionState?.endsAt ?? null,
-    channelName:
-      sessionState?.roundtableChannelName ?? queueState.roundtableChannelName,
-    lastSummary: sessionState?.lastSummary ?? queueState.lastSummary,
-    lastError: sessionState?.lastError ?? queueState.lastError,
+    status: parsed.status,
+    updatedAt: parsed.updatedAt,
+    channelName: parsed.roundtableChannelName,
+    lastSummary: parsed.lastSummary,
+    lastError: parsed.lastError,
   }
 }
 

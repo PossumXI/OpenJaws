@@ -100,7 +100,13 @@ export function formatApprovalCandidateSummary(
 export async function pushApprovalCandidateToOrigin(args: {
   branchName: string
   worktreePath: string
+  commitSha?: string | null
 }): Promise<string> {
+  await validateApprovalCandidatePushState({
+    branchName: args.branchName,
+    worktreePath: args.worktreePath,
+    commitSha: args.commitSha ?? null,
+  })
   const result = await execa(
     'git',
     ['-C', args.worktreePath, 'push', '-u', 'origin', args.branchName],
@@ -123,12 +129,65 @@ export async function pushApprovalCandidateToOrigin(args: {
   return `Pushed ${args.branchName} to origin.`
 }
 
+export async function validateApprovalCandidatePushState(args: {
+  branchName: string
+  worktreePath: string
+  commitSha?: string | null
+}): Promise<{
+  currentBranch: string
+  currentCommitSha: string
+}> {
+  const branchResult = await execa(
+    'git',
+    ['-C', args.worktreePath, 'symbolic-ref', '--quiet', '--short', 'HEAD'],
+    {
+      reject: false,
+      windowsHide: true,
+      timeout: 30_000,
+    },
+  )
+  const currentBranch = branchResult.stdout.trim()
+  if (branchResult.exitCode !== 0 || !currentBranch) {
+    throw new Error('Approval push validation failed: worktree is not on a local branch.')
+  }
+  if (currentBranch !== args.branchName) {
+    throw new Error(
+      `Approval push validation failed: expected branch ${args.branchName} but worktree is on ${currentBranch}.`,
+    )
+  }
+
+  const headResult = await execa(
+    'git',
+    ['-C', args.worktreePath, 'rev-parse', '--verify', 'HEAD'],
+    {
+      reject: false,
+      windowsHide: true,
+      timeout: 30_000,
+    },
+  )
+  const currentCommitSha = headResult.stdout.trim()
+  if (headResult.exitCode !== 0 || !currentCommitSha) {
+    throw new Error('Approval push validation failed: unable to resolve HEAD commit.')
+  }
+  if (args.commitSha?.trim() && currentCommitSha !== args.commitSha.trim()) {
+    throw new Error(
+      `Approval push validation failed: expected commit ${args.commitSha.trim()} but worktree HEAD is ${currentCommitSha}.`,
+    )
+  }
+  return {
+    currentBranch,
+    currentCommitSha,
+  }
+}
+
 export async function runScriptedOpenJawsOperatorJob(args: {
   runContext: DiscordOperatorRunContext
   prompt: string
   runnerScriptPath: string
   model: string
   outputDir: string
+  addDirs?: string[]
+  promptFooter?: string | null
   transientConfigDir?: string | null
   timeoutMs?: number
   commitAuthorName?: string
@@ -162,6 +221,13 @@ export async function runScriptedOpenJawsOperatorJob(args: {
       transientConfigDir,
       '-Model',
       args.model,
+      ...(args.promptFooter?.trim()
+        ? ['-PromptFooter', args.promptFooter.trim()]
+        : []),
+      ...((args.addDirs ?? [])
+        .map(dir => dir.trim())
+        .filter(Boolean)
+        .flatMap(dir => ['-AddDir', dir])),
     ],
     {
       reject: false,

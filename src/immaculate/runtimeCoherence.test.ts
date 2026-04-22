@@ -107,6 +107,9 @@ describe('runtimeCoherence', () => {
     expect(
       report.checks.find(check => check.id === 'route-queue-depth')?.status,
     ).toBe('ok')
+    expect(
+      report.checks.find(check => check.id === 'trace-freshness')?.status,
+    ).toBe('warning')
   })
 
   test('fails when a live harness disagreement or active trace drift is detected', () => {
@@ -205,6 +208,111 @@ describe('runtimeCoherence', () => {
     ).toBe('failed')
   })
 
+  test('warns when roundtable session truth is expired or stale after reconciliation', () => {
+    const freshEndedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    const freshStartedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+
+    for (const roundtableStatus of ['expired', 'stale'] as const) {
+      const report = buildRuntimeCoherenceReport({
+        harnessStatus: {
+          enabled: true,
+          reachable: true,
+          harnessUrl: 'http://127.0.0.1:8787',
+        },
+        qAgentReceipt: {
+          version: 1,
+          updatedAt: '2026-04-20T12:00:00.000Z',
+          startedAt: '2026-04-20T10:00:00.000Z',
+          status: 'ready',
+          backend: 'Q backend',
+          guilds: [{ id: '1', name: 'Arobi' }],
+          gateway: {
+            connected: true,
+            userId: 'bot-1',
+            guildCount: 1,
+            lastSequence: 42,
+          },
+          schedule: {
+            enabled: true,
+            intervalMs: 900_000,
+            cycleCount: 2,
+          },
+          routing: {
+            lastDecision: null,
+            lastPostedChannelName: null,
+            lastPostedReason: null,
+            channels: [],
+          },
+          voice: {
+            enabled: false,
+            provider: 'system',
+            ready: false,
+            connected: false,
+          },
+          patrol: {
+            snapshot: {
+              harnessReachable: true,
+              harnessSummary: 'reachable',
+              deckSummary: null,
+              workerSummary: null,
+              trainingSummary: null,
+              hybridSummary: null,
+              routeQueueSummary: null,
+              queueLength: 0,
+              recommendedLayerId: null,
+            },
+          },
+          knowledge: {
+            enabled: false,
+            ready: false,
+            fileCount: 0,
+            chunkCount: 0,
+          },
+          operator: {},
+          events: [],
+        },
+        immaculateTrace: {
+          path: 'immaculate.trace.jsonl',
+          sessionId: 'immaculate-fresh',
+          eventCount: 3,
+          startedAt: freshStartedAt,
+          endedAt: freshEndedAt,
+          lastTimestamp: freshEndedAt,
+          runState: 'completed',
+          countsByType: {},
+          routeDispatchCount: 0,
+          routeLeaseCount: 0,
+          workerAssignmentCount: 0,
+          latestRouteId: null,
+          latestWorkerId: null,
+          interactionLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+          llmLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+          reflexLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+          cognitiveLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        },
+        qTrace: null,
+        routeQueueDepth: 0,
+        roundtable: {
+          status: roundtableStatus,
+          channelName: 'dev_support',
+          updatedAt: freshEndedAt,
+          lastSummary: 'Q action awaiting_approval: Q audit-and-tighten pass',
+        },
+      })
+
+      expect(report.status).toBe('warning')
+      expect(
+        report.checks.find(check => check.id === 'roundtable-runtime')?.status,
+      ).toBe('warning')
+      expect(
+        report.checks.find(check => check.id === 'roundtable-runtime')?.summary,
+      ).toBe(`Roundtable is ${roundtableStatus} in #dev_support.`)
+      expect(
+        report.checks.find(check => check.id === 'roundtable-runtime')?.detail,
+      ).toBe('Q action awaiting_approval: Q audit-and-tighten pass')
+    }
+  })
+
   test('warns when the voice runtime is enabled but not actually connected', () => {
     const report = buildRuntimeCoherenceReport({
       harnessStatus: {
@@ -278,6 +386,100 @@ describe('runtimeCoherence', () => {
     expect(
       report.checks.find(check => check.id === 'voice-runtime')?.status,
     ).toBe('warning')
+  })
+
+  test('marks recent completed traces as fresh for release auditing', () => {
+    const freshEndedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    const freshStartedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: {
+        version: 1,
+        updatedAt: '2026-04-20T12:00:00.000Z',
+        startedAt: '2026-04-20T10:00:00.000Z',
+        status: 'ready',
+        backend: 'Q backend',
+        guilds: [{ id: '1', name: 'Arobi' }],
+        gateway: {
+          connected: true,
+          userId: 'bot-1',
+          guildCount: 1,
+          lastSequence: 42,
+        },
+        schedule: {
+          enabled: true,
+          intervalMs: 900_000,
+          cycleCount: 2,
+        },
+        routing: {
+          lastDecision: null,
+          lastPostedChannelName: null,
+          lastPostedReason: null,
+          channels: [],
+        },
+        voice: {
+          enabled: false,
+          provider: 'system',
+          ready: false,
+          connected: false,
+        },
+        patrol: {
+          snapshot: {
+            harnessReachable: true,
+            harnessSummary: 'reachable',
+            deckSummary: null,
+            workerSummary: null,
+            trainingSummary: null,
+            hybridSummary: null,
+            routeQueueSummary: null,
+            queueLength: 0,
+            recommendedLayerId: null,
+          },
+        },
+        knowledge: {
+          enabled: false,
+          ready: false,
+          fileCount: 0,
+          chunkCount: 0,
+        },
+        operator: {},
+        events: [],
+      },
+      immaculateTrace: {
+        path: 'immaculate.trace.jsonl',
+        sessionId: 'immaculate-fresh',
+        eventCount: 3,
+        startedAt: freshStartedAt,
+        endedAt: freshEndedAt,
+        lastTimestamp: freshEndedAt,
+        runState: 'completed',
+        countsByType: {},
+        routeDispatchCount: 0,
+        routeLeaseCount: 0,
+        workerAssignmentCount: 0,
+        latestRouteId: null,
+        latestWorkerId: null,
+        interactionLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        llmLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        reflexLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+        cognitiveLatency: { count: 0, p50Ms: null, p95Ms: null, maxMs: null },
+      },
+      qTrace: null,
+      routeQueueDepth: 0,
+      roundtable: {
+        status: 'completed',
+        channelName: 'dev_support',
+      },
+    })
+
+    expect(
+      report.checks.find(check => check.id === 'trace-freshness')?.status,
+    ).toBe('ok')
   })
 
   test('warns when the latest local trace summary points to a missing file path', () => {
@@ -530,95 +732,5 @@ describe('runtimeCoherence', () => {
     expect(report.checks.find(check => check.id === 'q-trace-provenance')?.status).toBe(
       'warning',
     )
-  })
-
-  test('warns on stale Discord receipts and an expired roundtable window', () => {
-    const realDateNow = Date.now
-    Date.now = () => Date.parse('2026-04-21T12:00:00.000Z')
-    try {
-      const report = buildRuntimeCoherenceReport({
-        harnessStatus: {
-          enabled: true,
-          reachable: true,
-          harnessUrl: 'http://127.0.0.1:8787',
-        },
-        qAgentReceipt: {
-          version: 1,
-          updatedAt: '2026-04-21T10:00:00.000Z',
-          startedAt: '2026-04-21T08:00:00.000Z',
-          status: 'ready',
-          backend: 'Q backend',
-          guilds: [{ id: '1', name: 'Arobi' }],
-          gateway: {
-            connected: true,
-            userId: 'bot-1',
-            guildCount: 1,
-            lastSequence: 42,
-          },
-          schedule: {
-            enabled: true,
-            intervalMs: 900_000,
-            cycleCount: 2,
-            lastCompletedAt: '2026-04-21T09:00:00.000Z',
-          },
-          routing: {
-            lastDecision: null,
-            lastPostedChannelName: null,
-            lastPostedReason: null,
-            channels: [],
-          },
-          voice: {
-            enabled: false,
-            provider: 'system',
-            ready: false,
-            connected: false,
-          },
-          patrol: {
-            lastCompletedAt: '2026-04-21T09:00:00.000Z',
-            snapshot: {
-              harnessReachable: true,
-              harnessSummary: 'reachable',
-              deckSummary: null,
-              workerSummary: null,
-              trainingSummary: null,
-              hybridSummary: null,
-              routeQueueSummary: null,
-              queueLength: 0,
-              recommendedLayerId: null,
-            },
-          },
-          knowledge: {
-            enabled: false,
-            ready: false,
-            fileCount: 0,
-            chunkCount: 0,
-          },
-          operator: {},
-          events: [],
-        },
-        immaculateTrace: null,
-        qTrace: null,
-        routeQueueDepth: 0,
-        roundtable: {
-          status: 'running',
-          updatedAt: '2026-04-21T10:15:00.000Z',
-          endsAt: '2026-04-21T10:30:00.000Z',
-          channelName: 'dev_support',
-        },
-      })
-
-      expect(report.status).toBe('warning')
-      expect(
-        report.checks.find(check => check.id === 'discord-q-receipt-freshness')?.status,
-      ).toBe('warning')
-      expect(
-        report.checks.find(check => check.id === 'discord-q-patrol-freshness')?.status,
-      ).toBe('warning')
-      expect(
-        report.checks.find(check => check.id === 'roundtable-freshness')?.status,
-      ).toBe('warning')
-    } finally {
-      Date.now = realDateNow
-    }
   })
 })

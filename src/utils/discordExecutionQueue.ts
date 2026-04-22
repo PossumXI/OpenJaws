@@ -1,5 +1,4 @@
 import {
-  findApprovalCandidate,
   type DiscordOperatorApprovalCandidate,
 } from './discordOperatorExecution.js'
 
@@ -156,13 +155,16 @@ export function getNextQueuedDiscordExecutionJob<
 export function findDiscordExecutionApprovalTarget<
   T extends DiscordExecutionTrackedJob,
 >(jobs: T[], target: string | null): T | null {
-  return findApprovalCandidate(
-    jobs.filter(
+  const normalizedTarget = target?.trim()
+  if (!normalizedTarget || normalizedTarget.toLowerCase() === 'latest') {
+    return null
+  }
+  return (
+    jobs.find(
       job =>
         job.status === 'awaiting_approval' &&
         job.approvalState === 'pending' &&
-        Boolean(job.branchName),
-    ),
-    target === 'latest' ? null : target,
+        job.id.toLowerCase() === normalizedTarget.toLowerCase(),
+    ) ?? null
   )
 }

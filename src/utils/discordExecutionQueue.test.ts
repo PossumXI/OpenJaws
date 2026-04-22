@@ -104,7 +104,7 @@ describe('discordExecutionQueue', () => {
     expect(getNextQueuedDiscordExecutionJob([queued])?.id).toBe('job-queued')
   })
 
-  it('finds awaiting-approval jobs by id or latest', () => {
+  it('finds awaiting-approval jobs by exact job id only', () => {
     const jobs = [
       buildJob({
         id: 'job-old',
@@ -122,6 +122,8 @@ describe('discordExecutionQueue', () => {
     expect(findDiscordExecutionApprovalTarget(jobs, 'job-old')?.id).toBe(
       'job-old',
     )
-    expect(findDiscordExecutionApprovalTarget(jobs, null)?.id).toBe('job-new')
+    expect(findDiscordExecutionApprovalTarget(jobs, 'branch-new')).toBeNull()
+    expect(findDiscordExecutionApprovalTarget(jobs, null)).toBeNull()
+    expect(findDiscordExecutionApprovalTarget(jobs, 'latest')).toBeNull()
   })
 })
