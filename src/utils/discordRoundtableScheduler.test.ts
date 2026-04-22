@@ -127,7 +127,7 @@ describe('discordRoundtableScheduler', () => {
     expect(selected?.label).toBe('Immaculate')
   })
 
-  it('forces contribution when the queue is active and relaxes once recent concrete work exists', () => {
+  it('forces contribution when the queue is active and relaxes only after sustained recent concrete work exists', () => {
     expect(
       shouldForceRoundtableContribution({
         turnCount: 8,
@@ -164,6 +164,34 @@ describe('discordRoundtableScheduler', () => {
             completedAt: '2026-04-20T21:00:00.000Z',
             commitSha: 'abc123',
             verificationSummary: 'Verification passed: bun run build',
+          },
+        ],
+        nowMs: Date.parse('2026-04-20T21:05:00.000Z'),
+      }),
+    ).toBe(true)
+
+    expect(
+      shouldForceRoundtableContribution({
+        turnCount: 8,
+        latestHumanQuestion: null,
+        roundtableMemory: {
+          summary: 'Discuss the next repo-grounded pass.',
+          openThreads: [],
+        },
+        recentActions: [
+          {
+            status: 'completed',
+            changedFiles: ['src/utils/discordRoundtableRuntime.ts'],
+            completedAt: '2026-04-20T21:00:00.000Z',
+            commitSha: 'abc123',
+            verificationSummary: 'Verification passed: bun run build',
+          },
+          {
+            status: 'completed',
+            changedFiles: ['src/utils/discordRoundtableScheduler.ts'],
+            completedAt: '2026-04-20T21:03:00.000Z',
+            commitSha: 'def456',
+            verificationSummary: 'Verification passed: bun run test',
           },
         ],
         nowMs: Date.parse('2026-04-20T21:05:00.000Z'),

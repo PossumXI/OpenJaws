@@ -48,6 +48,35 @@ describe('discord roundtable status truth', () => {
     )
 
     writeFileSync(
+      join(runtimeDir, 'discord-roundtable.session.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'queued',
+          updatedAt: '2026-04-21T00:00:00.000Z',
+          startedAt: '2026-04-21T00:00:00.000Z',
+          endsAt: '2026-04-21T04:01:00.000Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          roundtableChannelName: 'q-roundtable',
+          generalChannelId: 'general-1',
+          generalChannelName: 'general-chat',
+          violaVoiceChannelId: 'voice-1',
+          violaVoiceChannelName: 'viola-lounge',
+          turnCount: 3,
+          nextPersona: 'viola',
+          lastSpeaker: 'q',
+          lastSummary: 'session snapshot says roundtable is queued',
+          lastError: null,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    writeFileSync(
       join(runtimeDir, 'discord-roundtable.log'),
       [
         '[2026-04-21T00:01:00.000Z] roundtable window 1 live in #dev_support (1426904647313916014), ends 2026-04-21T04:01:00.000Z',
@@ -57,10 +86,13 @@ describe('discord roundtable status truth', () => {
     )
 
     const state = loadDiscordRoundtableRuntimeState(root)
-    const session = readDiscordRoundtableSessionSnapshot(root)
+    const session = readDiscordRoundtableSessionSnapshot(
+      root,
+      new Date('2026-04-21T00:07:10.000Z'),
+    )
 
     expect(state.roundtableChannelName).toBe('dev_support')
-    expect(state.status).toBe('idle')
+    expect(state.status).toBe('awaiting_approval')
     expect(session?.roundtableChannelName).toBe('dev_support')
     expect(session?.status).toBe('awaiting_approval')
 
@@ -74,7 +106,7 @@ describe('discord roundtable status truth', () => {
       'Live summary: Q action awaiting_approval: Q audit-and-tighten pass',
     )
     expect(statusLines).toContain(
-      'Roundtable: idle · queued 0 · running 0 · awaiting approval 0 · completed 0 · rejected 0 · errors 0',
+      'Roundtable: awaiting_approval · queued 0 · running 0 · awaiting approval 0 · completed 0 · rejected 0 · errors 0',
     )
     expect(statusLines).toContain('Update channel: #dev_support')
   })

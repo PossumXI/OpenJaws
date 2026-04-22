@@ -37,6 +37,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - the new tracked Discord execution queue and roundtable executor modules now also own shared lease, dedupe, approval-target, and bounded roundtable job execution semantics, so direct operator runs and roundtable runs stop diverging at the approval checkpoint
 - the tracked roundtable scheduler policy now owns fallback root scoring, approval TTL resolution, and reply/PASS inspection as well, which gives the private Discord loop a tested way to prefer repo-grounded progress over idle `PASS` turns
 - the shared roundtable execution classifier now fails mixed code-plus-artifact outputs closed, so only verified code-bearing branches without generated audit or artifact spillover reach the approval checkpoint
+- tracked sync passes now preserve the authoritative live roundtable channel, quarantine malformed handoffs instead of aborting the runtime, and mark no-diff results as `skipped` so weak outcomes stay out of the approval lane
 
 ## Agent Co-Work
 

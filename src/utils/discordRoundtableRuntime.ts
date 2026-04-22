@@ -1056,6 +1056,22 @@ function deriveDiscordRoundtableSessionSnapshot(args: {
   }
 }
 
+function resolvePreferredRoundtableChannelName(args: {
+  configuredChannelName?: string | null
+  state: DiscordRoundtableRuntimeState | null | undefined
+  sessionState: DiscordRoundtableSessionState | null | undefined
+}): string | null {
+  const configuredChannelName = args.configuredChannelName?.trim() || null
+  const runtimeChannelName = args.state?.roundtableChannelName?.trim() || null
+  const sessionChannelName = args.sessionState?.roundtableChannelName?.trim() || null
+
+  if (isAuthoritativeDiscordRoundtableSession(args.sessionState) && sessionChannelName) {
+    return sessionChannelName
+  }
+
+  return configuredChannelName ?? sessionChannelName ?? runtimeChannelName ?? null
+}
+
 export function readDiscordRoundtableSessionSnapshot(
   root = process.cwd(),
   now?: Date,
@@ -1446,7 +1462,9 @@ function buildActionPrompt(args: {
     '',
     'Constraints:',
     '- stay inside the assigned repository workspace',
-    '- prefer code changes over generated artifact output',
+    '- produce a scoped, code-bearing diff in the assigned target path',
+    '- do not finish with PASS, an audit-only summary, or a no-diff report',
+    '- generated artifacts and notes are only acceptable when paired with the required code change',
     '- verify the workspace before finishing',
     '- do not push any branch',
   ]
@@ -1919,17 +1937,19 @@ async function runQueuedJob(args: {
     if (execution.mergeable && execution.job.commitSha) {
       nextCandidate.status = 'awaiting_approval'
       nextCandidate.approvalState = 'pending'
+    } else if (!execution.hasCodeChanges) {
+      nextCandidate.status = 'skipped'
+      nextCandidate.approvalState = null
+      nextCandidate.rejectionReason = holdbackReason(execution)
     } else if (
       execution.hasDisallowedChanges ||
-      (execution.hasCodeChanges && !execution.verificationPassed)
+      (execution.hasCodeChanges && !execution.verificationPassed) ||
+      !execution.mergeable
     ) {
       nextCandidate.status = 'rejected'
       nextCandidate.approvalState = 'rejected'
       nextCandidate.rejectedAt = completedAt
       nextCandidate.rejectionReason = holdbackReason(execution)
-    } else {
-      nextCandidate.status = 'completed'
-      nextCandidate.approvalState = null
     }
     return nextCandidate
   })
@@ -1956,7 +1976,7 @@ async function runQueuedJob(args: {
     lastError: null,
     lastSummary: execution.mergeable
       ? `${args.job.repoLabel} roundtable action ${args.job.id} is awaiting approval on ${execution.runContext.branchName}.`
-      : `${args.job.repoLabel} roundtable action ${args.job.id} completed and was held back: ${holdbackReason(execution)}.`,
+      : `${args.job.repoLabel} roundtable action ${args.job.id} was held back: ${holdbackReason(execution)}.`,
   }
   state.status = normalizeRuntimeStatus(state.jobs, state.lastError, state.status)
   return state
@@ -2002,11 +2022,16 @@ export async function processDiscordRoundtableRuntime(
       roundtableChannelName:
         options.roundtableChannelName ?? state.roundtableChannelName ?? null,
     })
+  const preferredRoundtableChannelName = resolvePreferredRoundtableChannelName({
+    configuredChannelName: options.roundtableChannelName,
+    state,
+    sessionState,
+  })
   const previousJobs = state.jobs.map(job => ({ ...job }))
   state = {
     ...state,
     roundtableChannelName:
-      options.roundtableChannelName ?? state.roundtableChannelName ?? null,
+      preferredRoundtableChannelName ?? state.roundtableChannelName ?? null,
     jobs: reconcileDiscordExecutionJobs(state.jobs, {
       approvalTtlHours,
       nowMs: (options.now?.() ?? new Date()).getTime(),
@@ -2039,7 +2064,7 @@ export async function processDiscordRoundtableRuntime(
         state,
         handoffPath,
         allowedRoots,
-        roundtableChannelName: options.roundtableChannelName,
+        roundtableChannelName: preferredRoundtableChannelName,
         now: handoffNow,
       })
       state = ingested.state
@@ -2056,7 +2081,7 @@ export async function processDiscordRoundtableRuntime(
         ...state,
         updatedAt: handoffNow.toISOString(),
         roundtableChannelName:
-          options.roundtableChannelName ?? state.roundtableChannelName ?? null,
+          preferredRoundtableChannelName ?? state.roundtableChannelName ?? null,
         ingestedHandoffs: state.ingestedHandoffs.includes(handoffPath)
           ? state.ingestedHandoffs
           : [...state.ingestedHandoffs, handoffPath],
@@ -2117,6 +2142,11 @@ export async function processDiscordRoundtableRuntime(
 
   state.updatedAt = (options.now?.() ?? new Date()).toISOString()
   state.status = normalizeRuntimeStatus(state.jobs, state.lastError, state.status)
+  const finalPreferredRoundtableChannelName = resolvePreferredRoundtableChannelName({
+    configuredChannelName: options.roundtableChannelName,
+    state,
+    sessionState,
+  })
   sessionState = {
     ...sessionState,
     updatedAt: state.updatedAt,
@@ -2125,7 +2155,7 @@ export async function processDiscordRoundtableRuntime(
         ? 'completed'
         : state.status,
     roundtableChannelName:
-      options.roundtableChannelName ??
+      finalPreferredRoundtableChannelName ??
       sessionState.roundtableChannelName ??
       state.roundtableChannelName ??
       null,
