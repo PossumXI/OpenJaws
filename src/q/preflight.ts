@@ -65,6 +65,9 @@ export function resolveDefaultHarborCommand(): string {
 
   const harborExecutable = process.platform === 'win32' ? 'harbor.exe' : 'harbor'
   const localHarborCandidates = [
+    ...(process.platform === 'win32'
+      ? [resolve(process.cwd(), 'scripts', 'harbor-cli.cmd')]
+      : []),
     resolve(process.cwd(), '.tools', 'harbor-venv', 'Scripts', harborExecutable),
     resolve(process.cwd(), '.venv-gemma4', 'Scripts', harborExecutable),
     resolve(process.cwd(), '.venv', 'Scripts', harborExecutable),

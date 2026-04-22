@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { resolve } from 'path'
 import type {
   OpenJawsSftBundleLabelEntry,
@@ -106,6 +106,49 @@ export function getQBridgeBenchPackDefinitions(): readonly QBridgeBenchPackDefin
 
 export function getDefaultQBridgeBenchPacks(): QBridgeBenchPack[] {
   return ['all', 'coding', 'agentic', 'security']
+}
+
+export function resolveDefaultQBridgeBenchBundleDir(root = process.cwd()): string {
+  const explicitDefault = resolve(root, 'data', 'sft', 'audited-v2')
+  if (existsSync(resolve(explicitDefault, 'bundle-manifest.json'))) {
+    return explicitDefault
+  }
+
+  const auditedArtifactsRoot = resolve(root, 'artifacts')
+  try {
+    const candidates = readdirSync(auditedArtifactsRoot, { withFileTypes: true })
+      .filter(
+        entry =>
+          entry.isDirectory() &&
+          /^q-benchmark-audited-/i.test(entry.name) &&
+          existsSync(resolve(auditedArtifactsRoot, entry.name, 'bundle-manifest.json')),
+      )
+      .map(entry => {
+        const fullPath = resolve(auditedArtifactsRoot, entry.name)
+        let mtimeMs = 0
+        try {
+          mtimeMs = statSync(resolve(fullPath, 'bundle-manifest.json')).mtimeMs
+        } catch {
+          mtimeMs = 0
+        }
+        return {
+          fullPath,
+          mtimeMs,
+        }
+      })
+      .sort(
+        (left, right) =>
+          right.mtimeMs - left.mtimeMs || right.fullPath.localeCompare(left.fullPath),
+      )
+
+    if (candidates[0]?.fullPath) {
+      return candidates[0].fullPath
+    }
+  } catch {
+    // fall through to stable legacy path
+  }
+
+  return explicitDefault
 }
 
 export function loadQBridgeBenchBundleManifest(

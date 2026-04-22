@@ -13,7 +13,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from harbor.agents.installed.base import BaseInstalledAgent, ExecInput
+from harbor.agents.installed.base import BaseInstalledAgent
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 from harbor.models.trajectories import Agent, FinalMetrics, Metrics, Step, Trajectory
@@ -441,7 +441,12 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
             env["OCI_CONFIG_FILE"] = self._CONTAINER_OCI_CONFIG_PATH
         return env
 
-    def _build_run_command(self, instruction: str) -> str:
+    def _build_run_command(
+        self,
+        instruction: str,
+        *,
+        skip_permissions: bool | None = None,
+    ) -> str:
         command_parts = [
             self._CONTAINER_BINARY_PATH,
             "-p",
@@ -451,7 +456,9 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
             "--max-turns",
             str(self._max_turns),
         ]
-        if self._skip_permissions:
+        if skip_permissions is None:
+            skip_permissions = self._skip_permissions
+        if skip_permissions:
             command_parts.append("--dangerously-skip-permissions")
         if self.model_name:
             command_parts.extend(["--model", self.model_name])
@@ -460,15 +467,18 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
         command_parts.append(shlex.quote(instruction))
         return " ".join(command_parts)
 
-    def create_run_agent_commands(self, instruction: str) -> list[ExecInput]:
-        return [
-            ExecInput(
-                command=self._build_run_command(instruction),
-                cwd=self._WORKSPACE_DIR,
-                env=self._build_runtime_env() or None,
-                timeout_sec=self._run_timeout_sec,
-            )
-        ]
+    async def _resolve_skip_permissions_for_environment(
+        self,
+        environment: BaseEnvironment,
+    ) -> bool:
+        if not self._skip_permissions:
+            return False
+
+        result = await environment.exec(command="id -u", timeout_sec=10)
+        if result.return_code == 0 and result.stdout.strip() == "0":
+            return False
+
+        return True
 
     def _write_host_log(self, filename: str, content: str | None) -> Path:
         path = self.logs_dir / filename
@@ -618,9 +628,16 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
         environment: BaseEnvironment,
         context: AgentContext,
     ) -> None:
-        command = self._build_run_command(instruction)
+        skip_permissions = await self._resolve_skip_permissions_for_environment(
+            environment
+        )
+        command = self._build_run_command(
+            instruction,
+            skip_permissions=skip_permissions,
+        )
         env = self._build_runtime_env()
-        result = await environment.exec(
+        result = await self.exec_as_agent(
+            environment,
             command=command,
             env=env or None,
             cwd=self._WORKSPACE_DIR,

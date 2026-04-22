@@ -3,6 +3,7 @@ import { execa } from 'execa'
 import { join, resolve } from 'path'
 import { rmSync } from 'fs'
 import {
+  buildHarborArgs,
   parseArgs,
   resolveTerminalBenchSessionMetadata,
 } from './q-terminalbench.ts'
@@ -76,6 +77,27 @@ describe('q-terminalbench soak options', () => {
         2,
       ),
     ).toBe('smoke-cycle-3-attempt-2')
+  })
+
+  test('uses Harbor include-task-name filters compatible with current CLI', () => {
+    const options = parseArgs([
+      '--include-task-name',
+      'terminal-bench/circuit-fibsqrt',
+      '--exclude-task-name',
+      'terminal-bench/skip-me',
+      '--job-name',
+      'compat-check',
+    ])
+
+    expect(buildHarborArgs(options, 1, 1)).toEqual(
+      expect.arrayContaining([
+        '--include-task-name',
+        'circuit-fibsqrt',
+        '--exclude-task-name',
+        'skip-me',
+      ]),
+    )
+    expect(buildHarborArgs(options, 1, 1)).not.toContain('--task-name')
   })
 })
 

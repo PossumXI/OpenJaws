@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-04-18T01:12:14.192Z",
-  "source": "Generated from benchmark receipts: D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260418-proof\\bridgebench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-soak-live-20260416\\q-soak-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-official-public-20260416-circuit-fibsqrt-v2\\terminalbench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3\\terminalbench-report.json, and D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260415\\bridgebench-report.json.",
+  "generatedAt": "2026-04-22T14:22:30.121Z",
+  "source": "Generated from benchmark receipts: D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260422-nowandb\\bridgebench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-soak-live-20260416\\q-soak-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-official-public-20260422-circuit-fibsqrt-v2\\terminalbench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3\\terminalbench-report.json, and D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260422\\bridgebench-report.json.",
   "bridgeBench": {
-    "benchmarkId": "q-bridgebench-20260418T011029",
+    "benchmarkId": "q-bridgebench-20260422T135409",
     "bestPack": "all",
-    "scorePercent": 42.11,
-    "summary": "All pack · 42.11% mean token accuracy · score 42.11 · 1 eval sample"
+    "scorePercent": 36.84,
+    "summary": "All pack · 36.84% mean token accuracy · score 36.84 · 1 eval sample"
   },
   "soak": {
     "runId": "q-soakbench-20260416T005306",
@@ -16,17 +16,17 @@
     "summary": "30-minute bounded soak. 52/52 probes succeeded with 0 errors. OpenJaws p95 latency: 8455 ms. Direct OCI-Q p95 latency: 4254 ms."
   },
   "terminalBench": {
-    "runId": "q-terminalbench-20260416T160708",
+    "runId": "q-terminalbench-20260422T142207",
     "taskName": "circuit-fibsqrt",
     "scope": "Official TerminalBench 2.0 public task",
-    "status": "completed_with_errors",
+    "status": "failed",
     "submissionState": "submitted",
     "agent": "openjaws",
     "model": "oci:Q",
     "outcome": "reward 0.0 // 5 trials",
-    "executionErrorTrials": 0,
-    "benchmarkFailedTrials": 5,
-    "summary": "OpenJaws ran circuit-fibsqrt on OCI Q with 5 trials, 0 runtime errors, and 5 benchmark-failing trials. Mean reward: 0.0. The official leaderboard submission discussion is linked here.",
+    "executionErrorTrials": 1,
+    "benchmarkFailedTrials": 4,
+    "summary": "OpenJaws ran circuit-fibsqrt on OCI Q with 5 trials, 1 runtime errors, and 4 benchmark-failing trials. Mean reward: 0.0. The official leaderboard submission discussion is linked here.",
     "submissionUrl": "https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard/discussions/141"
   },
   "terminalBenchSoak": {
@@ -43,7 +43,7 @@
     "status": "auth missing",
     "enabled": false,
     "source": "cli",
-    "url": "https://wandb.ai/arobi-arobi-technology-alliance/immaculate",
+    "url": "https://wandb.ai/arobi-arobi-technology-alliance/openjaws-q",
     "summary": "A live W&B project target was configured for this benchmark pass, but no local WANDB login/API key was available, so the receipts stayed local only."
   }
 }

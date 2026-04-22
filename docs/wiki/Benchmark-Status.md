@@ -72,6 +72,7 @@ These are the current live-check lanes OpenJaws can run honestly against its shi
 
 - `bun run system:check` for the full release-style harness pass
 - `bun run q:bridgebench` for local pack-by-pack `Q` evaluation over audited bundles
+- `q:bridgebench` and `q:preflight -- --bench bridgebench` now auto-resolve the freshest `artifacts/q-benchmark-audited-*` bundle before falling back to the legacy `data/sft/audited-v2` path, so the benchmark lane follows the current audited bundle output by default.
 - `bun run q:curriculum` for bounded specialization runs plus follow-up local pack comparison
 - `bun run q:hybrid` for one bounded local lane plus one Immaculate-routed lane under a shared receipt
 - `bun run q:terminalbench` for Harbor / Terminal-Bench runs when the external harness is actually installed
@@ -81,6 +82,40 @@ These are the current live-check lanes OpenJaws can run honestly against its shi
 - `bun run q-route:assignment` for `Q` route assignment behavior
 - `bun run q-route:remote-dispatch` for signed remote-dispatch behavior
 - `bun run q-route:remote-completion` for signed remote-result reconciliation
+
+## April 22, 2026 Benchmark Maintenance Pass
+
+These are the newest compatibility and truth-maintenance receipts from this repo workspace. They materially changed the benchmark lane, but they are not a public leaderboard claim.
+
+- BridgeBench:
+  - artifact: `artifacts/q-bridgebench-live-20260422-agentic/bridgebench-report.json`
+  - result: `failed`
+  - truth: the local LoRA eval now reaches the real `q` load path and fails on this host because Windows exhausted the paging file while loading the model weights, so this is a machine-memory boundary rather than a parser or receipt bug
+  - wrapper follow-up: `q:bridgebench` and `q:preflight -- --bench bridgebench` now auto-resolve the freshest `artifacts/q-benchmark-audited-*` bundle, so the lane no longer false-fails on the missing legacy `data/sft/audited-v2` default
+- Harbor / Terminal-Bench:
+  - harness compatibility changes:
+    - `scripts/q-terminalbench.ts` now uses Harbor's current `--include-task-name` filter instead of the removed `--task-name` flag
+    - `benchmarks/harbor/openjaws_agent.py` now loads against the current Harbor installed-agent API instead of importing the removed `ExecInput` symbol
+    - `src/q/preflight.ts` now prefers the repo-local `scripts/harbor-cli.cmd` wrapper on Windows, so `q:preflight -- --bench terminalbench` resolves the actual Harbor command from this repo instead of requiring a global `harbor.exe`
+    - `scripts/harbor-cli.cmd` now documents the canonical Windows Harbor entrypoint for this repo: `python -m harbor.cli.main`, optionally via `OPENJAWS_HARBOR_PYTHON`
+    - `benchmarks/harbor/openjaws_agent.py` now omits `--dangerously-skip-permissions` when Harbor is executing the agent as root inside the container, which removes the April 22 root/sudo hard failure
+  - one-attempt post-fix smoke: `artifacts/q-terminalbench-live-20260422-circuit-fibsqrt-force/terminalbench-report.json`
+    - task: `circuit-fibsqrt`
+    - result: `completed_with_errors`
+    - truth: after the root/sudo permission fix, the Harbor lane reaches a real benchmark verdict again on the current code path; the task completed with reward `0.0`, `0` execution errors, and `1` benchmark-failing trial
+  - official public-task five-attempt rerun: `artifacts/q-terminalbench-official-public-20260422-circuit-fibsqrt-v2/terminalbench-report.json`
+    - task: `circuit-fibsqrt`
+    - result: `failed`
+    - truth: the official lane now reaches a real five-trial Harbor job on the current code path; `4` trials completed with reward `0.0`, `1` trial hit `AgentSetupTimeoutError`, and Harbor returned `pass@2 = 0`, `pass@4 = 0`, `pass@5 = 0`
+  - transient runtime note:
+    - `artifacts/q-terminalbench-official-public-20260422-circuit-fibsqrt-v1/terminalbench-report.json`
+    - truth: the first official rerun on this date failed early with `Docker daemon is not running` even though bounded Harbor runs were already succeeding on the same host, so the Windows Harbor/Docker surface is still variant and should be treated as non-deterministic until that daemon flake is root-caused
+  - benchmark maintenance conclusion:
+    - the truthful current state is that the Terminal-Bench harness itself is materially healthier on this host and can now reach both bounded and official Harbor receipts on the current code path, but the model still scores `0.0` on the public task and the Windows Harbor/Docker runtime still shows occasional daemon/setup variance
+- Website benchmark snapshot:
+  - artifact: `website/lib/benchmarkSnapshot.generated.json`
+  - result: regenerated on `2026-04-22`
+  - truth: the public website snapshot now points at the newest locally generated benchmark receipts from this workspace instead of the older checked-in April snapshot
 
 ## April 18, 2026 Local Q Snapshot
 

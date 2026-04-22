@@ -3,11 +3,15 @@ import {
   computeQBridgeBenchScore,
   extractQBridgeBenchMetrics,
   getDefaultQBridgeBenchPacks,
+  resolveDefaultQBridgeBenchBundleDir,
   resolveQBridgeBenchPack,
   summarizeQBridgeBenchOutcome,
   type QBridgeBenchResolvedPack,
 } from './bridgeBench.js'
 import type { OpenJawsSftBundleManifest } from './openjawsSftBundles.js'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
 
 const manifest: OpenJawsSftBundleManifest = {
   bundleId: 'bundle-demo',
@@ -316,5 +320,21 @@ describe('bridgeBench', () => {
     ).toBe(
       'Security pack · 74.00% mean token accuracy · score 74.00 · 1 eval sample',
     )
+  })
+
+  it('prefers the freshest audited artifact bundle when the legacy default is missing', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-bridgebench-bundle-'))
+    try {
+      const older = join(root, 'artifacts', 'q-benchmark-audited-20260421')
+      const newer = join(root, 'artifacts', 'q-benchmark-audited-20260422')
+      mkdirSync(older, { recursive: true })
+      mkdirSync(newer, { recursive: true })
+      writeFileSync(join(older, 'bundle-manifest.json'), '{}', 'utf8')
+      writeFileSync(join(newer, 'bundle-manifest.json'), '{}', 'utf8')
+
+      expect(resolveDefaultQBridgeBenchBundleDir(root)).toBe(newer)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

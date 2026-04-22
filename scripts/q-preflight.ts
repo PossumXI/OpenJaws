@@ -7,6 +7,7 @@ import {
   type QPreflightBenchName,
   type QPreflightRequirement,
 } from '../src/q/preflight.js'
+import { resolveDefaultQBridgeBenchBundleDir } from '../src/utils/bridgeBench.js'
 
 type CliOptions = {
   root: string
@@ -70,7 +71,10 @@ function parseArgs(argv: string[]): CliOptions {
     requirements: [...resolveQPreflightRequirementsForBench(defaultBench)],
     model: 'oci:Q',
     preferDirectQ: defaultBench === 'soak',
-    bundleDir: null,
+    bundleDir:
+      defaultBench === 'bridgebench'
+        ? resolveDefaultQBridgeBenchBundleDir(process.cwd())
+        : null,
     python: null,
     harborCommand: resolveDefaultHarborCommand(),
     timeoutMs: 30_000,
@@ -88,6 +92,10 @@ function parseArgs(argv: string[]): CliOptions {
       options.requirements = [...resolveQPreflightRequirementsForBench(options.bench)]
       options.model = options.model ?? 'oci:Q'
       options.preferDirectQ = options.bench === 'soak'
+      options.bundleDir =
+        options.bench === 'bridgebench'
+          ? resolveDefaultQBridgeBenchBundleDir(options.root)
+          : null
       continue
     }
     if (arg === '--requirement' && argv[index + 1]) {

@@ -504,7 +504,7 @@ function normalizeTaskFilter(options: CliOptions, value: string): string {
   return value
 }
 
-function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): string[] {
+export function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): string[] {
   const attemptJobName = resolveAttemptJobName(options, cycle, attempt)
   const args = [
     'run',
@@ -533,7 +533,7 @@ function buildHarborArgs(options: CliOptions, cycle: number, attempt: number): s
   }
 
   for (const includeTaskName of options.includeTaskNames) {
-    args.push('--task-name', normalizeTaskFilter(options, includeTaskName))
+    args.push('--include-task-name', normalizeTaskFilter(options, includeTaskName))
   }
   for (const excludeTaskName of options.excludeTaskNames) {
     args.push('--exclude-task-name', normalizeTaskFilter(options, excludeTaskName))

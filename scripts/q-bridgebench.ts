@@ -17,6 +17,7 @@ import {
   getDefaultQBridgeBenchPacks,
   loadQBridgeBenchBundleManifest,
   Q_BRIDGEBENCH_PACKS,
+  resolveDefaultQBridgeBenchBundleDir,
   resolveQBridgeBenchPack,
   summarizeQBridgeBenchOutcome,
   type QBridgeBenchPack,
@@ -92,7 +93,7 @@ function parseOptionalInt(value: string | undefined): number | null {
 function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     root: null,
-    bundleDir: resolve(process.cwd(), 'data', 'sft', 'audited-v2'),
+    bundleDir: resolveDefaultQBridgeBenchBundleDir(process.cwd()),
     outputDir: null,
     baseModel: DEFAULT_Q_BASE_MODEL,
     adapterDir: null,
