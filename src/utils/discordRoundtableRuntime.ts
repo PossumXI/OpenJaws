@@ -322,6 +322,15 @@ function deriveRoundtableStatusFromSummary(
   if (!summary) {
     return null
   }
+  if (
+    /roundtable(?: window \d+)? live in #/i.test(summary) ||
+    /\bposted turn\b/i.test(summary) ||
+    /\blaunching action\b/i.test(summary) ||
+    /\baction completed\b/i.test(summary) ||
+    /\bpassed turn\b/i.test(summary)
+  ) {
+    return 'running'
+  }
   if (/awaiting_approval/i.test(summary)) {
     return 'awaiting_approval'
   }
