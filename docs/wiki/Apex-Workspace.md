@@ -73,6 +73,26 @@ Two source trees remain deliberately excluded from generic agent control:
 
 They stay source-root-only until they each have their own narrow localhost bridge plus explicit confirmation and audit ladders.
 
+## Runtime Ports
+
+The live bridge ports are part of the bounded operator contract and should not be redefined ad hoc in other docs or scripts:
+
+- `OPENJAWS_APEX_WORKSPACE_API_URL`
+  - defaults to `http://127.0.0.1:8797`
+  - typed Apex workspace + governance bridge used by `/apex`, `/status`, and the public-safe Apex governance mirror
+- `OPENJAWS_APEX_CHRONO_API_URL`
+  - defaults to `http://127.0.0.1:8798`
+  - bounded backup/restore bridge for Chrono jobs
+- `OPENJAWS_APEX_BROWSER_API_URL`
+  - defaults to `http://127.0.0.1:8799`
+  - native browser bridge for the Apex browser lane and accountable `/preview` handoff
+
+Trust/config boundary:
+
+- keep the bridges on loopback unless you are intentionally changing the operator boundary
+- `OPENJAWS_APEX_TRUST_LOCALHOST=1` is the explicit override that tells OpenJaws to trust an already-running localhost bridge it did not launch itself
+- the per-run `x-openjaws-apex-token` contract remains the default trust path for launched bridges
+
 ## Setup
 
 OpenJaws discovers Apex roots from these env vars:
@@ -82,6 +102,11 @@ OpenJaws discovers Apex roots from these env vars:
 - `OPENJAWS_APEX_NOTIFICATIONS_ROOT`
 - `OPENJAWS_APEX_ARGUS_ROOT`
 - `OPENJAWS_APEX_WORKSPACE_API_URL`
+- `OPENJAWS_APEX_CHRONO_API_URL`
+- `OPENJAWS_APEX_BROWSER_API_URL`
+- `OPENJAWS_APEX_TENANT_GOVERNANCE_API_URL`
+- `OPENJAWS_APEX_TENANT_GOVERNANCE_MIRROR_FILE`
+- `OPENJAWS_APEX_TRUST_LOCALHOST`
 
 Typical local operator path:
 
@@ -98,6 +123,19 @@ If you need deeper browser control, keep ownership with `/preview`.
 
 This lane assumes the external Apex checkout is present and that its `workspace_api` sidecar can build or already exists on the local machine. OpenJaws does not vendor the Apex Rust toolchain for you.
 
+## Runtime Files
+
+The live bridge runtime files live under `%TEMP%\openjaws-apex\`:
+
+- `workspace-api.log`
+- `workspace-api-state.json`
+- `chrono-bridge.log`
+- `chrono-bridge-state.json`
+- `browser-bridge.log`
+- `browser-bridge-state.json`
+
+Those files are the source of truth for launcher ownership, health snapshots, and bounded operator status receipts. Do not invent a second path in ad hoc scripts.
+
 ## What Fits Well Next
 
 The high-value follow-up is not “embed every Rust app.”
@@ -105,8 +143,12 @@ The high-value follow-up is not “embed every Rust app.”
 The cleaner next steps are:
 
 - richer `/status` fusion for `system_monitor` and `security_center`
+- a bounded `Settings` lane over the existing `workspace_api` endpoints:
+  - `GET /api/v1/settings/summary`
+  - `POST /api/v1/settings/update`
+  - `POST /api/v1/settings/reset`
 - more bounded mail/chat/store operator actions over `workspace_api`
-- launcher-backed security/vault actions with better receipts
+- launcher-backed security/vault actions with better receipts while `vault` stays out of the typed TUI lane
 - keep launcher-backed browser actions separate, and add stable bridge endpoints first whenever deeper OpenJaws browser control is needed
 
 ## Tenant Governance Parity

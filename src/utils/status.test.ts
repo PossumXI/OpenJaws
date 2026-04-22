@@ -765,6 +765,13 @@ describe('buildApexWorkspaceProperties', () => {
         ],
       },
       {
+        label: 'Apex governance recommendations',
+        value: [
+          'Inspect System posture · 1 high-pressure signal · source apex-mail',
+          'Triage governed Mail pressure · 4 mail-side signals · detections 4',
+        ],
+      },
+      {
         label: 'Apex recent actions',
         value: [
           'App Store install app · ok',

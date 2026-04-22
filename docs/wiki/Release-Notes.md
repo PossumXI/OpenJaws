@@ -59,11 +59,14 @@ This page summarizes the current public OpenJaws surface that is already working
 - the typed `workspace_api` bridge can surface mail, chat, store, system, and security summaries directly into OpenJaws
 - the new dedicated `chrono-bridge` wraps `apps/chrono/src/lib.rs` into a bounded localhost backup surface instead of pretending the desktop GUI is native TUI UI
 - the `/apex` deck now exposes those bridge-backed surfaces through dedicated `Mail`, `Chat`, `Store`, `System`, `Chrono`, and `Security` tabs
+- `/status` now also surfaces bounded Apex governance recommendations, so the shared tenant-governance lane can point operators toward `Mail`, `Security`, `System`, or `Store` follow-up work without widening the bridge contract
 - `/apex` can now send Aegis Mail drafts, move/delete/flag selected mail items, create Shadow Chat sessions, post into those sessions, and install Store apps with a structured receipt through the same trusted bridge contract
 - browser, security center, vault, and related Apex desktop apps stay launcher-backed and out of process instead of being hard-embedded into the TUI
 - the browser now has a dedicated bridge-backed preview lane inside OpenJaws; launcher-only desktop apps remain outside the TUI
 - Apex launches now use a reduced allowlisted environment, and the bridge is only trusted when OpenJaws launched it itself unless the operator explicitly opts into trusting a pre-existing localhost listener
 - the workspace bridge launcher now auto-discovers a local `libclang` runtime on Windows when the upstream Apex workspace needs it to compile
+- the bounded runtime contract is now documented explicitly too: `8797` for `workspace_api`, `8798` for `chrono-bridge`, `8799` for the browser bridge, `%TEMP%\openjaws-apex\*` for the runtime logs/state files, and `x-openjaws-apex-token` as the default trust header for launched bridges
+- the next safe upstream-backed TUI seam is `settings` over `workspace_api`; `vault` remains launcher-backed until it has its own narrower trust contract
 - `Notifications` and `argus` remain intentionally outside agent control until they have their own narrow localhost bridges plus confirmation and audit ladders
 
 ## Accountable Browser Preview

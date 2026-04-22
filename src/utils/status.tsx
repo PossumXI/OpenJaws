@@ -68,6 +68,7 @@ import {
   type DiscordQAgentReceipt,
 } from './discordQAgentRuntime.js';
 import {
+  buildApexGovernanceRecommendations,
   getApexChronoHealth,
   getApexChronoSummary,
   getApexWorkspaceAvailability,
@@ -780,6 +781,8 @@ export function buildApexWorkspaceProperties(
   }
   const workspace = summarizeApexWorkspace(summary)
   const governance = summarizeApexTenantGovernance(governanceSummary)
+  const governanceRecommendations =
+    buildApexGovernanceRecommendations(governanceSummary)
   const operatorActivity = summarizeApexOperatorActivityReceipt(
     operatorActivityReceipt,
   )
@@ -824,6 +827,19 @@ export function buildApexWorkspaceProperties(
               ...governance.details.slice(0, 3),
             ],
           } satisfies Property,
+          ...(governanceRecommendations.length > 0
+            ? [
+                {
+                  label: 'Apex governance recommendations',
+                  value: governanceRecommendations
+                    .slice(0, 4)
+                    .map(
+                      recommendation =>
+                        `${recommendation.label} · ${recommendation.description}`,
+                    ),
+                } satisfies Property,
+              ]
+            : []),
         ]
       : []),
     ...(operatorActivityReceipt
