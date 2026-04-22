@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'fs'
 import { tmpdir } from 'os'
-import { join, resolve, sep } from 'path'
+import { dirname, join, resolve, sep } from 'path'
 import { spawn } from 'child_process'
 import { randomUUID } from 'crypto'
 import { execFileNoThrow } from './execFileNoThrow.js'
@@ -49,6 +49,16 @@ export const APEX_TENANT_GOVERNANCE_API_URL =
   process.env.OPENJAWS_APEX_TENANT_GOVERNANCE_API_URL?.trim() ||
   process.env.OPENJAWS_APEX_TENANT_API_URL?.trim() ||
   'http://127.0.0.1:3000'
+export function getApexTenantGovernanceMirrorPath(
+  root = process.cwd(),
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const configured = env.OPENJAWS_APEX_TENANT_GOVERNANCE_MIRROR_FILE?.trim()
+  if (configured) {
+    return resolve(configured)
+  }
+  return resolve(root, 'docs', 'wiki', 'Apex-Tenant-Governance.json')
+}
 const APEX_RUNTIME_DIR = join(tmpdir(), 'openjaws-apex')
 const APEX_WORKSPACE_API_LOG = join(APEX_RUNTIME_DIR, 'workspace-api.log')
 const APEX_WORKSPACE_API_STATE = join(APEX_RUNTIME_DIR, 'workspace-api-state.json')
@@ -378,6 +388,89 @@ type ApexTenantAnalyticsResponse = {
     topModels?: ApexBreakdownEntry[]
     narrative?: string
   } | null
+}
+
+function numberFromUnknown(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function stringOrNullFromUnknown(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+}
+
+function breakdownEntriesFromUnknown(value: unknown): ApexBreakdownEntry[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap(entry => {
+    if (!entry || typeof entry !== 'object') {
+      return []
+    }
+    const record = entry as Record<string, unknown>
+    const name = stringOrNullFromUnknown(record.name)
+    if (!name) {
+      return []
+    }
+    return [
+      {
+        name,
+        count: numberFromUnknown(record.count),
+      },
+    ]
+  })
+}
+
+export function readApexTenantGovernanceMirror(
+  mirrorPath = getApexTenantGovernanceMirrorPath(),
+): ApexTenantGovernanceSummary | null {
+  if (!existsSync(mirrorPath)) {
+    return null
+  }
+
+  try {
+    const raw = readFileSync(mirrorPath, 'utf8').trim()
+    if (!raw) {
+      return null
+    }
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') {
+      return null
+    }
+    const record = parsed as Record<string, unknown>
+    return {
+      totalDecisions: numberFromUnknown(record.totalDecisions),
+      ethicsPassed: numberFromUnknown(record.ethicsPassed),
+      ethicsFailed: numberFromUnknown(record.ethicsFailed),
+      avgConfidence: numberFromUnknown(record.avgConfidence),
+      avgRiskScore: numberFromUnknown(record.avgRiskScore),
+      detectionEventCount: numberFromUnknown(record.detectionEventCount),
+      telemetryScopeCount: numberFromUnknown(record.telemetryScopeCount),
+      latestActivityAt: stringOrNullFromUnknown(record.latestActivityAt),
+      highRiskCalls: numberFromUnknown(record.highRiskCalls),
+      criticalCalls: numberFromUnknown(record.criticalCalls),
+      pendingReviewCalls: numberFromUnknown(record.pendingReviewCalls),
+      operatorActionBreakdown: breakdownEntriesFromUnknown(
+        record.operatorActionBreakdown,
+      ),
+      governedActionBreakdown: breakdownEntriesFromUnknown(
+        record.governedActionBreakdown,
+      ),
+      governanceSignalBreakdown: breakdownEntriesFromUnknown(
+        record.governanceSignalBreakdown,
+      ),
+      reviewStatusBreakdown: breakdownEntriesFromUnknown(
+        record.reviewStatusBreakdown,
+      ),
+      categoryBreakdown: breakdownEntriesFromUnknown(record.categoryBreakdown),
+      topSources: breakdownEntriesFromUnknown(record.topSources),
+      topModels: breakdownEntriesFromUnknown(record.topModels),
+      narrative:
+        stringOrNullFromUnknown(record.narrative) ??
+        'No governed tenant action narrative is available yet.',
+    }
+  } catch {
+    return null
+  }
 }
 
 const APEX_TARGETS: ApexLaunchTarget[] = [
@@ -969,16 +1062,22 @@ export async function getApexWorkspaceSummary(): Promise<ApexWorkspaceSummary | 
   return payload.data
 }
 
-export async function getApexTenantGovernanceSummary(): Promise<ApexTenantGovernanceSummary | null> {
-  const analyticsPayload = await fetchSessionIngressJson<ApexTenantAnalyticsResponse>(
-    APEX_TENANT_GOVERNANCE_API_URL,
-    '/api/v1/tenant/analytics',
-    3000,
+async function getApexWorkspaceGovernanceSummary(): Promise<ApexTenantGovernanceSummary | null> {
+  const payload = await fetchApexJson<ApexApiEnvelope<ApexTenantGovernanceSummary>>(
+    APEX_WORKSPACE_API_URL,
+    APEX_WORKSPACE_API_STATE,
+    '/api/v1/governance/summary',
+    2500,
   )
-  if (!analyticsPayload) {
+  if (!payload?.success) {
     return null
   }
+  return payload.data
+}
 
+function normalizeApexTenantGovernanceSummary(
+  analyticsPayload: ApexTenantAnalyticsResponse,
+): ApexTenantGovernanceSummary {
   const analysis = analyticsPayload.decision_analysis
 
   return {
@@ -994,13 +1093,9 @@ export async function getApexTenantGovernanceSummary(): Promise<ApexTenantGovern
     criticalCalls: analysis?.criticalCalls ?? 0,
     pendingReviewCalls: analysis?.pendingReviewCalls ?? 0,
     operatorActionBreakdown:
-      analysis?.operatorActionBreakdown ??
-      analysis?.governedActionBreakdown ??
-      [],
+      analysis?.operatorActionBreakdown ?? analysis?.governedActionBreakdown ?? [],
     governedActionBreakdown:
-      analysis?.governedActionBreakdown ??
-      analysis?.operatorActionBreakdown ??
-      [],
+      analysis?.governedActionBreakdown ?? analysis?.operatorActionBreakdown ?? [],
     governanceSignalBreakdown: analysis?.governanceSignalBreakdown ?? [],
     reviewStatusBreakdown: analyticsPayload.by_review_status ?? [],
     categoryBreakdown: analyticsPayload.by_category ?? [],
@@ -1009,6 +1104,45 @@ export async function getApexTenantGovernanceSummary(): Promise<ApexTenantGovern
     narrative:
       analysis?.narrative?.trim() ||
       'No governed tenant action narrative is available yet.',
+  }
+}
+
+function persistApexTenantGovernanceSummary(
+  summary: ApexTenantGovernanceSummary,
+): ApexTenantGovernanceSummary {
+  writeApexTenantGovernanceMirror(summary)
+  return summary
+}
+
+export async function getApexTenantGovernanceSummary(): Promise<ApexTenantGovernanceSummary | null> {
+  const workspaceSummary = await getApexWorkspaceGovernanceSummary()
+  if (workspaceSummary) {
+    return persistApexTenantGovernanceSummary(workspaceSummary)
+  }
+
+  const analyticsPayload = await fetchSessionIngressJson<ApexTenantAnalyticsResponse>(
+    APEX_TENANT_GOVERNANCE_API_URL,
+    '/api/v1/tenant/analytics',
+    3000,
+  )
+  if (analyticsPayload) {
+    return persistApexTenantGovernanceSummary(
+      normalizeApexTenantGovernanceSummary(analyticsPayload),
+    )
+  }
+
+  return readApexTenantGovernanceMirror()
+}
+
+export function writeApexTenantGovernanceMirror(
+  summary: ApexTenantGovernanceSummary,
+  mirrorPath = getApexTenantGovernanceMirrorPath(),
+): void {
+  try {
+    mkdirSync(dirname(mirrorPath), { recursive: true })
+    writeFileSync(mirrorPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8')
+  } catch {
+    // Mirror writes are best-effort only; the live Apex lane should not fail closed here.
   }
 }
 
@@ -2007,15 +2141,15 @@ export function summarizeApexTenantGovernance(
     return {
       headline: 'Tenant governance summary unavailable',
       details: [
-        `Session ingress auth or ${APEX_TENANT_GOVERNANCE_API_URL}/api/v1/tenant/analytics is unavailable.`,
+        `Workspace API governance summary, session ingress analytics, and the mirrored Apex governance file are all unavailable.`,
       ],
     }
   }
 
   const topOperatorAction =
-    summary.operatorActionBreakdown?.[0]?.name ??
-    summary.governedActionBreakdown[0]?.name ??
-    'none'
+    summary.operatorActionBreakdown?.[0]?.name
+    ?? summary.governedActionBreakdown[0]?.name
+    ?? 'none'
   const topSignal = summary.governanceSignalBreakdown[0]?.name ?? 'routine'
   const topReview = summary.reviewStatusBreakdown[0]?.name ?? 'approved'
   const latest = summary.latestActivityAt ?? 'no recent activity'
@@ -2028,6 +2162,46 @@ export function summarizeApexTenantGovernance(
       `Ethics passed ${summary.ethicsPassed} · failed ${summary.ethicsFailed} · telemetry scopes ${summary.telemetryScopeCount}`,
       `Latest activity ${latest}`,
     ],
+  }
+}
+
+export function summarizePublicApexTenantGovernance(
+  summary: ApexTenantGovernanceSummary | null,
+): {
+  headline: string
+  details: string[]
+  operatorActions: string[]
+  governanceSignals: string[]
+  latestActivityAt: string | null
+  status: 'ok' | 'warning' | 'info'
+} | null {
+  if (!summary) {
+    return null
+  }
+  const governance = summarizeApexTenantGovernance(summary)
+  return {
+    headline: governance.headline,
+    details: governance.details.slice(0, 4),
+    operatorActions: (
+      summary.operatorActionBreakdown.length > 0
+        ? summary.operatorActionBreakdown
+        : summary.governedActionBreakdown
+    )
+      .slice(0, 4)
+      .map(entry => entry.name),
+    governanceSignals: summary.governanceSignalBreakdown
+      .slice(0, 4)
+      .map(entry => entry.name),
+    latestActivityAt: summary.latestActivityAt,
+    status:
+      summary.totalDecisions === 0
+        ? 'info'
+        : summary.ethicsFailed > 0 ||
+            summary.criticalCalls > 0 ||
+            summary.pendingReviewCalls > 0 ||
+            summary.highRiskCalls > 0
+          ? 'warning'
+          : 'ok',
   }
 }
 

@@ -20,7 +20,11 @@ The current OpenJaws side exposes:
 - trusted Shadow Chat send plus chat-session creation from inside `/apex`
 - trusted Store install with structured install receipts from inside `/apex`
 - dedicated `chrono-bridge` health, summary, and bounded backup actions from inside `/apex`
-- `/status` now distinguishes the live bridge-backed preview session from plain Apex browser launcher availability
+- browser bridge health plus native session summary inside `/apex`
+- bounded operator handoff receipts from `/apex` Browser into accountable `/preview`
+- bounded recent operator receipts from `/apex` mail/chat/store/chrono/browser actions, surfaced in `/status`, Overview, and the shared public-safe showcase feed
+- `/status` now surfaces Apex browser bridge truth separately from the general browser preview receipt
+- `/status` now fuses Apex system and security posture instead of only showing bridge reachability
 - guarded launchers for:
   - `workspace_api`
   - `chrono-bridge`
@@ -88,6 +92,10 @@ Typical local operator path:
 5. optionally launch `Chrono Bridge`
 6. use `/status` to confirm both bridges are visible
 
+If you need deeper browser control, keep ownership with `/preview`.
+
+`/apex` now shows the native Apex browser bridge and session truth, can record an accountable operator handoff into `/preview`, but it still does not try to become a second browser editor.
+
 This lane assumes the external Apex checkout is present and that its `workspace_api` sidecar can build or already exists on the local machine. OpenJaws does not vendor the Apex Rust toolchain for you.
 
 ## What Fits Well Next
@@ -98,27 +106,35 @@ The cleaner next steps are:
 
 - richer `/status` fusion for `system_monitor` and `security_center`
 - more bounded mail/chat/store operator actions over `workspace_api`
-- launcher-backed browser/security/vault actions with better receipts
+- launcher-backed security/vault actions with better receipts
 - keep launcher-backed browser actions separate, and add stable bridge endpoints first whenever deeper OpenJaws browser control is needed
 
 ## Tenant Governance Parity
 
-As of 2026-04-22, `/apex` and `/status` can also consume the shared tenant-governance summary lane that the protected Apex operator surfaces already use.
+As of 2026-04-21, `/apex` now consumes the same tenant-governance summary lane that ApexOS and the Websites dashboard use.
 
 Current contract:
 
 - `src/utils/apexWorkspace.ts`
-  - fetches `GET /api/v1/tenant/analytics` through session-ingress auth
+  - prefers `GET /api/v1/governance/summary` from `workspace_api` as the operator-local governance bridge
+  - uses `GET /api/v1/tenant/analytics` through session-ingress auth only as a secondary enrichment fallback
+  - falls back to the mirrored summary when session-ingress auth is temporarily unavailable
   - normalizes the result into `ApexTenantGovernanceSummary`
+  - mirrors the normalized summary into `docs/wiki/Apex-Tenant-Governance.json` for other bounded local consumers
 - `src/commands/apex/apex.tsx`
   - renders the governed tenant lane in the Overview tab
-  - shows governance readiness in the TUI banner
-  - keeps Chrono, mail, chat, store, and security surfaces intact
+  - shows governance pressure in the TUI banner instead of a binary ready/offline label
+  - now renders an `Operator actions` section from the same tenant-governance summary
+  - keeps browser and Chrono bridge surfaces intact
+- `src/components/Settings/Status.tsx`
+  - now pulls the same tenant-governance summary into `/status`
 - `src/utils/status.tsx`
   - now surfaces an `Apex governance` property block in the shared status panel when the tenant lane is available
 
 Important boundary:
 
-- the TUI should consume the shared tenant-governance summary, not invent a second analytics shape
+- the TUI should consume the shared tenant-governance summary, not re-invent a second analytics shape
+- the public showcase overlay should read the mirrored sanitized governance summary, not issue a second live tenant-analytics fetch
 - forward-looking producers should seed `analytics_dimensions.operator_actions`
-- OpenJaws keeps `governedActionBreakdown` only as a compatibility fallback for older data already in the lane
+- the TUI keeps `governedActionBreakdown` as a fallback only for older data already in the lane
+- recent `/apex` operator actions now land in a separate bounded local receipt so public-safe activity can prove real mail/chat/store/chrono/browser work without leaking payload bodies or private browser history

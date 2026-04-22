@@ -15,12 +15,15 @@ import type { ThemeName } from '../../utils/theme.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { resolveExternalModelConfig } from '../../utils/model/externalProviders.js';
 import {
+  getApexBrowserHealth,
+  getApexBrowserSummary,
   getApexChronoHealth,
   getApexChronoSummary,
   getApexTenantGovernanceSummary,
   getApexWorkspaceHealth,
   getApexWorkspaceSummary,
 } from '../../utils/apexWorkspace.js';
+import { readApexOperatorActivityReceipt } from '../../utils/apexOperatorActivity.js';
 import {
   readBrowserPreviewReceipt,
   readBrowserPreviewRuntime,
@@ -77,8 +80,11 @@ function buildSecondarySection({
   apexWorkspaceHealth: Awaited<ReturnType<typeof getApexWorkspaceHealth>> | null;
   apexWorkspaceSummary: Awaited<ReturnType<typeof getApexWorkspaceSummary>> | null;
   apexTenantGovernanceSummary: Awaited<ReturnType<typeof getApexTenantGovernanceSummary>> | null;
+  apexOperatorActivityReceipt: Awaited<ReturnType<typeof readApexOperatorActivityReceipt>> | null;
   apexChronoHealth: Awaited<ReturnType<typeof getApexChronoHealth>> | null;
   apexChronoSummary: Awaited<ReturnType<typeof getApexChronoSummary>> | null;
+  apexBrowserHealth: Awaited<ReturnType<typeof getApexBrowserHealth>> | null;
+  apexBrowserSummary: Awaited<ReturnType<typeof getApexBrowserSummary>> | null;
   browserPreviewRuntime: Awaited<ReturnType<typeof readBrowserPreviewRuntime>> | null;
   browserPreviewReceipt: Awaited<ReturnType<typeof readBrowserPreviewReceipt>> | null;
   externalProviderProbe: AppState['externalProviderProbe'];
@@ -95,7 +101,7 @@ function buildSecondarySection({
     configuredDefaultEnvironmentId: environmentSelection?.configuredDefaultEnvironmentId ?? null,
     missingConfiguredDefaultEnvironment: environmentSelection?.missingConfiguredDefaultEnvironment ?? false,
     suggestedEnvironmentLabel: environmentSelection?.suggestedEnvironment ? `${environmentSelection.suggestedEnvironment.name} (${environmentSelection.suggestedEnvironment.environment_id})` : null
-  }), ...buildPrivacyProperties(), ...buildProviderProbeProperties(externalModel, externalProviderProbe), ...buildProviderGuidanceProperties(externalModel), ...buildImmaculateProperties(immaculateHarnessStatus, immaculateDeckReceipt, immaculateWorkers), ...buildImmaculateTraceProperties(), ...buildQTraceProperties(), ...buildImmaculateGuidanceProperties(immaculateHarnessStatus), ...buildAgentCoworkProperties(teamContext), ...buildApexWorkspaceProperties(undefined, apexWorkspaceHealth, apexWorkspaceSummary, apexTenantGovernanceSummary, apexChronoHealth, apexChronoSummary), ...buildBrowserPreviewProperties(browserPreviewReceipt, browserPreviewRuntime), ...buildDiscordQAgentProperties(), ...buildIDEProperties(mcp.clients, context.options.ideInstallationStatus, theme), ...buildMcpProperties(mcp.clients, theme), ...buildSandboxProperties(), ...buildToolchainProperties(), ...buildVoiceProperties(), ...buildQTrainingProperties(immaculateWorkers), ...buildSessionUsageProperties(), ...buildSettingSourcesProperties()];
+  }), ...buildPrivacyProperties(), ...buildProviderProbeProperties(externalModel, externalProviderProbe), ...buildProviderGuidanceProperties(externalModel), ...buildImmaculateProperties(immaculateHarnessStatus, immaculateDeckReceipt, immaculateWorkers), ...buildImmaculateTraceProperties(), ...buildQTraceProperties(), ...buildImmaculateGuidanceProperties(immaculateHarnessStatus), ...buildAgentCoworkProperties(teamContext), ...buildApexWorkspaceProperties(undefined, apexWorkspaceHealth, apexWorkspaceSummary, apexTenantGovernanceSummary, apexOperatorActivityReceipt, apexChronoHealth, apexChronoSummary, apexBrowserHealth, apexBrowserSummary), ...buildBrowserPreviewProperties(browserPreviewReceipt, browserPreviewRuntime), ...buildDiscordQAgentProperties(), ...buildIDEProperties(mcp.clients, context.options.ideInstallationStatus, theme), ...buildMcpProperties(mcp.clients, theme), ...buildSandboxProperties(), ...buildToolchainProperties(), ...buildVoiceProperties(), ...buildQTrainingProperties(immaculateWorkers), ...buildSessionUsageProperties(), ...buildSettingSourcesProperties()];
 }
 export async function buildDiagnostics(): Promise<Diagnostic[]> {
   return [...(await buildInstallationDiagnostics()), ...(await buildInstallationHealthDiagnostics()), ...(await buildStartupHarnessDiagnostics()), ...(await buildImmaculateDiagnostics()), ...(await buildMemoryDiagnostics())];
@@ -134,8 +140,11 @@ export function Status({
   const [apexWorkspaceHealthPromise] = React.useState(() => getApexWorkspaceHealth().catch(() => null));
   const [apexWorkspaceSummaryPromise] = React.useState(() => getApexWorkspaceSummary().catch(() => null));
   const [apexTenantGovernanceSummaryPromise] = React.useState(() => getApexTenantGovernanceSummary().catch(() => null));
+  const [apexOperatorActivityReceiptPromise] = React.useState(() => readApexOperatorActivityReceipt().catch(() => null));
   const [apexChronoHealthPromise] = React.useState(() => getApexChronoHealth().catch(() => null));
   const [apexChronoSummaryPromise] = React.useState(() => getApexChronoSummary().catch(() => null));
+  const [apexBrowserHealthPromise] = React.useState(() => getApexBrowserHealth().catch(() => null));
+  const [apexBrowserSummaryPromise] = React.useState(() => getApexBrowserSummary().catch(() => null));
   const [browserPreviewRuntimePromise] = React.useState(() => readBrowserPreviewRuntime().catch(() => null));
   const [browserPreviewReceiptPromise] = React.useState(() => readBrowserPreviewReceipt().catch(() => null));
   const environmentSelection = use(environmentSelectionPromise);
@@ -145,8 +154,11 @@ export function Status({
   const apexWorkspaceHealth = use(apexWorkspaceHealthPromise);
   const apexWorkspaceSummary = use(apexWorkspaceSummaryPromise);
   const apexTenantGovernanceSummary = use(apexTenantGovernanceSummaryPromise);
+  const apexOperatorActivityReceipt = use(apexOperatorActivityReceiptPromise);
   const apexChronoHealth = use(apexChronoHealthPromise);
   const apexChronoSummary = use(apexChronoSummaryPromise);
+  const apexBrowserHealth = use(apexBrowserHealthPromise);
+  const apexBrowserSummary = use(apexBrowserSummaryPromise);
   const browserPreviewRuntime = use(browserPreviewRuntimePromise);
   const browserPreviewReceipt = use(browserPreviewReceiptPromise);
   const [theme] = useTheme();
@@ -167,14 +179,17 @@ export function Status({
       apexWorkspaceHealth,
       apexWorkspaceSummary,
       apexTenantGovernanceSummary,
+      apexOperatorActivityReceipt,
       apexChronoHealth,
       apexChronoSummary,
+      apexBrowserHealth,
+      apexBrowserSummary,
       browserPreviewRuntime,
       browserPreviewReceipt,
       externalProviderProbe,
       teamContext
     })
-  ], [apexChronoHealth, apexChronoSummary, apexTenantGovernanceSummary, apexWorkspaceHealth, apexWorkspaceSummary, browserPreviewReceipt, browserPreviewRuntime, context, environmentSelection, externalProviderProbe, immaculateDeckReceipt, immaculateHarnessStatus, immaculateWorkers, mainLoopModel, mcp, primarySection, replBridgeStartupIssue, teamContext, theme]);
+  ], [apexBrowserHealth, apexBrowserSummary, apexChronoHealth, apexChronoSummary, apexOperatorActivityReceipt, apexTenantGovernanceSummary, apexWorkspaceHealth, apexWorkspaceSummary, browserPreviewReceipt, browserPreviewRuntime, context, environmentSelection, externalProviderProbe, immaculateDeckReceipt, immaculateHarnessStatus, immaculateWorkers, mainLoopModel, mcp, primarySection, replBridgeStartupIssue, teamContext, theme]);
   const grow = useIsInsideModal() ? 1 : undefined;
 
   return <Box flexDirection="column" flexGrow={grow}>

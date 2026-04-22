@@ -1,23 +1,26 @@
 # Public Showcase Activity
 
-OpenJaws emits a sanitized public activity overlay to `.arobi-public/showcase-activity.json`.
+OpenJaws now emits a sanitized public activity overlay to `.arobi-public/showcase-activity.json`.
+
+It also mirrors the same sanitized feed into the repo at `docs/wiki/Public-Showcase-Activity.json` so Immaculate and other local agents can consume the producer output directly without reading the live public overlay file back out of `.arobi-public`.
 
 Asgard merges that overlay into the existing `fabric.showcase.activityFeed` lane on the public status surface. It does not replace or modify the raw public ledger feed.
 
 The same normalized operator-action contract now also feeds the OpenJaws TUI:
 
-- `/status` renders the bounded Q operator line and the Apex governance summary from the same live inputs
-- the public showcase overlay aggregates `Q`, `Viola`, `Blackbeak`, roundtable runtime, and trace summaries into one bounded feed
-- the protected tenant-governance lane and the public showcase overlay should stay aligned on `operator_actions`
+- `/apex` renders the top governed operator actions from the tenant-governance lane
+- `/status` renders the same lane as an `Apex governance` property block
+- the public showcase overlay and the protected tenant-governance lane should stay aligned on `operator_actions`
+- bounded Nysus coordinator activity is mirrored from `.arobi-public/nysus-agent-events.json` and folded into the same public-safe feed instead of creating a second live fetch path
 
-As of 2026-04-22, OpenJaws also mirrors the sanitized feed into `docs/wiki/Public-Showcase-Activity.json` so other repos and public surfaces can inspect the same bounded snapshot without reading local private receipts directly.
+As of 2026-04-21, Asgard can also publish selected bounded entries from this overlay into the public Arobi audit lane through:
+
+- `C:\Users\Knight\Desktop\cheeks\Asgard\scripts\sync-public-showcase-ledger.mjs`
 
 ## Safe Content
 
 - bounded Discord/Q operator activity
-- bounded Discord persona patrol and operator receipts
 - roundtable runtime state
-- sanitized Immaculate actionability summaries
 - sanitized Immaculate and Q trace summaries
 - aggregate subsystem and artifact labels that are already public-safe
 
@@ -37,8 +40,54 @@ Run the sync from the OpenJaws repo root:
 bun run showcase:activity:sync
 ```
 
-That command writes `.arobi-public/showcase-activity.json` and the mirrored `docs/wiki/Public-Showcase-Activity.json` using the latest bounded runtime receipts and trace summaries available on disk.
+That command writes:
 
-The shared overlay reader aggregates persona receipts from `local-command-station/bots/*/discord-agent-receipt.json`, so Q, Viola, and Blackbeak can appear on the same bounded public-safe feed.
+- `.arobi-public/showcase-activity.json`
+- `docs/wiki/Public-Showcase-Activity.json`
 
-The live receipt/state writers now queue background overlay refreshes automatically whenever a Discord persona, Q, or the roundtable moves, so the sanctioned public showcase lane keeps filling without a separate manual status-file splice.
+Both files carry the same sanitized contract using the latest bounded runtime receipts and trace summaries available on disk.
+
+The Nysus mirror is intentionally bounded:
+
+- the public entry uses `operator_actions` as the visible action lane
+- governance signals remain available as tags, not as public action badges
+- raw payloads, internal task payload keys, and private control-plane details stay out of the overlay
+
+The shared overlay reader now aggregates persona receipts from `local-command-station/bots/*/discord-agent-receipt.json`, so Q, Viola, and Blackbeak can appear on the same bounded public-safe feed.
+
+The same overlay also reads the mirrored Apex governance summary from `docs/wiki/Apex-Tenant-Governance.json`, so the public-safe `tenant_governance` entry stays aligned with `/apex` and `/status` without adding a second live tenant-analytics fetch path.
+
+The live `scripts/discord-q-agent.ts` runtime now also queues background overlay refreshes automatically whenever a persona receipt changes, so the sanctioned public showcase lane keeps filling without a separate manual status-file splice.
+
+If the Nysus activity entry falls back to older lifecycle badges after a code update, the usual cause is a long-lived bun process that loaded the older overlay builder before the patch. Force-bounce the supervised writers from the canonical `D:\openjaws\OpenJaws` root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\openjaws\OpenJaws\local-command-station\repair-q-agent.ps1
+powershell -ExecutionPolicy Bypass -File D:\openjaws\OpenJaws\local-command-station\repair-viola.ps1
+powershell -ExecutionPolicy Bypass -File D:\openjaws\OpenJaws\local-command-station\repair-blackbeak.ps1
+powershell -ExecutionPolicy Bypass -File D:\openjaws\OpenJaws\local-command-station\start-discord-roundtable.ps1
+bun run showcase:activity:sync
+```
+
+That restart path keeps the correct persona env, health checks, and roundtable child wiring while reloading the updated overlay builder.
+
+To publish new bounded entries into the public Arobi ledger after the overlay is refreshed:
+
+```powershell
+node C:\Users\Knight\Desktop\cheeks\Asgard\scripts\sync-public-showcase-ledger.mjs --json
+```
+
+Auto publication is now available too, but only through the hardened Asgard bridge in `--auto` mode:
+
+- set `ASGARD_PUBLIC_SHOWCASE_LEDGER_SYNC_ENABLED=1`
+- let OpenJaws refresh the overlay normally
+- the Asgard bridge enforces single-flight locking, cooldown, and per-entry checkpoint writes before it posts anything
+- direct per-turn posting from Discord/OpenJaws into the public ledger is still not allowed
+
+That publication step stays bounded:
+
+- only sanitized overlay entries are published
+- dedupe is enforced via `.arobi-public/showcase-ledger-state.json`
+- `--auto` runs are also gated by the Asgard lockfile and cooldown state before any network write happens
+- raw `00` traces, local paths, branch/worktree data, and operator-only receipts still do not cross into the public lane
+- the ledger sync remains a governed bridge, not an unbounded side effect of every TUI refresh

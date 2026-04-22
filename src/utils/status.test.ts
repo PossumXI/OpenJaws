@@ -10,6 +10,7 @@ import {
   buildProviderProbeProperties,
   buildProviderGuidanceProperties,
 } from './status.js'
+import type { ApexOperatorActivityReceipt } from './apexOperatorActivity.js'
 
 const OCI_ENV_VARS = [
   'OCI_CONFIG_FILE',
@@ -526,6 +527,7 @@ describe('buildApexWorkspaceProperties', () => {
           },
         },
         null,
+        null,
         {
           status: 'ok',
           service: 'chrono-bridge',
@@ -693,15 +695,44 @@ describe('buildApexWorkspaceProperties', () => {
           highRiskCalls: 1,
           criticalCalls: 0,
           pendingReviewCalls: 2,
-          operatorActionBreakdown: [{ name: 'operator_runtime', count: 5 }],
-          governedActionBreakdown: [{ name: 'payments', count: 2 }],
-          governanceSignalBreakdown: [{ name: 'policy_guard', count: 3 }],
-          reviewStatusBreakdown: [{ name: 'approved', count: 10 }],
+          operatorActionBreakdown: [
+            { name: 'operator_runtime', count: 5 },
+          ],
+          governedActionBreakdown: [
+            { name: 'payments', count: 2 },
+          ],
+          governanceSignalBreakdown: [
+            { name: 'policy_guard', count: 3 },
+          ],
+          reviewStatusBreakdown: [
+            { name: 'approved', count: 10 },
+          ],
           categoryBreakdown: [],
-          topSources: [{ name: 'apex-mail', count: 4 }],
-          topModels: [{ name: 'q-oci-operator', count: 6 }],
+          topSources: [
+            { name: 'apex-mail', count: 4 },
+          ],
+          topModels: [
+            { name: 'q-oci-operator', count: 6 },
+          ],
           narrative: 'Governed operator actions are live.',
         },
+        {
+          version: 1,
+          updatedAt: '2026-04-21T12:32:00.000Z',
+          lastActivityId: 'activity-1',
+          activities: [
+            {
+              id: 'activity-1',
+              timestamp: '2026-04-21T12:32:00.000Z',
+              app: 'store',
+              action: 'install_app',
+              status: 'ok',
+              summary: 'Installed the bounded Apex mail client package.',
+              operatorActions: ['app_store_install'],
+              artifacts: ['apex:store-install'],
+            },
+          ],
+        } satisfies ApexOperatorActivityReceipt,
       ),
     ).toEqual([
       {
@@ -731,6 +762,14 @@ describe('buildApexWorkspaceProperties', () => {
           'Confidence 0.93 · avg risk 0.2 · detections 4',
           'Top operator action operator runtime · top signal policy guard · review approved',
           'Ethics passed 12 · failed 0 · telemetry scopes 3',
+        ],
+      },
+      {
+        label: 'Apex recent actions',
+        value: [
+          'App Store install app · ok',
+          'Installed the bounded Apex mail client package.',
+          '2026-04-21T12:32:00.000Z',
         ],
       },
       {

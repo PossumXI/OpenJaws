@@ -8,6 +8,7 @@ import {
   Select,
 } from '../../components/CustomSelect/select.js'
 import {
+  type ApexBrowserSummary,
   type ApexChronoSummary,
   type ApexLaunchTarget,
   type ApexTenantGovernanceSummary,
@@ -20,6 +21,8 @@ import {
   deleteApexChronoJob,
   deleteApexMailMessage,
   flagApexMailMessage,
+  getApexBrowserHealth,
+  getApexBrowserSummary,
   getApexChronoHealth,
   getApexChronoSummary,
   getApexLaunchTarget,
@@ -35,11 +38,26 @@ import {
   startApexChronoBridge,
   startApexChronoJob,
   startApexWorkspaceApi,
+  summarizeApexBrowser,
   summarizeApexChrono,
   summarizeApexTenantGovernance,
   summarizeApexWorkspace,
 } from '../../utils/apexWorkspace.js'
+import {
+  handoffBrowserPreviewSession,
+  readBrowserPreviewReceipt,
+  summarizeBrowserPreviewReceipt,
+  type BrowserPreviewIntent,
+  type BrowserPreviewReceipt,
+} from '../../utils/browserPreview.js'
+import {
+  recordApexOperatorActivity,
+  readApexOperatorActivityReceipt,
+  summarizeApexOperatorActivityReceipt,
+  type ApexOperatorActivityReceipt,
+} from '../../utils/apexOperatorActivity.js'
 import { formatNumber } from '../../utils/format.js'
+import { queuePublicShowcaseActivitySync } from '../../utils/publicShowcaseActivity.js'
 import { useKeybinding } from '../../keybindings/useKeybinding.js'
 import { Box, Text } from '../../ink.js'
 import { useIsInsideModal, useModalOrTerminalSize } from '../../context/modalContext.js'
@@ -52,6 +70,52 @@ type LaunchAction =
   | 'start-workspace-api'
   | 'start-chrono-bridge'
   | ApexLaunchTarget['id']
+type OverviewAction =
+  | 'overview-store'
+  | 'overview-browser'
+  | 'overview-chrono'
+  | `overview-app-${string}`
+
+function describeApexGovernancePressure(summary: ApexTenantGovernanceSummary | null): {
+  bannerText: string
+  message: string
+  tone: 'success' | 'warning'
+} {
+  if (!summary) {
+    return {
+      bannerText: 'offline',
+      message: 'tenant governance offline',
+      tone: 'warning',
+    }
+  }
+
+  const pressure: string[] = []
+  if (summary.pendingReviewCalls > 0) {
+    pressure.push(`${summary.pendingReviewCalls} pending`)
+  }
+  if (summary.highRiskCalls > 0) {
+    pressure.push(`${summary.highRiskCalls} high risk`)
+  }
+  if (summary.criticalCalls > 0) {
+    pressure.push(`${summary.criticalCalls} critical`)
+  }
+  if (summary.ethicsFailed > 0) {
+    pressure.push(`${summary.ethicsFailed} ethics failed`)
+  }
+  if (pressure.length > 0) {
+    return {
+      bannerText: pressure.slice(0, 2).join(' · '),
+      message: `tenant governance ${pressure.join(' · ')}`,
+      tone: 'warning',
+    }
+  }
+
+  return {
+    bannerText: `${summary.totalDecisions} governed · clear`,
+    message: `tenant governance ${summary.totalDecisions} governed · clear`,
+    tone: 'success',
+  }
+}
 
 type MailAction =
   | 'mail-to'
@@ -87,6 +151,35 @@ type ChronoAction =
   | 'chrono-cleanup'
   | 'chrono-refresh'
   | `chrono-use-${string}`
+type BrowserAction =
+  | 'browser-session'
+  | 'browser-rationale'
+  | 'browser-intent-preview'
+  | 'browser-intent-research'
+  | 'browser-intent-browse'
+  | 'browser-intent-watch'
+  | 'browser-intent-music'
+  | 'browser-handoff'
+  | 'browser-refresh'
+
+function getBrowserIntentFromAction(
+  action: BrowserAction,
+): BrowserPreviewIntent | null {
+  switch (action) {
+    case 'browser-intent-research':
+      return 'research'
+    case 'browser-intent-browse':
+      return 'browse'
+    case 'browser-intent-watch':
+      return 'watch'
+    case 'browser-intent-music':
+      return 'music'
+    case 'browser-intent-preview':
+      return 'preview'
+    default:
+      return null
+  }
+}
 
 function SectionTitle({
   children,
@@ -476,69 +569,404 @@ function ApexOverviewTab({
   health,
   summary,
   governanceSummary,
+  operatorActivityReceipt,
+  browserHealth,
+  browserSummary,
+  onRunAction,
 }: {
   loading: boolean
   health: ApexWorkspaceHealth | null
   summary: ApexWorkspaceSummary | null
   governanceSummary: ApexTenantGovernanceSummary | null
+  operatorActivityReceipt: ApexOperatorActivityReceipt | null
+  browserHealth: ApexWorkspaceHealth | null
+  browserSummary: ApexBrowserSummary | null
+  onRunAction: (value: OverviewAction) => void
 }): React.ReactNode {
+  const { headerFocused, focusHeader } = useTabHeaderFocus()
   const workspace = summarizeApexWorkspace(summary)
   const governance = summarizeApexTenantGovernance(governanceSummary)
-  const governanceActions =
+  const governanceOperatorActions =
     governanceSummary?.operatorActionBreakdown
       .slice(0, 4)
-      .map(action => `${action.name.replace(/_/g, ' ')} · ${action.count}`) ?? []
+      .map(action => `${action.name.replace(/_/g, ' ')} · ${action.count}`) ??
+    governanceSummary?.governedActionBreakdown
+      .slice(0, 4)
+      .map(action => `${action.name.replace(/_/g, ' ')} · ${action.count}`) ??
+    []
+  const browser = summarizeApexBrowser(browserSummary)
   const topApps =
     summary?.store.apps
       .slice(0, 5)
       .map(app => `${app.name} ${app.version} · ${app.installed ? 'installed' : 'catalog'}`) ?? []
+  const governanceSources =
+    governanceSummary?.topSources
+      .slice(0, 4)
+      .map(source => `${source.name} · ${source.count}`) ?? []
+  const operatorActivity = summarizeApexOperatorActivityReceipt(
+    operatorActivityReceipt,
+  )
   const topConversations =
     summary?.chat.conversations
       .slice(0, 4)
       .map(thread => `${thread.name} · ${thread.status} · ${thread.lastMessage}`) ?? []
+  const overviewActions = useMemo<OptionWithDescription<OverviewAction>[]>(() => {
+    const appOptions =
+      summary?.store.apps.slice(0, 5).map(app => ({
+        label: `Inspect ${app.name}`,
+        value: `overview-app-${app.id}` as OverviewAction,
+        description: `${app.category} · ${app.version} · ${app.installed ? 'installed' : 'catalog'}`,
+      })) ?? []
+    return [
+      {
+        label: 'Open Store tab',
+        value: 'overview-store',
+        description: 'Jump into the trusted app catalog to inspect or install Apex apps.',
+      },
+      {
+        label: 'Open Browser tab',
+        value: 'overview-browser',
+        description: 'Inspect the native browser bridge sessions and handoff controls.',
+      },
+      {
+        label: 'Open Chrono tab',
+        value: 'overview-chrono',
+        description: 'Inspect Chrono backup jobs and the guarded backup bridge.',
+      },
+      ...appOptions,
+    ]
+  }, [summary])
 
   return (
-    <Box flexDirection="column" gap={1}>
-      <SectionTitle>Bridge health</SectionTitle>
-      <Text>
-        {loading
-          ? 'Refreshing Apex workspace bridge…'
-          : health
-            ? `${health.service} ${health.version} · ${health.status} · ${health.timestamp}`
-            : `offline · expected ${'http://127.0.0.1:8797'}`}
-      </Text>
+    <Box flexDirection="row" gap={3}>
+      <Box width={38} flexDirection="column">
+        <Select
+          options={overviewActions}
+          layout="compact-vertical"
+          visibleOptionCount={10}
+          defaultFocusValue="overview-store"
+          onChange={value => {
+            onRunAction(value)
+          }}
+          isDisabled={headerFocused}
+          onUpFromFirstItem={focusHeader}
+        />
+      </Box>
+      <Box flexDirection="column" flexGrow={1} gap={1}>
+        <SectionTitle>Bridge health</SectionTitle>
+        <Text>
+          {loading
+            ? 'Refreshing Apex workspace bridge…'
+            : health
+              ? `${health.service} ${health.version} · ${health.status} · ${health.timestamp}`
+              : `offline · expected ${'http://127.0.0.1:8797'}`}
+        </Text>
 
-      <SectionTitle>Workspace summary</SectionTitle>
-      <Text>{workspace.headline}</Text>
-      <DetailList items={workspace.details} />
+        <SectionTitle>Workspace summary</SectionTitle>
+        <Text>{workspace.headline}</Text>
+        <DetailList items={workspace.details} />
 
-      <SectionTitle>Tenant governance</SectionTitle>
-      <Text wrap="wrap">{governance.headline}</Text>
-      <DetailList items={governance.details} />
-      {governanceSummary ? (
-        <>
-          <SectionTitle>Operator actions</SectionTitle>
-          <DetailList
-            items={governanceActions}
-            empty="No governed operator actions are visible yet."
-          />
+        <SectionTitle>Tenant governance</SectionTitle>
+        <Text wrap="wrap">{governance.headline}</Text>
+        <DetailList items={governance.details} />
+        {governanceSummary ? (
           <Text dimColor wrap="wrap">
             {governanceSummary.narrative}
           </Text>
-        </>
-      ) : null}
+        ) : null}
 
-      <SectionTitle>Top conversations</SectionTitle>
-      <DetailList
-        items={topConversations}
-        empty="No Shadow Chat sessions are visible through the bridge yet."
-      />
+        <SectionTitle>Operator actions</SectionTitle>
+        <DetailList
+          items={governanceOperatorActions}
+          empty="No governed operator actions are visible yet."
+        />
 
-      <SectionTitle>Top installed apps</SectionTitle>
-      <DetailList
-        items={topApps}
-        empty="The app catalog is empty until the bridge is online."
-      />
+        <SectionTitle>Recent operator receipts</SectionTitle>
+        <Text wrap="wrap">{operatorActivity.headline}</Text>
+        <DetailList items={operatorActivity.details} />
+
+        <SectionTitle>Governance sources</SectionTitle>
+        <DetailList
+          items={governanceSources}
+          empty="No governed tenant action sources are visible yet."
+        />
+
+        <SectionTitle>Browser bridge</SectionTitle>
+        <Text>
+          {browserHealth
+            ? `${browserHealth.service} ${browserHealth.version} · ${browserHealth.status} · ${browserHealth.timestamp}`
+            : `offline · expected ${'http://127.0.0.1:8799'}`}
+        </Text>
+        <Text>{browser.headline}</Text>
+        <DetailList items={browser.details} />
+        <Text dimColor wrap="wrap">
+          Use the left lane to jump straight into Store, Browser, or Chrono. Apex
+          keeps the native browser bridge and session truth visible here without
+          owning a second browser editor.
+        </Text>
+
+        <SectionTitle>Top conversations</SectionTitle>
+        <DetailList
+          items={topConversations}
+          empty="No Shadow Chat sessions are visible through the bridge yet."
+        />
+
+        <SectionTitle>Top installed apps</SectionTitle>
+        <DetailList
+          items={topApps}
+          empty="The app catalog is empty until the bridge is online."
+        />
+      </Box>
+    </Box>
+  )
+}
+
+function ApexBrowserTab({
+  health,
+  summary,
+  receipt,
+  selectedSessionId,
+  handoffIntent,
+  handoffRationale,
+  setSelectedSessionId,
+  setHandoffIntent,
+  setHandoffRationale,
+  onHandoff,
+  onRefresh,
+  actionMessage,
+}: {
+  health: ApexWorkspaceHealth | null
+  summary: ApexBrowserSummary | null
+  receipt: BrowserPreviewReceipt | null
+  selectedSessionId: string
+  handoffIntent: BrowserPreviewIntent
+  handoffRationale: string
+  setSelectedSessionId: (value: string) => void
+  setHandoffIntent: (value: BrowserPreviewIntent) => void
+  setHandoffRationale: (value: string) => void
+  onHandoff: () => void
+  onRefresh: () => void
+  actionMessage: string | null
+}): React.ReactNode {
+  const { headerFocused, focusHeader } = useTabHeaderFocus()
+  const browser = summarizeApexBrowser(summary)
+  const activeSession =
+    summary?.sessions.find(session => session.id === summary.activeSessionId) ??
+    summary?.sessions[0] ??
+    null
+  const selectedSession =
+    summary?.sessions.find(session => session.id === selectedSessionId) ??
+    activeSession
+  const sessionPreview =
+    summary?.sessions.slice(0, 5).map(session => {
+      const privateUserSession =
+        session.requestedBy === 'user' && !session.recordHistory
+      if (privateUserSession) {
+        return `private user session · ${session.state} · ${session.loadTimeMs}ms`
+      }
+      return `${session.title} · ${session.requestedBy} · ${session.state} · ${session.url}`
+    }) ?? []
+  const privacy = summary
+    ? [
+        summary.privacy.doNotTrack ? 'DNT on' : 'DNT off',
+        summary.privacy.blockThirdPartyCookies
+          ? 'third-party cookies blocked'
+          : 'third-party cookies allowed',
+        summary.privacy.clearOnExit ? 'clear on exit' : 'history retained on exit',
+        summary.privacy.userHistoryPersisted
+          ? 'user history persisted'
+          : 'user history not persisted',
+        summary.privacy.agentHistoryPersisted
+          ? 'agent history persisted'
+          : 'agent history not persisted',
+      ]
+    : []
+  const selectedSessionIsPrivateUser =
+    selectedSession?.requestedBy === 'user' && !selectedSession.recordHistory
+  const linkPreview =
+    selectedSessionIsPrivateUser
+      ? []
+      : selectedSession?.links.slice(0, 5).map(link => {
+      const text = truncateLine(link.text || link.url, 72)
+      return `${link.linkType} · ${text}`
+      }) ?? []
+  const handoffSummary = summarizeBrowserPreviewReceipt(receipt)
+  const handoffPreview =
+    receipt?.sessions.slice(0, 5).map(session => {
+      const target = session.url ?? session.note
+      return `${session.requestedBy} · ${session.intent} · ${target}`
+    }) ?? []
+  const options = useMemo<OptionWithDescription<BrowserAction>[]>(() => {
+    const sessionOptions =
+      summary?.sessions.slice(0, 8).map(session => ({
+        label: `Use ${truncateLine(session.title || session.id, 28)}`,
+        value: `browser-use-${session.id}` as BrowserAction,
+        description:
+          session.requestedBy === 'user' && !session.recordHistory
+            ? `private user session · ${session.state}`
+            : `${session.requestedBy} · ${session.state} · ${truncateLine(session.url, 60)}`,
+      })) ?? []
+
+    return [
+      {
+        label: 'Session id',
+        value: 'browser-session',
+        type: 'input',
+        initialValue: selectedSessionId,
+        onChange: setSelectedSessionId,
+        allowEmptySubmitToCancel: true,
+      },
+      {
+        label: 'Handoff rationale',
+        value: 'browser-rationale',
+        type: 'input',
+        initialValue: handoffRationale,
+        onChange: setHandoffRationale,
+        allowEmptySubmitToCancel: true,
+      },
+      {
+        label: 'Intent: preview',
+        value: 'browser-intent-preview',
+        description: 'Local app QA or interactive preview inside the accountable browser lane.',
+      },
+      {
+        label: 'Intent: research',
+        value: 'browser-intent-research',
+        description: 'Document or reference work that should remain auditable.',
+      },
+      {
+        label: 'Intent: browse',
+        value: 'browser-intent-browse',
+        description: 'General supervised browsing that still needs an accountable handoff.',
+      },
+      {
+        label: 'Intent: watch',
+        value: 'browser-intent-watch',
+        description: 'Longer viewing sessions that should still hand off into /preview.',
+      },
+      {
+        label: 'Intent: music',
+        value: 'browser-intent-music',
+        description: 'Audio sessions that still need an accountable operator receipt.',
+      },
+      ...sessionOptions,
+      {
+        label: 'Handoff to /preview receipt',
+        value: 'browser-handoff',
+        description:
+          'Record the selected live browser session as an accountable /preview handoff without launching a second browser.',
+      },
+      {
+        label: 'Refresh browser state',
+        value: 'browser-refresh',
+        description: 'Reload the live browser bridge state and the accountable preview receipts.',
+      },
+    ]
+  }, [
+    handoffRationale,
+    selectedSessionId,
+    setHandoffRationale,
+    setSelectedSessionId,
+    summary,
+  ])
+
+  return (
+    <Box flexDirection="row" gap={3}>
+      <Box width={38} flexDirection="column">
+        <Select
+          options={options}
+          layout="compact-vertical"
+          visibleOptionCount={10}
+          defaultFocusValue="browser-session"
+          onChange={value => {
+            if (value.startsWith('browser-use-')) {
+              setSelectedSessionId(value.slice('browser-use-'.length))
+              return
+            }
+            const intentAction = getBrowserIntentFromAction(value as BrowserAction)
+            if (intentAction) {
+              setHandoffIntent(intentAction)
+              return
+            }
+            if (value === 'browser-handoff') {
+              onHandoff()
+              return
+            }
+            if (value === 'browser-refresh') {
+              onRefresh()
+            }
+          }}
+          isDisabled={headerFocused}
+          onUpFromFirstItem={focusHeader}
+        />
+      </Box>
+
+      <Box flexDirection="column" flexGrow={1} gap={1}>
+        <SectionTitle>Browser bridge health</SectionTitle>
+        <Text>
+          {health
+            ? `${health.service} ${health.version} · ${health.status} · ${health.timestamp}`
+            : `offline · expected ${'http://127.0.0.1:8799'}`}
+        </Text>
+
+        <SectionTitle>Active browser session</SectionTitle>
+        <Text wrap="wrap">{browser.headline}</Text>
+        <DetailList items={browser.details} />
+
+        <SectionTitle>Selected session</SectionTitle>
+        {selectedSession ? (
+          <Box flexDirection="column">
+            <Text wrap="wrap">
+              {selectedSessionIsPrivateUser
+                ? `private user session · ${selectedSession.state}`
+                : `${selectedSession.title} · ${selectedSession.requestedBy} · ${selectedSession.state}`}
+            </Text>
+            <Text dimColor wrap="wrap">
+              {selectedSession.id}
+              {selectedSessionIsPrivateUser ? '' : ` · ${selectedSession.url}`}
+            </Text>
+            <Text dimColor wrap="wrap">
+              intent {handoffIntent} · rationale {handoffRationale || 'not set'}
+            </Text>
+          </Box>
+        ) : (
+          <Text dimColor wrap="wrap">
+            Choose a live browser session on the left before handing it off into /preview.
+          </Text>
+        )}
+
+        <SectionTitle>Recent sessions</SectionTitle>
+        <DetailList
+          items={sessionPreview}
+          empty="No browser sessions are visible until the Apex browser bridge is online."
+        />
+
+        <SectionTitle>Privacy posture</SectionTitle>
+        <DetailList
+          items={privacy}
+          empty="Privacy controls will surface once the Apex browser bridge is online."
+        />
+
+        <SectionTitle>Selected session links</SectionTitle>
+        <DetailList
+          items={linkPreview}
+          empty={
+            selectedSessionIsPrivateUser
+              ? 'Private user session links stay redacted until you launch an accountable preview session.'
+              : 'No accountable links are visible for the selected browser session.'
+          }
+        />
+
+        <SectionTitle>Accountable /preview handoffs</SectionTitle>
+        <Text wrap="wrap">{handoffSummary.headline}</Text>
+        <DetailList items={handoffPreview} empty={handoffSummary.details[0]} />
+
+        <SectionTitle>Operator handoff</SectionTitle>
+        <Text wrap="wrap">
+          {actionMessage ??
+            'Record the selected live session into the accountable /preview lane here, then keep deeper navigation and mutations inside /preview.'}
+        </Text>
+      </Box>
     </Box>
   )
 }
@@ -1183,6 +1611,21 @@ function ApexCommandCenter({
   const [summary, setSummary] = useState<ApexWorkspaceSummary | null>(null)
   const [tenantGovernanceSummary, setTenantGovernanceSummary] =
     useState<ApexTenantGovernanceSummary | null>(null)
+  const [browserHealth, setBrowserHealth] = useState<ApexWorkspaceHealth | null>(null)
+  const [browserSummary, setBrowserSummary] = useState<ApexBrowserSummary | null>(null)
+  const [browserPreviewReceipt, setBrowserPreviewReceipt] =
+    useState<BrowserPreviewReceipt | null>(null)
+  const [operatorActivityReceipt, setOperatorActivityReceipt] =
+    useState<ApexOperatorActivityReceipt | null>(null)
+  const [browserSelectedSessionId, setBrowserSelectedSessionId] = useState('')
+  const [browserHandoffIntent, setBrowserHandoffIntent] =
+    useState<BrowserPreviewIntent>('preview')
+  const [browserHandoffRationale, setBrowserHandoffRationale] = useState(
+    'Hand off the active Apex browser session into the accountable /preview lane.',
+  )
+  const [browserActionMessage, setBrowserActionMessage] = useState<string | null>(
+    null,
+  )
   const [chronoHealth, setChronoHealth] = useState<ApexWorkspaceHealth | null>(null)
   const [chronoSummary, setChronoSummary] = useState<ApexChronoSummary | null>(null)
   const [launchMessage, setLaunchMessage] = useState<string | null>(null)
@@ -1209,6 +1652,28 @@ function ApexCommandCenter({
   const contentHeight = insideModal
     ? rows + 1
     : Math.max(18, Math.min(Math.floor(rows * 0.78), 34))
+  const governancePressure = describeApexGovernancePressure(
+    tenantGovernanceSummary,
+  )
+
+  const persistOperatorActivity = useCallback(
+    async (input: {
+      app: 'mail' | 'chat' | 'store' | 'chrono' | 'browser'
+      action: string
+      status: 'ok' | 'failed'
+      summary: string
+      operatorActions?: string[]
+      artifacts?: string[]
+    }) => {
+      const receipt = await recordApexOperatorActivity(input)
+      setOperatorActivityReceipt(receipt)
+      queuePublicShowcaseActivitySync({
+        root: process.cwd(),
+      })
+      return receipt
+    },
+    [],
+  )
 
   const refreshWorkspace = useCallback(async (silent = false) => {
     if (!silent) {
@@ -1218,31 +1683,46 @@ function ApexCommandCenter({
       nextHealth,
       nextSummary,
       nextTenantGovernanceSummary,
+      nextBrowserHealth,
+      nextBrowserSummary,
+      nextBrowserPreviewReceipt,
+      nextOperatorActivityReceipt,
       nextChronoHealth,
       nextChronoSummary,
     ] = await Promise.all([
       getApexWorkspaceHealth(),
       getApexWorkspaceSummary(),
       getApexTenantGovernanceSummary(),
+      getApexBrowserHealth(),
+      getApexBrowserSummary(),
+      readBrowserPreviewReceipt(),
+      readApexOperatorActivityReceipt(),
       getApexChronoHealth(),
       getApexChronoSummary(),
     ])
     setHealth(nextHealth)
     setSummary(nextSummary)
     setTenantGovernanceSummary(nextTenantGovernanceSummary)
+    setBrowserHealth(nextBrowserHealth)
+    setBrowserSummary(nextBrowserSummary)
+    setBrowserPreviewReceipt(nextBrowserPreviewReceipt)
+    setOperatorActivityReceipt(nextOperatorActivityReceipt)
     setChronoHealth(nextChronoHealth)
     setChronoSummary(nextChronoSummary)
     setLoading(false)
+    const nextGovernancePressure = describeApexGovernancePressure(
+      nextTenantGovernanceSummary,
+    )
     return {
       ok:
         nextHealth !== null ||
         nextTenantGovernanceSummary !== null ||
+        nextBrowserHealth !== null ||
         nextChronoHealth !== null,
       message: [
         nextHealth !== null ? 'workspace bridge ready' : 'workspace bridge offline',
-        nextTenantGovernanceSummary !== null
-          ? 'tenant governance ready'
-          : 'tenant governance offline',
+        nextGovernancePressure.message,
+        nextBrowserHealth !== null ? 'browser bridge ready' : 'browser bridge offline',
         nextChronoHealth !== null ? 'chrono bridge ready' : 'chrono bridge offline',
       ].join(' · '),
     }
@@ -1279,6 +1759,13 @@ function ApexCommandCenter({
         setSelectedStoreAppId(preferredApp?.id ?? '')
       }
     }
+    if (browserSummary) {
+      if (!browserSelectedSessionId) {
+        setBrowserSelectedSessionId(
+          browserSummary.activeSessionId ?? browserSummary.sessions[0]?.id ?? '',
+        )
+      }
+    }
     if (chronoSummary) {
       if (!selectedChronoJobId && chronoSummary.jobs.length > 0) {
         setSelectedChronoJobId(chronoSummary.jobs[0]!.id)
@@ -1289,6 +1776,8 @@ function ApexCommandCenter({
     }
   }, [
     chatSessionId,
+    browserSelectedSessionId,
+    browserSummary,
     chronoDestinationPath,
     chronoSummary,
     selectedChronoJobId,
@@ -1358,6 +1847,14 @@ function ApexCommandCenter({
       subject: mailSubject.trim(),
       content: mailBody.trim(),
     })
+    await persistOperatorActivity({
+      app: 'mail',
+      action: 'compose',
+      status: result.ok ? 'ok' : 'failed',
+      summary: result.message,
+      operatorActions: ['aegis_mail_compose'],
+      artifacts: ['apex:mail-compose'],
+    })
     setMailMessage(result.message)
     if (result.ok) {
       setMailBody('')
@@ -1365,7 +1862,7 @@ function ApexCommandCenter({
         void refreshWorkspace(true)
       }, 750)
     }
-  }, [mailBody, mailSubject, mailTo, refreshWorkspace])
+  }, [mailBody, mailSubject, mailTo, persistOperatorActivity, refreshWorkspace])
 
   const handleMailMove = useCallback(async () => {
     const result = await moveApexMailMessage({
@@ -1375,13 +1872,27 @@ function ApexCommandCenter({
       messageId: selectedMailMessageId,
       targetFolder: mailTargetFolder,
     })
+    await persistOperatorActivity({
+      app: 'mail',
+      action: 'move_message',
+      status: result.ok ? 'ok' : 'failed',
+      summary: result.message,
+      operatorActions: ['aegis_mail_move'],
+      artifacts: ['apex:mail-move'],
+    })
     setMailMessage(result.message)
     if (result.ok) {
       setTimeout(() => {
         void refreshWorkspace(true)
       }, 750)
     }
-  }, [mailTargetFolder, refreshWorkspace, selectedMailMessageId, summary])
+  }, [
+    mailTargetFolder,
+    persistOperatorActivity,
+    refreshWorkspace,
+    selectedMailMessageId,
+    summary,
+  ])
 
   const handleMailDelete = useCallback(async () => {
     const result = await deleteApexMailMessage({
@@ -1390,13 +1901,21 @@ function ApexCommandCenter({
         '',
       messageId: selectedMailMessageId,
     })
+    await persistOperatorActivity({
+      app: 'mail',
+      action: 'delete_message',
+      status: result.ok ? 'ok' : 'failed',
+      summary: result.message,
+      operatorActions: ['aegis_mail_delete'],
+      artifacts: ['apex:mail-delete'],
+    })
     setMailMessage(result.message)
     if (result.ok) {
       setTimeout(() => {
         void refreshWorkspace(true)
       }, 750)
     }
-  }, [refreshWorkspace, selectedMailMessageId, summary])
+  }, [persistOperatorActivity, refreshWorkspace, selectedMailMessageId, summary])
 
   const handleMailFlag = useCallback(
     async (flagged: boolean) => {
@@ -1407,6 +1926,14 @@ function ApexCommandCenter({
         messageId: selectedMailMessageId,
         flagged,
       })
+      await persistOperatorActivity({
+        app: 'mail',
+        action: flagged ? 'flag_message' : 'unflag_message',
+        status: result.ok ? 'ok' : 'failed',
+        summary: result.message,
+        operatorActions: [flagged ? 'aegis_mail_flag' : 'aegis_mail_unflag'],
+        artifacts: ['apex:mail-flag'],
+      })
       setMailMessage(result.message)
       if (result.ok) {
         setTimeout(() => {
@@ -1414,13 +1941,21 @@ function ApexCommandCenter({
         }, 750)
       }
     },
-    [refreshWorkspace, selectedMailMessageId, summary],
+    [persistOperatorActivity, refreshWorkspace, selectedMailMessageId, summary],
   )
 
   const handleChatSend = useCallback(async () => {
     const result = await sendApexChatMessage({
       sessionId: chatSessionId,
       content: chatMessageDraft,
+    })
+    await persistOperatorActivity({
+      app: 'chat',
+      action: 'send_message',
+      status: result.ok ? 'ok' : 'failed',
+      summary: result.message,
+      operatorActions: ['shadow_chat_send'],
+      artifacts: ['apex:chat-send'],
     })
     setChatActionMessage(result.message)
     if (result.ok) {
@@ -1429,7 +1964,7 @@ function ApexCommandCenter({
         void refreshWorkspace(true)
       }, 750)
     }
-  }, [chatMessageDraft, chatSessionId, refreshWorkspace])
+  }, [chatMessageDraft, chatSessionId, persistOperatorActivity, refreshWorkspace])
 
   const handleChatCreateSession = useCallback(async () => {
     const participants = chatParticipants
@@ -1439,6 +1974,14 @@ function ApexCommandCenter({
     const result = await createApexChatSession({
       participants,
     })
+    await persistOperatorActivity({
+      app: 'chat',
+      action: 'create_session',
+      status: result.ok ? 'ok' : 'failed',
+      summary: result.message,
+      operatorActions: ['shadow_chat_session_create'],
+      artifacts: ['apex:chat-session'],
+    })
     setChatActionMessage(result.message)
     if (result.ok && result.data?.sessionId) {
       setChatSessionId(result.data.sessionId)
@@ -1446,7 +1989,7 @@ function ApexCommandCenter({
         void refreshWorkspace(true)
       }, 750)
     }
-  }, [chatParticipants, refreshWorkspace])
+  }, [chatParticipants, persistOperatorActivity, refreshWorkspace])
 
   const handleStoreInstall = useCallback(async () => {
     const selectedApp =
@@ -1462,6 +2005,17 @@ function ApexCommandCenter({
     const result = await installApexStoreAppWithReceipt({
       appId: selectedStoreAppId,
     })
+    await persistOperatorActivity({
+      app: 'store',
+      action: 'install_app',
+      status: result.ok ? 'ok' : 'failed',
+      summary:
+        result.ok && result.data
+          ? `${result.message} ${result.data.name} ${result.data.version} with ${result.data.permissions.length} permission${result.data.permissions.length === 1 ? '' : 's'}.`
+          : result.message,
+      operatorActions: ['app_store_install'],
+      artifacts: ['apex:store-install'],
+    })
     setStoreActionMessage(
       result.ok && result.data
         ? `${result.message} · ${result.data.sizeBytes} bytes · ${result.data.permissions.join(', ')}`
@@ -1472,7 +2026,29 @@ function ApexCommandCenter({
         void refreshWorkspace(true)
       }, 900)
     }
-  }, [refreshWorkspace, selectedStoreAppId, summary])
+  }, [persistOperatorActivity, refreshWorkspace, selectedStoreAppId, summary])
+
+  const handleOverviewAction = useCallback(
+    (value: OverviewAction) => {
+      if (value === 'overview-store') {
+        setSelectedTab('Store')
+        return
+      }
+      if (value === 'overview-browser') {
+        setSelectedTab('Browser')
+        return
+      }
+      if (value === 'overview-chrono') {
+        setSelectedTab('Chrono')
+        return
+      }
+      if (value.startsWith('overview-app-')) {
+        setSelectedStoreAppId(value.slice('overview-app-'.length))
+        setSelectedTab('Store')
+      }
+    },
+    [],
+  )
 
   const handleChronoCreateJob = useCallback(async () => {
     const result = await createApexChronoJob({
@@ -1483,6 +2059,14 @@ function ApexCommandCenter({
         .filter(Boolean),
       destinationPath: chronoDestinationPath,
     })
+    await persistOperatorActivity({
+      app: 'chrono',
+      action: 'create_job',
+      status: result.ok ? 'ok' : 'failed',
+      summary: result.message,
+      operatorActions: ['chrono_job_create'],
+      artifacts: ['apex:chrono-job'],
+    })
     setChronoActionMessage(result.message)
     if (result.ok && result.data?.jobId) {
       setSelectedChronoJobId(result.data.jobId)
@@ -1490,11 +2074,25 @@ function ApexCommandCenter({
         void refreshWorkspace(true)
       }, 900)
     }
-  }, [chronoDestinationPath, chronoJobName, chronoSourcePath, refreshWorkspace])
+  }, [
+    chronoDestinationPath,
+    chronoJobName,
+    chronoSourcePath,
+    persistOperatorActivity,
+    refreshWorkspace,
+  ])
 
   const handleChronoStart = useCallback(async () => {
     const result = await startApexChronoJob({
       jobId: selectedChronoJobId,
+    })
+    await persistOperatorActivity({
+      app: 'chrono',
+      action: 'start_job',
+      status: result.ok ? 'ok' : 'failed',
+      summary: result.message,
+      operatorActions: ['chrono_job_start'],
+      artifacts: ['apex:chrono-start'],
     })
     setChronoActionMessage(result.message)
     if (result.ok) {
@@ -1502,7 +2100,7 @@ function ApexCommandCenter({
         void refreshWorkspace(true)
       }, 900)
     }
-  }, [refreshWorkspace, selectedChronoJobId])
+  }, [persistOperatorActivity, refreshWorkspace, selectedChronoJobId])
 
   const handleChronoRestore = useCallback(async () => {
     const selectedJob =
@@ -1517,12 +2115,33 @@ function ApexCommandCenter({
       backupId: latestBackup.id,
       restorePath: chronoRestorePath,
     })
+    await persistOperatorActivity({
+      app: 'chrono',
+      action: 'restore_backup',
+      status: result.ok ? 'ok' : 'failed',
+      summary: result.message,
+      operatorActions: ['chrono_backup_restore'],
+      artifacts: ['apex:chrono-restore'],
+    })
     setChronoActionMessage(result.message)
-  }, [chronoRestorePath, chronoSummary, selectedChronoJobId])
+  }, [
+    chronoRestorePath,
+    chronoSummary,
+    persistOperatorActivity,
+    selectedChronoJobId,
+  ])
 
   const handleChronoDelete = useCallback(async () => {
     const result = await deleteApexChronoJob({
       jobId: selectedChronoJobId,
+    })
+    await persistOperatorActivity({
+      app: 'chrono',
+      action: 'delete_job',
+      status: result.ok ? 'ok' : 'failed',
+      summary: result.message,
+      operatorActions: ['chrono_job_delete'],
+      artifacts: ['apex:chrono-delete'],
     })
     setChronoActionMessage(result.message)
     if (result.ok) {
@@ -1531,17 +2150,64 @@ function ApexCommandCenter({
         void refreshWorkspace(true)
       }, 900)
     }
-  }, [refreshWorkspace, selectedChronoJobId])
+  }, [persistOperatorActivity, refreshWorkspace, selectedChronoJobId])
 
   const handleChronoCleanup = useCallback(async () => {
     const result = await cleanupApexChronoBackups()
+    await persistOperatorActivity({
+      app: 'chrono',
+      action: 'cleanup_backups',
+      status: result.ok ? 'ok' : 'failed',
+      summary: result.message,
+      operatorActions: ['chrono_backup_cleanup'],
+      artifacts: ['apex:chrono-cleanup'],
+    })
     setChronoActionMessage(result.message)
     if (result.ok) {
       setTimeout(() => {
         void refreshWorkspace(true)
       }, 900)
     }
-  }, [refreshWorkspace])
+  }, [persistOperatorActivity, refreshWorkspace])
+
+  const handleBrowserHandoff = useCallback(async () => {
+    const sessionId =
+      browserSelectedSessionId.trim() ||
+      browserSummary?.activeSessionId ||
+      browserSummary?.sessions[0]?.id ||
+      ''
+    if (!sessionId) {
+      setBrowserActionMessage(
+        'Choose a live browser session before handing it off into /preview.',
+      )
+      return
+    }
+    const result = await handoffBrowserPreviewSession({
+      sessionId,
+      intent: browserHandoffIntent,
+      rationale: browserHandoffRationale,
+      requestedBy: 'operator',
+    })
+    await persistOperatorActivity({
+      app: 'browser',
+      action: 'handoff_preview',
+      status: result.ok ? 'ok' : 'failed',
+      summary: result.message,
+      operatorActions: ['browser_handoff_preview'],
+      artifacts: ['apex:browser-handoff', 'browser-preview:receipt'],
+    })
+    setBrowserActionMessage(result.message)
+    setBrowserPreviewReceipt(result.receipt)
+    if (result.ok) {
+      setSelectedTab('Browser')
+    }
+  }, [
+    browserHandoffIntent,
+    browserHandoffRationale,
+    browserSelectedSessionId,
+    browserSummary,
+    persistOperatorActivity,
+  ])
 
   const banner = (
     <Box flexDirection="row" gap={2}>
@@ -1564,15 +2230,24 @@ function ApexCommandCenter({
       <Text>
         Governance:{' '}
         {tenantGovernanceSummary ? (
-          <Text color="success">ready</Text>
+          <Text color={governancePressure.tone}>{governancePressure.bannerText}</Text>
+        ) : (
+          <Text color="warning">offline</Text>
+        )}
+      </Text>
+      <Text>
+        Browser:{' '}
+        {browserHealth ? (
+          <Text color="success">{browserHealth.status}</Text>
         ) : (
           <Text color="warning">offline</Text>
         )}
       </Text>
       <Text dimColor>
         Guardrails: allowlisted Apex roots only · Esc closes · Workspace API
-        feeds mail/chat/store/system/security · Chrono bridge handles backup
-        jobs · tenant governance rides the existing session-ingress lane
+        feeds mail/chat/store/system/security · Browser bridge keeps native
+        session truth in the TUI · Chrono bridge handles backup jobs · Session
+        ingress auth gates tenant governance
       </Text>
     </Box>
   )
@@ -1593,6 +2268,10 @@ function ApexCommandCenter({
             health={health}
             summary={summary}
             governanceSummary={tenantGovernanceSummary}
+            operatorActivityReceipt={operatorActivityReceipt}
+            browserHealth={browserHealth}
+            browserSummary={browserSummary}
+            onRunAction={handleOverviewAction}
           />
         </Tab>
         <Tab title="Launch">
@@ -1676,6 +2355,26 @@ function ApexCommandCenter({
         </Tab>
         <Tab title="System">
           <ApexSystemTab summary={summary} />
+        </Tab>
+        <Tab title="Browser">
+          <ApexBrowserTab
+            health={browserHealth}
+            summary={browserSummary}
+            receipt={browserPreviewReceipt}
+            selectedSessionId={browserSelectedSessionId}
+            handoffIntent={browserHandoffIntent}
+            handoffRationale={browserHandoffRationale}
+            setSelectedSessionId={setBrowserSelectedSessionId}
+            setHandoffIntent={setBrowserHandoffIntent}
+            setHandoffRationale={setBrowserHandoffRationale}
+            onHandoff={() => {
+              void handleBrowserHandoff()
+            }}
+            onRefresh={() => {
+              void refreshWorkspace()
+            }}
+            actionMessage={browserActionMessage}
+          />
         </Tab>
         <Tab title="Chrono">
           <ApexChronoTab

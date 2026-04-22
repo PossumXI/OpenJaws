@@ -1,5 +1,15 @@
+import { spawn } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'fs'
 import { dirname, join, resolve } from 'path'
+import {
+  getApexTenantGovernanceMirrorPath,
+  summarizePublicApexTenantGovernance,
+  type ApexTenantGovernanceSummary,
+} from './apexWorkspace.js'
+import {
+  readApexOperatorActivityReceiptSync,
+  type ApexOperatorActivityReceipt,
+} from './apexOperatorActivity.js'
 import { readLatestImmaculateTraceSummary } from '../immaculate/traceSummary.js'
 import { readLatestQTraceSummary } from '../q/traceSummary.js'
 import type { DiscordQAgentReceipt } from './discordQAgentRuntime.js'
@@ -35,6 +45,20 @@ type PublicShowcaseActivitySyncArgs = {
   roundtableRuntime?: DiscordRoundtableRuntimeState | null
 }
 
+type NysusPublicAgentActivityEntry = {
+  id?: string
+  timestamp?: string | null
+  task_id?: string | null
+  agent_name?: string | null
+  event_type?: string | null
+  task_type?: string | null
+  task_status?: string | null
+  summary?: string | null
+  source?: string | null
+  operator_actions?: unknown
+  governance_signals?: unknown
+}
+
 type StoredDiscordAgentReceipt = {
   profileKey: string
   displayName: string
@@ -43,7 +67,10 @@ type StoredDiscordAgentReceipt = {
 
 const MAX_PUBLIC_SHOWCASE_ACTIVITY_ENTRIES = 8
 const pendingSyncs = new Map<string, PublicShowcaseActivitySyncArgs>()
+const pendingLedgerSyncs = new Map<string, string>()
+const activeLedgerSyncRoots = new Set<string>()
 let flushScheduled = false
+let ledgerFlushScheduled = false
 
 function sanitizeInlineText(
   value: string | null | undefined,
@@ -68,6 +95,23 @@ function normalizeTimestamp(value: string | null | undefined): string | null {
   }
   const parsed = Date.parse(value)
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null
+}
+
+function parseBooleanEnv(
+  value: string | null | undefined,
+  defaultValue: boolean,
+): boolean {
+  const normalized = value?.trim().toLowerCase()
+  if (!normalized) {
+    return defaultValue
+  }
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true
+  }
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false
+  }
+  return defaultValue
 }
 
 function uniqueStrings(values: Array<string | null | undefined>): string[] {
@@ -156,6 +200,143 @@ export function getPublicShowcaseActivityMirrorPath(
   return resolve(root, 'docs', 'wiki', 'Public-Showcase-Activity.json')
 }
 
+export function readPublicShowcaseActivityFeed(args: {
+  root?: string
+  path?: string
+  env?: NodeJS.ProcessEnv
+} = {}): PublicShowcaseActivityFeed | null {
+  const root = args.root ?? process.cwd()
+  const env = args.env ?? process.env
+  const candidates = [
+    args.path ? resolve(args.path) : null,
+    getPublicShowcaseActivityMirrorPath(root, env),
+    getPublicShowcaseActivityPath(env),
+  ].filter((candidate, index, all): candidate is string => {
+    if (!candidate) {
+      return false
+    }
+    return all.indexOf(candidate) === index
+  })
+
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) {
+      continue
+    }
+    try {
+      const parsed = JSON.parse(readFileSync(candidate, 'utf8')) as unknown
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        !Array.isArray(parsed) &&
+        Array.isArray((parsed as PublicShowcaseActivityFeed).entries)
+      ) {
+        return parsed as PublicShowcaseActivityFeed
+      }
+    } catch {
+      // ignore and continue to the next bounded mirror candidate
+    }
+  }
+
+  return null
+}
+
+export function getPublicShowcaseLedgerSyncScriptPath(
+  root = process.cwd(),
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const configured =
+    env.OPENJAWS_PUBLIC_SHOWCASE_LEDGER_SYNC_SCRIPT?.trim() ||
+    env.ASGARD_PUBLIC_SHOWCASE_LEDGER_SYNC_SCRIPT?.trim()
+  if (configured) {
+    return resolve(configured)
+  }
+
+  const home = env.USERPROFILE?.trim() || env.HOME?.trim()
+  const candidates = [
+    home
+      ? join(home, 'Desktop', 'cheeks', 'Asgard', 'scripts', 'sync-public-showcase-ledger.mjs')
+      : null,
+  ].filter((candidate): candidate is string => Boolean(candidate))
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return resolve(candidate)
+    }
+  }
+
+  return null
+}
+
+function shouldAutoSyncPublicShowcaseLedger(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return parseBooleanEnv(
+    env.OPENJAWS_PUBLIC_SHOWCASE_LEDGER_AUTO_SYNC?.trim() ||
+      env.ASGARD_PUBLIC_SHOWCASE_LEDGER_SYNC_ENABLED?.trim(),
+    false,
+  )
+}
+
+function flushQueuedPublicShowcaseLedgerSyncs() {
+  const queued = Array.from(pendingLedgerSyncs.entries())
+  pendingLedgerSyncs.clear()
+  ledgerFlushScheduled = false
+
+  for (const [root, activityPath] of queued) {
+    if (activeLedgerSyncRoots.has(root)) {
+      pendingLedgerSyncs.set(root, activityPath)
+      continue
+    }
+    if (!shouldAutoSyncPublicShowcaseLedger()) {
+      continue
+    }
+    const scriptPath = getPublicShowcaseLedgerSyncScriptPath(root)
+    if (!scriptPath) {
+      continue
+    }
+
+    activeLedgerSyncRoots.add(root)
+    const child = spawn(
+      process.env.OPENJAWS_PUBLIC_SHOWCASE_LEDGER_SYNC_NODE?.trim() || 'node',
+      [scriptPath, '--auto', '--json'],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          ASGARD_PUBLIC_SHOWCASE_LEDGER_SYNC_ENABLED: '1',
+          ASGARD_PUBLIC_SHOWCASE_ACTIVITY_FILE: activityPath,
+          AROBI_PUBLIC_SHOWCASE_ACTIVITY_FILE: activityPath,
+        },
+        stdio: 'ignore',
+        windowsHide: true,
+      },
+    )
+
+    const finalize = () => {
+      activeLedgerSyncRoots.delete(root)
+      if (pendingLedgerSyncs.has(root) && !ledgerFlushScheduled) {
+        ledgerFlushScheduled = true
+        queueMicrotask(flushQueuedPublicShowcaseLedgerSyncs)
+      }
+    }
+
+    child.once('error', finalize)
+    child.once('exit', finalize)
+  }
+}
+
+function queuePublicShowcaseLedgerAutoSync(root: string, activityPath: string) {
+  if (!shouldAutoSyncPublicShowcaseLedger()) {
+    return
+  }
+  pendingLedgerSyncs.set(root, activityPath)
+  if (ledgerFlushScheduled) {
+    return
+  }
+  ledgerFlushScheduled = true
+  queueMicrotask(flushQueuedPublicShowcaseLedgerSyncs)
+}
+
 function readJsonFile(path: string): Record<string, unknown> | null {
   if (!existsSync(path)) {
     return null
@@ -196,24 +377,9 @@ function resolveImmaculateActionabilityPath(
   const home = env.USERPROFILE?.trim() || env.HOME?.trim()
   const candidates = [
     home
-      ? join(
-          home,
-          'Desktop',
-          'Immaculate',
-          'docs',
-          'wiki',
-          'Roundtable-Actionability.json',
-        )
+      ? join(home, 'Desktop', 'Immaculate', 'docs', 'wiki', 'Roundtable-Actionability.json')
       : null,
-    join(
-      root,
-      '..',
-      '..',
-      'Immaculate',
-      'docs',
-      'wiki',
-      'Roundtable-Actionability.json',
-    ),
+    join(root, '..', '..', 'Immaculate', 'docs', 'wiki', 'Roundtable-Actionability.json'),
   ].filter((candidate): candidate is string => Boolean(candidate))
 
   for (const candidate of candidates) {
@@ -233,6 +399,15 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function asNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function stringArrayFromUnknown(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value
+    .map(entry => (typeof entry === 'string' ? normalizeOperatorAction(entry) : null))
+    .filter((entry): entry is string => Boolean(entry))
 }
 
 function normalizeDiscordAgentProfileKey(
@@ -256,7 +431,7 @@ function humanizeDiscordAgentDisplayName(profileKey: string): string {
         .filter(Boolean)
         .map(part => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
         .join(' ')
-    }
+  }
 }
 
 function getDiscordReceiptFreshness(receipt: DiscordQAgentReceipt): number {
@@ -287,9 +462,7 @@ function buildImmaculateActionabilityEntry(
     return null
   }
 
-  const generatedAt = normalizeTimestamp(
-    parsed.generatedAt as string | null | undefined,
-  )
+  const generatedAt = normalizeTimestamp(parsed.generatedAt as string | null | undefined)
   const parallelFormationMode = sanitizeInlineText(
     planner.parallelFormationMode as string | null | undefined,
     40,
@@ -305,9 +478,7 @@ function buildImmaculateActionabilityEntry(
     ? parsed.repositories
         .map(entry => asRecord(entry))
         .filter((entry): entry is Record<string, unknown> => Boolean(entry))
-        .map(entry =>
-          sanitizeInlineText(entry.repoLabel as string | null | undefined, 32),
-        )
+        .map(entry => sanitizeInlineText(entry.repoLabel as string | null | undefined, 32))
         .filter((entry): entry is string => Boolean(entry))
     : []
   const actions = Array.isArray(parsed.actions)
@@ -316,14 +487,10 @@ function buildImmaculateActionabilityEntry(
         .filter((entry): entry is Record<string, unknown> => Boolean(entry))
     : []
   const isolationModes = uniqueStrings(
-    actions.map(action =>
-      sanitizeInlineText(action.isolationMode as string | null | undefined, 24),
-    ),
+    actions.map(action => sanitizeInlineText(action.isolationMode as string | null | undefined, 24)),
   )
   const writeAuthorities = uniqueStrings(
-    actions.map(action =>
-      sanitizeInlineText(action.writeAuthority as string | null | undefined, 32),
-    ),
+    actions.map(action => sanitizeInlineText(action.writeAuthority as string | null | undefined, 32)),
   )
 
   if (
@@ -345,9 +512,7 @@ function buildImmaculateActionabilityEntry(
       ? `covers ${repoCount.toLocaleString()} repos`
       : null,
     typeof actionCount === 'number'
-      ? `with ${actionCount.toLocaleString()} isolated action${
-          actionCount === 1 ? '' : 's'
-        }`
+      ? `with ${actionCount.toLocaleString()} isolated action${actionCount === 1 ? '' : 's'}`
       : null,
     typeof readyCount === 'number' && typeof actionCount === 'number'
       ? `${readyCount.toLocaleString()} ready`
@@ -400,10 +565,7 @@ function upsertStoredDiscordAgentReceipt(
     return
   }
 
-  if (
-    getDiscordReceiptFreshness(next.receipt) >=
-    getDiscordReceiptFreshness(current.receipt)
-  ) {
+  if (getDiscordReceiptFreshness(next.receipt) >= getDiscordReceiptFreshness(current.receipt)) {
     receipts.set(next.profileKey, next)
   }
 }
@@ -448,9 +610,7 @@ function readStoredDiscordAgentReceipts(
   }
 
   return Array.from(receipts.values()).sort((left, right) => {
-    const freshness =
-      getDiscordReceiptFreshness(right.receipt) -
-      getDiscordReceiptFreshness(left.receipt)
+    const freshness = getDiscordReceiptFreshness(right.receipt) - getDiscordReceiptFreshness(left.receipt)
     if (freshness !== 0) {
       return freshness
     }
@@ -484,15 +644,73 @@ function readStoredRoundtableRuntime(
   return parsed ? (parsed as unknown as DiscordRoundtableRuntimeState) : null
 }
 
+function readStoredApexTenantGovernanceSummary(
+  root: string,
+): ApexTenantGovernanceSummary | null {
+  const mirrorPath = getApexTenantGovernanceMirrorPath(root)
+  const parsed = readJsonFile(mirrorPath)
+  return parsed ? (parsed as unknown as ApexTenantGovernanceSummary) : null
+}
+
+function getNysusPublicAgentActivityPath(
+  root: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const configured =
+    env.OPENJAWS_NYSUS_PUBLIC_ACTIVITY_FILE?.trim() ||
+    env.ASGARD_PUBLIC_AGENT_ACTIVITY_FILE?.trim() ||
+    env.ASGARD_PUBLIC_OPERATOR_ACTIVITY_FILE?.trim()
+  if (configured) {
+    return resolve(configured)
+  }
+
+  const home = env.USERPROFILE?.trim() || env.HOME?.trim()
+  if (home) {
+    return resolve(home, '.arobi-public', 'nysus-agent-events.json')
+  }
+
+  const fallback = resolve(root, 'local-command-station', 'nysus-agent-events.json')
+  return existsSync(fallback) ? fallback : null
+}
+
+function readStoredNysusPublicAgentActivity(
+  root: string,
+): NysusPublicAgentActivityEntry[] {
+  const activityPath = getNysusPublicAgentActivityPath(root)
+  if (!activityPath) {
+    return []
+  }
+
+  const parsed = readJsonFile(activityPath)
+  if (!parsed || !Array.isArray(parsed.events)) {
+    return []
+  }
+
+  return parsed.events
+    .map(entry => asRecord(entry))
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+    .map(entry => ({
+      id: typeof entry.id === 'string' ? entry.id : undefined,
+      timestamp: typeof entry.timestamp === 'string' ? entry.timestamp : null,
+      task_id: typeof entry.task_id === 'string' ? entry.task_id : null,
+      agent_name: typeof entry.agent_name === 'string' ? entry.agent_name : null,
+      event_type: typeof entry.event_type === 'string' ? entry.event_type : null,
+      task_type: typeof entry.task_type === 'string' ? entry.task_type : null,
+      task_status: typeof entry.task_status === 'string' ? entry.task_status : null,
+      summary: typeof entry.summary === 'string' ? entry.summary : null,
+      source: typeof entry.source === 'string' ? entry.source : null,
+      operator_actions: entry.operator_actions,
+      governance_signals: entry.governance_signals,
+    }))
+}
+
 function buildFallbackDiscordAgentEntry(args: {
   receipt: DiscordQAgentReceipt
   profileKey: string
   displayName: string
 }): PublicShowcaseActivityEntry | null {
   const profileKey = normalizeDiscordAgentProfileKey(args.profileKey)
-  const displayName =
-    sanitizeInlineText(args.displayName, 48) ??
-    humanizeDiscordAgentDisplayName(profileKey)
+  const displayName = sanitizeInlineText(args.displayName, 48) ?? humanizeDiscordAgentDisplayName(profileKey)
   const receipt = args.receipt
   if (!receipt.gateway.connected && !receipt.operator.lastAction && !receipt.patrol.lastSummary) {
     return null
@@ -537,19 +755,171 @@ function buildFallbackDiscordAgentEntry(args: {
         ? `${profileKey}_operator_runtime`
         : `${profileKey}_operator_patrol`,
     ],
-    subsystems: uniqueStrings(['openjaws', 'discord', profileKey]),
+    subsystems: uniqueStrings([
+      'openjaws',
+      'discord',
+      profileKey,
+    ]),
     artifacts: [`discord:${profileKey}-agent-receipt`],
     tags: [profileKey, 'discord', 'openjaws', 'bounded'],
   })
 }
 
-function buildFallbackQEntry(
-  receipt: DiscordQAgentReceipt,
-): PublicShowcaseActivityEntry | null {
+function buildFallbackQEntry(receipt: DiscordQAgentReceipt): PublicShowcaseActivityEntry | null {
   return buildFallbackDiscordAgentEntry({
     receipt,
     profileKey: 'q',
     displayName: 'Q',
+  })
+}
+
+function buildApexTenantGovernanceEntry(
+  summary: ApexTenantGovernanceSummary | null,
+): PublicShowcaseActivityEntry | null {
+  const governance = summarizePublicApexTenantGovernance(summary)
+  if (!governance) {
+    return null
+  }
+  return createEntry({
+    id: `apex-tenant-governance-${governance.latestActivityAt ?? 'latest'}`,
+    timestamp: governance.latestActivityAt,
+    title: 'Apex tenant governance',
+    summary: [governance.headline, ...governance.details].join('. '),
+    kind: 'tenant_governance',
+    status: governance.status,
+    source: 'Apex tenant governance',
+    operatorActions: governance.operatorActions,
+    subsystems: ['apex', 'openjaws'],
+    artifacts: ['apex:tenant-governance'],
+    tags: [
+      'apex',
+      'governance',
+      'bounded',
+      'public',
+      ...governance.governanceSignals,
+    ],
+  })
+}
+
+function buildApexOperatorActivityEntries(
+  receipt: ApexOperatorActivityReceipt | null,
+): PublicShowcaseActivityEntry[] {
+  if (!receipt || receipt.activities.length === 0) {
+    return []
+  }
+
+  return receipt.activities.slice(0, 2).map(activity => {
+    const appLabel =
+      activity.app === 'mail'
+        ? 'Aegis Mail'
+        : activity.app === 'chat'
+          ? 'Shadow Chat'
+          : activity.app === 'store'
+            ? 'App Store'
+            : activity.app === 'chrono'
+              ? 'Chrono'
+              : 'Browser'
+    const actionLabel = sanitizeInlineText(
+      activity.action.replace(/[_-]+/g, ' '),
+      48,
+    )
+
+    return createEntry({
+      id: activity.id,
+      timestamp: activity.timestamp,
+      title: `Apex ${appLabel} operator activity`,
+      summary: `${appLabel} is ${actionLabel ?? 'active'} through the bounded /apex operator lane. ${activity.summary}`,
+      kind: 'apex_operator_activity',
+      status: activity.status === 'ok' ? 'ok' : 'failed',
+      source: 'OpenJaws Apex lane',
+      operatorActions: activity.operatorActions,
+      subsystems: ['apex', 'openjaws'],
+      artifacts: activity.artifacts,
+      tags: ['apex', activity.app, 'bounded', 'operator'],
+    })
+  })
+}
+
+function buildNysusPublicAgentActivityEntry(
+  entries: NysusPublicAgentActivityEntry[],
+): PublicShowcaseActivityEntry | null {
+  if (entries.length === 0) {
+    return null
+  }
+
+  const latest = entries[0]
+  const lifecycleActions = new Set([
+    'task_submitted',
+    'task_assigned',
+    'task_started',
+    'task_completed',
+    'task_failed',
+    'task_rejected',
+  ])
+  const operatorActions = uniqueStrings([
+    ...entries.flatMap(entry =>
+      stringArrayFromUnknown(entry.operator_actions).filter(
+        action => !lifecycleActions.has(action),
+      ),
+    ),
+    'nysus_agent_summary',
+  ])
+  const governanceSignals = uniqueStrings(
+    entries.flatMap(entry => stringArrayFromUnknown(entry.governance_signals)),
+  )
+  const taskTypes = uniqueStrings(
+    entries.map(entry => normalizeOperatorAction(entry.task_type)),
+  )
+  const agentNames = uniqueStrings(
+    entries.map(entry => sanitizeInlineText(entry.agent_name, 32)),
+  )
+  const taskIDs = uniqueStrings(
+    entries.map(entry => sanitizeInlineText(entry.task_id, 64)),
+  )
+  const title = latest.agent_name
+    ? `Nysus operator activity: ${latest.agent_name}`
+    : 'Nysus operator activity'
+  const activitySummary = sanitizeInlineText(
+    latest.summary ??
+      [latest.event_type, latest.task_type, latest.task_status]
+        .filter((value): value is string => Boolean(value && value.trim().length > 0))
+        .join(' • '),
+    220,
+  )
+  const countSummary = ` ${entries.length.toLocaleString()} bounded lifecycle events across ${taskIDs.length.toLocaleString()} governed task${taskIDs.length === 1 ? '' : 's'} and ${agentNames.length.toLocaleString()} agent lane${agentNames.length === 1 ? '' : 's'} are mirrored into the public showcase lane.`
+  const taskTypeSummary =
+    taskTypes.length > 0
+      ? ` Recent governed task lanes: ${taskTypes
+          .slice(0, 5)
+          .map(taskType => taskType.replace(/_/g, ' '))
+          .join(', ')}.`
+      : ''
+  const actionSurfaceSummary =
+    operatorActions.length > 1
+      ? ` Public action surfaces: ${operatorActions
+          .filter(action => action !== 'nysus_agent_summary')
+          .slice(0, 6)
+          .map(action => action.replace(/_/g, ' '))
+          .join(', ')}.`
+      : ''
+
+  return createEntry({
+    id: latest.id ?? `nysus-agent-activity-${latest.timestamp ?? 'latest'}`,
+    timestamp: latest.timestamp,
+    title,
+    summary: `${activitySummary ?? 'Recent Nysus operator activity is available.'}${countSummary}${taskTypeSummary}${actionSurfaceSummary}`,
+    kind: 'nysus_operator_activity',
+    status:
+      latest.task_status === 'failed' || latest.event_type === 'task_failed'
+        ? 'failed'
+        : latest.task_status === 'rejected' || latest.event_type === 'task_rejected'
+          ? 'warning'
+          : 'ok',
+    source: latest.source ?? 'Nysus agent coordinator',
+    operatorActions,
+    subsystems: ['nysus', 'control_fabric', 'arobi'],
+    artifacts: ['nysus:agent-events'],
+    tags: ['nysus', 'bounded', 'public', 'audit', ...governanceSignals],
   })
 }
 
@@ -663,6 +1033,8 @@ function buildRuntimeSummaryEntry(args: {
     operatorActions: ['runtime_audit', 'public_showcase_sync'],
     subsystems: uniqueStrings([
       'openjaws',
+      args.entries.some(entry => entry.subsystems.includes('apex')) ? 'apex' : null,
+      args.entries.some(entry => entry.subsystems.includes('nysus')) ? 'nysus' : null,
       args.qReceipt ? 'q' : null,
       args.roundtableEntry ? 'roundtable' : null,
       'immaculate',
@@ -689,6 +1061,15 @@ export function buildPublicShowcaseActivityFeed(args: {
     storedAgentReceipts.find(entry => entry.profileKey === 'q')?.receipt ??
     null
   const qEntry = args.qEntry ?? (qReceipt ? buildFallbackQEntry(qReceipt) : null)
+  const apexGovernanceEntry = buildApexTenantGovernanceEntry(
+    readStoredApexTenantGovernanceSummary(root),
+  )
+  const apexOperatorActivityEntries = buildApexOperatorActivityEntries(
+    readApexOperatorActivityReceiptSync(),
+  )
+  const nysusAgentActivityEntry = buildNysusPublicAgentActivityEntry(
+    readStoredNysusPublicAgentActivity(root),
+  )
   const agentEntries = storedAgentReceipts
     .filter(entry => !(entry.profileKey === 'q' && qEntry))
     .map(entry =>
@@ -712,6 +1093,9 @@ export function buildPublicShowcaseActivityFeed(args: {
   const entries = [
     qEntry,
     ...agentEntries,
+    apexGovernanceEntry,
+    ...apexOperatorActivityEntries,
+    nysusAgentActivityEntry,
     roundtableEntry,
     actionabilityEntry,
     immaculateTrace
@@ -803,11 +1187,12 @@ export function syncPublicShowcaseActivityFromRoot(
     roundtableSession: args.roundtableSession ?? null,
     roundtableRuntime: args.roundtableRuntime ?? null,
   })
-  writePublicShowcaseActivityFeed(
+  const outputPath = writePublicShowcaseActivityFeed(
     feed,
     getPublicShowcaseActivityPath(),
     getPublicShowcaseActivityMirrorPath(root),
   )
+  queuePublicShowcaseLedgerAutoSync(root, outputPath)
   return feed
 }
 

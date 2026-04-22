@@ -1,0 +1,120 @@
+{
+  "totalDecisions": 5,
+  "ethicsPassed": 2,
+  "ethicsFailed": 3,
+  "avgConfidence": 0.7405136,
+  "avgRiskScore": 1,
+  "detectionEventCount": 0,
+  "telemetryScopeCount": 4,
+  "latestActivityAt": "2026-04-22T12:14:20.125761800+00:00",
+  "highRiskCalls": 3,
+  "criticalCalls": 3,
+  "pendingReviewCalls": 4,
+  "operatorActionBreakdown": [
+    {
+      "name": "system_tuning",
+      "count": 3
+    },
+    {
+      "name": "operator_runtime",
+      "count": 1
+    },
+    {
+      "name": "security_review",
+      "count": 1
+    }
+  ],
+  "governedActionBreakdown": [
+    {
+      "name": "host_posture",
+      "count": 3
+    },
+    {
+      "name": "security_controls",
+      "count": 1
+    },
+    {
+      "name": "settings_guard",
+      "count": 1
+    }
+  ],
+  "governanceSignalBreakdown": [
+    {
+      "name": "antivirus_enabled",
+      "count": 1
+    },
+    {
+      "name": "firewall_enabled",
+      "count": 1
+    },
+    {
+      "name": "policy_guard",
+      "count": 1
+    },
+    {
+      "name": "privacy_mode",
+      "count": 1
+    },
+    {
+      "name": "realtime_monitoring",
+      "count": 1
+    },
+    {
+      "name": "settings_password_guard",
+      "count": 1
+    },
+    {
+      "name": "telemetry_minimized",
+      "count": 1
+    }
+  ],
+  "reviewStatusBreakdown": [
+    {
+      "name": "pending_review",
+      "count": 4
+    },
+    {
+      "name": "critical",
+      "count": 3
+    },
+    {
+      "name": "monitoring",
+      "count": 3
+    }
+  ],
+  "categoryBreakdown": [
+    {
+      "name": "system",
+      "count": 3
+    },
+    {
+      "name": "security",
+      "count": 1
+    }
+  ],
+  "topSources": [
+    {
+      "name": "app_store",
+      "count": 4
+    },
+    {
+      "name": "system_monitor",
+      "count": 3
+    },
+    {
+      "name": "security_center",
+      "count": 2
+    },
+    {
+      "name": "system_settings",
+      "count": 2
+    }
+  ],
+  "topModels": [
+    {
+      "name": "workspace_api_local",
+      "count": 5
+    }
+  ],
+  "narrative": "Local workspace_api governance summary derived from security posture, host pressure, bounded mail/store counters, and operator settings while remote tenant analytics is unavailable. 4 installed apps, 0 pending store updates, 0 mail alerts, 0 host alerts."
+}

@@ -85,6 +85,10 @@ import {
   type ApexWorkspaceSummary,
 } from './apexWorkspace.js';
 import {
+  summarizeApexOperatorActivityReceipt,
+  type ApexOperatorActivityReceipt,
+} from './apexOperatorActivity.js';
+import {
   getActiveTeamTerminalContexts,
   getTeamPhaseReceiptsByRecency,
   getTeamPhaseRegistryPath,
@@ -756,6 +760,7 @@ export function buildApexWorkspaceProperties(
   health: ApexWorkspaceHealth | null = null,
   summary: ApexWorkspaceSummary | null = null,
   governanceSummary: ApexTenantGovernanceSummary | null = null,
+  operatorActivityReceipt: ApexOperatorActivityReceipt | null = null,
   chronoHealth: ApexWorkspaceHealth | null = null,
   chronoSummary: ApexChronoSummary | null = null,
   browserHealth: ApexWorkspaceHealth | null = null,
@@ -765,6 +770,7 @@ export function buildApexWorkspaceProperties(
     !availability.configured &&
     !health &&
     !summary &&
+    !operatorActivityReceipt &&
     !chronoHealth &&
     !chronoSummary &&
     !browserHealth &&
@@ -774,6 +780,9 @@ export function buildApexWorkspaceProperties(
   }
   const workspace = summarizeApexWorkspace(summary)
   const governance = summarizeApexTenantGovernance(governanceSummary)
+  const operatorActivity = summarizeApexOperatorActivityReceipt(
+    operatorActivityReceipt,
+  )
   const chrono = summarizeApexChrono(chronoSummary)
   const browser = summarizeApexBrowser(browserSummary)
   const degradedServiceCount =
@@ -813,6 +822,17 @@ export function buildApexWorkspaceProperties(
             value: [
               governance.headline,
               ...governance.details.slice(0, 3),
+            ],
+          } satisfies Property,
+        ]
+      : []),
+    ...(operatorActivityReceipt
+      ? [
+          {
+            label: 'Apex recent actions',
+            value: [
+              operatorActivity.headline,
+              ...operatorActivity.details.slice(0, 3),
             ],
           } satisfies Property,
         ]
