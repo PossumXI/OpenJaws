@@ -430,6 +430,82 @@ describe('discordRoundtableRuntime', () => {
     })
   })
 
+  it('prefers nested live channel identity when the tracked session matches turn count but drifts to the wrong channel', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-channel-drift-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    const nestedRuntimeDir = join(runtimeDir, 'roundtable-runtime')
+    mkdirSync(nestedRuntimeDir, { recursive: true })
+    writeFileSync(
+      getDiscordRoundtableSessionStatePath(root),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-22T00:01:45.822Z',
+          startedAt: '2026-04-21T23:56:22.508Z',
+          endsAt: '2026-04-22T03:56:22.508Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          roundtableChannelName: 'openjaws-updates',
+          generalChannelId: 'general-1',
+          generalChannelName: 'general-chat',
+          violaVoiceChannelId: 'voice-1',
+          violaVoiceChannelName: 'viola-lounge',
+          turnCount: 2,
+          nextPersona: 'blackbeak',
+          lastSpeaker: 'viola',
+          lastSummary: 'Viola posted turn 2',
+          lastError: null,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(nestedRuntimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-22T00:00:35.638Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'Viola posted turn 2',
+          lastError: null,
+          startedAt: '2026-04-21T23:56:22.508Z',
+          endsAt: '2026-04-22T03:56:22.508Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          generalChannelId: 'general-1',
+          generalChannelName: 'general-chat',
+          violaVoiceChannelId: 'voice-1',
+          violaVoiceChannelName: 'viola-lounge',
+          turnCount: 2,
+          nextPersona: 'blackbeak',
+          lastSpeaker: 'viola',
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const sessionState = loadDiscordRoundtableSessionState(root)
+
+    expect(sessionState).toMatchObject({
+      roundtableChannelName: 'dev_support',
+      roundtableChannelId: 'channel-1',
+      guildId: 'guild-1',
+      turnCount: 2,
+      nextPersona: 'blackbeak',
+      lastSpeaker: 'viola',
+      lastSummary: 'Viola posted turn 2',
+    })
+  })
+
   it('syncs nested live bundle state back into tracked queue and session files', () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-sync-'))
     tempDirs.push(root)

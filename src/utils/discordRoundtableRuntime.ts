@@ -856,34 +856,49 @@ function mergeDiscordRoundtableSessionStates(args: {
     (storedUpdatedAtMs === null || legacyUpdatedAtMs >= storedUpdatedAtMs)
   const primary = preferLegacy ? legacy : stored
   const secondary = preferLegacy ? stored : legacy
+  const storedChannelName = stored.roundtableChannelName?.trim() || null
+  const legacyChannelName = legacy.roundtableChannelName?.trim() || null
+  const liveChannelMismatch =
+    Boolean(legacyChannelName) &&
+    Boolean(storedChannelName) &&
+    legacyChannelName !== storedChannelName
+  const preferLegacyLiveFields =
+    legacy.turnCount > stored.turnCount ||
+    (liveChannelMismatch &&
+      legacy.turnCount >= stored.turnCount &&
+      Boolean(legacy.roundtableChannelId)) ||
+    (Boolean(legacy.roundtableChannelId) && !stored.roundtableChannelId) ||
+    (Boolean(legacy.guildId) && !stored.guildId)
+  const livePrimary = preferLegacyLiveFields ? legacy : primary
+  const liveSecondary = preferLegacyLiveFields ? stored : secondary
 
   return {
     version: 1,
     status: normalizeDiscordRoundtableSessionStatus(primary.status ?? secondary.status),
     updatedAt: primary.updatedAt || secondary.updatedAt,
-    startedAt: primary.startedAt ?? secondary.startedAt,
-    endsAt: primary.endsAt ?? secondary.endsAt,
-    guildId: primary.guildId ?? secondary.guildId,
+    startedAt: livePrimary.startedAt ?? liveSecondary.startedAt,
+    endsAt: livePrimary.endsAt ?? liveSecondary.endsAt,
+    guildId: livePrimary.guildId ?? liveSecondary.guildId,
     roundtableChannelId:
-      primary.roundtableChannelId ?? secondary.roundtableChannelId,
+      livePrimary.roundtableChannelId ?? liveSecondary.roundtableChannelId,
     roundtableChannelName:
-      primary.roundtableChannelName ?? secondary.roundtableChannelName,
-    generalChannelId: primary.generalChannelId ?? secondary.generalChannelId,
+      livePrimary.roundtableChannelName ?? liveSecondary.roundtableChannelName,
+    generalChannelId: livePrimary.generalChannelId ?? liveSecondary.generalChannelId,
     generalChannelName:
-      primary.generalChannelName ?? secondary.generalChannelName,
+      livePrimary.generalChannelName ?? liveSecondary.generalChannelName,
     violaVoiceChannelId:
-      primary.violaVoiceChannelId ?? secondary.violaVoiceChannelId,
+      livePrimary.violaVoiceChannelId ?? liveSecondary.violaVoiceChannelId,
     violaVoiceChannelName:
-      primary.violaVoiceChannelName ?? secondary.violaVoiceChannelName,
-    turnCount: primary.turnCount,
-    nextPersona: primary.nextPersona ?? secondary.nextPersona,
-    lastSpeaker: primary.lastSpeaker ?? secondary.lastSpeaker,
+      livePrimary.violaVoiceChannelName ?? liveSecondary.violaVoiceChannelName,
+    turnCount: livePrimary.turnCount,
+    nextPersona: livePrimary.nextPersona ?? liveSecondary.nextPersona,
+    lastSpeaker: livePrimary.lastSpeaker ?? liveSecondary.lastSpeaker,
     lastSummary: primary.lastSummary ?? secondary.lastSummary,
     lastError: primary.lastError ?? secondary.lastError,
     processedCommandMessageIds:
-      primary.processedCommandMessageIds.length > 0
-        ? primary.processedCommandMessageIds
-        : secondary.processedCommandMessageIds,
+      livePrimary.processedCommandMessageIds.length > 0
+        ? livePrimary.processedCommandMessageIds
+        : liveSecondary.processedCommandMessageIds,
   }
 }
 
