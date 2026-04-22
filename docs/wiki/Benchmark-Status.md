@@ -88,10 +88,15 @@ These are the current live-check lanes OpenJaws can run honestly against its shi
 These are the newest compatibility and truth-maintenance receipts from this repo workspace. They materially changed the benchmark lane, but they are not a public leaderboard claim.
 
 - BridgeBench:
-  - artifact: `artifacts/q-bridgebench-live-20260422-agentic/bridgebench-report.json`
-  - result: `failed`
-  - truth: the local LoRA eval now reaches the real `q` load path and fails on this host because Windows exhausted the paging file while loading the model weights, so this is a machine-memory boundary rather than a parser or receipt bug
-  - wrapper follow-up: `q:bridgebench` and `q:preflight -- --bench bridgebench` now auto-resolve the freshest `artifacts/q-benchmark-audited-*` bundle, so the lane no longer false-fails on the missing legacy `data/sft/audited-v2` default
+  - artifact: `artifacts/q-bridgebench-live-20260422-agentic-preflightfix/bridgebench-report.json`
+  - result: `failed_preflight`
+  - truth: the live local `Q` BridgeBench lane now fails closed on this Windows host before Python launches when the host memory budget is below the audited `gemma-4-E4B-it` requirement, so the benchmark no longer dies inside model-weight paging
+  - current host budget proof: the fresh receipt recorded `available 1.4 GiB / total 23 GiB; need about 29 GiB available`
+  - wrapper follow-up:
+    - `q:bridgebench` and `q:preflight -- --bench bridgebench` still auto-resolve the freshest `artifacts/q-benchmark-audited-*` bundle instead of the stale legacy default
+    - `scripts/q-bridgebench.ts` now guards import-time execution and records the benchmark host’s memory gate into the pack preflight section
+    - the canonical Windows benchmark runtime is `D:\openjaws\OpenJaws\.venv-gemma4\Scripts\python.exe`
+    - explicit quantized eval is available with `--load-in-4bit`; automatic 4-bit fallback stays opt-in via `OPENJAWS_BRIDGEBENCH_AUTO_4BIT=true` because this host still needs a deliberate operator choice before comparing quantized and non-quantized local receipts
 - Harbor / Terminal-Bench:
   - harness compatibility changes:
     - `scripts/q-terminalbench.ts` now uses Harbor's current `--include-task-name` filter instead of the removed `--task-name` flag

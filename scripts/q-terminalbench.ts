@@ -669,6 +669,21 @@ function guessLatestHarborJobResultPath(args?: {
   return latestPath
 }
 
+export function resolveDiscoveredHarborJobResultPath(args: {
+  jobsDir: string | null
+  excludedPaths?: ReadonlySet<string>
+  roots?: readonly string[]
+}): string | null {
+  const scopedPath = guessLatestHarborJobResultPath({
+    excludedPaths: args.excludedPaths,
+    roots: args.roots,
+  })
+  if (scopedPath) {
+    return scopedPath
+  }
+  return args.jobsDir ? null : guessLatestHarborJobResultPath()
+}
+
 function resolveExpectedHarborJobRoot(args: {
   jobsDir: string | null
   jobName: string | null
@@ -1086,27 +1101,22 @@ async function runHarborAttempt(args: {
     jobsDir: args.options.jobsDir,
     jobName: expectedJobName,
   })
+  const discoveredJobResultPath = resolveDiscoveredHarborJobResultPath({
+    jobsDir: args.options.jobsDir,
+    excludedPaths: beforeJobResultPaths,
+    roots: harborRoots,
+  })
   const harborJobPath =
     expectedJobPath ??
     (args.options.officialSubmission
       ? null
-      : resolveHarborJobRoot(
-          guessLatestHarborJobResultPath({
-            excludedPaths: beforeJobResultPaths,
-            roots: harborRoots,
-          }) ??
-            guessLatestHarborJobResultPath(),
-        ))
+      : resolveHarborJobRoot(discoveredJobResultPath))
   const harborJobResultPath =
     harborJobPath && existsSync(join(harborJobPath, 'result.json'))
       ? join(harborJobPath, 'result.json')
       : args.options.officialSubmission
         ? null
-        : guessLatestHarborJobResultPath({
-            excludedPaths: beforeJobResultPaths,
-            roots: harborRoots,
-          }) ??
-          guessLatestHarborJobResultPath()
+        : discoveredJobResultPath
   const jobResultSummary = readHarborResultSummary(harborJobResultPath)
   const taskReceipts = readHarborTaskReceipts(harborJobPath, args.cycle, args.attempt)
   sanitizeHarborJobArtifacts(harborJobPath, harborJobResultPath)
@@ -1218,6 +1228,7 @@ async function main() {
     options.jobsDir = options.jobsDir ?? join(outputDir, 'jobs')
     options.jobName = options.jobName ?? `${runId}-official`
   }
+  options.jobName = options.jobName ?? runId
   validateOfficialSubmissionOptions(options)
   const sessionMetadata = await resolveTerminalBenchSessionMetadata({
     root: options.root,

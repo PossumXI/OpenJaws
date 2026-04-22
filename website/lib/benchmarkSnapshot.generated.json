@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-04-22T14:22:30.121Z",
-  "source": "Generated from benchmark receipts: D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260422-nowandb\\bridgebench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-soak-live-20260416\\q-soak-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-official-public-20260422-circuit-fibsqrt-v2\\terminalbench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3\\terminalbench-report.json, and D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260422\\bridgebench-report.json.",
+  "generatedAt": "2026-04-22T15:46:21.702Z",
+  "source": "Generated from benchmark receipts: D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260422-rerun-1522\\bridgebench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-soak-live-20260416\\q-soak-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-official-public-20260422-circuit-fibsqrt-v2\\terminalbench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3\\terminalbench-report.json, and D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260422\\bridgebench-report.json.",
   "bridgeBench": {
-    "benchmarkId": "q-bridgebench-20260422T135409",
+    "benchmarkId": "q-bridgebench-20260422T153441",
     "bestPack": "all",
     "scorePercent": 36.84,
     "summary": "All pack · 36.84% mean token accuracy · score 36.84 · 1 eval sample"

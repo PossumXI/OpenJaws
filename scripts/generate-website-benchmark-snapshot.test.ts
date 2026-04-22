@@ -334,6 +334,12 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
         if (first.includes('q-soak-live-')) {
           return [fakePaths.soakFailed, fakePaths.soakPreferred]
         }
+        if (first.includes('q-terminalbench-official-public-')) {
+          return [fakePaths.terminal]
+        }
+        if (first.includes('q-terminalbench-soak-live-')) {
+          return [fakePaths.terminalSoak]
+        }
         return []
       },
       readJson: path => {
@@ -459,6 +465,12 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
         if (first.includes('q-soak-live-')) {
           return [fakePaths.soak]
         }
+        if (first.includes('q-terminalbench-official-public-')) {
+          return [fakePaths.terminal]
+        }
+        if (first.includes('q-terminalbench-soak-live-')) {
+          return [fakePaths.terminalSoak]
+        }
         return []
       },
       readJson: path => {
@@ -530,6 +542,129 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
     expect(snapshot.terminalBench.status).toBe('completed_with_errors')
     expect(snapshot.terminalBench.submissionState).toBe('not_submitted')
     expect(snapshot.terminalBench.benchmarkFailedTrials).toBe(3)
+  })
+
+  test('buildSnapshot prefers a real terminalbench receipt over a newer dry run', () => {
+    const options = parseArgs([])
+
+    const fakePaths = {
+      bridge: 'fake://bridgebench',
+      soak: 'fake://soak',
+      terminalReal: 'fake://terminalbench-real',
+      terminalDryRun: 'fake://terminalbench-dry-run',
+      terminalSoak: 'fake://terminalbench-soak',
+      wandb: 'fake://wandb',
+    }
+
+    const snapshot = buildSnapshot(options, {
+      resolveLatestReceipt: (patterns, fallbackPath) => {
+        if (patterns.some(pattern => pattern.includes('q-terminalbench-soak-live-'))) {
+          return fakePaths.terminalSoak
+        }
+        return fallbackPath
+      },
+      collectMatchingReceiptPaths: patterns => {
+        const first = patterns[0] ?? ''
+        if (first.includes('q-bridgebench-live-')) {
+          return [fakePaths.bridge, fakePaths.wandb]
+        }
+        if (first.includes('q-soak-live-')) {
+          return [fakePaths.soak]
+        }
+        if (first.includes('q-terminalbench-official-public-')) {
+          return [fakePaths.terminalDryRun, fakePaths.terminalReal]
+        }
+        if (first.includes('q-terminalbench-soak-live-')) {
+          return [fakePaths.terminalSoak]
+        }
+        return []
+      },
+      readJson: path => {
+        switch (path) {
+          case fakePaths.bridge:
+            return {
+              benchmarkId: 'bridge-1',
+              generatedAt: '2026-04-16T00:00:00.000Z',
+              bestResult: {
+                pack: 'all',
+                score: 42.11,
+                summary: 'BridgeBench summary',
+              },
+            }
+          case fakePaths.soak:
+            return {
+              runId: 'soak-1',
+              generatedAt: '2026-04-16T00:05:00.000Z',
+              durationMinutes: 30,
+              summary: {
+                totalProbes: 52,
+                successCount: 52,
+                errorCount: 0,
+              },
+            }
+          case fakePaths.terminalDryRun:
+            return {
+              runId: 'terminal-dry',
+              generatedAt: '2026-04-22T15:54:05.000Z',
+              officialSubmission: true,
+              status: 'dry_run',
+              tasks: [{ taskName: 'unknown' }],
+              aggregate: {
+                totalTrials: 0,
+                executionErrorTrials: 0,
+                benchmarkFailedTrials: 0,
+                avgReward: 0,
+              },
+              agent: 'openjaws',
+              model: 'oci:Q',
+            }
+          case fakePaths.terminalReal:
+            return {
+              runId: 'terminal-real',
+              generatedAt: '2026-04-22T14:22:07.000Z',
+              officialSubmission: true,
+              status: 'failed',
+              tasks: [{ taskName: 'circuit-fibsqrt' }],
+              aggregate: {
+                totalTrials: 5,
+                executionErrorTrials: 1,
+                benchmarkFailedTrials: 4,
+                avgReward: 0,
+              },
+              agent: 'openjaws',
+              model: 'oci:Q',
+            }
+          case fakePaths.terminalSoak:
+            return {
+              runId: 'terminal-soak-1',
+              generatedAt: '2026-04-16T00:12:00.000Z',
+              status: 'completed_with_errors',
+              tasks: [{ taskName: 'terminal-bench/circuit-fibsqrt' }],
+              cycles: [{}, {}],
+              aggregate: {
+                totalTrials: 2,
+                executionErrorTrials: 0,
+                benchmarkFailedTrials: 2,
+              },
+            }
+          case fakePaths.wandb:
+            return {
+              generatedAt: '2026-04-16T00:15:00.000Z',
+              wandb: {
+                enabled: false,
+                apiKeyPresent: false,
+                source: 'none',
+              },
+            }
+          default:
+            throw new Error(`Unexpected path ${path}`)
+        }
+      },
+    })
+
+    expect(snapshot.terminalBench.runId).toBe('terminal-real')
+    expect(snapshot.terminalBench.taskName).toBe('circuit-fibsqrt')
+    expect(snapshot.terminalBench.status).toBe('failed')
   })
 
   test('writeIfChanged only touches disk when the content changes', () => {

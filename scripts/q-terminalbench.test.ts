@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import { execa } from 'execa'
 import { join, resolve } from 'path'
-import { rmSync } from 'fs'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
 import {
   buildHarborArgs,
   parseArgs,
+  resolveDiscoveredHarborJobResultPath,
   resolveTerminalBenchSessionMetadata,
 } from './q-terminalbench.ts'
 import { createBenchmarkTraceWriter } from '../src/immaculate/benchmarkTrace.js'
@@ -98,6 +100,34 @@ describe('q-terminalbench soak options', () => {
       ]),
     )
     expect(buildHarborArgs(options, 1, 1)).not.toContain('--task-name')
+  })
+
+  test('keeps scoped bounded runs from falling back onto stale global Harbor jobs', () => {
+    const sandbox = mkdtempSync(join(tmpdir(), 'q-terminalbench-'))
+    const scopedRoot = join(sandbox, 'scoped')
+    const globalRoot = join(sandbox, 'global')
+    mkdirSync(join(scopedRoot, 'jobs'), { recursive: true })
+    mkdirSync(join(globalRoot, 'jobs', 'stale-job'), { recursive: true })
+    const staleResultPath = join(globalRoot, 'jobs', 'stale-job', 'result.json')
+    writeFileSync(staleResultPath, '{}\n', 'utf8')
+
+    expect(
+      resolveDiscoveredHarborJobResultPath({
+        jobsDir: join(scopedRoot, 'jobs'),
+        excludedPaths: new Set<string>(),
+        roots: [scopedRoot],
+      }),
+    ).toBeNull()
+
+    expect(
+      resolveDiscoveredHarborJobResultPath({
+        jobsDir: null,
+        excludedPaths: new Set<string>(),
+        roots: [globalRoot],
+      }),
+    ).toBe(staleResultPath)
+
+    rmSync(sandbox, { force: true, recursive: true })
   })
 })
 

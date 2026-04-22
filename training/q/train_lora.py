@@ -3,12 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
 from pathlib import Path
 from datetime import datetime, timezone
 
 from datasets import load_dataset
 from peft import LoraConfig, PeftModel, get_peft_model
 import torch
+from torch.utils.data import DataLoader
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -284,6 +286,118 @@ def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
+def ensure_eos_token_text(text: str, tokenizer: AutoTokenizer) -> str:
+    eos_token = tokenizer.eos_token or ""
+    if eos_token and not text.endswith(eos_token):
+        return f"{text}{eos_token}"
+    return text
+
+
+def build_quantized_eval_collate_fn(
+    tokenizer: AutoTokenizer,
+    max_seq_length: int,
+):
+    def collate(examples: list[dict]) -> dict[str, torch.Tensor]:
+        texts = [
+            ensure_eos_token_text(str(example.get("text", "")), tokenizer)
+            for example in examples
+        ]
+        batch = tokenizer(
+            texts,
+            padding=True,
+            truncation=True,
+            max_length=max_seq_length,
+            return_tensors="pt",
+        )
+        labels = batch["input_ids"].clone()
+        if tokenizer.pad_token_id is not None:
+            labels[labels == tokenizer.pad_token_id] = -100
+        batch["labels"] = labels
+        return batch
+
+    return collate
+
+
+def run_quantized_eval_only(
+    *,
+    model: AutoModelForCausalLM,
+    tokenizer: AutoTokenizer,
+    eval_dataset,
+    run_state_writer: "RunStateWriter",
+    per_device_eval_batch_size: int,
+    max_seq_length: int,
+) -> dict:
+    model_device = next(model.parameters()).device
+    dataloader = DataLoader(
+        eval_dataset,
+        batch_size=max(1, per_device_eval_batch_size),
+        collate_fn=build_quantized_eval_collate_fn(tokenizer, max_seq_length),
+    )
+
+    total_batches = 0
+    total_loss = 0.0
+    total_correct = 0
+    total_tokens = 0
+    total_entropy = 0.0
+    started_at = time.perf_counter()
+
+    model.eval()
+    with torch.no_grad():
+        for step, batch in enumerate(dataloader, start=1):
+            batch = {
+                key: value.to(model_device) if isinstance(value, torch.Tensor) else value
+                for key, value in batch.items()
+            }
+            outputs = model(**batch)
+            logits = outputs.logits[:, :-1, :].float()
+            labels = batch["labels"][:, 1:]
+            valid_mask = labels != -100
+
+            total_batches += 1
+            total_loss += float(outputs.loss.item())
+
+            if valid_mask.any():
+                predictions = logits.argmax(dim=-1)
+                total_correct += int(((predictions == labels) & valid_mask).sum().item())
+                total_tokens += int(valid_mask.sum().item())
+                log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
+                probs = log_probs.exp()
+                token_entropies = -(probs * log_probs).sum(dim=-1)
+                total_entropy += float(
+                    token_entropies.masked_select(valid_mask).sum().item()
+                )
+
+            run_state_writer.update(
+                status="running",
+                startedAt=now_iso(),
+                globalStep=step,
+                epoch=None,
+                maxSteps=len(dataloader),
+                evalLoss=total_loss / total_batches,
+            )
+
+    eval_runtime = time.perf_counter() - started_at
+    eval_loss = total_loss / total_batches if total_batches > 0 else None
+    eval_accuracy = total_correct / total_tokens if total_tokens > 0 else None
+    eval_entropy = total_entropy / total_tokens if total_tokens > 0 else None
+
+    return {
+        "eval_loss": eval_loss,
+        "eval_mean_token_accuracy": eval_accuracy,
+        "eval_entropy": eval_entropy,
+        "eval_runtime": eval_runtime,
+        "eval_steps_completed": total_batches,
+        "eval_sample_count": len(eval_dataset),
+        "eval_token_count": total_tokens,
+        "eval_steps_per_second": (
+            total_batches / eval_runtime if eval_runtime > 0 and total_batches > 0 else None
+        ),
+        "eval_samples_per_second": (
+            len(eval_dataset) / eval_runtime if eval_runtime > 0 and len(eval_dataset) > 0 else None
+        ),
+    }
+
+
 def load_route_request(route_manifest_path: str | None) -> dict | None:
     if not route_manifest_path:
         return None
@@ -529,31 +643,53 @@ def main() -> None:
         max_length=args.max_seq_length,
     )
 
-    trainer = SFTTrainer(
-        model=model,
-        processing_class=tokenizer,
-        train_dataset=train_dataset if len(train_dataset) > 0 else eval_dataset,
-        eval_dataset=eval_dataset,
-        args=training_args,
+    quantized_eval_only = (
+        args.eval_only and args.load_in_4bit and args.adapter_dir is None
     )
-    trainer.add_callback(run_state_writer)
-    run_state_writer.update(
-        status="ready_to_train",
-        trainerReadyAt=now_iso(),
-    )
+    trainer = None
+    if quantized_eval_only:
+        run_state_writer.update(
+            status="ready_to_train",
+            trainerReadyAt=now_iso(),
+            evaluationBackend="quantized_eval_only",
+        )
+    else:
+        trainer = SFTTrainer(
+            model=model,
+            processing_class=tokenizer,
+            train_dataset=train_dataset if len(train_dataset) > 0 else eval_dataset,
+            eval_dataset=eval_dataset,
+            args=training_args,
+        )
+        trainer.add_callback(run_state_writer)
+        run_state_writer.update(
+            status="ready_to_train",
+            trainerReadyAt=now_iso(),
+            evaluationBackend="trl_sft_trainer",
+        )
 
     try:
         explicit_train_metrics = None
         explicit_eval_metrics = None
         if args.eval_only:
-            run_state_writer.update(
-                status="running",
-                startedAt=now_iso(),
-                globalStep=int(trainer.state.global_step),
-                epoch=float(trainer.state.epoch) if trainer.state.epoch is not None else None,
-                maxSteps=0,
-            )
-            explicit_eval_metrics = trainer.evaluate()
+            if quantized_eval_only:
+                explicit_eval_metrics = run_quantized_eval_only(
+                    model=model,
+                    tokenizer=tokenizer,
+                    eval_dataset=eval_dataset,
+                    run_state_writer=run_state_writer,
+                    per_device_eval_batch_size=args.per_device_eval_batch_size,
+                    max_seq_length=args.max_seq_length,
+                )
+            else:
+                run_state_writer.update(
+                    status="running",
+                    startedAt=now_iso(),
+                    globalStep=int(trainer.state.global_step),
+                    epoch=float(trainer.state.epoch) if trainer.state.epoch is not None else None,
+                    maxSteps=0,
+                )
+                explicit_eval_metrics = trainer.evaluate()
         else:
             trainer.train()
             trainer.save_model(args.output_dir)
@@ -585,10 +721,14 @@ def main() -> None:
             "max_train_samples": args.max_train_samples,
             "max_eval_samples": args.max_eval_samples,
             "use_cpu": args.use_cpu,
+            "load_in_4bit": args.load_in_4bit,
             "target_module_count": len(target_modules),
             "report_to": report_to,
             "run_name": args.run_name,
             "wandb": wandb_metadata,
+            "evaluation_backend": (
+                "quantized_eval_only" if quantized_eval_only else "trl_sft_trainer"
+            ),
         }
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         Path(args.output_dir, "run-summary.json").write_text(
@@ -600,8 +740,16 @@ def main() -> None:
         run_state_writer.update(
             status="completed",
             finishedAt=now_iso(),
-            globalStep=int(trainer.state.global_step),
-            epoch=float(trainer.state.epoch) if trainer.state.epoch is not None else None,
+            globalStep=(
+                int(trainer.state.global_step)
+                if trainer is not None
+                else int(explicit_eval_metrics.get("eval_steps_completed", 0))
+                if explicit_eval_metrics
+                else 0
+            ),
+            epoch=(
+                float(trainer.state.epoch) if trainer is not None and trainer.state.epoch is not None else None
+            ),
             loss=(
                 float(metrics_summary["latest_train_metrics"]["loss"])
                 if metrics_summary["latest_train_metrics"]

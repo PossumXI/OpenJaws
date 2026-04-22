@@ -315,13 +315,28 @@ export function buildSnapshot(
       )
     },
   )
-  const terminalBenchReportPath = deps.resolveLatestReceipt(
+  const terminalBenchReportPath = resolveLatestPreferredReceipt(
     [
       resolve(repoRoot, 'artifacts', 'q-terminalbench-official-public-*', 'terminalbench-report.json'),
       resolve(repoRoot, 'artifacts', 'q-terminalbench-public-*', 'terminalbench-report.json'),
       resolve(repoRoot, 'artifacts', 'q-terminalbench-live-*', 'terminalbench-report.json'),
     ],
     options.terminalBenchReportPath,
+    deps.collectMatchingReceiptPaths,
+    deps.readJson,
+    receipt => {
+      const aggregate = (receipt as {
+        aggregate?: { totalTrials?: unknown }
+        status?: unknown
+      }).aggregate
+      const totalTrials =
+        typeof aggregate?.totalTrials === 'number' ? aggregate.totalTrials : 0
+      const status =
+        typeof (receipt as { status?: unknown }).status === 'string'
+          ? ((receipt as { status?: string }).status as string)
+          : null
+      return totalTrials > 0 && status !== 'dry_run'
+    },
   )
   const terminalBenchSoakReportPath = deps.resolveLatestReceipt(
     [

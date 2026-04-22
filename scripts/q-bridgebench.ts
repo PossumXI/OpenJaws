@@ -24,6 +24,7 @@ import {
 } from '../src/utils/bridgeBench.js'
 import {
   DEFAULT_Q_BASE_MODEL,
+  evaluateQTrainingPreflight,
   resolveQTrainingPythonCommand,
 } from '../src/utils/qTraining.js'
 import {
@@ -55,6 +56,7 @@ type CliOptions = {
   runNamePrefix: string | null
   wandbProject: string | null
   wandbEntity: string | null
+  loadIn4bit: boolean
   dryRun: boolean
 }
 
@@ -73,9 +75,18 @@ type PackResult = {
   metrics: ReturnType<typeof extractQBridgeBenchMetrics> | null
   runSummary?: Record<string, unknown> | null
   runState?: Record<string, unknown> | null
+  preflight?: Record<string, unknown> | null
   stdoutTail?: string
   stderrTail?: string
 }
+
+type BitsAndBytesProbe = {
+  available: boolean
+  version: string | null
+  summary: string
+}
+
+const GIB = 1024 ** 3
 
 function parsePack(value: string): QBridgeBenchPack | null {
   const normalized = value.trim().toLowerCase()
@@ -110,6 +121,7 @@ function parseArgs(argv: string[]): CliOptions {
     runNamePrefix: 'q-bridgebench',
     wandbProject: null,
     wandbEntity: null,
+    loadIn4bit: false,
     dryRun: false,
   }
 
@@ -199,6 +211,10 @@ function parseArgs(argv: string[]): CliOptions {
       options.wandbEntity = argv[++i]!
       continue
     }
+    if (arg === '--load-in-4bit') {
+      options.loadIn4bit = true
+      continue
+    }
     if (arg === '--dry-run') {
       options.dryRun = true
       continue
@@ -237,6 +253,7 @@ function printHelpAndExit(): never {
       '  --run-name-prefix <text>   Optional run-name prefix written into each eval receipt',
       '  --wandb-project <name>     Optional W&B project for live benchmark receipts',
       '  --wandb-entity <name>      Optional W&B entity for live benchmark receipts',
+      '  --load-in-4bit             Force 4-bit quantized eval for the local benchmark lane',
       '  --dry-run                  Resolve packs and emit commands without launching Python',
       '  -h, --help                 Show this help',
     ].join('\n'),
@@ -262,6 +279,76 @@ function readJsonIfExists(path: string): Record<string, unknown> | null {
   return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
 }
 
+function shouldAutoQuantizeBridgeBench(options: CliOptions): boolean {
+  const override = process.env.OPENJAWS_BRIDGEBENCH_AUTO_4BIT?.trim().toLowerCase()
+  return (
+    (override === '1' || override === 'true') &&
+    process.platform === 'win32' &&
+    options.useCpu &&
+    !options.adapterDir
+  )
+}
+
+function resolveBridgeBenchModelBytesForPreflight(args: {
+  baseModel: string
+  useCpu: boolean
+  explicitModelBytes?: number | null
+}): number | null {
+  if (args.explicitModelBytes !== undefined && args.explicitModelBytes !== null) {
+    return args.explicitModelBytes
+  }
+  if (!args.useCpu || process.platform !== 'win32') {
+    return null
+  }
+
+  const normalized = args.baseModel.trim().toLowerCase()
+  if (normalized.includes('gemma-4-e4b')) {
+    return 24 * GIB
+  }
+  if (normalized.includes('gemma-4-26b')) {
+    return 38 * GIB
+  }
+  if (normalized.includes('gemma-4-31b')) {
+    return 46 * GIB
+  }
+  return null
+}
+
+async function probeBitsAndBytes(
+  python: string,
+  cwd: string,
+): Promise<BitsAndBytesProbe> {
+  const result = await execa(
+    python,
+    [
+      '-c',
+      "import bitsandbytes as bnb; print(getattr(bnb, '__version__', 'unknown'))",
+    ],
+    {
+      cwd,
+      reject: false,
+      windowsHide: true,
+      timeout: 30_000,
+    },
+  )
+  if (result.exitCode === 0) {
+    const version = result.stdout.trim() || 'unknown'
+    return {
+      available: true,
+      version,
+      summary: `bitsandbytes ${version} available`,
+    }
+  }
+
+  return {
+    available: false,
+    version: null,
+    summary:
+      tailText(result.stderr || result.stdout) ||
+      'bitsandbytes not available in the benchmark runtime',
+  }
+}
+
 function buildPythonArgs(args: {
   pack: ReturnType<typeof resolveQBridgeBenchPack>
   outputDir: string
@@ -269,6 +356,7 @@ function buildPythonArgs(args: {
   phaseId: string | null
   options: CliOptions
   wandb: ReturnType<typeof resolveWandbConfig>
+  loadIn4bit: boolean
 }): string[] {
   const pythonArgs = [
     resolve(process.cwd(), 'training', 'q', 'train_lora.py'),
@@ -299,6 +387,9 @@ function buildPythonArgs(args: {
   if (args.options.useCpu) {
     pythonArgs.push('--use-cpu')
   }
+  if (args.loadIn4bit) {
+    pythonArgs.push('--load-in-4bit')
+  }
   if (args.options.maxTrainSamples !== null) {
     pythonArgs.push('--max-train-samples', String(args.options.maxTrainSamples))
   }
@@ -316,6 +407,34 @@ function buildPythonArgs(args: {
   }
 
   return pythonArgs
+}
+
+export function evaluateBridgeBenchPackPreflight(args: {
+  baseModel: string
+  trainFile: string
+  python: string
+  useCpu: boolean
+  availableMemoryBytes?: number
+  totalMemoryBytes?: number
+  modelBytes?: number | null
+  cachedModelPath?: string | null
+  homeDir?: string
+}) {
+  return evaluateQTrainingPreflight({
+    baseModel: args.baseModel,
+    trainFile: args.trainFile,
+    pythonPath: args.python,
+    useCpu: args.useCpu,
+    availableMemoryBytes: args.availableMemoryBytes,
+    totalMemoryBytes: args.totalMemoryBytes,
+    modelBytes: resolveBridgeBenchModelBytesForPreflight({
+      baseModel: args.baseModel,
+      useCpu: args.useCpu,
+      explicitModelBytes: args.modelBytes,
+    }),
+    cachedModelPath: args.cachedModelPath,
+    homeDir: args.homeDir,
+  })
 }
 
 function makeBenchmarkId(): string {
@@ -349,6 +468,15 @@ async function main() {
     project: options.wandbProject,
     entity: options.wandbEntity,
   })
+  const autoLoadIn4bit = shouldAutoQuantizeBridgeBench(options)
+  const quantizationProbe =
+    options.loadIn4bit || autoLoadIn4bit
+      ? await probeBitsAndBytes(options.python, root)
+      : {
+          available: false,
+          version: null,
+          summary: '4-bit quantized eval not requested for this host lane',
+        }
   const failedChecks = checks.filter(check => check.status === 'failed')
 
   if (failedChecks.length > 0) {
@@ -370,6 +498,12 @@ async function main() {
       checks,
       dryRun: options.dryRun,
       wandb,
+      quantization: {
+        requestedLoadIn4bit: options.loadIn4bit,
+        autoLoadIn4bit,
+        effectiveLoadIn4bit: false,
+        bitsandbytes: quantizationProbe,
+      },
       summary: 'Q BridgeBench blocked by failed preflight checks.',
       honestyBoundary:
         'This is a local Q benchmark over audited OpenJaws packs. It is useful for in-repo comparison, but it is not the public Immaculate benchmark source of truth.',
@@ -461,6 +595,78 @@ async function main() {
       continue
     }
 
+    const packPreflight = evaluateBridgeBenchPackPreflight({
+      baseModel: options.baseModel,
+      trainFile: pack.trainFile,
+      python: options.python,
+      useCpu: options.useCpu,
+    })
+    const effectiveLoadIn4bit =
+      (options.loadIn4bit || autoLoadIn4bit) && quantizationProbe.available
+    if ((options.loadIn4bit || autoLoadIn4bit) && !quantizationProbe.available) {
+      appendBenchmarkTraceEvent(traceWriter, 'turn.complete', {
+        turnId: pack.pack,
+        routeId: pack.pack,
+        workerId: pack.pack,
+        status: 'failed',
+        latencyMs: Math.max(0, Date.now() - packStartedAt),
+        promptTokens: null,
+        completionTokens: null,
+      })
+      packResults.push({
+        pack: pack.pack,
+        status: 'failed',
+        summary: `${pack.label} pack blocked: ${quantizationProbe.summary}`,
+        outputDir: packOutputDir,
+        evalSampleCount: pack.splitCounts.eval,
+        trainSampleCount: pack.splitCounts.train,
+        score: null,
+        metrics: null,
+        preflight: {
+          ...(packPreflight as Record<string, unknown>),
+          quantizedEvalRequested: options.loadIn4bit,
+          quantizedEvalAuto: autoLoadIn4bit,
+          quantizedEvalEffective: false,
+          bitsandbytes: quantizationProbe,
+        },
+        stderrTail: quantizationProbe.summary,
+      })
+      continue
+    }
+    if (
+      packPreflight.decision === 'preflight_blocked' ||
+      (packPreflight.decision === 'remote_required' && !effectiveLoadIn4bit)
+    ) {
+      appendBenchmarkTraceEvent(traceWriter, 'turn.complete', {
+        turnId: pack.pack,
+        routeId: pack.pack,
+        workerId: pack.pack,
+        status: 'failed',
+        latencyMs: Math.max(0, Date.now() - packStartedAt),
+        promptTokens: null,
+        completionTokens: null,
+      })
+      packResults.push({
+        pack: pack.pack,
+        status: 'failed',
+        summary: `${pack.label} pack blocked: ${packPreflight.summary}`,
+        outputDir: packOutputDir,
+        evalSampleCount: pack.splitCounts.eval,
+        trainSampleCount: pack.splitCounts.train,
+        score: null,
+        metrics: null,
+        preflight: {
+          ...(packPreflight as Record<string, unknown>),
+          quantizedEvalRequested: options.loadIn4bit,
+          quantizedEvalAuto: autoLoadIn4bit,
+          quantizedEvalEffective: effectiveLoadIn4bit,
+          bitsandbytes: quantizationProbe,
+        },
+        stderrTail: packPreflight.summary,
+      })
+      continue
+    }
+
     const pythonArgs = buildPythonArgs({
       pack,
       outputDir: packOutputDir,
@@ -468,6 +674,7 @@ async function main() {
       phaseId: options.phaseId,
       options,
       wandb,
+      loadIn4bit: effectiveLoadIn4bit,
     })
     const command = [options.python, ...pythonArgs].join(' ')
     if (options.dryRun) {
@@ -490,6 +697,13 @@ async function main() {
         command,
         score: null,
         metrics: null,
+        preflight: {
+          ...(packPreflight as Record<string, unknown>),
+          quantizedEvalRequested: options.loadIn4bit,
+          quantizedEvalAuto: autoLoadIn4bit,
+          quantizedEvalEffective: effectiveLoadIn4bit,
+          bitsandbytes: quantizationProbe,
+        },
       })
       continue
     }
@@ -522,6 +736,13 @@ async function main() {
         exitCode: result.exitCode,
         score: null,
         metrics: null,
+        preflight: {
+          ...(packPreflight as Record<string, unknown>),
+          quantizedEvalRequested: options.loadIn4bit,
+          quantizedEvalAuto: autoLoadIn4bit,
+          quantizedEvalEffective: effectiveLoadIn4bit,
+          bitsandbytes: quantizationProbe,
+        },
         stdoutTail: tailText(result.stdout),
         stderrTail: tailText(result.stderr),
       })
@@ -570,6 +791,10 @@ async function main() {
           trainSampleCount: pack.splitCounts.train,
           metrics,
           wandb,
+          quantization: {
+            loadIn4bit: effectiveLoadIn4bit,
+            bitsandbytes: quantizationProbe,
+          },
           runSummary,
           runState,
         },
@@ -596,6 +821,13 @@ async function main() {
       metrics,
       runSummary,
       runState,
+      preflight: {
+        ...(packPreflight as Record<string, unknown>),
+        quantizedEvalRequested: options.loadIn4bit,
+        quantizedEvalAuto: autoLoadIn4bit,
+        quantizedEvalEffective: effectiveLoadIn4bit,
+        bitsandbytes: quantizationProbe,
+      },
       stdoutTail: tailText(result.stdout),
       stderrTail: tailText(result.stderr),
     })
@@ -612,6 +844,13 @@ async function main() {
   const report = {
     benchmarkId,
     generatedAt: new Date().toISOString(),
+    status: options.dryRun
+      ? 'dry_run'
+      : packResults.some(result => result.status === 'failed')
+        ? evaluated.length > 0
+          ? 'completed_with_errors'
+          : 'failed_preflight'
+        : 'completed',
     bundleDir: options.bundleDir,
     bundleManifestPath: resolve(options.bundleDir, 'bundle-manifest.json'),
     outputDir,
@@ -629,6 +868,13 @@ async function main() {
     dryRun: options.dryRun,
     checks,
     wandb,
+    quantization: {
+      requestedLoadIn4bit: options.loadIn4bit,
+      autoLoadIn4bit,
+      effectiveLoadIn4bit:
+        options.loadIn4bit || (autoLoadIn4bit && quantizationProbe.available),
+      bitsandbytes: quantizationProbe,
+    },
     scoreMetric: 'eval_mean_token_accuracy_percent',
     results: packResults,
     bestResult: bestResult
@@ -638,6 +884,13 @@ async function main() {
           summary: bestResult.summary,
         }
       : null,
+    summary: options.dryRun
+      ? 'Q BridgeBench dry run completed.'
+      : bestResult
+        ? `Q BridgeBench completed. Best pack: ${bestResult.pack} (${bestResult.score?.toFixed(2) ?? 'n/a'}).`
+        : packResults.some(result => result.status === 'failed')
+          ? 'Q BridgeBench blocked before evaluation; see per-pack preflight details.'
+          : 'Q BridgeBench completed without an evaluated pack result.',
     honestyBoundary:
       'This is a local Q benchmark over audited OpenJaws packs. It is useful for in-repo comparison, but it is not the public Immaculate benchmark source of truth.',
   }
@@ -653,7 +906,8 @@ async function main() {
     reportSha256: sha256File(reportPath),
     seed: options.seed,
     traceReferences: report.traceReferences,
-    summary: report.bestResult ?? null,
+    summary: report.summary,
+    status: report.status,
   }
   const signingKey = resolveBenchmarkSigningPrivateKey()
   if (signingKey) {
@@ -711,18 +965,14 @@ async function main() {
   console.log(
     JSON.stringify(
       {
-        status: 'ok',
+        status: report.status,
         benchmarkId,
         lineageId,
         phaseId: options.phaseId,
         seed: options.seed,
         reportPath,
         receiptPath,
-        summary: options.dryRun
-          ? 'Q BridgeBench dry run completed.'
-          : bestResult
-            ? `Q BridgeBench completed. Best pack: ${bestResult.pack} (${bestResult.score?.toFixed(2) ?? 'n/a'}).`
-            : 'Q BridgeBench completed without an evaluated pack result.',
+        summary: report.summary,
         results: packResults.map(result => ({
           pack: result.pack,
           status: result.status,
@@ -737,4 +987,6 @@ async function main() {
   )
 }
 
-await main()
+if (import.meta.main) {
+  await main()
+}

@@ -106,6 +106,25 @@ Run an eval-only benchmark over the audited bundle:
 bun run q:bridgebench --bundle-dir data/sft/audited --base-model q-lite --pack all
 ```
 
+On this Windows host, the canonical benchmark Python runtime is:
+
+```powershell
+D:\openjaws\OpenJaws\.venv-gemma4\Scripts\python.exe
+```
+
+If you need an explicit 4-bit local eval path for investigation rather than the
+default fail-closed host-memory gate, use:
+
+```powershell
+bun run q:bridgebench --bundle-dir data/sft/audited --base-model q --pack agentic --load-in-4bit
+```
+
+Or opt into automatic 4-bit local BridgeBench fallback for the current shell:
+
+```powershell
+$env:OPENJAWS_BRIDGEBENCH_AUTO_4BIT='true'
+```
+
 That writes:
 
 - `bridgebench-report.json`
