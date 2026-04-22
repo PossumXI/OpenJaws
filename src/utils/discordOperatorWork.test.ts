@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtempSync, mkdirSync, rmSync } from 'fs'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { spawnSync } from 'child_process'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
+  createOperatorRunContext,
   parseDirectOperatorChatCommand,
   resolveOperatorWorkspacePath,
   type DiscordOperatorWorkspace,
@@ -131,5 +133,63 @@ describe('discordOperatorWork', () => {
         allowedRoots: [approvedRoot],
       }),
     ).toThrow(/outside the approved operator roots/i)
+  })
+
+  it('allocates a unique branch name when a prior governed branch already exists', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-operator-git-'))
+    tempDirs.push(root)
+    const repoRoot = join(root, 'openjaws')
+    const worktreeRoot = join(root, 'worktrees')
+    mkdirSync(repoRoot, { recursive: true })
+    writeFileSync(join(repoRoot, 'README.md'), '# OpenJaws\n', 'utf8')
+    spawnSync('git', ['-C', repoRoot, 'init'], { encoding: 'utf8' })
+    spawnSync('git', ['-C', repoRoot, 'config', 'user.email', 'roundtable@example.com'], {
+      encoding: 'utf8',
+    })
+    spawnSync('git', ['-C', repoRoot, 'config', 'user.name', 'Roundtable'], {
+      encoding: 'utf8',
+    })
+    spawnSync('git', ['-C', repoRoot, 'add', 'README.md'], { encoding: 'utf8' })
+    spawnSync('git', ['-C', repoRoot, 'commit', '-m', 'init'], { encoding: 'utf8' })
+    spawnSync(
+      'git',
+      [
+        '-C',
+        repoRoot,
+        'branch',
+        'discord-blackbeak-utils-blackbeak-follow-through-openjaw',
+      ],
+      { encoding: 'utf8' },
+    )
+
+    const workspace = join(repoRoot, 'src', 'utils')
+    mkdirSync(workspace, { recursive: true })
+
+    const context = createOperatorRunContext({
+      workspace,
+      jobId: 'blackbeak-follow-through-openjaws-2026-04-22t02-42-52.639z',
+      profileName: 'blackbeak',
+      worktreeRoot,
+    })
+
+    expect(context.branchName).toBe(
+      'discord-blackbeak-utils-blackbeak-follow-through-openjaw-2',
+    )
+    expect(context.worktreePath).toBe(
+      join(
+        worktreeRoot,
+        'openjaws',
+        'discord-blackbeak-utils-blackbeak-follow-through-openjaw-2',
+      ),
+    )
+    expect(context.workspacePath).toBe(
+      join(
+        worktreeRoot,
+        'openjaws',
+        'discord-blackbeak-utils-blackbeak-follow-through-openjaw-2',
+        'src',
+        'utils',
+      ),
+    )
   })
 })
