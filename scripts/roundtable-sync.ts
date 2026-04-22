@@ -1,11 +1,8 @@
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import {
-  getDiscordRoundtableQueueStatePath,
-  getDiscordRoundtableSessionStatePath,
-  syncDiscordRoundtableRuntimeState,
-} from '../src/utils/discordRoundtableRuntime.js'
-import { planDiscordRoundtableFollowThrough } from '../src/utils/discordRoundtablePlanner.js'
+  runDiscordRoundtableSteadyStatePass,
+} from '../src/utils/discordRoundtableSteadyState.js'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -66,25 +63,21 @@ function parseArgs(argv: string[]): CliOptions {
 }
 
 function formatResult(json: boolean) {
-  const result = syncDiscordRoundtableRuntimeState(REPO_ROOT)
-  const planner = planDiscordRoundtableFollowThrough({
+  const result = runDiscordRoundtableSteadyStatePass({
     root: REPO_ROOT,
     allowedRoots: resolvePlannerRoots(),
   })
   if (json) {
     return JSON.stringify(
       {
-        queueStatePath: getDiscordRoundtableQueueStatePath(REPO_ROOT),
-        sessionStatePath: getDiscordRoundtableSessionStatePath(REPO_ROOT),
-        changed: result.changed,
-        status: result.sessionState?.status ?? result.state.status,
-        channelName:
-          result.sessionState?.roundtableChannelName ??
-          result.state.roundtableChannelName,
-        turnCount: result.sessionState?.turnCount ?? null,
-        lastSummary:
-          result.sessionState?.lastSummary ?? result.state.lastSummary,
-        planner,
+        queueStatePath: result.queueStatePath,
+        sessionStatePath: result.sessionStatePath,
+        changed: result.sync.changed,
+        status: result.status,
+        channelName: result.channelName,
+        turnCount: result.turnCount,
+        lastSummary: result.lastSummary,
+        planner: result.planner,
       },
       null,
       2,
@@ -92,19 +85,17 @@ function formatResult(json: boolean) {
   }
 
   return [
-    `Roundtable sync: ${result.changed ? 'updated' : 'no changes'}`,
-    `Queue path: ${getDiscordRoundtableQueueStatePath(REPO_ROOT)}`,
-    `Session path: ${getDiscordRoundtableSessionStatePath(REPO_ROOT)}`,
-    `Status: ${result.sessionState?.status ?? result.state.status}`,
-    `Channel: ${
-      result.sessionState?.roundtableChannelName ??
-      result.state.roundtableChannelName ??
-      'unassigned'
-    }`,
-    `Turns: ${result.sessionState?.turnCount ?? 0}`,
-    `Summary: ${result.sessionState?.lastSummary ?? result.state.lastSummary ?? 'none'}`,
-    `Planner: ${planner.reason}`,
-    ...(planner.handoffPath ? [`Planner handoff: ${planner.handoffPath}`] : []),
+    `Roundtable sync: ${result.sync.changed ? 'updated' : 'no changes'}`,
+    `Queue path: ${result.queueStatePath}`,
+    `Session path: ${result.sessionStatePath}`,
+    `Status: ${result.status}`,
+    `Channel: ${result.channelName ?? 'unassigned'}`,
+    `Turns: ${result.turnCount ?? 0}`,
+    `Summary: ${result.lastSummary ?? 'none'}`,
+    `Planner: ${result.planner.reason}`,
+    ...(result.planner.handoffPath
+      ? [`Planner handoff: ${result.planner.handoffPath}`]
+      : []),
   ].join('\n')
 }
 
@@ -115,7 +106,10 @@ async function main(argv = process.argv.slice(2)) {
     if (!options.quiet) {
       console.log(formatResult(options.json))
     } else {
-      syncDiscordRoundtableRuntimeState(REPO_ROOT)
+      runDiscordRoundtableSteadyStatePass({
+        root: REPO_ROOT,
+        allowedRoots: resolvePlannerRoots(),
+      })
     }
     return
   }
@@ -124,7 +118,10 @@ async function main(argv = process.argv.slice(2)) {
     if (!options.quiet) {
       console.log(formatResult(options.json))
     } else {
-      syncDiscordRoundtableRuntimeState(REPO_ROOT)
+      runDiscordRoundtableSteadyStatePass({
+        root: REPO_ROOT,
+        allowedRoots: resolvePlannerRoots(),
+      })
     }
     await Bun.sleep(options.intervalSeconds * 1000)
   }

@@ -615,6 +615,82 @@ export async function navigateBrowserPreviewSession(args: {
   }
 }
 
+export async function handoffBrowserPreviewSession(args: {
+  sessionId: string
+  intent: BrowserPreviewIntent
+  rationale: string
+  requestedBy?: 'user' | 'agent' | 'operator'
+}): Promise<{
+  ok: boolean
+  message: string
+  session: BrowserPreviewSession
+  receipt: BrowserPreviewReceipt
+  runtime: BrowserPreviewRuntime
+}> {
+  const sessionId = args.sessionId.trim()
+  if (!sessionId) {
+    throw new Error('A browser session id is required.')
+  }
+  const intent = coerceIntent(args.intent)
+  const rationale = normalizeRationale(args.rationale)
+  const requestedBy = args.requestedBy === 'operator' ? 'agent' : args.requestedBy ?? 'agent'
+  const runtime = await resolveBrowserPreviewRuntime()
+  const access = assessBrowserPreviewMutationAccess({
+    sessionId,
+    requestedBy,
+    summary: runtime.summary,
+    runtimeMessage: runtime.message,
+  })
+  const matchedSession =
+    access.session ??
+    runtime.summary?.sessions.find(session => session.id === sessionId) ??
+    null
+
+  if (!access.ok || !matchedSession) {
+    const session = createPreviewSession('navigate_session', {
+      intent,
+      rationale,
+      requestedBy,
+      opened: false,
+      note:
+        access.message ??
+        'Browser handoff was blocked because the live session is unavailable.',
+      url: matchedSession?.url,
+    })
+    const receipt = shouldPersistSession(requestedBy)
+      ? await appendSession(session)
+      : await readBrowserPreviewReceipt()
+    return {
+      ok: false,
+      message:
+        access.message ??
+        'Browser handoff was blocked because the live session is unavailable.',
+      session,
+      receipt,
+      runtime,
+    }
+  }
+
+  const session = createPreviewSession('navigate_session', {
+    intent,
+    rationale,
+    requestedBy,
+    opened: true,
+    note: `Recorded accountable handoff for ${matchedSession.url}.`,
+    url: matchedSession.url,
+  })
+  const receipt = shouldPersistSession(requestedBy)
+    ? await appendSession(session)
+    : await readBrowserPreviewReceipt()
+  return {
+    ok: true,
+    message: `Recorded accountable handoff for ${matchedSession.title} in the OpenJaws browser lane.`,
+    session,
+    receipt,
+    runtime,
+  }
+}
+
 export async function closeBrowserPreviewSession(args: {
   sessionId: string
   requestedBy?: 'user' | 'agent'
