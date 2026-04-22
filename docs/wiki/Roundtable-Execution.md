@@ -23,7 +23,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - No-diff output is marked `skipped` and kept out of the approval lane.
 - Verification must pass before a branch is eligible for approval.
 - Fallback root scoring, approval TTL resolution, and reply/PASS inspection live in tracked shared scheduler code so the private Discord loop does not have to carry its own drifting policy copy.
-- Repo-root handoffs are narrowed onto a preferred code-bearing path such as `src`, `apps`, or `packages` before the tracked worktree lane materializes the job, so the queue stops defaulting to whole-repo no-diff audits when a planner only names the project root.
+- Repo-root handoffs are narrowed onto a preferred code-bearing path such as `src/utils`, `src/commands`, `apps/harness/src`, or `apps/dashboard/app` before the tracked worktree lane materializes the job, so the queue stops defaulting to whole-repo no-diff audits when a planner only names the project root.
 - Recent weak outcomes keep contribution forcing active, so one early diff-bearing action does not immediately let the loop relax back into PASS turns.
 
 ## Operator Commands
@@ -45,6 +45,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - The tracked CLI now targets `local-command-station/run-openjaws-visible.ps1` for bounded prompt jobs; `launch-openjaws-visible.ps1` stays reserved for interactive visible shell launches.
 - The tracked CLI hard-fails if the roundtable model is anything other than `oci:Q`, and it no longer falls back to a generic `Q_AGENT_MODEL` override.
 - `scripts/roundtable-bootstrap.ts` now owns the live session reset contract, so a private restart rebuilds `discord-roundtable.session.json` from the tracked queue/session model, rotates stale nested bundle logs, and rewrites the bundled fallback state under `roundtable-runtime/roundtable-runtime/` before the child starts posting again.
+- The active private repo now carries that same tracked bootstrap script locally, and the child launcher resolves it explicitly before startup so restart paths do not silently break when the private lane drifts behind `origin/main`.
 - `scripts/roundtable-sync.ts` is now the tracked steady-state sidecar for the bundled private lane; it mirrors the nested live bundle session back into `discord-roundtable-queue.state.json` and `discord-roundtable.session.json` every cycle so status, approvals, and coherence stop drifting after startup.
 - The tracked `src/utils/publicShowcaseActivity.ts` module now turns bounded Discord Q receipts, roundtable state, and trace summaries into a public-safe showcase feed, so the public Arobi status lane can demonstrate supervised operator activity without exposing private control routes.
 - the CLI now prints both the tracked queue path and the live session path explicitly so operator reads do not silently point at the wrong file after the queue/session split.

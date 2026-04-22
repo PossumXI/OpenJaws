@@ -58,12 +58,21 @@ describe('discordRoundtableScheduler', () => {
 
   it('prefers concrete repo paths before falling back to the repo root', () => {
     const target = resolvePreferredRoundtableExecutionTargetPath(roots[0]!, path =>
-      path.endsWith('\\src'),
+      path.endsWith('\\src\\utils') || path.endsWith('\\src'),
     )
-    expect(target).toBe('D:\\openjaws\\OpenJaws\\src')
+    expect(target).toBe('D:\\openjaws\\OpenJaws\\src\\utils')
     expect(
       resolvePreferredRoundtableExecutionTargetPath(roots[1]!, () => false),
     ).toBe('C:\\Users\\Knight\\Desktop\\Immaculate')
+  })
+
+  it('prefers narrower code-bearing app paths before broad repo scopes', () => {
+    const target = resolvePreferredRoundtableExecutionTargetPath(roots[1]!, path =>
+      path.endsWith('\\apps\\harness\\src') ||
+      path.endsWith('\\apps') ||
+      path.endsWith('\\src'),
+    )
+    expect(target).toBe('C:\\Users\\Knight\\Desktop\\Immaculate\\apps\\harness\\src')
   })
 
   it('narrows repo-root execution scopes to a concrete code path and stable work key', () => {
@@ -72,12 +81,12 @@ describe('discordRoundtableScheduler', () => {
         targetPath: 'D:\\openjaws\\OpenJaws',
         repoId: 'OpenJaws',
         roots,
-        pathExists: path => path.endsWith('\\src'),
+        pathExists: path => path.endsWith('\\src\\utils') || path.endsWith('\\src'),
       }),
     ).toEqual({
-      targetPath: 'D:\\openjaws\\OpenJaws\\src',
+      targetPath: 'D:\\openjaws\\OpenJaws\\src\\utils',
       projectKey: 'openjaws',
-      workKey: 'openjaws::src',
+      workKey: 'openjaws::src/utils',
       rootLabel: 'OpenJaws',
     })
 

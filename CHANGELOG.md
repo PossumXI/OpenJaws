@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.87 - 2026-04-22
+
+- Roundtable repo-root jobs now narrow onto deeper code-bearing paths like `src/utils`, `src/commands`, and `apps/harness/src` before they enter the autonomous worktree lane, which reduces broad repo passes and improves mergeability.
+- The active private roundtable lane now carries the tracked bootstrap script locally and the child launcher resolves it explicitly, so Discord roundtable restarts stop failing when the private repo drifts behind `origin/main`.
+
 ## 2.1.86 - 2026-04-21
 
 - Added a tracked public showcase activity feed builder plus `showcase:activity:sync`, so bounded Q/Discord/roundtable/runtime snippets can be projected onto the public Arobi showcase lane without exposing raw 00 traces or private control routes.
