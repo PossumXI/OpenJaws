@@ -363,6 +363,7 @@ OpenJaws now has a bounded `/apex` command for a local Apex sidecar and launcher
 - `chrono-bridge` is now a dedicated backup sidecar around `apps/chrono/src/lib.rs`, not a fake embedded backup pane
 - browser, security center, vault, mail, and related Rust UIs stay out of process
 - `/apex` now has live `Overview`, `Launch`, `Mail`, `Chat`, `Store`, `System`, `Chrono`, and `Security` tabs over the bridge-backed workspace summary
+- `/status` now also surfaces bounded Apex governance recommendations, so the same tenant-governance lane can point operators toward `Mail`, `Security`, `System`, or `Store` follow-up work without widening the bridge contract
 - `/status` now surfaces Apex bridge health, workspace summary, and Chrono bridge state when the local Apex roots are configured
 - Aegis Mail now has bounded move / delete / flag actions over the trusted bridge
 - Shadow Chat can now create bridged sessions in addition to sending into existing ones
@@ -370,6 +371,19 @@ OpenJaws now has a bounded `/apex` command for a local Apex sidecar and launcher
 - Apex launches now use a reduced allowlisted environment instead of inheriting the full OpenJaws secret surface
 - the workspace bridge launcher now auto-discovers a local `libclang` runtime when the upstream Rust workspace needs it on Windows
 - the bridge is only trusted when OpenJaws launched it itself, unless the operator explicitly sets `OPENJAWS_APEX_TRUST_LOCALHOST=1`
+- the default bridge/runtime contract is:
+  - `OPENJAWS_APEX_WORKSPACE_API_URL=http://127.0.0.1:8797`
+  - `OPENJAWS_APEX_CHRONO_API_URL=http://127.0.0.1:8798`
+  - `OPENJAWS_APEX_BROWSER_API_URL=http://127.0.0.1:8799`
+  - `OPENJAWS_APEX_TENANT_GOVERNANCE_API_URL=http://127.0.0.1:3000`
+- Apex bridge logs and state files live under `%TEMP%\openjaws-apex\`:
+  - `workspace-api.log`
+  - `workspace-api-state.json`
+  - `chrono-bridge.log`
+  - `chrono-bridge-state.json`
+  - `browser-bridge.log`
+  - `browser-bridge-state.json`
+- the next safe upstream-backed TUI seam is `settings` over `workspace_api` (`/api/v1/settings/summary`, `/api/v1/settings/update`, `/api/v1/settings/reset`); `vault` remains launcher-backed until it gets a narrower trust contract
 - `Notifications` and `argus` still stay out of agent control until they have their own narrow localhost bridges plus explicit confirmation and audit ladders
 
 See [Apex Workspace Bridge](docs/wiki/Apex-Workspace.md) for setup, trust boundaries, and the current “bridge not kernel embed” contract.

@@ -99,9 +99,12 @@ OpenJaws now has a bounded local `/apex` lane for an external Apex workspace.
 - `/apex` can now send Aegis Mail drafts, move / delete / flag bounded mail items, create Shadow Chat sessions, seal messages into those sessions, and install Store apps with a structured receipt through the same trusted bridge
 - browser, security center, vault, and the rest of the Apex Rust desktop apps stay launcher-backed and out of process
 - `/apex` now exposes dedicated `Mail`, `Chat`, `Store`, `System`, `Chrono`, and `Security` tabs instead of flattening everything into one generic overview
+- `/status` now surfaces bounded Apex governance recommendations too, so the same tenant-governance lane can push the operator toward the right subsystem tab without inventing a second analytics shape
 - `browser` remains an honest launcher-only tool today; OpenJaws does not fake an embedded browser pane that does not exist
 - `/status` now surfaces both the Apex workspace bridge and the Chrono bridge directly when the Apex roots are configured
 - the bridge now uses a reduced env plus a trusted-launch contract instead of blindly trusting any localhost listener
+- the default bridge/runtime contract is `8797` for `workspace_api`, `8798` for `chrono-bridge`, `8799` for the browser bridge, and `%TEMP%\openjaws-apex\*` for the runtime logs/state files
+- the next safe upstream-backed TUI seam is `settings`; `vault` still stays launcher-backed until its trust boundary is narrower
 - `Notifications` and `argus` stay out of agent control until they get their own narrow localhost bridges plus explicit confirmation and audit ladders
 
 See [Apex Workspace Bridge](Apex-Workspace.md) for the full setup and trust boundary.
