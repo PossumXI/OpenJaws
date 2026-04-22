@@ -34,6 +34,7 @@ import {
   resolveRoundtableDurationHours,
   resolveRoundtableApprovalTtlHours,
 } from './discordRoundtableScheduler.js'
+import { queuePublicShowcaseActivitySync } from './publicShowcaseActivity.js'
 
 type JsonRecord = Record<string, unknown>
 
@@ -291,8 +292,36 @@ function getDiscordRoundtableObservedRuntimeDirs(root = process.cwd()): string[]
 }
 
 function getDiscordRoundtableLogPath(root = process.cwd()): string {
+  const getTimestampedStdoutLogScore = (path: string): number => {
+    const match = /discord-roundtable-(\d{8}T\d{6}Z)\.stdout\.log$/i.exec(
+      path.replace(/\\/g, '/'),
+    )
+    if (!match?.[1]) {
+      return 0
+    }
+    const stamp = match[1]
+    const isoLike = `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(
+      6,
+      8,
+    )}T${stamp.slice(9, 11)}:${stamp.slice(11, 13)}:${stamp.slice(13, 15)}.000Z`
+    const parsed = Date.parse(isoLike)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
   const candidates = getDiscordRoundtableObservedRuntimeDirs(root)
-    .map(dir => join(dir, 'discord-roundtable.log'))
+    .flatMap(dir => {
+      const paths = [join(dir, 'discord-roundtable.log')].filter(path =>
+        existsSync(path),
+      )
+      try {
+        const timestampedStdoutLogs = readdirSync(dir)
+          .filter(name => /^discord-roundtable-.*\.stdout\.log$/i.test(name))
+          .map(name => join(dir, name))
+        return [...paths, ...timestampedStdoutLogs]
+      } catch {
+        return paths
+      }
+    })
     .filter(path => existsSync(path))
 
   if (candidates.length === 0) {
@@ -300,11 +329,25 @@ function getDiscordRoundtableLogPath(root = process.cwd()): string {
   }
 
   const ranked = candidates.sort((left, right) => {
-    try {
-      return statSync(right).mtimeMs - statSync(left).mtimeMs
-    } catch {
-      return 0
+    const rightTimestampedScore = getTimestampedStdoutLogScore(right)
+    const leftTimestampedScore = getTimestampedStdoutLogScore(left)
+    if (rightTimestampedScore !== leftTimestampedScore) {
+      return rightTimestampedScore - leftTimestampedScore
     }
+    try {
+      const mtimeDelta = statSync(right).mtimeMs - statSync(left).mtimeMs
+      if (mtimeDelta !== 0) {
+        return mtimeDelta
+      }
+    } catch {
+      // fall through to deterministic tie-breakers
+    }
+    const rightIsTimestamped = /\.stdout\.log$/i.test(right)
+    const leftIsTimestamped = /\.stdout\.log$/i.test(left)
+    if (rightIsTimestamped !== leftIsTimestamped) {
+      return rightIsTimestamped ? 1 : -1
+    }
+    return right.localeCompare(left)
   })
   return ranked[0]!
 }
@@ -320,6 +363,15 @@ function deriveRoundtableStatusFromSummary(
 ): DiscordRoundtableRuntimeState['status'] | null {
   if (!summary) {
     return null
+  }
+  if (
+    /roundtable(?: window \d+)? live in #/i.test(summary) ||
+    /\bposted turn\b/i.test(summary) ||
+    /\blaunching action\b/i.test(summary) ||
+    /\baction completed\b/i.test(summary) ||
+    /\bpassed turn\b/i.test(summary)
+  ) {
+    return 'running'
   }
   if (/awaiting_approval/i.test(summary)) {
     return 'awaiting_approval'
@@ -1255,6 +1307,10 @@ export function saveDiscordRoundtableRuntimeState(args: {
 }) {
   writeJsonFile(getDiscordRoundtableStatePath(args.root), args.state)
   writeJsonFile(getDiscordRoundtableQueueStatePath(args.root), args.state)
+  queuePublicShowcaseActivitySync({
+    root: args.root,
+    roundtableRuntime: args.state,
+  })
 }
 
 export function saveDiscordRoundtableSessionState(args: {
@@ -1262,6 +1318,10 @@ export function saveDiscordRoundtableSessionState(args: {
   state: DiscordRoundtableSessionState
 }) {
   writeJsonFile(getDiscordRoundtableSessionStatePath(args.root), args.state)
+  queuePublicShowcaseActivitySync({
+    root: args.root,
+    roundtableSession: args.state,
+  })
 }
 
 export function stageDiscordRoundtableHandoff(args: {

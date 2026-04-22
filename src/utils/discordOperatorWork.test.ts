@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtempSync, mkdirSync, rmSync } from 'fs'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { spawnSync } from 'child_process'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
+  createOperatorRunContext,
   parseDirectOperatorChatCommand,
   resolveOperatorWorkspacePath,
   type DiscordOperatorWorkspace,
@@ -52,6 +54,49 @@ describe('discordOperatorWork', () => {
     })
   })
 
+  it('parses plain-English OpenJaws work requests', () => {
+    expect(
+      parseDirectOperatorChatCommand(
+        'use openjaws in Immaculate to tighten the roundtable guardrails',
+      ),
+    ).toEqual({
+      action: 'ask-openjaws',
+      cwd: 'Immaculate',
+      text: 'tighten the roundtable guardrails',
+    })
+  })
+
+  it('parses plain-English workspace and status requests', () => {
+    expect(parseDirectOperatorChatCommand('show the openjaws workspaces')).toEqual({
+      action: 'workspaces',
+      cwd: null,
+      text: null,
+    })
+    expect(parseDirectOperatorChatCommand("what is the openjaws status")).toEqual({
+      action: 'openjaws-status',
+      cwd: null,
+      text: null,
+    })
+    expect(parseDirectOperatorChatCommand('check the roundtable status')).toEqual({
+      action: 'roundtable-status',
+      cwd: null,
+      text: null,
+    })
+  })
+
+  it('parses plain-English push review commands', () => {
+    expect(parseDirectOperatorChatCommand('list the pending pushes')).toEqual({
+      action: 'pending-pushes',
+      cwd: null,
+      text: null,
+    })
+    expect(parseDirectOperatorChatCommand('confirm push rt-job-42')).toEqual({
+      action: 'confirm-push',
+      cwd: null,
+      text: 'rt-job-42',
+    })
+  })
+
   it('resolves workspace aliases inside approved roots', () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-operator-root-'))
     tempDirs.push(root)
@@ -88,5 +133,63 @@ describe('discordOperatorWork', () => {
         allowedRoots: [approvedRoot],
       }),
     ).toThrow(/outside the approved operator roots/i)
+  })
+
+  it('allocates a unique branch name when a prior governed branch already exists', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-operator-git-'))
+    tempDirs.push(root)
+    const repoRoot = join(root, 'openjaws')
+    const worktreeRoot = join(root, 'worktrees')
+    mkdirSync(repoRoot, { recursive: true })
+    writeFileSync(join(repoRoot, 'README.md'), '# OpenJaws\n', 'utf8')
+    spawnSync('git', ['-C', repoRoot, 'init'], { encoding: 'utf8' })
+    spawnSync('git', ['-C', repoRoot, 'config', 'user.email', 'roundtable@example.com'], {
+      encoding: 'utf8',
+    })
+    spawnSync('git', ['-C', repoRoot, 'config', 'user.name', 'Roundtable'], {
+      encoding: 'utf8',
+    })
+    spawnSync('git', ['-C', repoRoot, 'add', 'README.md'], { encoding: 'utf8' })
+    spawnSync('git', ['-C', repoRoot, 'commit', '-m', 'init'], { encoding: 'utf8' })
+    spawnSync(
+      'git',
+      [
+        '-C',
+        repoRoot,
+        'branch',
+        'discord-blackbeak-utils-blackbeak-follow-through-openjaw',
+      ],
+      { encoding: 'utf8' },
+    )
+
+    const workspace = join(repoRoot, 'src', 'utils')
+    mkdirSync(workspace, { recursive: true })
+
+    const context = createOperatorRunContext({
+      workspace,
+      jobId: 'blackbeak-follow-through-openjaws-2026-04-22t02-42-52.639z',
+      profileName: 'blackbeak',
+      worktreeRoot,
+    })
+
+    expect(context.branchName).toBe(
+      'discord-blackbeak-utils-blackbeak-follow-through-openjaw-2',
+    )
+    expect(context.worktreePath).toBe(
+      join(
+        worktreeRoot,
+        'openjaws',
+        'discord-blackbeak-utils-blackbeak-follow-through-openjaw-2',
+      ),
+    )
+    expect(context.workspacePath).toBe(
+      join(
+        worktreeRoot,
+        'openjaws',
+        'discord-blackbeak-utils-blackbeak-follow-through-openjaw-2',
+        'src',
+        'utils',
+      ),
+    )
   })
 })

@@ -44,6 +44,43 @@ export function sanitizeBranchSegment(value: string): string {
   return normalized.length > 0 ? normalized.slice(0, 32) : 'task'
 }
 
+function branchExists(gitRoot: string, branchName: string): boolean {
+  const result = spawnSync(
+    'git',
+    ['-C', gitRoot, 'branch', '--list', branchName],
+    {
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: '0',
+        GIT_ASKPASS: '',
+      },
+      encoding: 'utf8',
+    },
+  )
+  if ((result.status ?? 1) !== 0) {
+    return false
+  }
+  return Boolean(result.stdout?.trim())
+}
+
+function allocateUniqueOperatorBranch(args: {
+  gitRoot: string
+  repoWorktreesDir: string
+  baseBranchName: string
+}): { branchName: string; worktreePath: string } {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const suffix = attempt === 0 ? '' : `-${(attempt + 1).toString(36)}`
+    const branchName = `${args.baseBranchName}${suffix}`.slice(0, 92)
+    const worktreePath = join(args.repoWorktreesDir, branchName)
+    if (!existsSync(worktreePath) && !branchExists(args.gitRoot, branchName)) {
+      return { branchName, worktreePath }
+    }
+  }
+  throw new Error(
+    `Failed to allocate a unique isolated worktree branch for ${args.baseBranchName}.`,
+  )
+}
+
 export function relativeWithinRoot(
   root: string,
   candidate: string,
@@ -91,6 +128,7 @@ export function parseDirectOperatorChatCommand(
   content: string,
 ): DiscordOperatorParsedCommand | null {
   const trimmed = content.trim()
+  const normalized = trimmed.toLowerCase()
   const naturalStartMatch = trimmed.match(
     /^start (?:an )?openjaws session(?: for project)?\s+(.+?)(?:\s+and\s+(.+))?$/i,
   )
@@ -110,6 +148,77 @@ export function parseDirectOperatorChatCommand(
         cwd: workspace,
         text: null,
       }
+    }
+  }
+  const naturalAskMatch = trimmed.match(
+    /^(?:use|run)\s+openjaws(?:\s+in|\s+on|\s+for(?: project)?)?\s+(.+?)\s+(?:to|and)\s+(.+)$/i,
+  )
+  if (naturalAskMatch) {
+    return {
+      action: 'ask-openjaws',
+      cwd: naturalAskMatch[1]?.trim() || null,
+      text: naturalAskMatch[2]?.trim() || null,
+    }
+  }
+  if (
+    /^(?:show|check|list)\s+(?:the\s+)?(?:openjaws\s+)?workspaces\b/i.test(
+      trimmed,
+    )
+  ) {
+    return {
+      action: 'workspaces',
+      cwd: null,
+      text: null,
+    }
+  }
+  if (
+    /^(?:show|check|what(?:'s| is))\s+(?:the\s+)?openjaws status\b/i.test(
+      trimmed,
+    )
+  ) {
+    return {
+      action: 'openjaws-status',
+      cwd: null,
+      text: null,
+    }
+  }
+  if (
+    /^(?:show|check|what(?:'s| is))\s+(?:the\s+)?roundtable status\b/i.test(
+      trimmed,
+    )
+  ) {
+    return {
+      action: 'roundtable-status',
+      cwd: null,
+      text: null,
+    }
+  }
+  if (
+    /^(?:show|check|list)\s+(?:the\s+)?(?:pending\s+)?push(?:es)?\b/i.test(
+      trimmed,
+    )
+  ) {
+    return {
+      action: 'pending-pushes',
+      cwd: null,
+      text: null,
+    }
+  }
+  const confirmMatch = trimmed.match(
+    /^(?:confirm|approve)\s+push(?:\s+for)?\s+(.+)$/i,
+  )
+  if (confirmMatch) {
+    return {
+      action: 'confirm-push',
+      cwd: null,
+      text: confirmMatch[1]?.trim() || null,
+    }
+  }
+  if (normalized === 'what can openjaws do' || normalized === 'what can openjaws do?') {
+    return {
+      action: 'workspaces',
+      cwd: null,
+      text: null,
     }
   }
   if (!/^openjaws\b/i.test(trimmed)) {
@@ -252,12 +361,16 @@ export function createOperatorRunContext(args: {
 
   const gitRelativePath = relativeWithinRoot(gitRoot, args.workspace) ?? '.'
   const repoLabel = sanitizeBranchSegment(basename(gitRoot) || 'repo')
-  const branchName = `discord-${sanitizeBranchSegment(args.profileName)}-${sanitizeBranchSegment(
+  const baseBranchName = `discord-${sanitizeBranchSegment(args.profileName)}-${sanitizeBranchSegment(
     basename(args.workspace) || repoLabel,
   )}-${sanitizeBranchSegment(args.jobId)}`.slice(0, 92)
   const repoWorktreesDir = join(args.worktreeRoot, repoLabel)
   mkdirSync(repoWorktreesDir, { recursive: true })
-  const worktreePath = join(repoWorktreesDir, branchName)
+  const { branchName, worktreePath } = allocateUniqueOperatorBranch({
+    gitRoot,
+    repoWorktreesDir,
+    baseBranchName,
+  })
   const addResult = spawnSync(
     'git',
     ['-C', gitRoot, 'worktree', 'add', '-b', branchName, worktreePath, 'HEAD'],

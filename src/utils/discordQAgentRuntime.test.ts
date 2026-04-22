@@ -3,6 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
+  buildDiscordQAgentPublicShowcaseActivityEntry,
+  buildDiscordQAgentPublicOperatorLine,
   createDiscordQAgentReceipt,
   getDiscordQAgentRoutePolicies,
   readDiscordQAgentReceipt,
@@ -114,6 +116,49 @@ describe('discordQAgentRuntime', () => {
     expect(updates?.id).toBe('updates')
     expect(updates?.lastSummary).toBeUndefined()
     expect(updates?.lastPostedAt).toBeUndefined()
+  })
+
+  it('builds a sanitized public operator line without leaking raw paths', () => {
+    const receipt = createDiscordQAgentReceipt({
+      backend: 'Q backend',
+      scheduleEnabled: true,
+      scheduleIntervalMs: 900_000,
+      voiceEnabled: false,
+      voiceReady: false,
+    })
+    receipt.gateway.connected = true
+    receipt.operator.lastAction = 'ask-openjaws'
+    receipt.operator.activeProcessCwd = 'C:\\Users\\Knight\\Desktop\\cheeks\\Asgard\\ignite\\apex-os-project\\apps\\browser'
+
+    expect(buildDiscordQAgentPublicOperatorLine(receipt)).toBe(
+      'Q is executing a bounded OpenJaws task in Apex apps through the supervised OCI-backed Discord operator lane.',
+    )
+    expect(buildDiscordQAgentPublicShowcaseActivityEntry(receipt)).toMatchObject({
+      title: 'Supervised Q operator activity',
+      kind: 'operator',
+      source: 'OpenJaws Discord lane',
+      tags: ['q', 'discord', 'openjaws', 'bounded', 'apex-apps'],
+    })
+  })
+
+  it('falls back to a bounded patrol activity when no operator task is active', () => {
+    const receipt = createDiscordQAgentReceipt({
+      backend: 'Q backend',
+      scheduleEnabled: true,
+      scheduleIntervalMs: 900_000,
+      voiceEnabled: false,
+      voiceReady: false,
+    })
+    receipt.gateway.connected = true
+    receipt.routing.lastDecision = 'posted patrol digest -> #q-command-station'
+    receipt.schedule.lastCompletedAt = '2026-04-22T01:02:26.562Z'
+
+    expect(buildDiscordQAgentPublicShowcaseActivityEntry(receipt)).toMatchObject({
+      id: 'discord-q-patrol-2026-04-22T01:02:26.562Z',
+      title: 'Supervised Q patrol update',
+      kind: 'patrol',
+      tags: ['q', 'discord', 'status', 'bounded'],
+    })
   })
 
   it('normalizes older receipt payloads when reading from disk', () => {

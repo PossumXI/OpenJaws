@@ -22,6 +22,7 @@ The current OpenJaws side exposes:
 - dedicated `chrono-bridge` health, summary, and bounded backup actions from inside `/apex`
 - browser bridge health plus native session summary inside `/apex`
 - bounded operator handoff receipts from `/apex` Browser into accountable `/preview`
+- bounded recent operator receipts from `/apex` mail/chat/store/chrono/browser actions, surfaced in `/status`, Overview, and the shared public-safe showcase feed
 - `/status` now surfaces Apex browser bridge truth separately from the general browser preview receipt
 - `/status` now fuses Apex system and security posture instead of only showing bridge reachability
 - guarded launchers for:
@@ -107,3 +108,33 @@ The cleaner next steps are:
 - more bounded mail/chat/store operator actions over `workspace_api`
 - launcher-backed security/vault actions with better receipts
 - keep launcher-backed browser actions separate, and add stable bridge endpoints first whenever deeper OpenJaws browser control is needed
+
+## Tenant Governance Parity
+
+As of 2026-04-21, `/apex` now consumes the same tenant-governance summary lane that ApexOS and the Websites dashboard use.
+
+Current contract:
+
+- `src/utils/apexWorkspace.ts`
+  - prefers `GET /api/v1/governance/summary` from `workspace_api` as the operator-local governance bridge
+  - uses `GET /api/v1/tenant/analytics` through session-ingress auth only as a secondary enrichment fallback
+  - falls back to the mirrored summary when session-ingress auth is temporarily unavailable
+  - normalizes the result into `ApexTenantGovernanceSummary`
+  - mirrors the normalized summary into `docs/wiki/Apex-Tenant-Governance.json` for other bounded local consumers
+- `src/commands/apex/apex.tsx`
+  - renders the governed tenant lane in the Overview tab
+  - shows governance pressure in the TUI banner instead of a binary ready/offline label
+  - now renders an `Operator actions` section from the same tenant-governance summary
+  - keeps browser and Chrono bridge surfaces intact
+- `src/components/Settings/Status.tsx`
+  - now pulls the same tenant-governance summary into `/status`
+- `src/utils/status.tsx`
+  - now surfaces an `Apex governance` property block in the shared status panel when the tenant lane is available
+
+Important boundary:
+
+- the TUI should consume the shared tenant-governance summary, not re-invent a second analytics shape
+- the public showcase overlay should read the mirrored sanitized governance summary, not issue a second live tenant-analytics fetch
+- forward-looking producers should seed `analytics_dimensions.operator_actions`
+- the TUI keeps `governedActionBreakdown` as a fallback only for older data already in the lane
+- recent `/apex` operator actions now land in a separate bounded local receipt so public-safe activity can prove real mail/chat/store/chrono/browser work without leaking payload bodies or private browser history

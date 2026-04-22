@@ -5,6 +5,7 @@ import {
   getDiscordRoundtableSessionStatePath,
   syncDiscordRoundtableRuntimeState,
 } from '../src/utils/discordRoundtableRuntime.js'
+import { planDiscordRoundtableFollowThrough } from '../src/utils/discordRoundtablePlanner.js'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -13,6 +14,18 @@ type CliOptions = {
   intervalSeconds: number
   json: boolean
   quiet: boolean
+}
+
+function resolvePlannerRoots(): string[] {
+  const operatorRoots = (process.env.DISCORD_OPERATOR_ALLOWED_ROOTS ?? '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean)
+  const knowledgeRoots = (process.env.ROUNDTABLE_KNOWLEDGE_ROOTS ?? '')
+    .split('|')
+    .map(value => value.trim())
+    .filter(Boolean)
+  return Array.from(new Set([...operatorRoots, ...knowledgeRoots, REPO_ROOT]))
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -54,6 +67,10 @@ function parseArgs(argv: string[]): CliOptions {
 
 function formatResult(json: boolean) {
   const result = syncDiscordRoundtableRuntimeState(REPO_ROOT)
+  const planner = planDiscordRoundtableFollowThrough({
+    root: REPO_ROOT,
+    allowedRoots: resolvePlannerRoots(),
+  })
   if (json) {
     return JSON.stringify(
       {
@@ -67,6 +84,7 @@ function formatResult(json: boolean) {
         turnCount: result.sessionState?.turnCount ?? null,
         lastSummary:
           result.sessionState?.lastSummary ?? result.state.lastSummary,
+        planner,
       },
       null,
       2,
@@ -85,6 +103,8 @@ function formatResult(json: boolean) {
     }`,
     `Turns: ${result.sessionState?.turnCount ?? 0}`,
     `Summary: ${result.sessionState?.lastSummary ?? result.state.lastSummary ?? 'none'}`,
+    `Planner: ${planner.reason}`,
+    ...(planner.handoffPath ? [`Planner handoff: ${planner.handoffPath}`] : []),
   ].join('\n')
 }
 

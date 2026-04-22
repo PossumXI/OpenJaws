@@ -74,8 +74,23 @@ export function resolvePreferredRoundtableExecutionTargetPath(
   root: DiscordRoundtableSchedulerRoot,
   pathExists: (path: string) => boolean = existsSync,
 ): string {
-  for (const relativePath of ['src', 'apps', 'packages', 'scripts', 'internal']) {
-    const candidate = `${root.path}\\${relativePath}`
+  const candidatePaths = [
+    'src/utils',
+    'src/commands',
+    'src/services',
+    'src/components',
+    'src',
+    'apps/harness/src',
+    'apps/dashboard/app',
+    'apps/dashboard/src',
+    'apps',
+    'internal/cortex',
+    'internal',
+    'packages',
+    'scripts',
+  ]
+  for (const relativePath of candidatePaths) {
+    const candidate = `${root.path}\\${relativePath.replace(/\//g, '\\')}`
     if (pathExists(candidate)) {
       return candidate
     }

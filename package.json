@@ -51,6 +51,7 @@
     "roundtable:sync": "bun scripts/roundtable-sync.ts",
     "roundtable:runtime": "bun scripts/roundtable-runtime.ts --json",
     "runtime:coherence": "bun scripts/runtime-coherence.ts --json",
+    "showcase:activity:sync": "bun scripts/sync-public-showcase-activity.ts --json",
     "dispatch:q-route": "bun scripts/dispatch-q-route.ts",
     "process:q-routes": "bun scripts/process-q-routes.ts",
     "poll:q-route": "bun scripts/poll-q-route-result.ts",

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
-import { resolve } from 'path'
+import { basename, resolve } from 'path'
+import { queuePublicShowcaseActivitySync } from './publicShowcaseActivity.js'
 
 export type DiscordQAgentRoutePolicy = {
   id: 'command_station' | 'updates' | 'training'
@@ -133,6 +134,144 @@ export type DiscordQAgentReceipt = {
 }
 
 const MAX_DISCORD_Q_AGENT_EVENTS = 25
+
+function humanizeDiscordOperatorAction(
+  action: string | null | undefined,
+): string | null {
+  const normalized = action?.trim().toLowerCase()
+  if (!normalized) {
+    return null
+  }
+  switch (normalized) {
+    case 'start-openjaws':
+      return 'opening a bounded OpenJaws workspace'
+    case 'ask-openjaws':
+      return 'executing a bounded OpenJaws task'
+    case 'ask-github-openjaws':
+      return 'preparing a remote GitHub execution handoff'
+    case 'confirm-push':
+      return 'preparing a reviewed branch push'
+    case 'roundtable-status':
+      return 'auditing the governed roundtable queue'
+    case 'pending-pushes':
+      return 'reviewing bounded branch approvals'
+    case 'workspaces':
+      return 'reviewing supervised workspaces'
+    case 'github-status':
+      return 'checking GitHub execution readiness'
+    case 'openjaws-status':
+      return 'checking OpenJaws operator health'
+    case 'stop-openjaws':
+      return 'closing a bounded OpenJaws workspace'
+    default:
+      return `handling ${normalized.replace(/[-_]+/g, ' ')}`
+  }
+}
+
+function resolveDiscordOperatorScope(
+  cwd: string | null | undefined,
+): string | null {
+  const normalized = cwd?.trim()
+  if (!normalized) {
+    return null
+  }
+  const lower = normalized.replace(/\//g, '\\').toLowerCase()
+  const mappings: Array<[string, string]> = [
+    ['\\desktop\\cheeks\\asgard\\ignite\\apex-os-project\\apps', 'Apex apps'],
+    ['\\desktop\\cheeks\\asgard', 'Asgard'],
+    ['\\desktop\\immaculate', 'Immaculate'],
+    ['\\openjaws\\openjaws', 'OpenJaws'],
+    ['\\desktop\\sealed', 'SEALED'],
+  ]
+  for (const [pattern, label] of mappings) {
+    if (lower.includes(pattern)) {
+      return label
+    }
+  }
+  const fallback = basename(normalized.replace(/[\\/]+$/, ''))
+  return fallback.length > 0 ? fallback : null
+}
+
+function trimDiscordReceiptLine(value: string, limit = 160): string {
+  return value.length > limit ? `${value.slice(0, limit - 1)}…` : value
+}
+
+export function buildDiscordQAgentPublicOperatorLine(
+  receipt: DiscordQAgentReceipt,
+): string | null {
+  const action = humanizeDiscordOperatorAction(receipt.operator.lastAction)
+  const scope = resolveDiscordOperatorScope(receipt.operator.activeProcessCwd)
+  if (action) {
+    return trimDiscordReceiptLine(
+      [
+        'Q is',
+        action,
+        scope ? `in ${scope}` : null,
+        'through the supervised OCI-backed Discord operator lane.',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    )
+  }
+  if (receipt.gateway.connected) {
+    return 'Q is online through the supervised OCI-backed Discord operator lane with no active bounded task.'
+  }
+  return null
+}
+
+export function buildDiscordQAgentPublicShowcaseActivityEntry(
+  receipt: DiscordQAgentReceipt,
+): {
+  id: string
+  timestamp: string | null
+  title: string
+  summary: string
+  kind: string
+  source: string
+  tags: string[]
+} | null {
+  if (receipt.operator.lastAction) {
+    const summary = buildDiscordQAgentPublicOperatorLine(receipt)
+    if (!summary) {
+      return null
+    }
+    const timestamp =
+      receipt.operator.lastCompletedAt ??
+      receipt.operator.activeProcessStartedAt ??
+      receipt.updatedAt
+    const scope = resolveDiscordOperatorScope(receipt.operator.activeProcessCwd)
+    const tags = ['q', 'discord', 'openjaws', 'bounded']
+    if (scope) {
+      tags.push(scope.toLowerCase().replace(/\s+/g, '-'))
+    }
+    return {
+      id: `discord-q-operator-${receipt.operator.lastAction}-${timestamp ?? 'latest'}`,
+      timestamp,
+      title: 'Supervised Q operator activity',
+      summary,
+      kind: 'operator',
+      source: 'OpenJaws Discord lane',
+      tags,
+    }
+  }
+  if (receipt.gateway.connected && (receipt.routing.lastDecision || receipt.patrol.lastSummary)) {
+    const timestamp =
+      receipt.schedule.lastCompletedAt ??
+      receipt.patrol.lastCompletedAt ??
+      receipt.updatedAt
+    return {
+      id: `discord-q-patrol-${timestamp ?? 'latest'}`,
+      timestamp,
+      title: 'Supervised Q patrol update',
+      summary:
+        'Q is online through the supervised OCI-backed Discord operator lane and is publishing bounded status updates without opening the sealed 00 lane.',
+      kind: 'patrol',
+      source: 'OpenJaws Discord lane',
+      tags: ['q', 'discord', 'status', 'bounded'],
+    }
+  }
+  return null
+}
 
 export function getDiscordQAgentReceiptPath(root = process.cwd()): string {
   return resolve(root, 'local-command-station', 'discord-q-agent-receipt.json')
@@ -371,6 +510,11 @@ export function writeDiscordQAgentReceipt(
 ) {
   const receiptPath = getDiscordQAgentReceiptPath(root)
   writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8')
+  queuePublicShowcaseActivitySync({
+    root,
+    qAgentReceipt: receipt,
+    qEntry: buildDiscordQAgentPublicShowcaseActivityEntry(receipt),
+  })
 }
 
 export function recordDiscordQAgentEvent(

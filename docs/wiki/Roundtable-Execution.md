@@ -5,7 +5,8 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 ## What It Does
 
 - Immaculate or an operator can stage governed handoff JSON files into `local-command-station/roundtable-runtime/handoffs/`.
-- OpenJaws ingests those handoffs into a persisted queue at `local-command-station/roundtable-runtime/discord-roundtable.state.json`.
+- OpenJaws ingests those handoffs into a persisted queue at `local-command-station/roundtable-runtime/discord-roundtable-queue.state.json`, with a compatibility mirror in `discord-roundtable.state.json`.
+- The live Discord/Q runtime now also writes a sanitized public activity overlay to `.arobi-public/showcase-activity.json`; the shared reader aggregates bounded persona receipts from `local-command-station/bots/*/discord-agent-receipt.json`, and Asgard merges that into `fabric.showcase.activityFeed` instead of the raw public ledger panel.
 - Each queued action runs through the same isolated worktree path as the direct Discord operator lane.
 - Verified code-bearing branches move into the existing approval queue in `local-command-station/openjaws-operator-state.json`.
 - Nothing is pushed automatically.
@@ -18,6 +19,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - Mixed code-plus-artifact output is held back and never promoted into the approval lane.
 - Artifact-only output is held back and never promoted into the approval lane.
 - No-diff output is marked `skipped` and kept out of the approval lane.
+- The public showcase overlay stays redacted; raw ledger events, private paths, branch/worktree data, and operator-only receipts never cross into `.arobi-public/showcase-activity.json`.
 - Verification must pass before a branch is eligible for approval.
 - Fallback root scoring, approval TTL resolution, and reply/PASS inspection live in tracked shared scheduler code so the private Discord loop does not have to carry its own drifting policy copy.
 - Recent weak outcomes keep contribution forcing active, so one early diff-bearing action does not immediately let the loop relax back into PASS turns.
@@ -29,7 +31,8 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - Override the 4-hour window or approval TTL when you need a tighter operator pass: `bun run roundtable:runtime -- --duration-hours 2 --approval-ttl-hours 0.5`
 - Inspect state: `bun run roundtable:runtime`
 - Inspect state from Discord: `@Q operator roundtable-status`
-- Approve a generated branch after review: `@Q operator confirm-push <job-id-or-branch>`
+- Approve a generated branch after review: `@Q operator confirm-push <job-id>`
+- Manually refresh the public showcase overlay: `bun run showcase:activity:sync`
 
 ## Runtime Notes
 
@@ -39,6 +42,8 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - The tracked runtime readers now also reconcile the live `discord-roundtable.log`, and sync passes preserve the authoritative bound session channel, so `@Q operator roundtable-status` and `bun run runtime:coherence` keep reporting the actual active lane such as `#dev_support` instead of a stale preferred-channel alias.
 - Approval-ready transitions include the generated branch, verification summary, and attached `receipt.json` so operators can confirm from Discord without opening the local state file first.
 - `runtime:coherence` reads the roundtable state file directly, so coherence checks can see whether the lane is idle, queued, running, or waiting for approval.
+- `src/utils/publicShowcaseActivity.ts` is the shared bounded writer for the public showcase overlay. The live receipt/state writers and `scripts/discord-q-agent.ts` now queue background syncs there whenever a Discord persona, Q, or the roundtable moves.
+- If `ASGARD_PUBLIC_SHOWCASE_LEDGER_SYNC_ENABLED=1` is set, the OpenJaws overlay writer can also call the hardened Asgard ledger bridge in `--auto` mode after the overlay write completes. That bridge is lock/cooldown/checkpoint-gated; direct raw Discord receipt posts are still disallowed.
 - The queue is repo-scoped on purpose. It does not stack multiple active roundtable jobs onto the same project lane at once.
 
 ## Discord Agent Pass
