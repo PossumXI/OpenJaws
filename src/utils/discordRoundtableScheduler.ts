@@ -38,6 +38,13 @@ export type DiscordRoundtableReplyInspection = {
   shouldRetry: boolean
 }
 
+export type DiscordRoundtableExecutionScope = {
+  targetPath: string
+  workKey: string
+  projectKey: string
+  rootLabel: string | null
+}
+
 export function resolveRoundtableDurationHours(args?: {
   rawValue?: string | null
   fallbackHours?: number
@@ -97,6 +104,58 @@ function findRoundtableRootDescriptor(
       )
     }) ?? null
   )
+}
+
+function sanitizeRoundtableProjectKey(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return normalized || 'repo'
+}
+
+function buildRoundtableScopeSuffix(
+  targetPath: string,
+  root: DiscordRoundtableSchedulerRoot | null,
+): string {
+  if (!root) {
+    return '.'
+  }
+  const normalizedTarget = targetPath.toLowerCase()
+  const normalizedRoot = root.path.toLowerCase()
+  if (normalizedTarget === normalizedRoot) {
+    return '.'
+  }
+  if (normalizedTarget.startsWith(`${normalizedRoot}\\`)) {
+    return targetPath.slice(root.path.length + 1).replace(/\\/g, '/').toLowerCase()
+  }
+  return '.'
+}
+
+export function resolveRoundtableExecutionScope(args: {
+  targetPath: string
+  repoId: string
+  roots: DiscordRoundtableSchedulerRoot[]
+  pathExists?: (path: string) => boolean
+}): DiscordRoundtableExecutionScope {
+  const initialRoot = findRoundtableRootDescriptor(args.targetPath, args.roots)
+  const narrowedTargetPath =
+    initialRoot && args.targetPath.toLowerCase() === initialRoot.path.toLowerCase()
+      ? resolvePreferredRoundtableExecutionTargetPath(
+          initialRoot,
+          args.pathExists ?? existsSync,
+        )
+      : args.targetPath
+  const resolvedRoot =
+    findRoundtableRootDescriptor(narrowedTargetPath, args.roots) ?? initialRoot
+  const projectKey = sanitizeRoundtableProjectKey(args.repoId)
+  const scopeSuffix = buildRoundtableScopeSuffix(narrowedTargetPath, resolvedRoot)
+  return {
+    targetPath: narrowedTargetPath,
+    projectKey,
+    workKey: `${projectKey}::${scopeSuffix}`,
+    rootLabel: resolvedRoot?.label ?? null,
+  }
 }
 
 function isNonMergeableRoundtablePath(path: string): boolean {
@@ -322,9 +381,11 @@ export function shouldForceRoundtableContribution(args: {
   const recentConcreteOutcome = recentActions.some(action => {
     const completedAtMs = parseIsoTimestampMs(action.completedAt)
     return (
+      action.status === 'completed' &&
       completedAtMs !== null &&
       nowMs - completedAtMs < 20 * 60_000 &&
-      (action.changedFiles.length > 0 || Boolean(action.verificationSummary))
+      action.changedFiles.length > 0 &&
+      Boolean(action.commitSha)
     )
   })
 

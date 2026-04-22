@@ -1,15 +1,28 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs'
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import {
+  bootstrapDiscordRoundtableRuntime,
   createDiscordRoundtableRuntimeState,
+  loadDiscordRoundtableSessionState,
   formatDiscordRoundtableRuntimeStatus,
   formatDiscordRoundtableTransitionReceipt,
+  getDiscordRoundtableQuarantineDir,
+  getDiscordRoundtableSessionStatePath,
   getOpenJawsOperatorStatePath,
   ingestDiscordRoundtableHandoff,
   loadDiscordRoundtableRuntimeState,
   processDiscordRoundtableRuntime,
+  syncDiscordRoundtableRuntimeState,
   type DiscordRoundtableTrackedJob,
 } from './discordRoundtableRuntime.js'
 
@@ -34,6 +47,7 @@ function createRepoRoot(prefix: string) {
 describe('discordRoundtableRuntime', () => {
   it('ingests governed handoffs into queued repo-scoped jobs', () => {
     const repoRoot = createRepoRoot('oj-roundtable-repo-')
+    mkdirSync(join(repoRoot, 'src'), { recursive: true })
     const handoffPath = join(repoRoot, 'handoff.json')
     writeFileSync(
       handoffPath,
@@ -44,8 +58,8 @@ describe('discordRoundtableRuntime', () => {
           actions: [
             {
               id: 'action-a',
-              repoId: 'asgard',
-              repoLabel: 'Asgard',
+              repoId: 'openjaws',
+              repoLabel: 'OpenJaws',
               role: 'Violet',
               objective: 'Harden the orchestrator',
               rationale: 'Close the roundtable execution gap.',
@@ -76,7 +90,13 @@ describe('discordRoundtableRuntime', () => {
     expect(ingested.ingestedCount).toBe(1)
     expect(ingested.state.jobs).toHaveLength(1)
     expect(ingested.state.jobs[0]?.status).toBe('queued')
-    expect(ingested.state.jobs[0]?.projectKey).toBe('asgard')
+    expect(ingested.state.jobs[0]?.projectKey).toBe('openjaws')
+    expect(ingested.state.jobs[0]?.targetPath).toBe(join(repoRoot, 'src'))
+    expect(ingested.state.jobs[0]?.workKey).toBe('openjaws::src')
+    expect(ingested.state.jobs[0]?.action.targetPath).toBe(join(repoRoot, 'src'))
+    expect(ingested.state.jobs[0]?.action.prompt).toContain(
+      `Assigned target path: ${join(repoRoot, 'src')}`,
+    )
     expect(ingested.state.jobs[0]?.action.prompt).toContain(
       'Objective: Harden the orchestrator',
     )
@@ -172,6 +192,639 @@ describe('discordRoundtableRuntime', () => {
     expect(state.status).toBe('awaiting_approval')
   })
 
+  it('classifies executing queued actions as running instead of queued', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-executing-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    mkdirSync(runtimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T00:00:00.000Z',
+          roundtableChannelName: 'q-roundtable',
+          lastSummary: 'roundtable booting',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.log'),
+      [
+        '[2026-04-21T00:01:00.000Z] roundtable window 1 live in #dev_support (1426904647313916014), ends 2026-04-21T04:01:00.000Z',
+        '[2026-04-21T00:02:00.000Z] Q executing queued action "Q audit-and-tighten pass" in D:\\openjaws\\OpenJaws\\src',
+      ].join('\n'),
+      'utf8',
+    )
+
+    const state = loadDiscordRoundtableRuntimeState(root)
+
+    expect(state.status).toBe('running')
+    expect(state.lastSummary).toBe(
+      'Q executing queued action "Q audit-and-tighten pass" in D:\\openjaws\\OpenJaws\\src',
+    )
+  })
+
+  it('loads live session metadata from the legacy mixed state file without polluting the tracked queue state', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-session-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    mkdirSync(runtimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T00:25:52.409Z',
+          roundtableChannelName: 'q-roundtable',
+          lastSummary: 'Viola action queued',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [],
+          startedAt: '2026-04-20T23:58:32.098Z',
+          endsAt: '2026-04-21T03:58:32.098Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          turnCount: 5,
+          nextPersona: 'blackbeak',
+          lastSpeaker: 'viola',
+          processedCommandMessageIds: ['msg-1'],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const queueState = loadDiscordRoundtableRuntimeState(root)
+    const sessionState = loadDiscordRoundtableSessionState(root)
+
+    expect('startedAt' in queueState).toBe(false)
+    expect(sessionState).toMatchObject({
+      startedAt: '2026-04-20T23:58:32.098Z',
+      endsAt: '2026-04-21T03:58:32.098Z',
+      guildId: 'guild-1',
+      roundtableChannelId: 'channel-1',
+      turnCount: 5,
+      nextPersona: 'blackbeak',
+      lastSpeaker: 'viola',
+    })
+  })
+
+  it('prefers nested bundle runtime session and log data when the live roundtable falls back to the bundled entrypoint', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-bundle-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    const nestedRuntimeDir = join(runtimeDir, 'roundtable-runtime')
+    mkdirSync(nestedRuntimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T12:00:00.000Z',
+          roundtableChannelName: 'q-roundtable',
+          lastSummary: 'stale top-level state',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(nestedRuntimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T13:14:57.078Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'Q posted turn 1',
+          lastError: null,
+          startedAt: '2026-04-21T13:14:12.770Z',
+          endsAt: '2026-04-21T17:14:12.770Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          turnCount: 1,
+          nextPersona: 'viola',
+          lastSpeaker: 'q',
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(nestedRuntimeDir, 'discord-roundtable.log'),
+      [
+        '[2026-04-21T13:14:13.838Z] roundtable live in #dev_support (1426904647313916014), ends 2026-04-21T17:14:12.770Z',
+        '[2026-04-21T13:14:57.074Z] Q posted turn 1',
+      ].join('\n'),
+      'utf8',
+    )
+
+    const queueState = loadDiscordRoundtableRuntimeState(root)
+    const sessionState = loadDiscordRoundtableSessionState(root)
+
+    expect(queueState.roundtableChannelName).toBe('dev_support')
+    expect(queueState.lastSummary).toBe('Q posted turn 1')
+    expect(queueState.updatedAt).toBe('2026-04-21T13:14:57.074Z')
+    expect(sessionState).toMatchObject({
+      roundtableChannelName: 'dev_support',
+      startedAt: '2026-04-21T13:14:12.770Z',
+      endsAt: '2026-04-21T17:14:12.770Z',
+      turnCount: 1,
+      nextPersona: 'viola',
+      lastSpeaker: 'q',
+      lastSummary: 'Q posted turn 1',
+    })
+  })
+
+  it('merges newer nested live session fields over stale tracked top-level session state', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-merge-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    const nestedRuntimeDir = join(runtimeDir, 'roundtable-runtime')
+    mkdirSync(nestedRuntimeDir, { recursive: true })
+    writeFileSync(
+      getDiscordRoundtableSessionStatePath(root),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T12:00:00.000Z',
+          startedAt: '2026-04-21T11:55:00.000Z',
+          endsAt: '2026-04-21T15:55:00.000Z',
+          guildId: null,
+          roundtableChannelId: null,
+          roundtableChannelName: 'openjaws-updates',
+          generalChannelId: null,
+          generalChannelName: null,
+          violaVoiceChannelId: null,
+          violaVoiceChannelName: null,
+          turnCount: 0,
+          nextPersona: null,
+          lastSpeaker: null,
+          lastSummary: 'stale top-level summary',
+          lastError: null,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(nestedRuntimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T13:14:57.078Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'Viola posted turn 5',
+          lastError: null,
+          startedAt: '2026-04-21T13:14:12.770Z',
+          endsAt: '2026-04-21T17:14:12.770Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          turnCount: 5,
+          nextPersona: 'blackbeak',
+          lastSpeaker: 'viola',
+          processedCommandMessageIds: ['msg-1'],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const sessionState = loadDiscordRoundtableSessionState(root)
+
+    expect(sessionState).toMatchObject({
+      roundtableChannelName: 'dev_support',
+      startedAt: '2026-04-21T13:14:12.770Z',
+      endsAt: '2026-04-21T17:14:12.770Z',
+      guildId: 'guild-1',
+      roundtableChannelId: 'channel-1',
+      turnCount: 5,
+      nextPersona: 'blackbeak',
+      lastSpeaker: 'viola',
+      lastSummary: 'Viola posted turn 5',
+    })
+  })
+
+  it('prefers nested live channel identity when the tracked session matches turn count but drifts to the wrong channel', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-channel-drift-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    const nestedRuntimeDir = join(runtimeDir, 'roundtable-runtime')
+    mkdirSync(nestedRuntimeDir, { recursive: true })
+    writeFileSync(
+      getDiscordRoundtableSessionStatePath(root),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-22T00:01:45.822Z',
+          startedAt: '2026-04-21T23:56:22.508Z',
+          endsAt: '2026-04-22T03:56:22.508Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          roundtableChannelName: 'openjaws-updates',
+          generalChannelId: 'general-1',
+          generalChannelName: 'general-chat',
+          violaVoiceChannelId: 'voice-1',
+          violaVoiceChannelName: 'viola-lounge',
+          turnCount: 2,
+          nextPersona: 'blackbeak',
+          lastSpeaker: 'viola',
+          lastSummary: 'Viola posted turn 2',
+          lastError: null,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(nestedRuntimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-22T00:00:35.638Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'Viola posted turn 2',
+          lastError: null,
+          startedAt: '2026-04-21T23:56:22.508Z',
+          endsAt: '2026-04-22T03:56:22.508Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          generalChannelId: 'general-1',
+          generalChannelName: 'general-chat',
+          violaVoiceChannelId: 'voice-1',
+          violaVoiceChannelName: 'viola-lounge',
+          turnCount: 2,
+          nextPersona: 'blackbeak',
+          lastSpeaker: 'viola',
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const sessionState = loadDiscordRoundtableSessionState(root)
+
+    expect(sessionState).toMatchObject({
+      roundtableChannelName: 'dev_support',
+      roundtableChannelId: 'channel-1',
+      guildId: 'guild-1',
+      turnCount: 2,
+      nextPersona: 'blackbeak',
+      lastSpeaker: 'viola',
+      lastSummary: 'Viola posted turn 2',
+    })
+  })
+
+  it('syncs nested live bundle state back into tracked queue and session files', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-sync-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    const nestedRuntimeDir = join(runtimeDir, 'roundtable-runtime')
+    mkdirSync(nestedRuntimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable-queue.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T12:00:00.000Z',
+          roundtableChannelName: 'openjaws-updates',
+          lastSummary: 'stale queue summary',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      getDiscordRoundtableSessionStatePath(root),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T12:00:00.000Z',
+          startedAt: '2026-04-21T11:55:00.000Z',
+          endsAt: '2026-04-21T15:55:00.000Z',
+          guildId: null,
+          roundtableChannelId: null,
+          roundtableChannelName: 'openjaws-updates',
+          generalChannelId: null,
+          generalChannelName: null,
+          violaVoiceChannelId: null,
+          violaVoiceChannelName: null,
+          turnCount: 0,
+          nextPersona: null,
+          lastSpeaker: null,
+          lastSummary: 'stale queue summary',
+          lastError: null,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(nestedRuntimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T13:14:57.078Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'Q posted turn 1',
+          lastError: null,
+          startedAt: '2026-04-21T13:14:12.770Z',
+          endsAt: '2026-04-21T17:14:12.770Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          turnCount: 1,
+          nextPersona: 'viola',
+          lastSpeaker: 'q',
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const result = syncDiscordRoundtableRuntimeState(
+      root,
+      new Date('2026-04-21T13:15:00.000Z'),
+    )
+
+    expect(result.changed).toBe(true)
+    expect(JSON.parse(readFileSync(getDiscordRoundtableSessionStatePath(root), 'utf8'))).toMatchObject({
+      roundtableChannelName: 'dev_support',
+      turnCount: 1,
+      lastSummary: 'Q posted turn 1',
+    })
+    expect(
+      JSON.parse(
+        readFileSync(join(runtimeDir, 'discord-roundtable-queue.state.json'), 'utf8'),
+      ),
+    ).toMatchObject({
+      roundtableChannelName: 'dev_support',
+      lastSummary: 'Q posted turn 1',
+      updatedAt: '2026-04-21T13:14:57.078Z',
+    })
+  })
+
+  it('bootstraps a fresh tracked session and clears stale nested bundle state', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-bootstrap-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    const nestedRuntimeDir = join(runtimeDir, 'roundtable-runtime')
+    mkdirSync(nestedRuntimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'idle',
+          updatedAt: '2026-04-21T12:00:00.000Z',
+          roundtableChannelName: 'q-roundtable',
+          lastSummary: 'roundtable completed',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(nestedRuntimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'completed',
+          updatedAt: '2026-04-21T13:00:00.000Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'roundtable completed',
+          lastError: null,
+          startedAt: '2026-04-21T09:00:00.000Z',
+          endsAt: '2026-04-21T13:00:00.000Z',
+          turnCount: 63,
+          nextPersona: 'q',
+          lastSpeaker: 'viola',
+          processedCommandMessageIds: ['old-message'],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(nestedRuntimeDir, 'discord-roundtable.log'),
+      '[2026-04-21T13:00:00.000Z] roundtable completed\n',
+      'utf8',
+    )
+
+    const bootstrapped = bootstrapDiscordRoundtableRuntime({
+      root,
+      roundtableChannelName: 'dev_support',
+      durationHours: 4,
+      now: new Date('2026-04-21T14:00:00.000Z'),
+    })
+
+    const nestedState = JSON.parse(
+      readFileSync(join(nestedRuntimeDir, 'discord-roundtable.state.json'), 'utf8'),
+    ) as {
+      status: string
+      roundtableChannelName: string
+      startedAt: string
+      endsAt: string
+      turnCount: number
+      processedCommandMessageIds: string[]
+    }
+    const nestedMemory = JSON.parse(
+      readFileSync(join(nestedRuntimeDir, 'discord-roundtable-memory.json'), 'utf8'),
+    ) as {
+      summary: string | null
+      openThreads: unknown[]
+    }
+    const nestedActions = JSON.parse(
+      readFileSync(join(nestedRuntimeDir, 'discord-roundtable-actions.json'), 'utf8'),
+    ) as unknown[]
+
+    expect(bootstrapped.sessionState).toMatchObject({
+      status: 'running',
+      roundtableChannelName: 'dev_support',
+      startedAt: '2026-04-21T14:00:00.000Z',
+      endsAt: '2026-04-21T18:00:00.000Z',
+      turnCount: 0,
+    })
+    expect(bootstrapped.clearedLogPaths).toHaveLength(1)
+    expect(readFileSync(join(nestedRuntimeDir, 'discord-roundtable.log'), 'utf8')).toBe('')
+    expect(nestedState).toMatchObject({
+      status: 'running',
+      roundtableChannelName: 'dev_support',
+      startedAt: '2026-04-21T14:00:00.000Z',
+      endsAt: '2026-04-21T18:00:00.000Z',
+      turnCount: 0,
+      processedCommandMessageIds: [],
+    })
+    expect(nestedMemory).toEqual({
+      summary: null,
+      currentFocus: null,
+      lastHumanQuestion: null,
+      openThreads: [],
+    })
+    expect(nestedActions).toEqual([])
+  })
+
+  it('rehydrates the live bundle state from the tracked session file instead of stale nested session data', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-rehydrate-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    const nestedRuntimeDir = join(runtimeDir, 'roundtable-runtime')
+    mkdirSync(nestedRuntimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'queued',
+          updatedAt: '2026-04-21T13:15:00.000Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'Queued 1 scoped action.',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      getDiscordRoundtableSessionStatePath(root),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T13:15:00.000Z',
+          startedAt: '2026-04-21T13:14:12.770Z',
+          endsAt: '2026-04-21T17:14:12.770Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          roundtableChannelName: 'dev_support',
+          generalChannelId: null,
+          generalChannelName: null,
+          violaVoiceChannelId: null,
+          violaVoiceChannelName: null,
+          turnCount: 2,
+          nextPersona: 'blackbeak',
+          lastSpeaker: 'viola',
+          lastSummary: 'Queued 1 scoped action.',
+          lastError: null,
+          processedCommandMessageIds: ['msg-1'],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(nestedRuntimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'completed',
+          updatedAt: '2026-04-21T18:12:22.108Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'roundtable completed and Viola posted the closing report',
+          lastError: null,
+          startedAt: '2026-04-21T14:10:24.736Z',
+          endsAt: '2026-04-21T18:10:24.736Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          turnCount: 63,
+          nextPersona: 'q',
+          lastSpeaker: 'viola',
+          processedCommandMessageIds: ['old-message'],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const bootstrapped = bootstrapDiscordRoundtableRuntime({
+      root,
+      roundtableChannelName: 'dev_support',
+      durationHours: 4,
+      now: new Date('2026-04-21T14:30:00.000Z'),
+    })
+    const nestedState = JSON.parse(
+      readFileSync(join(nestedRuntimeDir, 'discord-roundtable.state.json'), 'utf8'),
+    ) as {
+      startedAt: string
+      endsAt: string
+      turnCount: number
+      nextPersona: string
+      lastSpeaker: string
+      processedCommandMessageIds: string[]
+    }
+
+    expect(bootstrapped.sessionState).toMatchObject({
+      startedAt: '2026-04-21T13:14:12.770Z',
+      endsAt: '2026-04-21T17:14:12.770Z',
+      turnCount: 2,
+      nextPersona: 'blackbeak',
+      lastSpeaker: 'viola',
+      processedCommandMessageIds: ['msg-1'],
+    })
+    expect(nestedState).toMatchObject({
+      startedAt: '2026-04-21T13:14:12.770Z',
+      endsAt: '2026-04-21T17:14:12.770Z',
+      turnCount: 2,
+      nextPersona: 'blackbeak',
+      lastSpeaker: 'viola',
+      processedCommandMessageIds: ['msg-1'],
+    })
+  })
+
   it('processes mergeable jobs into awaiting-approval operator pushes', async () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-'))
     tempDirs.push(root)
@@ -216,7 +869,7 @@ describe('discordRoundtableRuntime', () => {
       ingestInbox: false,
       maxActionsPerRun: 1,
       model: 'oci:Q',
-      runnerScriptPath: 'D:\\openjaws\\OpenJaws\\local-command-station\\launch-openjaws-visible.ps1',
+      runnerScriptPath: 'D:\\openjaws\\OpenJaws\\local-command-station\\run-openjaws-visible.ps1',
       worktreeRoot: join(root, 'worktrees'),
       outputRoot: join(root, 'outputs'),
       now: () => new Date('2026-04-20T20:05:00.000Z'),
@@ -314,6 +967,82 @@ describe('discordRoundtableRuntime', () => {
     )
     expect(result.durationHours).toBe(4)
     expect(result.approvalTtlHours).toBe(1)
+    expect(existsSync(getDiscordRoundtableSessionStatePath(root))).toBe(true)
+    expect(loadDiscordRoundtableSessionState(root)).toMatchObject({
+      updatedAt: '2026-04-20T20:05:00.000Z',
+      status: 'awaiting_approval',
+      roundtableChannelName: null,
+      lastSummary:
+        'OpenJaws roundtable action session-b-openjaws-action-b is awaiting approval on discord-viola-openjaws-action-b.',
+      lastError: null,
+    })
+  })
+
+  it('quarantines malformed handoffs without aborting later valid work', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-quarantine-'))
+    tempDirs.push(root)
+    const repoRoot = join(root, 'repo')
+    mkdirSync(join(repoRoot, '.git'), { recursive: true })
+    const malformedPath = join(root, 'handoff-bad.json')
+    writeFileSync(malformedPath, '# not json\nobjective: nope\n', 'utf8')
+    const validPath = join(root, 'handoff-good.json')
+    writeFileSync(
+      validPath,
+      JSON.stringify(
+        {
+          sessionId: 'session-quarantine',
+          actions: [
+            {
+              id: 'action-good',
+              repoId: 'openjaws',
+              repoLabel: 'OpenJaws',
+              role: 'Q',
+              objective: 'Ship the safe path',
+              rationale: 'Keep the runtime alive after malformed input.',
+              workspaceScope: {
+                repoPath: repoRoot,
+              },
+              executionArtifact: {
+                executionReady: true,
+                workspaceMaterialized: true,
+                authorityBound: true,
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const result = await processDiscordRoundtableRuntime({
+      root,
+      allowedRoots: [repoRoot],
+      handoffPaths: [malformedPath, validPath],
+      ingestInbox: false,
+      maxActionsPerRun: 0,
+      model: 'oci:Q',
+      runnerScriptPath:
+        'D:\\openjaws\\OpenJaws\\local-command-station\\run-openjaws-visible.ps1',
+      worktreeRoot: join(root, 'worktrees'),
+      outputRoot: join(root, 'outputs'),
+      now: () => new Date('2026-04-21T16:00:00.000Z'),
+    })
+
+    const quarantineDir = getDiscordRoundtableQuarantineDir(root)
+    const quarantinedEntries = readdirSync(quarantineDir)
+    expect(quarantinedEntries.some(entry => entry.endsWith('.json'))).toBe(true)
+    expect(quarantinedEntries.some(entry => entry.endsWith('.meta.json'))).toBe(
+      true,
+    )
+    expect(result.ingestedCount).toBe(1)
+    expect(result.state.jobs).toHaveLength(1)
+    expect(result.state.jobs[0]?.status).toBe('queued')
+    expect(result.state.lastError).toBeNull()
+    expect(result.state.lastSummary).toMatch(
+      /^Ingested 1 roundtable action from .*handoff-good\.json\.$/,
+    )
   })
 
   it('holds back mixed artifact output instead of creating an approval candidate', async () => {
@@ -359,7 +1088,7 @@ describe('discordRoundtableRuntime', () => {
       ingestInbox: false,
       maxActionsPerRun: 1,
       model: 'oci:Q',
-      runnerScriptPath: 'D:\\openjaws\\OpenJaws\\local-command-station\\launch-openjaws-visible.ps1',
+      runnerScriptPath: 'D:\\openjaws\\OpenJaws\\local-command-station\\run-openjaws-visible.ps1',
       worktreeRoot: join(root, 'worktrees'),
       outputRoot: join(root, 'outputs'),
       now: () => new Date('2026-04-20T20:10:00.000Z'),
@@ -456,7 +1185,7 @@ describe('discordRoundtableRuntime', () => {
       durationHours: 6,
       approvalTtlHours: 0.5,
       model: 'oci:Q',
-      runnerScriptPath: 'D:\\openjaws\\OpenJaws\\local-command-station\\launch-openjaws-visible.ps1',
+      runnerScriptPath: 'D:\\openjaws\\OpenJaws\\local-command-station\\run-openjaws-visible.ps1',
       worktreeRoot: join(root, 'worktrees'),
       outputRoot: join(root, 'outputs'),
       now: () => new Date('2026-04-20T20:12:00.000Z'),
@@ -512,7 +1241,7 @@ describe('discordRoundtableRuntime', () => {
       maxActionsPerRun: 0,
       approvalTtlHours: 0.5,
       model: 'oci:Q',
-      runnerScriptPath: 'D:\\openjaws\\OpenJaws\\local-command-station\\launch-openjaws-visible.ps1',
+      runnerScriptPath: 'D:\\openjaws\\OpenJaws\\local-command-station\\run-openjaws-visible.ps1',
       worktreeRoot: join(root, 'worktrees'),
       outputRoot: join(root, 'outputs'),
       now: () => new Date('2026-04-20T21:00:00.000Z'),
@@ -594,6 +1323,6 @@ describe('discordRoundtableRuntime', () => {
         rejectionReason: null,
         summary: 'Runtime hardening',
       }),
-    ).toContain('Confirm: @Q operator confirm-push discord-viola-job-1')
+    ).toContain('Confirm: @Q operator confirm-push job-1')
   })
 })

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   chooseFallbackRoundtableRoot,
   inspectRoundtableReply,
+  resolveRoundtableExecutionScope,
   resolvePreferredRoundtableExecutionTargetPath,
   resolveRoundtableApprovalTtlHours,
   resolveRoundtableDurationHours,
@@ -63,6 +64,35 @@ describe('discordRoundtableScheduler', () => {
     expect(
       resolvePreferredRoundtableExecutionTargetPath(roots[1]!, () => false),
     ).toBe('C:\\Users\\Knight\\Desktop\\Immaculate')
+  })
+
+  it('narrows repo-root execution scopes to a concrete code path and stable work key', () => {
+    expect(
+      resolveRoundtableExecutionScope({
+        targetPath: 'D:\\openjaws\\OpenJaws',
+        repoId: 'OpenJaws',
+        roots,
+        pathExists: path => path.endsWith('\\src'),
+      }),
+    ).toEqual({
+      targetPath: 'D:\\openjaws\\OpenJaws\\src',
+      projectKey: 'openjaws',
+      workKey: 'openjaws::src',
+      rootLabel: 'OpenJaws',
+    })
+
+    expect(
+      resolveRoundtableExecutionScope({
+        targetPath: 'C:\\Users\\Knight\\Desktop\\Immaculate\\apps\\harness',
+        repoId: 'Immaculate',
+        roots,
+      }),
+    ).toEqual({
+      targetPath: 'C:\\Users\\Knight\\Desktop\\Immaculate\\apps\\harness',
+      projectKey: 'immaculate',
+      workKey: 'immaculate::apps/harness',
+      rootLabel: 'Immaculate',
+    })
   })
 
   it('penalizes pending approvals and stale non-mergeable work when choosing a fallback root', () => {
@@ -203,6 +233,52 @@ describe('discordRoundtableScheduler', () => {
           },
         ],
         nowMs: Date.parse('2026-04-20T20:19:00.000Z'),
+      }),
+    ).toBe(true)
+  })
+
+  it('keeps forcing contribution when the latest run produced no diff-bearing commit', () => {
+    expect(
+      shouldForceRoundtableContribution({
+        turnCount: 8,
+        latestHumanQuestion: null,
+        roundtableMemory: {
+          summary: 'Keep pushing toward a scoped code-bearing action.',
+          openThreads: [],
+        },
+        recentActions: [
+          {
+            status: 'completed',
+            changedFiles: [],
+            completedAt: '2026-04-20T21:00:00.000Z',
+            commitSha: null,
+            verificationSummary: 'No file changes were detected after the run.',
+          },
+        ],
+        nowMs: Date.parse('2026-04-20T21:05:00.000Z'),
+      }),
+    ).toBe(true)
+  })
+
+  it('keeps forcing contribution after a recent rejected mixed-output run', () => {
+    expect(
+      shouldForceRoundtableContribution({
+        turnCount: 8,
+        latestHumanQuestion: null,
+        roundtableMemory: {
+          summary: 'Recover from the rejected mixed-output pass.',
+          openThreads: [],
+        },
+        recentActions: [
+          {
+            status: 'rejected',
+            changedFiles: ['apps/harness/src/server.ts', 'receipt.json'],
+            completedAt: '2026-04-20T21:00:00.000Z',
+            commitSha: null,
+            verificationSummary: 'Verification failed: mixed code and artifact output.',
+          },
+        ],
+        nowMs: Date.parse('2026-04-20T21:05:00.000Z'),
       }),
     ).toBe(true)
   })

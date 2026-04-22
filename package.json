@@ -48,6 +48,7 @@
     "q:terminalbench": "bun scripts/q-terminalbench.ts",
     "q:terminalbench:soak": "bun scripts/q-terminalbench.ts --soak --soak-cycles 3 --soak-duration-minutes 45",
     "q:receipt:sign": "bun scripts/sign-benchmark-receipt.ts",
+    "roundtable:sync": "bun scripts/roundtable-sync.ts",
     "roundtable:runtime": "bun scripts/roundtable-runtime.ts --json",
     "runtime:coherence": "bun scripts/runtime-coherence.ts --json",
     "dispatch:q-route": "bun scripts/dispatch-q-route.ts",
