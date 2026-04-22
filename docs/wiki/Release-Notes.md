@@ -43,6 +43,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - the tracked roundtable bootstrap path now rebuilds fresh live session metadata from the canonical queue/session model before the bundled private lane starts, rotates stale nested bundle logs, and rewrites the fallback `roundtable-runtime/roundtable-runtime` state so a restart does not resurrect a completed window
 - the new tracked `roundtable-sync` sidecar now mirrors the bundled private live session back into the canonical queue/session files every cycle, so `roundtable-status`, approvals, and runtime coherence keep matching the actual `#dev_support` lane after startup
 - the tracked scheduler now only relaxes after a recent diff-bearing completed commit, so no-diff or rejected audit receipts stop counting as real progress and fresh sessions keep driving toward scoped code-bearing work longer
+- tracked sync passes now preserve the authoritative live roundtable channel, quarantine malformed handoffs instead of aborting the runtime, and mark no-diff results as `skipped` so weak outcomes stay out of the approval lane
 
 ## Agent Co-Work
 

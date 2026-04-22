@@ -17,11 +17,14 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - Execution is limited to approved roots.
 - Read-only context can widen beyond the write roots for operator awareness, but autonomous writes stay constrained to git-backed approved roots and isolated worktrees only.
 - Every job is materialized in an isolated worktree.
+- Malformed governed handoffs fail closed into `local-command-station/roundtable-runtime/handoff-quarantine/` instead of aborting the runtime.
 - Mixed code-plus-artifact output is held back and never promoted into the approval lane.
 - Artifact-only output is held back and never promoted into the approval lane.
+- No-diff output is marked `skipped` and kept out of the approval lane.
 - Verification must pass before a branch is eligible for approval.
 - Fallback root scoring, approval TTL resolution, and reply/PASS inspection live in tracked shared scheduler code so the private Discord loop does not have to carry its own drifting policy copy.
 - Repo-root handoffs are narrowed onto a preferred code-bearing path such as `src`, `apps`, or `packages` before the tracked worktree lane materializes the job, so the queue stops defaulting to whole-repo no-diff audits when a planner only names the project root.
+- Recent weak outcomes keep contribution forcing active, so one early diff-bearing action does not immediately let the loop relax back into PASS turns.
 
 ## Operator Commands
 
@@ -48,6 +51,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - The tracked runtime readers now reconcile both the live `discord-roundtable.log` and the split session metadata, so `@Q operator roundtable-status` and `bun run runtime:coherence` show the actual active lane such as `#dev_support` when older persisted files drift from the bound Discord channel.
 - When the private lane falls back to `discord-roundtable.bundle.js`, the live session/log can land under `local-command-station/roundtable-runtime/roundtable-runtime/`; the tracked readers now treat that nested bundle output as an observed live session instead of trusting stale top-level files.
 - Fresh sessions now keep forcing contribution until the recent queue history contains a diff-bearing completed commit, so no-diff or rejected audit receipts no longer let the planner relax into idle `PASS` turns too early.
+- Sync passes now preserve the authoritative bound session channel, so `@Q operator roundtable-status` and `bun run runtime:coherence` keep reporting the actual active lane such as `#dev_support` instead of a stale preferred-channel alias.
 - Approval-ready transitions include the exact `jobId`, generated branch, verification summary, and attached `receipt.json` so operators can confirm from Discord without guessing which pending branch is newest.
 - `runtime:coherence` now reads the tracked queue state plus the live session snapshot together, so it can warn when a roundtable window has expired or when the live session has stopped updating even if the queue file still says `running`.
 - The queue is repo-scoped on purpose. It does not stack multiple active roundtable jobs onto the same project lane at once.

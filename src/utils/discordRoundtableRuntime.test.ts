@@ -1171,6 +1171,121 @@ describe('discordRoundtableRuntime', () => {
     expect(result.transitionReceipts[0]?.status).toBe('rejected')
   })
 
+  it('marks no-diff roundtable executions as skipped instead of completed', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-no-diff-'))
+    tempDirs.push(root)
+    const repoRoot = join(root, 'repo')
+    mkdirSync(join(repoRoot, '.git'), { recursive: true })
+    const handoffPath = join(root, 'handoff.json')
+    writeFileSync(
+      handoffPath,
+      JSON.stringify(
+        {
+          sessionId: 'session-no-diff',
+          actions: [
+            {
+              id: 'action-no-diff',
+              repoId: 'openjaws',
+              repoLabel: 'OpenJaws',
+              role: 'Q',
+              objective: 'Produce a real diff',
+              rationale: 'PASS/no-diff should not count as completion.',
+              workspaceScope: {
+                repoPath: repoRoot,
+              },
+              executionArtifact: {
+                executionReady: true,
+                workspaceMaterialized: true,
+                authorityBound: true,
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const result = await processDiscordRoundtableRuntime({
+      root,
+      allowedRoots: [repoRoot],
+      handoffPaths: [handoffPath],
+      ingestInbox: false,
+      maxActionsPerRun: 1,
+      model: 'oci:Q',
+      runnerScriptPath:
+        'D:\\openjaws\\OpenJaws\\local-command-station\\run-openjaws-visible.ps1',
+      worktreeRoot: join(root, 'worktrees'),
+      outputRoot: join(root, 'outputs'),
+      now: () => new Date('2026-04-20T20:14:00.000Z'),
+      executeAction: async args =>
+        ({
+          targetRootLabel: 'OpenJaws',
+          gitRoot: repoRoot,
+          runContext: {
+            jobId: args.action.id,
+            requestedWorkspace: repoRoot,
+            gitRoot: repoRoot,
+            gitRelativePath: '.',
+            branchName: null,
+            worktreePath: join(root, 'worktrees', 'openjaws', 'discord-q-action-no-diff'),
+            workspacePath: join(root, 'worktrees', 'openjaws', 'discord-q-action-no-diff'),
+            repoLabel: 'openjaws',
+          },
+          outputDir: join(root, 'outputs', 'job-no-diff'),
+          receiptPath: join(root, 'outputs', 'job-no-diff', 'receipt.json'),
+          job: {
+            runContext: {
+              jobId: args.action.id,
+              requestedWorkspace: repoRoot,
+              gitRoot: repoRoot,
+              gitRelativePath: '.',
+              branchName: null,
+              worktreePath: join(
+                root,
+                'worktrees',
+                'openjaws',
+                'discord-q-action-no-diff',
+              ),
+              workspacePath: join(
+                root,
+                'worktrees',
+                'openjaws',
+                'discord-q-action-no-diff',
+              ),
+              repoLabel: 'openjaws',
+            },
+            outputDir: join(root, 'outputs', 'job-no-diff'),
+            result: {
+              startedAt: '2026-04-20T20:14:00.000Z',
+              completedAt: '2026-04-20T20:15:00.000Z',
+            },
+            delivery: null,
+            changedFiles: [],
+            verification: {
+              attempted: true,
+              passed: true,
+              summary: 'No file changes were detected after the run.',
+              command: 'bun run build',
+              stdout: null,
+              stderr: null,
+            },
+            commitSha: null,
+          },
+          hasCodeChanges: false,
+          artifactOnly: false,
+          hasDisallowedChanges: false,
+          verificationPassed: true,
+          mergeable: false,
+        }),
+    })
+
+    expect(result.state.jobs[0]?.status).toBe('skipped')
+    expect(result.transitionReceipts[0]?.status).toBe('skipped')
+    expect(result.state.lastSummary).toContain('was held back: no code changes detected')
+  })
+
   it('resolves explicit duration and approval TTL options through the tracked scheduler policy', async () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-policy-'))
     tempDirs.push(root)
@@ -1253,6 +1368,104 @@ describe('discordRoundtableRuntime', () => {
       pendingPushes?: Array<{ jobId: string }>
     }
     expect(operatorState.pendingPushes ?? []).toHaveLength(0)
+  })
+
+  it('persists the authoritative live roundtable channel when a stale caller channel name is provided', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-authoritative-channel-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    const nestedRuntimeDir = join(runtimeDir, 'roundtable-runtime')
+    const repoRoot = join(root, 'repo')
+    mkdirSync(join(repoRoot, '.git'), { recursive: true })
+    mkdirSync(nestedRuntimeDir, { recursive: true })
+    writeFileSync(
+      getDiscordRoundtableSessionStatePath(root),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-21T23:58:30.000Z',
+          startedAt: '2026-04-21T23:56:22.508Z',
+          endsAt: '2026-04-22T03:56:22.508Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          roundtableChannelName: 'openjaws-updates',
+          generalChannelId: 'general-1',
+          generalChannelName: 'general-chat',
+          violaVoiceChannelId: 'voice-1',
+          violaVoiceChannelName: 'viola-lounge',
+          turnCount: 6,
+          nextPersona: 'q',
+          lastSpeaker: 'blackbeak',
+          lastSummary: 'Blackbeak posted turn 6',
+          lastError: null,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(nestedRuntimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-22T00:18:37.163Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'Q posted turn 7',
+          lastError: null,
+          startedAt: '2026-04-21T23:56:22.508Z',
+          endsAt: '2026-04-22T03:56:22.508Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          generalChannelId: 'general-1',
+          generalChannelName: 'general-chat',
+          violaVoiceChannelId: 'voice-1',
+          violaVoiceChannelName: 'viola-lounge',
+          turnCount: 7,
+          nextPersona: 'viola',
+          lastSpeaker: 'q',
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(nestedRuntimeDir, 'discord-roundtable.log'),
+      [
+        '[2026-04-21T23:56:23.525Z] roundtable live in #dev_support (1426904647313916014), ends 2026-04-22T03:56:22.508Z',
+        '[2026-04-22T00:18:37.162Z] Q posted turn 7',
+      ].join('\n'),
+      'utf8',
+    )
+
+    await processDiscordRoundtableRuntime({
+      root,
+      allowedRoots: [repoRoot],
+      ingestInbox: false,
+      maxActionsPerRun: 0,
+      model: 'oci:Q',
+      runnerScriptPath:
+        'D:\\openjaws\\OpenJaws\\local-command-station\\run-openjaws-visible.ps1',
+      worktreeRoot: join(root, 'worktrees'),
+      outputRoot: join(root, 'outputs'),
+      roundtableChannelName: 'openjaws-updates',
+      now: () => new Date('2026-04-22T00:20:45.854Z'),
+    })
+
+    const persistedQueueState = JSON.parse(
+      readFileSync(join(runtimeDir, 'discord-roundtable-queue.state.json'), 'utf8'),
+    ) as { roundtableChannelName?: string | null }
+    const persistedSessionState = JSON.parse(
+      readFileSync(getDiscordRoundtableSessionStatePath(root), 'utf8'),
+    ) as { roundtableChannelName?: string | null }
+
+    expect(persistedQueueState.roundtableChannelName).toBe('dev_support')
+    expect(persistedSessionState.roundtableChannelName).toBe('dev_support')
   })
 
   it('formats queue summaries and operator confirmation receipts', () => {

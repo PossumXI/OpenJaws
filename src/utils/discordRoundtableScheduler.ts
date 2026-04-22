@@ -7,6 +7,7 @@ import type {
 
 export const DEFAULT_ROUNDTABLE_WINDOW_HOURS = 4
 export const DEFAULT_FORCED_ROUNDTABLE_TURNS = 6
+export const MIN_RECENT_CONCRETE_ROUNDTABLE_OUTCOMES = 2
 
 export type DiscordRoundtableSchedulerRoot = {
   label: string
@@ -377,17 +378,36 @@ export function shouldForceRoundtableContribution(args: {
   }
 
   const nowMs = args.nowMs ?? Date.now()
-  const recentActions = args.recentActions.slice(-6)
-  const recentConcreteOutcome = recentActions.some(action => {
+  const recentActions = args.recentActions.slice(-8)
+  const recentConcreteOutcomeCount = recentActions.filter(action => {
     const completedAtMs = parseIsoTimestampMs(action.completedAt)
     return (
       action.status === 'completed' &&
       completedAtMs !== null &&
-      nowMs - completedAtMs < 20 * 60_000 &&
+      nowMs - completedAtMs < 45 * 60_000 &&
       action.changedFiles.length > 0 &&
       Boolean(action.commitSha)
     )
+  }).length
+  const recentWeakOutcome = recentActions.some(action => {
+    const completedAtMs = parseIsoTimestampMs(action.completedAt)
+    const recentEnough =
+      completedAtMs !== null && nowMs - completedAtMs < 45 * 60_000
+    if (!recentEnough) {
+      return false
+    }
+    if (action.status === 'rejected' || action.status === 'skipped') {
+      return true
+    }
+    return (
+      action.status === 'completed' &&
+      (action.changedFiles.length === 0 || !action.commitSha)
+    )
   })
 
-  return recentActions.length > 0 && !recentConcreteOutcome
+  return (
+    recentActions.length > 0 &&
+    (recentConcreteOutcomeCount < MIN_RECENT_CONCRETE_ROUNDTABLE_OUTCOMES ||
+      recentWeakOutcome)
+  )
 }
