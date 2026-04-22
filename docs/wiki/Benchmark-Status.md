@@ -72,6 +72,7 @@ These are the current live-check lanes OpenJaws can run honestly against its shi
 
 - `bun run system:check` for the full release-style harness pass
 - `bun run q:bridgebench` for local pack-by-pack `Q` evaluation over audited bundles
+- `q:bridgebench` and `q:preflight -- --bench bridgebench` now auto-resolve the freshest `artifacts/q-benchmark-audited-*` bundle before falling back to the legacy `data/sft/audited-v2` path, so the benchmark lane follows the current audited bundle output by default.
 - `bun run q:curriculum` for bounded specialization runs plus follow-up local pack comparison
 - `bun run q:hybrid` for one bounded local lane plus one Immaculate-routed lane under a shared receipt
 - `bun run q:terminalbench` for Harbor / Terminal-Bench runs when the external harness is actually installed
@@ -82,15 +83,60 @@ These are the current live-check lanes OpenJaws can run honestly against its shi
 - `bun run q-route:remote-dispatch` for signed remote-dispatch behavior
 - `bun run q-route:remote-completion` for signed remote-result reconciliation
 
+## April 22, 2026 Benchmark Maintenance Pass
+
+These are the newest compatibility and truth-maintenance receipts from this repo workspace. They materially changed the benchmark lane, but they are not a public leaderboard claim.
+
+- BridgeBench:
+  - artifact: `artifacts/q-bridgebench-preflight-guard-20260422/bridgebench-report.json`
+  - result: `failed_preflight`
+  - truth: the local `q` BridgeBench lane now fails honestly before Python model load instead of crashing on Windows paging-file exhaustion. The current host only exposed about `1.0 GiB` free memory against an estimated `19 GiB` local requirement for CPU evaluation, so the truthful state is `remote_required`, not a scored local receipt.
+  - wrapper change:
+    - `scripts/q-bridgebench.ts` now uses the shared `evaluateQTrainingPreflight(...)` host-memory gate before spawning Python, and writes that preflight into the report instead of letting model load fail mid-run
+- Harbor / Terminal-Bench:
+  - harness compatibility changes:
+    - `scripts/q-terminalbench.ts` now keeps bounded Harbor runs scoped to their configured `jobs/` directory instead of falling back onto stale global Harbor results
+    - bounded and official runs now default to deterministic `jobName` values, so fresh receipts have stable scoped job roots even when the caller does not provide one
+    - `benchmarks/harbor/openjaws_agent.py` now runs through Harbor's current installed-agent API, no longer imports the removed `ExecInput` symbol, and no longer reproduces the old root/sudo `--dangerously-skip-permissions` hard failure
+  - bounded forced smoke after Docker recovery: `artifacts/q-terminalbench-smoke-20260422-circuit-fibsqrt-force-dockerup/terminalbench-report.json`
+    - task: `circuit-fibsqrt`
+    - result: `completed_with_errors`
+    - truth: Harbor reached a real scoped job and a real scoped task receipt on the current code path, with `0` execution errors and `1` benchmark-failing trial at reward `0.0`
+  - official public-task five-trial replacement receipt: `artifacts/q-terminalbench-official-public-20260422-circuit-fibsqrt-dockerup/terminalbench-report.json`
+    - task: `circuit-fibsqrt`
+    - result: `completed_with_errors`
+    - truth: this is the honest April 22 official replacement receipt. It no longer dies on stale Harbor path resolution, the Docker-daemon seam, or the old root/sudo permission flag. The current blocker is now explicit and narrower: all `5` trials ended in `AgentSetupTimeoutError`, so Harbor recorded `5` execution-error trials, `0` benchmark-failing trials, and `pass@2 = 0`, `pass@4 = 0`, `pass@5 = 0`
+  - lighter adapter proof: `artifacts/q-terminalbench-smoke-20260422-circuit-fibsqrt-force-wrapperlite/terminalbench-report.json`
+    - result: `completed_with_errors`
+    - truth: switching the adapter away from per-trial native-binary rebuilds shortened the bounded run from about `13m 32s` to about `9m 37s`, but the smoke still spent about `450s` in agent setup and then tripped an `AttributeError`, so the default official `360s` setup window is still not comfortably green on this host
+  - benchmark maintenance conclusion:
+    - the truthful current state is that the Terminal-Bench harness itself is materially healthier on this host and now reaches bounded plus official Harbor receipts on the current code path, but the official lane is still setup-bound and not leaderboard-strong
+- Immaculate Q benchmark:
+  - artifact: `C:\Users\Knight\Desktop\Immaculate\Immaculate-push-harbor\docs\wiki\Q-Mediation-Drift.json`
+  - result: fresh `April 22, 2026` bounded `q-mediation-drift` publication on the active `publish-q-win` lane
+  - truth: `4` scenarios, `0` failed assertions, route-alignment `P50 1`, drift `max 0`, runner-path `P95 50.38 ms`
+- W&B:
+  - state: OpenJaws `Q` receipts and the fresh Immaculate rerun remained local-only on this machine because there is still no usable live W&B auth surface here
+  - local proof:
+    - `WANDB_API_KEY` absent from the active environment
+    - no local `wandb` CLI installed on PATH
+    - no `%USERPROFILE%\\.netrc`
+    - no `%USERPROFILE%\\.config\\wandb\\settings`
+  - truth: only the older published Immaculate W&B runs at the top of this page are public benchmark URLs right now
+- Website benchmark snapshot:
+  - artifact: `website/lib/benchmarkSnapshot.generated.json`
+  - result: regenerated on `2026-04-22`
+  - truth: the public website snapshot now points at the newest locally generated benchmark receipts from this workspace instead of the older checked-in April snapshot
+
 ## April 18, 2026 Local Q Snapshot
 
 These are the newest local OpenJaws receipts from this repo workspace. They are useful for honest in-repo tuning and shipping decisions. They are not a public leaderboard claim.
 
 - BridgeBench:
-  - artifact: `artifacts/q-bridgebench-live-20260418-proof/bridgebench-report.json`
+  - artifact: `artifacts/q-bridgebench-live-20260422-rerun-1522/bridgebench-report.json`
   - best pack: `all`
-  - score: `42.11`
-  - bounded eval note: this fresh proof kept the same audited-pack score while moving onto the new typed trace + signed receipt lane
+  - score: `36.84`
+  - bounded eval note: the freshest April 22 rerun on this workspace is lower than the older April 18 proof, so `36.84` is the truthful current local BridgeBench number
 - 30-minute soak:
   - artifact: `artifacts/q-soak-live-20260416/q-soak-report.json`
   - result: `52/52` successful probes, `0` errors
@@ -108,10 +154,10 @@ These are the newest local OpenJaws receipts from this repo workspace. They are 
   - state: Harbor, Docker, and provider preflight all passed, and the OCI IAM container bridge now reaches real execution
   - single-task result: `completed`
     - note: the harness/trial itself completed cleanly, but the verifier reward was still `0.0`, so this is execution proof rather than a benchmark pass claim
-  - official public-task five-attempt receipt: `artifacts/q-terminalbench-official-public-20260416-circuit-fibsqrt-v2/terminalbench-report.json`
+  - official public-task five-attempt receipt: `artifacts/q-terminalbench-official-public-20260422-circuit-fibsqrt-v4/terminalbench-report.json`
     - task: `circuit-fibsqrt`
     - result: `completed_with_errors`
-    - note: the official public-dataset task finished with `5` attempts, `0` runtime errors, the verifier reward stayed `0.0`, and the wrapper scrubbed Harbor raw env bundles in place
+    - note: the freshest official public-dataset task finished with `5` attempts, `4` runtime-error trials, `1` benchmark-failing trial, the verifier reward stayed `0.0`, and the wrapper scrubbed Harbor raw env bundles in place
   - official leaderboard submission discussion:
     - `https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard/discussions/141`
   - repeated-attempt stability receipt: `artifacts/q-terminalbench-repeat-smoke-20260416/terminalbench-report.json`

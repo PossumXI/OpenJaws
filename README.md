@@ -44,7 +44,6 @@ The Q mark above is sourced from `src/components/LogoV2/qMarkData.ts` and can be
 - [Release and Update Policy](docs/wiki/Release-and-Update-Policy.md)
 - [Features and Capabilities](docs/wiki/Features-and-Capabilities.md)
 - [Apex Workspace Bridge](docs/wiki/Apex-Workspace.md)
-- [Public Showcase Activity](docs/wiki/Public-Showcase-Activity.md)
 - [Accountable Browser Preview](docs/wiki/Browser-Preview.md)
 - [Immaculate Integration](docs/wiki/Immaculate-Integration.md)
 - [Roundtable Execution](docs/wiki/Roundtable-Execution.md)
@@ -327,18 +326,8 @@ If you have both a clone and an installed binary on the same machine, use `openj
 - The tracked roundtable scheduler policy now owns fallback root scoring, approval TTL resolution, and reply/PASS inspection, so the private Discord loop can reduce empty turns without reintroducing policy drift.
 - The tracked roundtable runtime now emits queue transition receipts and `roundtable-status` summaries, so approval-ready branches, skipped jobs, and rejected jobs are visible to operators without scraping local runtime logs.
 - The tracked roundtable/runtime readers now reconcile the live Discord log too, so `roundtable-status` and `runtime:coherence` show the actual active channel and freshest approval summary when the persisted session file drifts.
-- The tracked roundtable/runtime contract now separates queue state from live roundtable session metadata, with a legacy fallback reader for older mixed files, so queue summaries stop inheriting stale live-session fields by accident.
-- Malformed roundtable handoffs now fail closed into `local-command-station/roundtable-runtime/handoff-quarantine/` with metadata receipts, so one bad non-JSON payload no longer aborts the rest of the governed queue.
-- Repo-root roundtable handoffs now narrow themselves onto deeper code-bearing paths like `src/utils`, `src/commands`, `apps/harness/src`, or `apps/dashboard/app` before they enter the tracked worktree lane, which cuts down on broad no-diff audits and makes approval-ready branches more likely to contain real code.
-- The tracked `scripts/roundtable-bootstrap.ts` bootstrap path now refreshes the live session window from the canonical tracked queue/session files before the bundled private runtime starts, rotates stale nested bundle logs, and rewrites the fallback `roundtable-runtime/roundtable-runtime` state so the Discord lane does not resurrect a completed window on restart.
-- The active private repo now also carries that tracked bootstrap script locally and the child launcher resolves it explicitly, so Discord roundtable restarts stop breaking when the private lane has drifted behind `origin/main`.
-- The roundtable scheduler now only treats recent diff-bearing completed commits as concrete progress, which keeps fresh sessions driving toward scoped code-bearing actions instead of relaxing early after no-diff or rejected audit receipts.
 - Sync passes now preserve the authoritative live roundtable channel, quarantine malformed handoffs instead of aborting the loop, and keep no-diff outcomes out of the approval lane as explicit `skipped` work.
-- The tracked sync sidecar now also stages one bounded synthetic follow-through handoff when a live roundtable window keeps posting `PASS` with an idle queue, which gives the Discord lane a shared, testable way to recover into a scoped code-bearing action without trusting the private bundle alone.
-- The tracked steady-state pass now lives in `src/utils/discordRoundtableSteadyState.ts`, so the sync sidecar and any future private launcher can reuse one shared queue/session/planner projection instead of carrying their own script-local follow-through logic.
 - That same roundtable lane now rolls forward in continuous 4-hour windows, understands direct project requests like `start an openjaws session for project sealed and ...`, keeps `SEALED` in its shared codebase knowledge scope, and limits autonomous branch/worktree execution to git-backed roots so manual-only demo folders do not poison the queue.
-- The tracked Discord Q receipt and roundtable runtime now also feed a bounded public showcase activity projection, so Aura Genesis can display sanitized operator, roundtable, and trace snippets without publishing raw mission receipts or private control paths.
-- `bun run showcase:activity:sync -- --json` writes the local bounded showcase feed into `~/.arobi-public/showcase-activity.json`, which is the handoff surface for the public showcase adapter.
 - Firecrawl dataset skill for crawl/search -> structured dataset pipelines.
 - Remote Control, environment validation, startup harness receipts, and fail-closed configuration checks.
 
@@ -413,8 +402,6 @@ OpenJaws treats Immaculate as the orchestration core rather than an optional add
 - `/status` and the flight-deck surfaces expose the same route and worker state to installed users, not just internal operators.
 - the tracing lane now has a typed `src/immaculate/events.ts` contract plus structured session-trace writing, and benchmark lanes now emit deterministic trace-backed receipt files with signature blocks when a signing key is configured
 - `/status` and `/immaculate` now prefer the active typed Immaculate trace for the run in flight, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
-- completed Immaculate and Q traces now age into `stale` after a freshness window, so `/status` and `runtime:coherence` stop treating day-old finished traces as current audit context
-- `runtime:coherence` now also warns when the Q Discord receipt is stale, when patrol/training cadence has gone cold, and when a roundtable window has expired without fresh session updates
 
 Details:
 
@@ -477,9 +464,11 @@ OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
 
 Current local benchmark snapshot from this workspace:
 
-- BridgeBench best pack: `all` at `42.11`
+- BridgeBench best pack: `all` at `36.84`
 - 30-minute soak: `52/52` successful probes with `0` errors
 - local W&B lane: attempted, but no local auth was configured so the pass stayed receipt-only
+- April 22, 2026 official TerminalBench rerun:
+  - `circuit-fibsqrt` finished `5` trials with `4` execution-error trials, `1` benchmark-failing trial, and `0` benchmark passes
 - April 18, 2026 direct Q reasoning validation:
   - direct OCI `Q` answered the fallback-hysteresis check correctly: `t = 70s`
 - April 18, 2026 direct Q media validation:
@@ -516,7 +505,6 @@ Public hosted-Q website target:
 - `https://qline.site` now serves valid HTTPS on the live Netlify surface and should be treated as the canonical public signup and checkout domain
 - `https://qline.site` now also surfaces OpenJaws, Q_agents, Agent Co-Work, the public GitHub repo, and the latest verified benchmark snapshot instead of acting like a billing-only landing page
 - the public `qline.site` benchmark block is now generated from checked-in benchmark receipts and fails CI if it drifts from those artifacts
-- the public benchmark snapshot source line is now sanitized to describe BridgeBench, soak, TerminalBench, and W&B receipt backing without leaking local absolute Windows artifact paths
 - the local release sweep now also includes a live same-site `qline.site` smoke, so the published Netlify handler/runtime/content state is checked alongside the repo build before a local ship pass is called clean
 - the release sweep now fails closed on real `system:check` failures, and the unit-test lane is scoped to the live repo `src/` and `scripts/` trees so mirrored benchmark artifacts cannot poison a ship pass
 - the CI lane now enforces a bounded Phase 0 hygiene gate too: `scripts/` dead-file scan via `knip` plus a `15%` non-test line-coverage floor for `scripts/` before the main verify sweep runs

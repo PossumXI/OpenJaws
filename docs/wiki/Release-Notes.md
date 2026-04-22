@@ -23,9 +23,6 @@ This page summarizes the current public OpenJaws surface that is already working
 - the local Settings deck now includes a Privacy mode for telemetry/nonessential-traffic policy and clearer `auto` / `dark` / `light` theme behavior so installed users can tell what the app will actually render
 - command rediscovery is clearer too: `/help`, `/config`, `/theme`, and `/privacy-settings` now form the obvious public-safe entry points for operator setup
 - `/help` now pulls its quick-start section from the real command registry and shows aliases plus argument hints in the command browser instead of a static bare-name list
-- the tracked Discord receipt and roundtable runtime now emit a bounded public showcase activity feed, and `showcase:activity:sync` writes that feed into the Arobi public handoff surface so Aura Genesis can publish sanitized operator and runtime snippets without opening raw 00 traces
-- the bounded public showcase feed now aggregates `Q`, `Viola`, `Blackbeak`, roundtable runtime, sanitized Immaculate actionability summaries, and typed trace summaries into one mirrored public-safe overlay
-- OpenJaws now mirrors that bounded overlay into `docs/wiki/Public-Showcase-Activity.json`, so other repos and public surfaces can consume the same sanctioned snapshot without scraping local runtime state files
 
 ## OpenCheek Agents and Task Deck
 
@@ -40,14 +37,6 @@ This page summarizes the current public OpenJaws surface that is already working
 - the new tracked Discord execution queue and roundtable executor modules now also own shared lease, dedupe, approval-target, and bounded roundtable job execution semantics, so direct operator runs and roundtable runs stop diverging at the approval checkpoint
 - the tracked roundtable scheduler policy now owns fallback root scoring, approval TTL resolution, and reply/PASS inspection as well, which gives the private Discord loop a tested way to prefer repo-grounded progress over idle `PASS` turns
 - the shared roundtable execution classifier now fails mixed code-plus-artifact outputs closed, so only verified code-bearing branches without generated audit or artifact spillover reach the approval checkpoint
-- repo-root roundtable handoffs now narrow themselves onto deeper code-bearing paths like `src/utils`, `src/commands`, `apps/harness/src`, or `apps/dashboard/app` before the tracked worktree lane materializes the job, which cuts down on broad no-diff audits and makes approval candidates more likely to carry mergeable code
-- the governed roundtable session reader now keeps `executing queued action` in the `running` state instead of collapsing it back to `queued`, which fixes one of the last live-session truth leaks during autonomous runs
-- the tracked roundtable readers now also detect the nested `roundtable-runtime/roundtable-runtime` output that the bundled private fallback writes, so status/coherence surfaces stop reading stale top-level files when the live Discord lane is healthy
-- the tracked roundtable bootstrap path now rebuilds fresh live session metadata from the canonical queue/session model before the bundled private lane starts, rotates stale nested bundle logs, and rewrites the fallback `roundtable-runtime/roundtable-runtime` state so a restart does not resurrect a completed window
-- the active private repo now also carries that tracked bootstrap script locally and the child launcher resolves it explicitly, so Discord roundtable restarts stop breaking when the private lane has drifted behind `origin/main`
-- the new tracked `roundtable-sync` sidecar now mirrors the bundled private live session back into the canonical queue/session files every cycle, so `roundtable-status`, approvals, and runtime coherence keep matching the actual `#dev_support` lane after startup
-- that tracked sync sidecar now also stages one bounded synthetic follow-through handoff whenever the live Discord window is running, the tracked queue is idle, and the turn stream has drifted back into `PASS`, which gives the shared governed lane a tested escape hatch back into scoped code-bearing work
-- the tracked scheduler now only relaxes after a recent diff-bearing completed commit, so no-diff or rejected audit receipts stop counting as real progress and fresh sessions keep driving toward scoped code-bearing work longer
 - tracked sync passes now preserve the authoritative live roundtable channel, quarantine malformed handoffs instead of aborting the runtime, and mark no-diff results as `skipped` so weak outcomes stay out of the approval lane
 
 ## Agent Co-Work
@@ -68,7 +57,6 @@ This page summarizes the current public OpenJaws surface that is already working
 
 - `/apex` now gives OpenJaws a bounded local command-center lane for an external Apex workspace
 - the typed `workspace_api` bridge can surface mail, chat, store, system, and security summaries directly into OpenJaws
-- `/apex` and `/status` now also consume the shared Apex tenant-governance summary through session-ingress auth, so governed operator-action visibility stays aligned across the TUI and the protected Apex operator surfaces
 - the new dedicated `chrono-bridge` wraps `apps/chrono/src/lib.rs` into a bounded localhost backup surface instead of pretending the desktop GUI is native TUI UI
 - the `/apex` deck now exposes those bridge-backed surfaces through dedicated `Mail`, `Chat`, `Store`, `System`, `Chrono`, and `Security` tabs
 - `/status` now also surfaces bounded Apex governance recommendations, so the shared tenant-governance lane can point operators toward `Mail`, `Security`, `System`, or `Store` follow-up work without widening the bridge contract
@@ -101,7 +89,6 @@ This page summarizes the current public OpenJaws surface that is already working
 - the Immaculate integration notes now carry the verified hybrid-session, OCI-training, W&B, and benchmark publication contracts that OpenJaws is aligning against
 - the tracing lane now has a typed `src/immaculate/events.ts` schema plus structured session-trace writing, and benchmark lanes now emit deterministic trace-backed receipt files with signature blocks when a signing key is configured
 - `/status` and `/immaculate` now prefer the active typed trace for the run in flight, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
-- the benchmark snapshot generator now applies the same complete-receipt preference to TerminalBench and repeated TerminalBench that BridgeBench, soak, and W&B already use, so newer partial artifacts no longer outrank older complete public receipts
 - routed `Q` fallback thresholds, route lease timing, worker lease duration, and Immaculate crew pressure delays now come from one shared policy layer instead of drifting across launch, routing, and worker helpers
 - `bun run runtime:coherence` now audits live harness reachability against Discord receipts, route queue depth, trace summaries, roundtable state, and local bot health
 - `system:check` now includes that live runtime coherence pass as an allow-failure audit instead of leaving the live-control surface unverified
@@ -165,12 +152,7 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 - the private roundtable lane now deduplicates work by canonical project scope and uses a queued lease ledger plus approval checkpoints, so multi-agent 4-hour sessions keep taking bounded actions without piling duplicate work onto the same repo path
 - the tracked roundtable runtime now emits explicit transition receipts and `roundtable-status` summaries, so approval-ready branches, skipped jobs, and rejected jobs are visible from the shared operator surface instead of only in local runtime logs
 - the tracked roundtable/runtime readers now reconcile the live Discord log when the persisted session file drifts, so runtime coherence and operator status surfaces report the actual active channel plus freshest approval summary instead of a stale preferred-channel alias
-- the tracked roundtable/runtime contract now separates queue state from live roundtable session metadata, with a legacy fallback reader for older mixed files, so queue surfaces stop inheriting stale live-session fields by accident
-- malformed roundtable handoffs now fail closed into `local-command-station/roundtable-runtime/handoff-quarantine/` with metadata receipts, so one bad non-JSON payload no longer aborts the rest of the governed queue
-- the tracked steady-state roundtable pass now lives in shared library code, so the sync CLI and future private launcher paths can reuse one queue/session/planner projection instead of duplicating steady-state follow-through logic in script wrappers
-- the Windows `dce-require-paths` release-gate test now uses a git-backed grep instead of the slower scan path that could time out under scripts coverage, which keeps local `verify:ci` parity with CI honest again
 - the Q trace reader now uses a fail-closed filesystem walk instead of a Bun glob scan, so nested benchmark traces still resolve on Windows even when the local artifacts tree contains bad path entries
-- completed Immaculate and Q traces now age into `stale` after a freshness window, and `runtime:coherence` now warns on stale Discord receipts, stale patrol cadence, and expired roundtable windows instead of treating them as current by default
 - the private roundtable lane now also rolls forward in continuous 4-hour windows, accepts direct project commands like `start an openjaws session for project openjaws|immaculate|asgard|sealed and ...`, keeps `SEALED` in its shared project knowledge scope, and limits autonomous branch/worktree execution to git-backed roots so manual-only folders do not clog the queue
 - that same approval path now supports clean rejection of unsafe note-only or artifact-mixed autonomous branches, which frees the per-project lease for the next bounded pass instead of silently blocking new work
 - the `Security` GitHub workflow now fetches full repository history before gitleaks runs, which fixes the shallow-range failure that was leaving the release branch red without an actual secret finding
@@ -180,9 +162,10 @@ This is useful for tuning and honest before/after comparison. It is not a replac
 
 Current April 16, 2026 local snapshot:
 
-- BridgeBench best pack: `all` at `42.11`
+- BridgeBench best pack: `all` at `36.84`
 - 30-minute soak: `52/52` successful probes, `0` errors
 - local W&B lane: attempted, but no local auth was configured so the run stayed receipt-only
+- April 22 official TerminalBench rerun for `circuit-fibsqrt`: `5` trials with `4` execution-error trials, `1` benchmark-failing trial, and `0` benchmark passes
 - April 18 direct OCI `Q` reasoning validation answered the fallback-hysteresis check correctly with `t = 70s`
 - April 18 direct OCI `Q` media validation returned `404` on the native image endpoint, so image/video stays on a separate explicit media lane instead of silently replacing `Q` as the session mind
 - the dedicated Gemini media lane is restored for explicit image/video work, but the configured Gemini project on this machine is still quota-blocked
@@ -209,7 +192,6 @@ This pass also tightens the public `Q` runtime story:
 - `https://qline.site` is now the canonical public hosted-Q domain and serves valid HTTPS, with Stripe webhook traffic intended for `/api/webhooks/stripe`
 - `https://qline.site` now foregrounds OpenJaws, Q_agents, Agent Co-Work, the public GitHub repo, and the latest verified benchmark snapshot, and the shared-link preview now uses a dedicated Q/OpenJaws share card instead of the old static poster
 - the public website benchmark snapshot is now generated from checked-in receipts and checked in CI so release copy cannot drift silently away from the real artifacts
-- the public benchmark snapshot source line is now sanitized, so the release-facing BridgeBench / soak / TerminalBench / W&B backing stays explicit without leaking local absolute artifact paths into published copy
 - the local release sweep now also includes a live same-site `qline.site` smoke so the published Netlify handler/runtime/content state is checked alongside the repo build before a ship pass is called clean
 - the guarded `qline.site` deploy helper now also falls back to the authenticated Windows Netlify CLI config when the repo-local CLI config is missing, so same-site redeploys stay anchored to the real project auth on this machine
 - the public website build lane now uses a Node-driven Next production build wrapper on Windows, which avoids the Bun-vs-Next manifest/diagnostics flake that was poisoning local release verification
@@ -225,5 +207,3 @@ This pass also tightens the public `Q` runtime story:
 - more release-safe installed-user update paths without breaking local source workflows
 - broader live walkthrough coverage for operator surfaces beyond settings and deferred launch controls
 - continued tightening of compatibility shims where it is safe and does not break provider contracts
-- the tracked roundtable CLI now resolves the repo root from the script path, uses the bounded `run-openjaws-visible.ps1` prompt runner, and refuses to start unless the model pin stays on `oci:Q`
-- the tracked roundtable CLI also no longer falls back to a generic `Q_AGENT_MODEL` override, so the Discord roundtable cannot silently drift off the required `oci:Q` lane
