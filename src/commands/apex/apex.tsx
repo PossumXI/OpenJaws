@@ -10,10 +10,12 @@ import {
 import {
   type ApexBrowserSummary,
   type ApexChronoSummary,
+  type ApexGovernanceRecommendation,
   type ApexLaunchTarget,
   type ApexTenantGovernanceSummary,
   type ApexWorkspaceHealth,
   type ApexWorkspaceSummary,
+  buildApexGovernanceRecommendations,
   cleanupApexChronoBackups,
   composeApexMail,
   createApexChatSession,
@@ -71,9 +73,14 @@ type LaunchAction =
   | 'start-chrono-bridge'
   | ApexLaunchTarget['id']
 type OverviewAction =
+  | 'overview-mail'
+  | 'overview-security'
+  | 'overview-system'
   | 'overview-store'
+  | 'overview-chat'
   | 'overview-browser'
   | 'overview-chrono'
+  | `overview-governance-${ApexGovernanceRecommendation['id']}`
   | `overview-app-${string}`
 
 function describeApexGovernancePressure(summary: ApexTenantGovernanceSummary | null): {
@@ -586,6 +593,8 @@ function ApexOverviewTab({
   const { headerFocused, focusHeader } = useTabHeaderFocus()
   const workspace = summarizeApexWorkspace(summary)
   const governance = summarizeApexTenantGovernance(governanceSummary)
+  const governanceRecommendations =
+    buildApexGovernanceRecommendations(governanceSummary)
   const governanceOperatorActions =
     governanceSummary?.operatorActionBreakdown
       .slice(0, 4)
@@ -603,6 +612,9 @@ function ApexOverviewTab({
     governanceSummary?.topSources
       .slice(0, 4)
       .map(source => `${source.name} · ${source.count}`) ?? []
+  const governanceRecommendationDetails = governanceRecommendations.map(
+    recommendation => `${recommendation.label} · ${recommendation.description}`,
+  )
   const operatorActivity = summarizeApexOperatorActivityReceipt(
     operatorActivityReceipt,
   )
@@ -611,6 +623,11 @@ function ApexOverviewTab({
       .slice(0, 4)
       .map(thread => `${thread.name} · ${thread.status} · ${thread.lastMessage}`) ?? []
   const overviewActions = useMemo<OptionWithDescription<OverviewAction>[]>(() => {
+    const governanceOptions = governanceRecommendations.map(recommendation => ({
+      label: recommendation.label,
+      value: `overview-governance-${recommendation.id}` as OverviewAction,
+      description: recommendation.description,
+    }))
     const appOptions =
       summary?.store.apps.slice(0, 5).map(app => ({
         label: `Inspect ${app.name}`,
@@ -618,10 +635,31 @@ function ApexOverviewTab({
         description: `${app.category} · ${app.version} · ${app.installed ? 'installed' : 'catalog'}`,
       })) ?? []
     return [
+      ...governanceOptions,
+      {
+        label: 'Open Mail tab',
+        value: 'overview-mail',
+        description: 'Review bounded mail pressure, alerts, and operator mail actions.',
+      },
+      {
+        label: 'Open Security tab',
+        value: 'overview-security',
+        description: 'Inspect governed security incidents, recommendations, and audit entries.',
+      },
+      {
+        label: 'Open System tab',
+        value: 'overview-system',
+        description: 'Inspect host pressure, services, and system alerts from the live bridge.',
+      },
       {
         label: 'Open Store tab',
         value: 'overview-store',
         description: 'Jump into the trusted app catalog to inspect or install Apex apps.',
+      },
+      {
+        label: 'Open Chat tab',
+        value: 'overview-chat',
+        description: 'Inspect bounded Shadow Chat sessions without leaving the TUI.',
       },
       {
         label: 'Open Browser tab',
@@ -635,7 +673,7 @@ function ApexOverviewTab({
       },
       ...appOptions,
     ]
-  }, [summary])
+  }, [governanceRecommendations, summary])
 
   return (
     <Box flexDirection="row" gap={3}>
@@ -644,7 +682,7 @@ function ApexOverviewTab({
           options={overviewActions}
           layout="compact-vertical"
           visibleOptionCount={10}
-          defaultFocusValue="overview-store"
+          defaultFocusValue={overviewActions[0]?.value ?? 'overview-store'}
           onChange={value => {
             onRunAction(value)
           }}
@@ -674,6 +712,12 @@ function ApexOverviewTab({
             {governanceSummary.narrative}
           </Text>
         ) : null}
+
+        <SectionTitle>Recommended next steps</SectionTitle>
+        <DetailList
+          items={governanceRecommendationDetails}
+          empty="Governance pressure is clear right now."
+        />
 
         <SectionTitle>Operator actions</SectionTitle>
         <DetailList
@@ -2030,8 +2074,24 @@ function ApexCommandCenter({
 
   const handleOverviewAction = useCallback(
     (value: OverviewAction) => {
+      if (value === 'overview-mail') {
+        setSelectedTab('Mail')
+        return
+      }
+      if (value === 'overview-security') {
+        setSelectedTab('Security')
+        return
+      }
+      if (value === 'overview-system') {
+        setSelectedTab('System')
+        return
+      }
       if (value === 'overview-store') {
         setSelectedTab('Store')
+        return
+      }
+      if (value === 'overview-chat') {
+        setSelectedTab('Chat')
         return
       }
       if (value === 'overview-browser') {
@@ -2041,6 +2101,25 @@ function ApexCommandCenter({
       if (value === 'overview-chrono') {
         setSelectedTab('Chrono')
         return
+      }
+      if (value.startsWith('overview-governance-')) {
+        const target = value.slice('overview-governance-'.length)
+        if (target === 'security') {
+          setSelectedTab('Security')
+          return
+        }
+        if (target === 'system') {
+          setSelectedTab('System')
+          return
+        }
+        if (target === 'mail') {
+          setSelectedTab('Mail')
+          return
+        }
+        if (target === 'store') {
+          setSelectedTab('Store')
+          return
+        }
       }
       if (value.startsWith('overview-app-')) {
         setSelectedStoreAppId(value.slice('overview-app-'.length))

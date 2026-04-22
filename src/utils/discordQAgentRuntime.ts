@@ -196,6 +196,49 @@ function trimDiscordReceiptLine(value: string, limit = 160): string {
   return value.length > limit ? `${value.slice(0, limit - 1)}…` : value
 }
 
+function normalizeDiscordReceiptTimestamp(
+  value: string | null | undefined,
+): string | null {
+  const normalized = value?.trim()
+  if (!normalized) {
+    return null
+  }
+  const parsed = Date.parse(normalized)
+  if (!Number.isFinite(parsed)) {
+    return null
+  }
+  return new Date(parsed).toISOString()
+}
+
+function normalizeDiscordPublicOperatorLine(
+  value: unknown,
+): string | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  return normalized.length > 0 ? normalized : null
+}
+
+function isAggregateControlledOperatorLine(
+  value: string | null | undefined,
+): boolean {
+  const normalized = value?.trim().toLowerCase()
+  if (!normalized) {
+    return false
+  }
+  return (
+    normalized.includes('public-safe aggregate publication verified') ||
+    normalized.includes('bounded action receipts') ||
+    normalized.includes('q patrol is ready') ||
+    normalized.includes('roundtable is ready') ||
+    normalized.includes('operator state is ready') ||
+    normalized.includes('discord transport is ready') ||
+    normalized.includes('bot receipts are ready') ||
+    normalized.includes('oci-backed q is ready')
+  )
+}
+
 export function buildDiscordQAgentPublicOperatorLine(
   receipt: DiscordQAgentReceipt,
 ): string | null {
@@ -217,6 +260,62 @@ export function buildDiscordQAgentPublicOperatorLine(
     return 'Q is online through the supervised OCI-backed Discord operator lane with no active bounded task.'
   }
   return null
+}
+
+export function resolveDiscordQAgentPublicShowcaseStatusMetadata(args: {
+  receipt: DiscordQAgentReceipt
+  currentShowcase?: Record<string, unknown> | null
+}): {
+  operatorLine: string | null
+  operatorUpdatedAt: string | null
+} {
+  const nextLine = buildDiscordQAgentPublicOperatorLine(args.receipt)
+  const nextUpdatedAt =
+    normalizeDiscordReceiptTimestamp(
+      args.receipt.operator.lastCompletedAt ??
+        args.receipt.updatedAt ??
+        new Date().toISOString(),
+    ) ?? new Date().toISOString()
+  const currentLine = normalizeDiscordPublicOperatorLine(
+    args.currentShowcase?.operatorLine,
+  )
+  const currentSummary = normalizeDiscordPublicOperatorLine(
+    args.currentShowcase?.summary,
+  )
+  const currentUpdatedAt = normalizeDiscordReceiptTimestamp(
+    typeof args.currentShowcase?.operatorUpdatedAt === 'string'
+      ? args.currentShowcase.operatorUpdatedAt
+      : null,
+  )
+  const preservedAggregateLine =
+    (currentLine && isAggregateControlledOperatorLine(currentLine)
+      ? currentLine
+      : null) ??
+    (currentSummary && isAggregateControlledOperatorLine(currentSummary)
+      ? currentSummary
+      : null)
+
+  if (
+    !args.receipt.operator.lastAction &&
+    preservedAggregateLine
+  ) {
+    return {
+      operatorLine: preservedAggregateLine,
+      operatorUpdatedAt: currentUpdatedAt ?? nextUpdatedAt,
+    }
+  }
+
+  if (nextLine) {
+    return {
+      operatorLine: nextLine,
+      operatorUpdatedAt: nextUpdatedAt,
+    }
+  }
+
+  return {
+    operatorLine: currentLine,
+    operatorUpdatedAt: currentUpdatedAt ?? nextUpdatedAt,
+  }
 }
 
 export function buildDiscordQAgentPublicShowcaseActivityEntry(

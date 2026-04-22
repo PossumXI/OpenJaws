@@ -120,10 +120,12 @@ Current contract:
   - uses `GET /api/v1/tenant/analytics` through session-ingress auth only as a secondary enrichment fallback
   - falls back to the mirrored summary when session-ingress auth is temporarily unavailable
   - normalizes the result into `ApexTenantGovernanceSummary`
-  - mirrors the normalized summary into `docs/wiki/Apex-Tenant-Governance.json` for other bounded local consumers
+  - mirrors the normalized summary into the repo-root `docs/wiki/Apex-Tenant-Governance.json` path for other bounded local consumers unless an explicit mirror override is set
+  - derives bounded governance recommendations from the same summary so `/apex` can jump operators into the right tab without widening the contract
 - `src/commands/apex/apex.tsx`
   - renders the governed tenant lane in the Overview tab
   - shows governance pressure in the TUI banner instead of a binary ready/offline label
+  - now renders `Recommended next steps` from the same bounded governance lane and wires them into Mail, Security, System, and Store tabs
   - now renders an `Operator actions` section from the same tenant-governance summary
   - keeps browser and Chrono bridge surfaces intact
 - `src/components/Settings/Status.tsx`
