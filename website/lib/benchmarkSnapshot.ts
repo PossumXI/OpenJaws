@@ -6,7 +6,7 @@ export type BenchmarkSnapshot = {
   bridgeBench: {
     benchmarkId: string
     bestPack: string
-    scorePercent: number
+    scorePercent: number | null
     summary: string
   }
   soak: {

@@ -35,6 +35,11 @@ function formatTerminalBenchHeadline(): string {
   return formatStatusLabel(terminalBench.status)
 }
 
+function formatBridgeBenchHeadline(): string {
+  const scorePercent = BENCHMARK_SNAPSHOT.bridgeBench.scorePercent
+  return typeof scorePercent === 'number' ? `${scorePercent.toFixed(2)}%` : 'dry run'
+}
+
 export function BenchmarkSnapshotSection(): React.ReactNode {
   return (
     <section
@@ -59,7 +64,7 @@ export function BenchmarkSnapshotSection(): React.ReactNode {
       <div className="benchmark-snapshot-grid">
         <article className="benchmark-card benchmark-card-highlight">
           <span className="benchmark-label">BridgeBench</span>
-          <strong>{BENCHMARK_SNAPSHOT.bridgeBench.scorePercent.toFixed(2)}%</strong>
+          <strong>{formatBridgeBenchHeadline()}</strong>
           <p>{BENCHMARK_SNAPSHOT.bridgeBench.summary}</p>
           <div className="benchmark-card-footnote">
             <span>Best pack: {BENCHMARK_SNAPSHOT.bridgeBench.bestPack}</span>
