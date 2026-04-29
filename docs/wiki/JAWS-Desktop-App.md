@@ -53,6 +53,8 @@ Desktop bundle:
 bun run jaws:build
 ```
 
+`jaws:build` performs a signed-release preflight before preparing the sidecar or compiling the native bundle. It requires `TAURI_SIGNING_PRIVATE_KEY` locally, or `JAWS_TAURI_SIGNING_PRIVATE_KEY` in CI where the workflow maps the secret into Tauri's expected environment. This prevents a long installer build from reaching the final updater-signing step and failing after the artifacts are already created.
+
 ## Update Pipeline
 
 Tauri updater artifacts are signed. The public key belongs in `apps/jaws-desktop/src-tauri/tauri.conf.json`; the private key must only live in CI secrets.

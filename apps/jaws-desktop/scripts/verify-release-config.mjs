@@ -24,6 +24,19 @@ function require(condition, message) {
   if (!condition) errors.push(message);
 }
 
+function parseArgs(argv) {
+  return {
+    requireSigningKey: argv.includes("--require-signing-key"),
+  };
+}
+
+function signingKeyReady() {
+  const direct = String(process.env.TAURI_SIGNING_PRIVATE_KEY || "").trim();
+  const ciAlias = String(process.env.JAWS_TAURI_SIGNING_PRIVATE_KEY || "").trim();
+  return direct.length >= 40 || ciAlias.length >= 40;
+}
+
+const args = parseArgs(process.argv.slice(2));
 const publicKey = String(process.env.JAWS_TAURI_UPDATER_PUBLIC_KEY || updater.pubkey || "").trim();
 const endpoints = Array.isArray(updater.endpoints) ? updater.endpoints : [];
 
@@ -37,6 +50,12 @@ require(endpoints.every((endpoint) => endpoint.startsWith("https://")), "Updater
 require(endpoints.some((endpoint) => endpoint.includes("qline.site")), "Updater endpoints must include qline.site.");
 require(endpoints.some((endpoint) => endpoint.includes("iorch.net")), "Updater endpoints must include iorch.net.");
 require(existsSync(iconPath) && statSync(iconPath).size > 1024, "Native Windows icon must exist at src-tauri/icons/icon.ico.");
+if (args.requireSigningKey) {
+  require(
+    signingKeyReady(),
+    "Set TAURI_SIGNING_PRIVATE_KEY or JAWS_TAURI_SIGNING_PRIVATE_KEY before running a signed JAWS bundle build."
+  );
+}
 
 function collectFiles(path) {
   if (!existsSync(path)) return [];
