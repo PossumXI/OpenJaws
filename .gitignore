@@ -62,6 +62,10 @@ website/.netlify/
 website/.netlify-cli-config/
 website/.next/
 website/tsconfig.tsbuildinfo
+apps/jaws-desktop/dist/
+apps/jaws-desktop/.tauri/
+apps/jaws-desktop/src-tauri/target/
+apps/jaws-desktop/src-tauri/binaries/openjaws-*
 
 # IDE / OS noise
 .DS_Store

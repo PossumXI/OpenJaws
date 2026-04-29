@@ -43,6 +43,7 @@ The Q mark above is sourced from `src/components/LogoV2/qMarkData.ts` and can be
 - [website/README.md](website/README.md) - legacy mirror only; live `qline.site` publishing moved to `q-s-unfolding-story`
 - [Release and Update Policy](docs/wiki/Release-and-Update-Policy.md)
 - [Features and Capabilities](docs/wiki/Features-and-Capabilities.md)
+- [JAWS Desktop App](docs/wiki/JAWS-Desktop-App.md)
 - [Apex Workspace Bridge](docs/wiki/Apex-Workspace.md)
 - [Accountable Browser Preview](docs/wiki/Browser-Preview.md)
 - [Immaculate Integration](docs/wiki/Immaculate-Integration.md)
@@ -91,6 +92,8 @@ They matter because OpenJaws uses Immaculate for real decisions: picking routes,
   - [`release-policy.json`](release-policy.json)
 - Installed native releases update from the public `stable` or `latest` lane, not from arbitrary `main` commits.
 - Public native assets are currently published for `win32-x64`, `linux-x64`, and `darwin-x64`.
+
+JAWS Desktop is the native app lane for OpenJaws. It bundles the OpenJaws backend as a Tauri sidecar and adds desktop workspace controls, agent visibility, Arobi enrollment, co-work, marketplace, studio, arcade, billing, and signed update release wiring. See [JAWS Desktop App](docs/wiki/JAWS-Desktop-App.md).
 
 Use the shipped binary/update path when you install from a published tag:
 

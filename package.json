@@ -18,6 +18,12 @@
   "scripts": {
     "build": "bun build --target=bun --outdir=dist src/main.tsx",
     "build:native": "bun scripts/build-native.ts",
+    "jaws:dev": "bun run --cwd apps/jaws-desktop tauri:dev",
+    "jaws:build": "bun run --cwd apps/jaws-desktop tauri:build",
+    "jaws:manifest:test": "bun run --cwd apps/jaws-desktop manifest:test",
+    "jaws:release:check": "bun run --cwd apps/jaws-desktop release:check",
+    "jaws:ui:build": "bun run --cwd apps/jaws-desktop build",
+    "jaws:verify": "bun run --cwd apps/jaws-desktop verify",
     "website:dev": "bun run --cwd website dev",
     "website:build": "bun scripts/build-website.ts",
     "website:snapshot:generate": "bun scripts/generate-website-benchmark-snapshot.ts",
