@@ -83,6 +83,7 @@ import { clearToolSchemaCache } from './toolSchemaCache.js'
 const DEFAULT_API_KEY_HELPER_TTL = 5 * 60 * 1000
 const OWNER_LOCAL_BYPASS_ACCOUNT_UUID = 'openjaws-owner-local-bypass'
 const OWNER_LOCAL_BYPASS_ORG_UUID = 'openjaws-owner-local-org'
+const OWNER_LOCAL_BYPASS_EMAIL_FALLBACK = ['owner-bypass', 'example.invalid'].join('@')
 const OWNER_LOCAL_BYPASS_CREATED_AT = '2026-04-26T00:00:00.000Z'
 
 export function isOwnerLocalLoginBypassEnabled(): boolean {
@@ -96,8 +97,8 @@ function getOwnerLocalBypassAccountInfo(): AccountInfo {
   return {
     accountUuid: OWNER_LOCAL_BYPASS_ACCOUNT_UUID,
     emailAddress:
-      process.env.OPENJAWS_OWNER_LOGIN_BYPASS_EMAIL ??
-      'openjaws-local-owner@example.invalid',
+      process.env.OPENJAWS_OWNER_LOGIN_BYPASS_EMAIL?.trim() ||
+      OWNER_LOCAL_BYPASS_EMAIL_FALLBACK,
     organizationUuid: OWNER_LOCAL_BYPASS_ORG_UUID,
     organizationName: 'OpenJaws Local Owner',
     organizationRole: 'primary_owner',

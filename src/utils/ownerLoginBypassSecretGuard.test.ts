@@ -13,9 +13,14 @@ describe('owner local login bypass secret guard', () => {
     expect(launcherText).not.toContain('OPENJAWS_OWNER_LOGIN_BYPASS_NAME=')
   })
 
-  it('does not embed founder email or personal name defaults in auth fallback', () => {
-    expect(authText).not.toContain('founder@qline.site')
-    expect(authText).not.toContain('Gaetano Comparcola')
-    expect(authText).toContain('openjaws-local-owner@example.invalid')
+  it('does not embed founder identity or personal email defaults in auth fallback', () => {
+    expect(authText).not.toContain('Gaetano')
+    expect(authText).not.toContain('Comparcola')
+    expect(authText).not.toMatch(
+      /\b[A-Z0-9._%+-]+@(?!example\.invalid\b)[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
+    )
+    expect(authText).toContain(
+      "const OWNER_LOCAL_BYPASS_EMAIL_FALLBACK = ['owner-bypass', 'example.invalid'].join('@')",
+    )
   })
 })
