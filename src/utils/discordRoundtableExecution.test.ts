@@ -69,6 +69,23 @@ describe('discordRoundtableExecution', () => {
     })
   })
 
+  it('rejects nested artifact directories as non-mergeable output', () => {
+    expect(
+      classifyDiscordRoundtableExecution({
+        changedFiles: [
+          'internal/cortex/heartbeat_default_test.go',
+          'internal/cortex/artifacts/',
+        ],
+        verificationPassed: true,
+        commitSha: 'abc123',
+      }),
+    ).toMatchObject({
+      hasCodeChanges: true,
+      hasDisallowedChanges: true,
+      mergeable: false,
+    })
+  })
+
   it('treats generated receipt and delivery files as non-code receipts', () => {
     expect(
       classifyDiscordRoundtableExecution({

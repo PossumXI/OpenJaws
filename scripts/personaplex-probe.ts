@@ -21,6 +21,7 @@ type PersonaPlexRuntimeState = {
   processId?: string | number | null
   wslPid?: string | number | null
   error?: string | null
+  lastError?: string | null
   status?: string | null
 }
 
@@ -161,8 +162,9 @@ export function buildPersonaPlexRuntimeStateDiagnostic(
     detailParts.push(`started ${state.startedAt}`)
   }
 
-  if (state.error) {
-    detailParts.push(`last error ${state.error}`)
+  const lastError = state.lastError ?? state.error
+  if (lastError) {
+    detailParts.push(`last error ${lastError}`)
   }
 
   return detailParts.length > 0 ? detailParts.join(', ') : null

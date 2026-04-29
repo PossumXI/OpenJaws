@@ -139,6 +139,7 @@ const CODE_FILE_EXTENSIONS = [
 ]
 const NON_MERGEABLE_PATH_PATTERNS = [
   /^artifacts\//i,
+  /(?:^|[\\/])artifacts[\\/]/i,
   /^_AUDIT/i,
   /^_NOTE/i,
   /^AUDIT/i,

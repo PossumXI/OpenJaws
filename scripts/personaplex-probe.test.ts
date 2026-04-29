@@ -49,4 +49,17 @@ describe('personaplex-probe', () => {
       ),
     ).toBe('mode windows, pid 10452, last healthy 2h ago')
   })
+
+  test('includes launcher lastError diagnostics from runtime state', () => {
+    expect(
+      buildPersonaPlexRuntimeStateDiagnostic({
+        runtimeMode: 'wsl',
+        wslPid: 407,
+        lastError:
+          'PersonaPlex listener was bound, but ws://host:port/api/chat did not produce the expected hello frame.',
+      }),
+    ).toBe(
+      'mode wsl, pid 407, last error PersonaPlex listener was bound, but ws://host:port/api/chat did not produce the expected hello frame.',
+    )
+  })
 })

@@ -1029,8 +1029,10 @@ describe('discordRoundtableRuntime', () => {
       ),
       'utf8',
     )
+    const runtimeStatePath = getDiscordRoundtableStatePath(root)
+    mkdirSync(dirname(runtimeStatePath), { recursive: true })
     writeFileSync(
-      getDiscordRoundtableStatePath(root),
+      runtimeStatePath,
       JSON.stringify(
         {
           ...createDiscordRoundtableRuntimeState({
@@ -1524,6 +1526,130 @@ describe('discordRoundtableRuntime', () => {
     ).toBe(false)
     expect(existsSync(getOpenJawsOperatorStatePath(root))).toBe(false)
     expect(result.transitionReceipts[0]?.status).toBe('rejected')
+  })
+
+  it('rejects stale pending approvals that contain generated artifacts', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-stale-approval-'))
+    tempDirs.push(root)
+    const repoRoot = join(root, 'repo')
+    mkdirSync(join(repoRoot, '.git'), { recursive: true })
+    const pendingJob: DiscordRoundtableTrackedJob = {
+      kind: 'roundtable',
+      id: 'artifact-approval-job',
+      branchName: 'discord-blackbeak-artifact-approval',
+      worktreePath: repoRoot,
+      workspacePath: join(repoRoot, 'internal', 'cortex'),
+      changedFiles: [
+        'internal/cortex/heartbeat_default_test.go',
+        'internal/cortex/artifacts/immaculate/session-traces/trace.jsonl',
+      ],
+      summary: 'Asgard · Blackbeak · Artifact spillover · Verification passed',
+      verificationSummary: 'Verification passed',
+      commitSha: 'abc123',
+      status: 'awaiting_approval',
+      approvalState: 'pending',
+      workKey: 'asgard::internal/cortex',
+      projectKey: 'asgard',
+      sourcePath: join(root, 'handoff.json'),
+      sourceSessionId: 'session-artifact',
+      sourceScheduleId: null,
+      handoffKey: 'handoff-artifact',
+      repoId: 'asgard',
+      repoLabel: 'Asgard',
+      role: 'Blackbeak',
+      objective: 'Artifact spillover',
+      rationale: 'A previous runtime version let generated artifacts reach approval.',
+      commandHint: null,
+      targetPath: join(repoRoot, 'internal', 'cortex'),
+      targetRootLabel: 'Asgard',
+      receiptPath: null,
+      outputDir: null,
+      deliveryArtifactManifestPath: null,
+      deliveryArtifacts: [],
+      commitStatement: null,
+      decisionTraceId: null,
+      routeSuggestion: null,
+      executionReady: true,
+      requiresManualCheckout: false,
+      workspaceMaterialized: true,
+      authorityBound: true,
+      action: {
+        id: 'artifact-approval-job',
+        title: 'Artifact spillover',
+        reason: 'A previous runtime version let generated artifacts reach approval.',
+        targetPath: join(repoRoot, 'internal', 'cortex'),
+        prompt: 'tighten the heartbeat test without artifacts',
+        gitRoot: repoRoot,
+      },
+      completedAt: '2026-04-29T21:18:38.000Z',
+      approvedAt: null,
+      approvedBy: null,
+      rejectedAt: null,
+      rejectedBy: null,
+      rejectionReason: null,
+      leaseClaimedAt: null,
+      leaseExpiresAt: null,
+      leaseOwner: null,
+    }
+    const runtimeStatePath = getDiscordRoundtableStatePath(root)
+    mkdirSync(dirname(runtimeStatePath), { recursive: true })
+    writeFileSync(
+      runtimeStatePath,
+      JSON.stringify(
+        {
+          ...createDiscordRoundtableRuntimeState({
+            now: new Date('2026-04-29T21:20:00.000Z'),
+            roundtableChannelName: 'dev_support',
+          }),
+          status: 'awaiting_approval',
+          lastSummary:
+            'Asgard roundtable action artifact-approval-job is awaiting approval.',
+          jobs: [pendingJob],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    const operatorStatePath = getOpenJawsOperatorStatePath(root)
+    mkdirSync(dirname(operatorStatePath), { recursive: true })
+    writeFileSync(
+      operatorStatePath,
+      JSON.stringify(
+        {
+          pendingPushes: [
+            {
+              jobId: pendingJob.id,
+              requestedByUserId: 'roundtable:Blackbeak',
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const result = await processDiscordRoundtableRuntime({
+      root,
+      allowedRoots: [repoRoot],
+      ingestInbox: false,
+      maxActionsPerRun: 0,
+      model: 'oci:Q',
+      runnerScriptPath:
+        'D:\\openjaws\\OpenJaws\\local-command-station\\run-openjaws-visible.ps1',
+      worktreeRoot: join(root, 'worktrees'),
+      outputRoot: join(root, 'outputs'),
+      now: () => new Date('2026-04-29T21:25:00.000Z'),
+    })
+
+    expect(result.awaitingApprovalCount).toBe(0)
+    expect(result.state.jobs[0]?.status).toBe('rejected')
+    expect(result.state.jobs[0]?.rejectionReason).toBe(
+      'mixed code and artifact output',
+    )
+    expect(result.transitionReceipts[0]?.status).toBe('rejected')
+    expect(existsSync(operatorStatePath)).toBe(false)
   })
 
   it('marks no-diff roundtable executions as skipped instead of completed', async () => {

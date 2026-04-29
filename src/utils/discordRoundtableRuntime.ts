@@ -16,6 +16,7 @@ import {
   type DiscordOperatorDeliveryArtifact,
 } from './discordOperatorExecution.js'
 import {
+  classifyDiscordRoundtableExecution,
   executeDiscordRoundtableAction,
   type DiscordRoundtableExecutableAction,
   type DiscordRoundtableExecutionResult,
@@ -1729,6 +1730,56 @@ function normalizeRuntimeStatus(
   return 'idle'
 }
 
+function getInvalidPendingApprovalReason(
+  job: DiscordRoundtableTrackedJob,
+): string | null {
+  if (job.status !== 'awaiting_approval' || job.approvalState !== 'pending') {
+    return null
+  }
+  const classification = classifyDiscordRoundtableExecution({
+    changedFiles: job.changedFiles,
+    verificationPassed: true,
+    commitSha: job.commitSha ?? null,
+  })
+  if (classification.artifactOnly) {
+    return 'artifact-only output'
+  }
+  if (classification.hasDisallowedChanges) {
+    return 'mixed code and artifact output'
+  }
+  if (!job.commitSha) {
+    return 'missing approval commit'
+  }
+  return null
+}
+
+function rejectInvalidPendingApprovals(args: {
+  jobs: DiscordRoundtableTrackedJob[]
+  rejectedAt: string
+}): {
+  jobs: DiscordRoundtableTrackedJob[]
+  rejected: Array<{ id: string; reason: string }>
+} {
+  const rejected: Array<{ id: string; reason: string }> = []
+  const jobs = args.jobs.map(job => {
+    const reason = getInvalidPendingApprovalReason(job)
+    if (!reason) {
+      return job
+    }
+    rejected.push({ id: job.id, reason })
+    return {
+      ...job,
+      status: 'rejected' as const,
+      approvalState: 'rejected' as const,
+      rejectedAt: args.rejectedAt,
+      rejectionReason: reason,
+      leaseExpiresAt: null,
+      leaseOwner: null,
+    }
+  })
+  return { jobs, rejected }
+}
+
 function countRoundtableJobs(
   jobs: DiscordRoundtableTrackedJob[],
 ): DiscordRoundtableJobCounts {
@@ -2319,6 +2370,22 @@ export async function processDiscordRoundtableRuntime(
       approvalTtlHours,
       nowMs: (options.now?.() ?? new Date()).getTime(),
     }) as DiscordRoundtableTrackedJob[],
+  }
+  const approvalRevalidation = rejectInvalidPendingApprovals({
+    jobs: state.jobs,
+    rejectedAt: (options.now?.() ?? new Date()).toISOString(),
+  })
+  if (approvalRevalidation.rejected.length > 0) {
+    const summary = approvalRevalidation.rejected
+      .map(candidate => `${candidate.id}: ${candidate.reason}`)
+      .join('; ')
+    state = {
+      ...state,
+      jobs: approvalRevalidation.jobs,
+      lastError: null,
+      lastSummary: `Rejected invalid pending roundtable approval ${summary}.`,
+    }
+    state.status = normalizeRuntimeStatus(state.jobs, state.lastError, state.status)
   }
   pruneOperatorPendingPushes({
     path:

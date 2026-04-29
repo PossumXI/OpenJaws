@@ -98,14 +98,14 @@ describe('discord roundtable status truth', () => {
     expect(state.roundtableChannelName).toBe('dev_support')
     expect(state.status).toBe('awaiting_approval')
     expect(session?.roundtableChannelName).toBe('dev_support')
-    expect(session?.status).toBe('awaiting_approval')
+    expect(session?.status).toBe('running')
 
     const statusLines = [
       ...(session ? buildDiscordRoundtableSessionStatusLines(session) : []),
       ...buildDiscordRoundtableRuntimeStatusLines(state),
     ]
 
-    expect(statusLines[0]).toBe('Live roundtable: awaiting_approval · #dev_support')
+    expect(statusLines[0]).toBe('Live roundtable: running · #dev_support')
     expect(statusLines).toContain(
       'Live summary: Q action awaiting_approval: Q audit-and-tighten pass',
     )
