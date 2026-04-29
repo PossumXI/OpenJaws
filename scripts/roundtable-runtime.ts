@@ -23,7 +23,7 @@ type CliOptions = {
   json: boolean
 }
 
-function parseArgs(argv: string[]): CliOptions {
+export function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     handoffPaths: [],
     allowRoots: [],
@@ -75,7 +75,7 @@ function parseArgs(argv: string[]): CliOptions {
       case '--max-actions':
         if (argv[index + 1]) {
           const parsed = Number.parseInt(argv[index + 1]!, 10)
-          if (Number.isFinite(parsed) && parsed > 0) {
+          if (Number.isFinite(parsed) && parsed >= 0) {
             options.maxActionsPerRun = parsed
           }
           index += 1
@@ -260,7 +260,7 @@ async function runIteration(options: CliOptions) {
   console.log(output)
 }
 
-async function main(argv = process.argv.slice(2)) {
+export async function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv)
   if (!options.loop) {
     await runIteration(options)
@@ -272,4 +272,6 @@ async function main(argv = process.argv.slice(2)) {
   }
 }
 
-await main()
+if (import.meta.main) {
+  await main()
+}

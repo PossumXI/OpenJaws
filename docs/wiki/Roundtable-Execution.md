@@ -16,6 +16,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 ## Safety Rules
 
 - Execution is limited to approved roots.
+- Approved roots are canonicalized to exact git checkouts before autonomous execution. Broad parents such as `D:\openjaws` are narrowed to concrete repositories such as `D:\openjaws\OpenJaws`, and stale parent-targeted handoffs fail closed instead of creating worktrees from the wrong repository.
 - Every job is materialized in an isolated worktree.
 - Malformed governed handoffs fail closed into `local-command-station/roundtable-runtime/handoff-quarantine/` instead of aborting the runtime.
 - Mixed code-plus-artifact output is held back and never promoted into the approval lane.
@@ -33,6 +34,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - Run it continuously: `bun run roundtable:runtime -- --loop --allow-root "C:\Users\Knight\Desktop\Immaculate" --allow-root "C:\Users\Knight\Desktop\cheeks\Asgard"`
 - The continuous runtime includes the steady-state planner by default, so an active Discord roundtable can create the next scoped follow-through handoff when the queue is idle. Use `--no-steady-state` only when you want to drain already-staged work without creating new work. For a one-shot planner pass, add `--steady-state`.
 - Override the 4-hour window or approval TTL when you need a tighter operator pass: `bun run roundtable:runtime -- --duration-hours 2 --approval-ttl-hours 0.5`
+- Ingest and quarantine already-staged handoffs without launching agent execution: `bun run roundtable:runtime -- --no-steady-state --max-actions 0 --allow-root "D:\openjaws\OpenJaws"`
 - Inspect state: `bun run roundtable:runtime`
 - Inspect state from Discord: `@Q operator roundtable-status`
 - Approve a generated branch after review: `@Q operator confirm-push <job-id>`
@@ -41,6 +43,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 ## Runtime Notes
 
 - `src/utils/discordRoundtableScheduler.ts` is the tracked policy source for fallback root selection, approval TTL, and reply/PASS reduction heuristics.
+- `src/utils/discordOperatorWork.ts` owns allowed-root canonicalization and short worktree allocation, so direct Discord operator jobs and roundtable jobs use the same Windows-safe checkout rules.
 - `scripts/roundtable-runtime.ts` is the tracked CLI wrapper around the shared runtime path.
 - Runtime output now includes the progression bootstrap reason and the steady-state planner reason. If the loop does not create a new handoff, the reason will say whether it was blocked by active governed work, pending inbox work, cooldown, or low planner pressure; stale and expired sessions are reopened before planning.
 - On Windows the runtime defaults isolated worktrees to a short root such as `D:\ojwt` so long vendor paths do not break governed checkout. Override with `DISCORD_OPERATOR_WORKTREE_ROOT` only when the replacement path is also short enough for deep repository trees.
