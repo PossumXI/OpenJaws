@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { check } from "@tauri-apps/plugin-updater";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Activity,
   ChevronLeft,
   ChevronRight,
+  CheckCircle2,
   CircleDot,
   ExternalLink,
   Film,
+  FolderOpen,
   Maximize2,
   MonitorPlay,
   Pause,
@@ -17,6 +19,8 @@ import {
   RefreshCcw,
   ShieldCheck,
   Sparkles,
+  TerminalSquare,
+  XCircle,
   Zap
 } from "lucide-react";
 import {
@@ -28,6 +32,7 @@ import {
   type SectionId,
   type ThemeId
 } from "./data";
+import { buildWorkspaceSelection, type TerminalPlatform } from "./workspace";
 import jawsLogo from "./assets/jaws-logo.svg";
 
 interface BackendStatus {
@@ -51,8 +56,16 @@ interface SidecarSmoke {
   stderr: string;
 }
 
+interface WorkspaceStatus {
+  path: string;
+  name: string;
+  valid: boolean;
+  message: string;
+  tuiCommand: string;
+}
+
 const fallbackStatus: BackendStatus = {
-  appVersion: "0.1.0",
+  appVersion: "0.1.1",
   sidecarName: "openjaws",
   sidecarReady: false,
   sidecarMessage: "Desktop preview running outside Tauri",
@@ -66,6 +79,14 @@ const fallbackLinks: EnrollmentLink[] = [
   { label: "GitHub", url: "https://github.com/PossumXI/OpenJaws" }
 ];
 
+const fallbackWorkspace: WorkspaceStatus = {
+  path: "",
+  name: "No workspace",
+  valid: false,
+  message: "Set a project folder to route OpenJaws like a local cd command.",
+  tuiCommand: "openjaws"
+};
+
 function hasTauriRuntime() {
   return "__TAURI_INTERNALS__" in window;
 }
@@ -76,6 +97,10 @@ function toneLabel(tone: "good" | "warn" | "neutral") {
   return "Queued";
 }
 
+function terminalPlatform(): TerminalPlatform {
+  return navigator.platform.toLowerCase().includes("win") ? "windows" : "posix";
+}
+
 export function App() {
   const [active, setActive] = useState<SectionId>("control");
   const [collapsed, setCollapsed] = useState(false);
@@ -84,7 +109,11 @@ export function App() {
   const [status, setStatus] = useState<BackendStatus>(fallbackStatus);
   const [links, setLinks] = useState<EnrollmentLink[]>(fallbackLinks);
   const [smoke, setSmoke] = useState<SidecarSmoke | null>(null);
+  const [workspaceInput, setWorkspaceInput] = useState(() => localStorage.getItem("jaws.workspace") ?? "");
+  const [workspaceStatus, setWorkspaceStatus] = useState<WorkspaceStatus>(fallbackWorkspace);
+  const [workspaceSmoke, setWorkspaceSmoke] = useState<SidecarSmoke | null>(null);
   const [updateState, setUpdateState] = useState("Not checked");
+  const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
   const [arcadeRunning, setArcadeRunning] = useState(true);
 
   useEffect(() => {
@@ -108,6 +137,10 @@ export function App() {
   }, []);
 
   const activeTitle = useMemo(() => navItems.find((item) => item.id === active)?.label ?? "Control", [active]);
+  const workspaceSelection = useMemo(
+    () => buildWorkspaceSelection(workspaceInput, terminalPlatform()),
+    [workspaceInput]
+  );
 
   async function runSmoke() {
     if (!hasTauriRuntime()) {
@@ -120,8 +153,54 @@ export function App() {
       return;
     }
 
-    const result = await invoke<SidecarSmoke>("openjaws_smoke");
+    const result = await invoke<SidecarSmoke>("openjaws_smoke", {
+      workspacePath: null
+    });
     setSmoke(result);
+  }
+
+  async function applyWorkspace() {
+    const selection = workspaceSelection;
+    setWorkspaceSmoke(null);
+    localStorage.setItem("jaws.workspace", selection.cleaned);
+
+    if (!hasTauriRuntime()) {
+      setWorkspaceStatus({
+        path: selection.cleaned,
+        name: selection.name,
+        valid: selection.ready,
+        message: selection.ready
+          ? "Preview mode cannot validate the folder, but the command is ready for Tauri."
+          : "Use an absolute project folder path before opening the TUI view.",
+        tuiCommand: selection.command
+      });
+      return;
+    }
+
+    const result = await invoke<WorkspaceStatus>("validate_workspace", {
+      path: selection.cleaned
+    });
+    setWorkspaceStatus(result);
+    if (result.path) {
+      setWorkspaceInput(result.path);
+    }
+  }
+
+  async function runWorkspaceSmoke() {
+    if (!hasTauriRuntime()) {
+      setWorkspaceSmoke({
+        ok: false,
+        code: null,
+        stdout: "",
+        stderr: "Run inside Tauri to execute OpenJaws from the selected project folder."
+      });
+      return;
+    }
+
+    const result = await invoke<SidecarSmoke>("openjaws_smoke", {
+      workspacePath: workspaceStatus.path || workspaceSelection.cleaned
+    });
+    setWorkspaceSmoke(result);
   }
 
   async function checkForUpdates() {
@@ -132,10 +211,25 @@ export function App() {
 
     try {
       const update = await check();
+      setPendingUpdate(update);
       setUpdateState(update ? `Update ${update.version} ready` : "Current release");
     } catch (error) {
       setUpdateState(String(error));
     }
+  }
+
+  async function installUpdate() {
+    if (!pendingUpdate) {
+      setUpdateState("No update selected");
+      return;
+    }
+    setUpdateState(`Downloading ${pendingUpdate.version}`);
+    await pendingUpdate.downloadAndInstall((event) => {
+      if (event.event === "Started") setUpdateState(`Downloading ${pendingUpdate.version}`);
+      if (event.event === "Progress") setUpdateState(`Downloading ${pendingUpdate.version}`);
+      if (event.event === "Finished") setUpdateState("Installing update");
+    });
+    setUpdateState("Update installed. Restart JAWS to finish.");
   }
 
   async function openExternal(url: string) {
@@ -227,6 +321,12 @@ export function App() {
                   <RadioTower size={16} />
                   Check Update
                 </button>
+                {pendingUpdate && (
+                  <button className="text-button" type="button" onClick={installUpdate}>
+                    <CheckCircle2 size={16} />
+                    Install
+                  </button>
+                )}
               </div>
             </div>
 
@@ -257,6 +357,73 @@ export function App() {
               {smoke && (
                 <pre className="console">{smoke.ok ? smoke.stdout || "OpenJaws responded." : smoke.stderr || "Sidecar check failed."}</pre>
               )}
+            </div>
+          </section>
+        )}
+
+        {active === "terminal" && (
+          <section className="terminal-page">
+            <div className="wide-panel terminal-panel">
+              <PanelHeader icon={TerminalSquare} label="Workspace TUI" />
+              <div className="workspace-picker">
+                <label htmlFor="workspace-path">Project folder</label>
+                <div className="input-row">
+                  <input
+                    id="workspace-path"
+                    value={workspaceInput}
+                    onChange={(event) => setWorkspaceInput(event.target.value)}
+                    placeholder={terminalPlatform() === "windows" ? "D:\\projects\\my-app" : "/home/me/projects/my-app"}
+                    spellCheck={false}
+                  />
+                  <button className="text-button primary" type="button" onClick={applyWorkspace}>
+                    <FolderOpen size={16} />
+                    Set Folder
+                  </button>
+                </div>
+              </div>
+
+              <div className="terminal-layout">
+                <section className="terminal-screen" aria-label="JAWS terminal preview">
+                  <div className="terminal-titlebar">
+                    <span />
+                    <span />
+                    <span />
+                    <strong>{workspaceStatus.valid ? workspaceStatus.name : workspaceSelection.name}</strong>
+                  </div>
+                  <pre>
+{`$ ${workspaceStatus.tuiCommand || workspaceSelection.command}
+
+Workspace: ${workspaceStatus.path || workspaceSelection.cleaned || "not set"}
+Status: ${workspaceStatus.message}
+
+This native view keeps the selected project folder attached before OpenJaws, Q, Immaculate, and ledger routes run.`}
+                  </pre>
+                </section>
+
+                <aside className="terminal-side">
+                  <div className={workspaceStatus.valid ? "workspace-state ready" : "workspace-state blocked"}>
+                    {workspaceStatus.valid ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
+                    <div>
+                      <strong>{workspaceStatus.valid ? "Workspace ready" : "Workspace needed"}</strong>
+                      <span>{workspaceStatus.message}</span>
+                    </div>
+                  </div>
+                  <StatusLine label="Folder" value={workspaceStatus.path || workspaceSelection.cleaned || "Not set"} />
+                  <StatusLine label="View" value="Embedded TUI" />
+                  <StatusLine label="Command" value={workspaceStatus.tuiCommand || workspaceSelection.command} />
+                  <button className="text-button" type="button" onClick={runWorkspaceSmoke}>
+                    <RefreshCcw size={16} />
+                    Test In Folder
+                  </button>
+                  {workspaceSmoke && (
+                    <pre className="console">
+                      {workspaceSmoke.ok
+                        ? workspaceSmoke.stdout || `OpenJaws responded from ${workspaceStatus.path || workspaceSelection.cleaned}.`
+                        : workspaceSmoke.stderr || "Workspace sidecar check failed."}
+                    </pre>
+                  )}
+                </aside>
+              </div>
             </div>
           </section>
         )}

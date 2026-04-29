@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,6 +8,8 @@ const tauriRoot = join(appRoot, "src-tauri");
 const configPath = join(tauriRoot, "tauri.conf.json");
 const packagePath = join(appRoot, "package.json");
 const iconPath = join(tauriRoot, "icons", "icon.ico");
+const brandingRoots = [join(appRoot, "src"), join(tauriRoot, "src"), join(tauriRoot, "tauri.conf.json")];
+const blockedBrandingPattern = /\b(?:claude|anthropic)\b/i;
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -35,6 +37,30 @@ require(endpoints.every((endpoint) => endpoint.startsWith("https://")), "Updater
 require(endpoints.some((endpoint) => endpoint.includes("qline.site")), "Updater endpoints must include qline.site.");
 require(endpoints.some((endpoint) => endpoint.includes("iorch.net")), "Updater endpoints must include iorch.net.");
 require(existsSync(iconPath) && statSync(iconPath).size > 1024, "Native Windows icon must exist at src-tauri/icons/icon.ico.");
+
+function collectFiles(path) {
+  if (!existsSync(path)) return [];
+  const stat = statSync(path);
+  if (stat.isFile()) return [path];
+  if (!stat.isDirectory()) return [];
+  return readdirSync(path, { withFileTypes: true }).flatMap((entry) => {
+    const child = join(path, entry.name);
+    if (entry.isDirectory()) return collectFiles(child);
+    return entry.isFile() ? [child] : [];
+  });
+}
+
+const legacyBrandingHits = brandingRoots
+  .flatMap(collectFiles)
+  .filter((path) => /\.(?:css|html|json|rs|ts|tsx|svg)$/.test(path))
+  .filter((path) => blockedBrandingPattern.test(readFileSync(path, "utf8")));
+
+require(
+  legacyBrandingHits.length === 0,
+  `JAWS Desktop release surface contains legacy provider branding: ${legacyBrandingHits
+    .map((path) => path.replace(`${appRoot}\\`, "").replace(`${appRoot}/`, ""))
+    .join(", ")}`
+);
 
 if (errors.length > 0) {
   console.error("JAWS Desktop release config is not ready:");

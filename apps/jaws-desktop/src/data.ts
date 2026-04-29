@@ -23,6 +23,7 @@ import type { LucideIcon } from "lucide-react";
 
 export type SectionId =
   | "control"
+  | "terminal"
   | "agents"
   | "studio"
   | "arcade"
@@ -63,6 +64,7 @@ export interface MarketplaceItem {
 
 export const navItems: NavItem[] = [
   { id: "control", label: "Control", icon: LayoutDashboard },
+  { id: "terminal", label: "Terminal", icon: TerminalSquare },
   { id: "agents", label: "Agents", icon: Radar },
   { id: "studio", label: "Studio", icon: Clapperboard },
   { id: "arcade", label: "Arcade", icon: Gamepad2 },

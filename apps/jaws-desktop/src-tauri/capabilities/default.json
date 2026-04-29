@@ -13,7 +13,8 @@
         {
           "name": "binaries/openjaws",
           "sidecar": true,
-          "args": ["--version"]
+          "args": ["--version"],
+          "cwd": true
         }
       ]
     }

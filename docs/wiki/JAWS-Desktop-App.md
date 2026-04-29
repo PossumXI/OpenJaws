@@ -10,6 +10,7 @@ Brand line:
 
 - Collapsible side menu for focused workspace viewing.
 - Control dashboard for OpenJaws, Q, Q_agents, OpenCheek, Immaculate, Arobi, and security lanes.
+- Terminal workspace tab that validates an absolute project folder, stores the selected workspace locally, shows the exact OpenJaws TUI launch command, and can run the bundled OpenJaws sidecar from that folder.
 - Agent Watch timeline for live orchestration events.
 - Image Studio and Video Studio panels for provider-gated creative work.
 - Arcade Bar with a tiny idle-safe retro runner.
@@ -41,6 +42,8 @@ Full desktop verification:
 ```powershell
 bun run jaws:verify
 ```
+
+The desktop verification gate now runs Bun UI/helper tests before sidecar prep, TypeScript/Vite build, and Tauri `cargo check`.
 
 Desktop bundle:
 
@@ -81,6 +84,13 @@ Windows bundle smoke, run locally on 2026-04-29:
 - `JAWS_0.1.0_x64_en-US.msi.sig`
 - `JAWS_0.1.0_x64-setup.exe`
 - `JAWS_0.1.0_x64-setup.exe.sig`
+
+0.1.1 local release verification, run on 2026-04-29:
+
+- `bun run jaws:verify`
+- `bun run jaws:release:check`
+- `bun run build`
+- `bun run test`
 
 Implementation references:
 

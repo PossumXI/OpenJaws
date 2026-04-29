@@ -1,6 +1,6 @@
 {
   "name": "@openjaws/jaws-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "JAWS native desktop shell for OpenJaws, Q, Immaculate, and co-work orchestration.",
@@ -15,8 +15,9 @@
     "manifest:generate": "node scripts/build-updater-manifest.mjs",
     "manifest:test": "node scripts/build-updater-manifest.mjs --self-test",
     "updater:manifest": "node scripts/build-updater-manifest.mjs",
+    "test": "bun test src",
     "prepare:sidecar": "node scripts/prepare-sidecar.mjs",
-    "verify": "bun run prepare:sidecar && bun run build && cargo check --manifest-path src-tauri/Cargo.toml",
+    "verify": "bun run test && bun run prepare:sidecar && bun run build && cargo check --manifest-path src-tauri/Cargo.toml",
     "release:check": "node scripts/verify-release-config.mjs && node scripts/build-updater-manifest.mjs --self-test"
   },
   "dependencies": {
