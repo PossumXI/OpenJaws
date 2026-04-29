@@ -68,7 +68,9 @@ bun run jaws:manifest:test
 node apps/jaws-desktop/scripts/build-updater-manifest.mjs --bundle-root <bundle-dir> --base-url https://github.com/PossumXI/OpenJaws/releases/download/<tag> --out latest.json --version <semver>
 ```
 
-The manifest must be copied or proxied by both public endpoints:
+The manifest is served through the dynamic updater endpoint implemented in the website app. It can pin `JAWS_UPDATER_MANIFEST_URL`, pin `JAWS_UPDATER_RELEASE_TAG`, or discover the latest public `jaws-v*` GitHub release in `JAWS_UPDATER_GITHUB_REPO`.
+
+The endpoint returns `204 No Content` when the requesting install is current or no signed platform artifact exists. It returns the Tauri v2 dynamic payload only when the published `latest.json` contains a newer version, an HTTPS artifact URL, and a signature for the requested `{target}-{arch}`.
 
 - `https://qline.site/api/jaws/{{target}}/{{arch}}/{{current_version}}`
 - `https://iorch.net/api/jaws/{{target}}/{{arch}}/{{current_version}}`
@@ -88,9 +90,10 @@ Implementation references:
 
 ## Next Production Tasks
 
-1. Add the static or dynamic updater manifest endpoints on `qline.site` and `iorch.net` and point them at the GitHub release `latest.json`.
-2. Replace the desktop timeline fixture with live event streaming from the OpenJaws route/runtime log bus.
-3. Connect Arobi enrollment to the real account and ledger APIs.
-4. Implement exchange-code collaboration with signed workspace invites, revocation, and explicit pooled-credit consent.
-5. Add marketplace package signing, review states, sandbox scopes, and rollback metadata.
-6. Publish first installer links after signed bundle verification passes in GitHub Actions.
+1. Deploy the new `/api/jaws/{target}/{arch}/{current_version}` endpoint on both `qline.site` and `iorch.net`.
+2. Publish a signed `jaws-v*` GitHub release and promote it from draft only after installer smoke testing.
+3. Replace the desktop timeline fixture with live event streaming from the OpenJaws route/runtime log bus.
+4. Connect Arobi enrollment to the real account and ledger APIs.
+5. Implement exchange-code collaboration with signed workspace invites, revocation, and explicit pooled-credit consent.
+6. Add marketplace package signing, review states, sandbox scopes, and rollback metadata.
+7. Publish first installer links after signed bundle verification passes in GitHub Actions.
