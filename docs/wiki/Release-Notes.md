@@ -136,6 +136,9 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 - the Windows Harbor wrapper now prefers an isolated `.tools/harbor-venv` plus the repo-patched launcher, avoiding global Python dependency conflicts during TerminalBench preflight
 - Q_agents crew launch orchestration now reuses one Immaculate deck receipt for pacing and handoff, reducing duplicate live probes while keeping launch pressure decisions consistent
 - routed Q dispatch now fails closed when an assigned worker is marked `stale` or `faulted`, and the queue rejection carries that health reason before any local process or remote HTTP dispatch is attempted
+- `verify:release` now uses `system:check:live:strict`, so live warnings from Viola auth, PersonaPlex, or runtime coherence fail the production release gate instead of passing as diagnostic-only output
+- PersonaPlex probe failures now include runtime-state context such as mode, PID, and last healthy age, making stale Moshi bridge receipts faster to diagnose without exposing secrets
+- official Terminal-Bench mode now emits the public-leaderboard-compatible Harbor timeout multiplier (`1`) and fails validation if an official run tries to modify that timeout
 - the direct `q:soak` lane and the Harbor-backed `q:terminalbench` lane now share the same OCI/Q provider probe surface before launch, so the direct and Harbor receipts agree on when the provider path is healthy, failed, or merely forceable
 - the benchmark wrappers now also share one typed `q:preflight` checklist surface, so Harbor, Docker, Python, bundle, provider, and clock checks all come from one source of truth instead of separate script-local logic
 - `q:bridgebench`, `q:soak`, and `q:terminalbench` now all accept `--seed`, default to `42`, and emit that seed into their reports plus signed receipts

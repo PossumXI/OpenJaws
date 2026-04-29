@@ -11,12 +11,17 @@ export type PersonaPlexProbeOptions = {
 }
 
 type PersonaPlexRuntimeState = {
+  startedAt?: string | null
   runtimeUrl?: string | null
   host?: string | null
   port?: string | number | null
   protocol?: string | null
   healthyAt?: string | null
   runtimeMode?: string | null
+  processId?: string | number | null
+  wslPid?: string | number | null
+  error?: string | null
+  status?: string | null
 }
 
 export type PersonaPlexProbeResult = {
@@ -40,6 +45,7 @@ const RUNTIME_STATE_PATH = join(
   'personaplex-runtime',
   'runtime.json',
 )
+const RUNTIME_STATE_STALE_MS = 30 * 60 * 1000
 
 export function parseArgs(argv: string[]): PersonaPlexProbeOptions {
   const options: PersonaPlexProbeOptions = {
@@ -108,6 +114,66 @@ function runtimeUrlFromState(
   const port = String(state?.port ?? '8998').trim() || '8998'
   const protocol = state?.protocol?.trim() || 'http'
   return `${protocol}://${host}:${port}`
+}
+
+function formatRuntimeAge(ageMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ageMs / 1000))
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`
+  }
+  const totalMinutes = Math.floor(totalSeconds / 60)
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m`
+  }
+  const totalHours = Math.floor(totalMinutes / 60)
+  if (totalHours < 48) {
+    return `${totalHours}h`
+  }
+  return `${Math.floor(totalHours / 24)}d`
+}
+
+export function buildPersonaPlexRuntimeStateDiagnostic(
+  state: PersonaPlexRuntimeState | null,
+  now = Date.now(),
+): string | null {
+  if (!state) {
+    return null
+  }
+  const detailParts = [
+    state.runtimeMode ? `mode ${state.runtimeMode}` : null,
+    state.processId ?? state.wslPid
+      ? `pid ${state.processId ?? state.wslPid}`
+      : null,
+    state.status ? `status ${state.status}` : null,
+  ].filter((part): part is string => Boolean(part))
+
+  const healthyAt = typeof state.healthyAt === 'string'
+    ? Date.parse(state.healthyAt)
+    : Number.NaN
+  if (Number.isFinite(healthyAt)) {
+    const ageMs = now - healthyAt
+    detailParts.push(
+      ageMs > RUNTIME_STATE_STALE_MS
+        ? `last healthy ${formatRuntimeAge(ageMs)} ago`
+        : `healthy ${formatRuntimeAge(ageMs)} ago`,
+    )
+  } else if (state.startedAt) {
+    detailParts.push(`started ${state.startedAt}`)
+  }
+
+  if (state.error) {
+    detailParts.push(`last error ${state.error}`)
+  }
+
+  return detailParts.length > 0 ? detailParts.join(', ') : null
+}
+
+function withRuntimeStateDiagnostic(
+  message: string,
+  state: PersonaPlexRuntimeState | null,
+): string {
+  const diagnostic = buildPersonaPlexRuntimeStateDiagnostic(state)
+  return diagnostic ? `${message} (${diagnostic})` : message
 }
 
 export function buildPersonaPlexProbeWebSocketUrl(args: {
@@ -215,7 +281,10 @@ export async function probePersonaPlexRuntime(
         firstByte: null,
         messageType: null,
         runtimeState: state,
-        error: `PersonaPlex probe timed out after ${options.timeoutMs}ms`,
+        error: withRuntimeStateDiagnostic(
+          `PersonaPlex probe timed out after ${options.timeoutMs}ms`,
+          state,
+        ),
       })
     }, options.timeoutMs)
 
@@ -244,7 +313,12 @@ export async function probePersonaPlexRuntime(
             error:
               firstByte === 0
                 ? null
-                : `Expected PersonaPlex hello byte 0, received ${firstByte ?? 'empty payload'}`,
+                : withRuntimeStateDiagnostic(
+                    `Expected PersonaPlex hello byte 0, received ${
+                      firstByte ?? 'empty payload'
+                    }`,
+                    state,
+                  ),
           })
         })()
       })
@@ -259,7 +333,7 @@ export async function probePersonaPlexRuntime(
           firstByte: null,
           messageType: null,
           runtimeState: state,
-          error: 'PersonaPlex WebSocket error',
+          error: withRuntimeStateDiagnostic('PersonaPlex WebSocket error', state),
         })
       })
       ws.addEventListener('close', event => {
@@ -274,7 +348,10 @@ export async function probePersonaPlexRuntime(
             firstByte: null,
             messageType: null,
             runtimeState: state,
-            error: `PersonaPlex WebSocket closed before hello: ${event.code}`,
+            error: withRuntimeStateDiagnostic(
+              `PersonaPlex WebSocket closed before hello: ${event.code}`,
+              state,
+            ),
           })
         }
       })
@@ -289,7 +366,10 @@ export async function probePersonaPlexRuntime(
         firstByte: null,
         messageType: null,
         runtimeState: state,
-        error: error instanceof Error ? error.message : String(error),
+        error: withRuntimeStateDiagnostic(
+          error instanceof Error ? error.message : String(error),
+          state,
+        ),
       })
     }
   })

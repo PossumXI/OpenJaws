@@ -351,7 +351,9 @@ export function buildRuntimeCoherenceReport(args: {
       } at ${probe.url}`,
       detail: probeReportsError
         ? probe.detail ?? probe.status ?? null
-        : probe.status ?? probe.detail ?? null,
+        : probe.reachable
+          ? probe.status ?? probe.detail ?? null
+          : probe.detail ?? probe.status ?? null,
     })
   }
 

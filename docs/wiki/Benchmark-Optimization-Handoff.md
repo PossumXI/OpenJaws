@@ -50,6 +50,7 @@ This handoff is the active benchmark-work truth as of April 29, 2026. `docs/wiki
 - Submission discussion: `https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard/discussions/141`
 - Truth: the current blocker is no longer Docker, Harbor bootstrapping, missing verifier outputs, or OpenJaws write permissions. The blocker is task quality: Q still creates placeholder, pass-through, or incomplete `gates.txt` artifacts for `circuit-fibsqrt`.
 - Fix landed from this run: `q:terminalbench` now runs a `harbor-docker-env` preflight using the exact Harbor process environment so a Windows Docker Desktop context mismatch fails before an official run starts.
+- Follow-up hardening: official Terminal-Bench mode now emits Harbor `--timeout-multiplier 1` and rejects any other timeout multiplier before launch, matching the public submission validator instead of wasting a run on a non-compliant job config.
 
 ## Current TerminalBench Lane
 

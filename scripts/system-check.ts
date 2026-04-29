@@ -26,6 +26,14 @@ type CheckResult = {
   stderrTail?: string
 }
 
+export function shouldFailSystemCheckReport(args: {
+  failedCount: number
+  warningCount: number
+  failOnWarnings: boolean
+}): boolean {
+  return args.failedCount > 0 || (args.failOnWarnings && args.warningCount > 0)
+}
+
 type CommandCheckOptions = {
   cwd?: string
   timeoutMs?: number
@@ -533,7 +541,13 @@ async function writeSystemCheckReport(results: CheckResult[]) {
 
   console.log(JSON.stringify(report, null, 2))
 
-  if (statusCounts.failed > 0 || (failOnWarnings && statusCounts.warning > 0)) {
+  if (
+    shouldFailSystemCheckReport({
+      failedCount: statusCounts.failed,
+      warningCount: statusCounts.warning,
+      failOnWarnings,
+    })
+  ) {
     process.exitCode = 1
   }
 

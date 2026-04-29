@@ -35,7 +35,7 @@
     "audit:knip": "bun scripts/run-knip-audit.ts",
     "verify:ci": "bun run audit:knip && bun run system:check:features && bun run test:coverage:scripts && bun run test && bun run showcase:copy:check && bun run build && bun run website:verify",
     "verify:public": "bun run system:check:features && bun run test && bun run showcase:copy:check && bun run build && bun run build:native && bun run website:verify",
-    "verify:release": "bun run verify:public && bun run system:check:live",
+    "verify:release": "bun run verify:public && bun run system:check:live:strict",
     "export:sft": "bun scripts/export-openjaws-sft.ts",
     "prepare:sft": "bun scripts/prepare-openjaws-sft.ts",
     "audit:sft": "bun scripts/audit-openjaws-sft.ts",
@@ -71,7 +71,8 @@
     "settings:walkthrough": "bun scripts/settings-walkthrough.tsx",
     "system:check": "bun scripts/system-check.ts",
     "system:check:features": "bun scripts/system-check.ts --feature-surface-only --fail-on-warnings",
-    "system:check:live": "bun scripts/system-check.ts --live-health"
+    "system:check:live": "bun scripts/system-check.ts --live-health",
+    "system:check:live:strict": "bun scripts/system-check.ts --live-health --fail-on-warnings"
   },
   "dependencies": {
     "@anthropic-ai/bedrock-sdk": "^0.27.0",

@@ -171,6 +171,8 @@ Critical runtime failures still surface as failed public activity entries.
 - `scripts/render-discord-operator-delivery.ts` is the tracked TypeScript CLI for producing Discord delivery bundles from OpenJaws output. The visible local runner tries this renderer first and falls back to the older PowerShell renderer if needed.
 - The live Immaculate listener was left up on `http://127.0.0.1:8787`; the latest listener check showed PID `15296` bound to `127.0.0.1:8787`.
 - Latest live gate run: `system-check-20260429T031120` completed with `19` passed, `0` failed, and `3` warnings.
+- `system:check:live` remains the diagnostic live audit. `system:check:live:strict` is now the production green-state gate used by `verify:release`, so Viola auth warnings, PersonaPlex bridge warnings, and runtime-coherence warnings fail release verification until the live stack is actually green.
+- Latest strict live gate run: `system-check-20260429T195447` completed with `19` passed, `0` failed, and `3` warnings, then exited `1` because strict mode now treats those warnings as release blockers.
 - Latest live governed search smoke from the preflight path returned receipt `search-fnv1a-ccc6f6c2` with result count `2`.
 - Remaining live warnings:
   - Viola Discord auth still fails with HTTP `401`; rotate/update the local Viola bot token before voice production use.

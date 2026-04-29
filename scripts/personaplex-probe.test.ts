@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  buildPersonaPlexRuntimeStateDiagnostic,
   buildPersonaPlexProbeWebSocketUrl,
   parseArgs,
 } from './personaplex-probe.ts'
@@ -34,5 +35,18 @@ describe('personaplex-probe', () => {
       timeoutMs: 1000,
       voicePrompt: 'NATF2.pt',
     })
+  })
+
+  test('summarizes stale runtime state for failed probes', () => {
+    expect(
+      buildPersonaPlexRuntimeStateDiagnostic(
+        {
+          runtimeMode: 'windows',
+          processId: 10452,
+          healthyAt: '2026-04-25T03:13:41.859Z',
+        },
+        Date.parse('2026-04-25T05:13:41.859Z'),
+      ),
+    ).toBe('mode windows, pid 10452, last healthy 2h ago')
   })
 })

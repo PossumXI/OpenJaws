@@ -129,6 +129,7 @@ bun run runtime:coherence
 ```
 
 That audit command is read-only. It reports when the live harness, Discord receipts, queue depth, and active traces disagree; it does not try to repair them for you.
+For production release gates, `bun run verify:release` uses the strict live health gate and fails on any warning. Use `bun run system:check:live` only for diagnostic audits where warning output is expected.
 
 Hosted GitHub verification:
 

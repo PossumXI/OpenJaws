@@ -4,6 +4,7 @@ import {
   inspectFeatureSourceModules,
   inspectRequiredProjectFiles,
   normalizeJsonCommandStatus,
+  shouldFailSystemCheckReport,
 } from './system-check.ts'
 
 describe('system-check JSON status normalization', () => {
@@ -43,6 +44,38 @@ describe('system-check JSON status normalization', () => {
       status: 'warning',
       summary: 'runtime coherence passed; JSON reported allowed failure',
     })
+  })
+})
+
+describe('system-check report exit decision', () => {
+  test('allows warnings in diagnostic mode', () => {
+    expect(
+      shouldFailSystemCheckReport({
+        failedCount: 0,
+        warningCount: 2,
+        failOnWarnings: false,
+      }),
+    ).toBe(false)
+  })
+
+  test('fails warnings in strict mode', () => {
+    expect(
+      shouldFailSystemCheckReport({
+        failedCount: 0,
+        warningCount: 1,
+        failOnWarnings: true,
+      }),
+    ).toBe(true)
+  })
+
+  test('always fails hard failures', () => {
+    expect(
+      shouldFailSystemCheckReport({
+        failedCount: 1,
+        warningCount: 0,
+        failOnWarnings: false,
+      }),
+    ).toBe(true)
   })
 })
 

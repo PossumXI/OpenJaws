@@ -141,7 +141,7 @@ describe('q-terminalbench soak options', () => {
     rmSync(sandbox, { force: true, recursive: true })
   })
 
-  test('official submission defaults raise benchmark turn and setup budgets', () => {
+  test('official submission defaults keep leaderboard timeout rules', () => {
     const options = applyOfficialSubmissionDefaults(
       parseArgs(['--official-submission', '--max-turns', '12']),
     )
@@ -149,14 +149,28 @@ describe('q-terminalbench soak options', () => {
     expect(options.dataset).toBe('terminal-bench@2.0')
     expect(options.nAttempts).toBe(5)
     expect(options.maxTurns).toBe(20)
-    expect(options.agentSetupTimeoutMultiplier).toBe(5)
+    expect(options.agentSetupTimeoutMultiplier).toBe(1)
     expect(buildHarborArgs(options, 1, 1)).toEqual(
       expect.arrayContaining([
         '--timeout-multiplier',
-        '5',
+        '1',
         '--ak',
         'max_turns=20',
       ]),
+    )
+  })
+
+  test('rejects official submission configs that modify timeouts', () => {
+    const options = parseArgs([
+      '--official-submission',
+      '--agent-setup-timeout-multiplier',
+      '5',
+      '--n-attempts',
+      '5',
+    ])
+
+    expect(() => validateOfficialSubmissionOptions(options)).toThrow(
+      'timeout-multiplier must equal 1.0',
     )
   })
 
@@ -496,7 +510,7 @@ describe('q-terminalbench provenance', () => {
       gitBranch: metadata.gitBranch,
       repoSha: metadata.repoSha,
     })
-  })
+  }, 15_000)
 })
 describe('q-terminalbench soak receipts', () => {
   test('builds a cycle receipt and top-level aggregate without Harbor', () => {

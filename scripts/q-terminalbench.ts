@@ -354,10 +354,7 @@ export function applyOfficialSubmissionDefaults(options: CliOptions): CliOptions
   next.dataset = 'terminal-bench@2.0'
   next.nAttempts = Math.max(next.nAttempts, 5)
   next.maxTurns = Math.max(next.maxTurns, 20)
-  next.agentSetupTimeoutMultiplier = Math.max(
-    next.agentSetupTimeoutMultiplier ?? 0,
-    5,
-  )
+  next.agentSetupTimeoutMultiplier = 1
   return next
 }
 
@@ -1593,12 +1590,9 @@ export function validateOfficialSubmissionOptions(options: CliOptions): void {
   if (options.nAttempts < 5) {
     violations.push('n-attempts must be at least 5')
   }
-  if (
-    options.agentSetupTimeoutMultiplier !== null &&
-    options.agentSetupTimeoutMultiplier < 5
-  ) {
+  if (options.agentSetupTimeoutMultiplier !== 1) {
     violations.push(
-      'agent-setup-timeout-multiplier must be at least 5 when official submission defaults enable it',
+      'timeout-multiplier must equal 1.0 for public Terminal-Bench submissions',
     )
   }
   if (options.repeat !== 1) {
