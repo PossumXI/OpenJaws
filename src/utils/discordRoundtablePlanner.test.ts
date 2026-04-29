@@ -285,6 +285,84 @@ describe('discordRoundtablePlanner', () => {
     expect(result.reason).toContain('tracked queue already has active governed work')
   })
 
+  it('throttles recent weak tracked outcomes before staging another follow-through', () => {
+    const root = createRoot('oj-roundtable-planner-weak-cooldown-')
+    const repoRoot = join(root, 'OpenJaws')
+    mkdirSync(join(repoRoot, '.git'), { recursive: true })
+    mkdirSync(join(repoRoot, 'src', 'utils'), { recursive: true })
+
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    mkdirSync(runtimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-29T21:10:00.000Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'Q passed turn 9',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [
+            {
+              kind: 'roundtable',
+              id: 'recent-no-diff',
+              status: 'skipped',
+              approvalState: null,
+              targetPath: join(repoRoot, 'src', 'utils'),
+              changedFiles: [],
+              commitSha: null,
+              completedAt: '2026-04-29T21:07:00.000Z',
+              verificationSummary: 'No file changes were detected.',
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.session.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-29T21:10:00.000Z',
+          startedAt: '2026-04-29T21:00:00.000Z',
+          endsAt: '2026-04-30T01:00:00.000Z',
+          guildId: 'guild',
+          roundtableChannelId: 'channel',
+          roundtableChannelName: 'dev_support',
+          generalChannelId: null,
+          generalChannelName: null,
+          violaVoiceChannelId: null,
+          violaVoiceChannelName: null,
+          turnCount: 9,
+          nextPersona: 'q',
+          lastSpeaker: 'viola',
+          lastSummary: 'Q passed turn 9',
+          lastError: null,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const result = planDiscordRoundtableFollowThrough({
+      root,
+      allowedRoots: [repoRoot],
+      now: new Date('2026-04-29T21:12:00.000Z'),
+    })
+
+    expect(result.staged).toBe(false)
+    expect(result.reason).toBe('recent governed action already launched')
+  })
+
   it('allows a quick scoped follow-through shortly after a completed action', () => {
     const root = createRoot('oj-roundtable-planner-follow-through-')
     const repoRoot = join(root, 'openjaws')
@@ -385,6 +463,103 @@ describe('discordRoundtablePlanner', () => {
     expect(result.staged).toBe(true)
     expect(result.personaName).toBe('Viola')
     expect(result.targetPath).toBe(join(repoRoot, 'src', 'utils'))
+  })
+
+  it('backs off when the tracked queue recently produced a no-diff action', () => {
+    const root = createRoot('oj-roundtable-planner-no-diff-cooldown-')
+    const repoRoot = join(root, 'openjaws')
+    mkdirSync(join(repoRoot, '.git'), { recursive: true })
+    mkdirSync(join(repoRoot, 'src', 'utils'), { recursive: true })
+
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    mkdirSync(runtimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-29T21:03:00.000Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'Viola action completed: no code changes detected.',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [
+            {
+              kind: 'roundtable',
+              id: 'recent-no-diff',
+              status: 'skipped',
+              approvalState: null,
+              targetPath: join(repoRoot, 'src', 'utils'),
+              changedFiles: [],
+              commitSha: null,
+              verificationSummary:
+                'No file changes were detected, so no verification run was required.',
+              completedAt: '2026-04-29T21:00:00.000Z',
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.session.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-29T21:03:00.000Z',
+          startedAt: '2026-04-29T20:57:57.993Z',
+          endsAt: '2026-04-30T00:57:57.993Z',
+          guildId: 'guild',
+          roundtableChannelId: 'channel',
+          roundtableChannelName: 'dev_support',
+          generalChannelId: 'general',
+          generalChannelName: 'general-chat',
+          violaVoiceChannelId: 'voice',
+          violaVoiceChannelName: 'viola-lounge',
+          turnCount: 7,
+          nextPersona: 'q',
+          lastSpeaker: 'viola',
+          lastSummary: 'Viola action completed: no code changes detected.',
+          lastError: null,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable-memory.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          updatedAt: '2026-04-29T21:02:30.000Z',
+          summary: 'The live channel is drifting back into PASS turns.',
+          currentFocus: 'Need another scoped OpenJaws follow-through pass.',
+          lastHumanQuestion: 'keep going',
+          openThreads: ['follow through on runtime truth'],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const result = planDiscordRoundtableFollowThrough({
+      root,
+      allowedRoots: [repoRoot],
+      now: new Date('2026-04-29T21:03:00.000Z'),
+    })
+
+    expect(result).toMatchObject({
+      staged: false,
+      reason: 'recent governed action already launched',
+    })
   })
 
   it('ignores already-ingested handoff files when deciding whether the inbox is blocked', () => {

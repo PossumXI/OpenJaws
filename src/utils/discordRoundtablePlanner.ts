@@ -208,7 +208,24 @@ function getRecentRoundtableActionCooldownMs(
   ) {
     return PASSIVE_ROUNDTABLE_ACTION_COOLDOWN_MS
   }
+  if (isWeakRoundtableOutcome(action)) {
+    return PASSIVE_ROUNDTABLE_ACTION_COOLDOWN_MS
+  }
   return ACTIVE_ROUNDTABLE_ACTION_COOLDOWN_MS
+}
+
+function isWeakRoundtableOutcome(action: DiscordRoundtableRecentAction): boolean {
+  if (
+    action.status === 'skipped' ||
+    action.status === 'rejected' ||
+    action.status === 'error'
+  ) {
+    return true
+  }
+  return (
+    action.status === 'completed' &&
+    (action.changedFiles.length === 0 || !action.commitSha)
+  )
 }
 
 function hasRecentRoundtableAction(
@@ -222,6 +239,20 @@ function hasRecentRoundtableAction(
       nowMs - actionAtMs < getRecentRoundtableActionCooldownMs(action)
     )
   })
+}
+
+function readTrackedRoundtableRecentActions(
+  jobs: DiscordRoundtableTrackedJob[],
+): DiscordRoundtableRecentAction[] {
+  return jobs.map(job => ({
+    targetPath: job.targetPath,
+    status: job.status,
+    approvalState: job.approvalState ?? undefined,
+    completedAt: job.completedAt ?? job.rejectedAt ?? job.approvedAt,
+    changedFiles: job.changedFiles ?? [],
+    commitSha: job.commitSha,
+    verificationSummary: job.verificationSummary ?? job.rejectionReason,
+  }))
 }
 
 function looksPassHeavy(args: {
@@ -410,7 +441,10 @@ export function planDiscordRoundtableFollowThrough(args: {
   }
 
   const roundtableMemory = readRoundtableMemorySnapshot(runtimeRoot)
-  const recentActions = readRecentRoundtableActions(runtimeRoot)
+  const recentActions = [
+    ...readRecentRoundtableActions(runtimeRoot),
+    ...readTrackedRoundtableRecentActions(runtimeState.jobs),
+  ]
   if (hasRecentRoundtableAction(recentActions, nowMs)) {
     return {
       staged: false,
