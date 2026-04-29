@@ -1,9 +1,27 @@
 import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'fs'
+import { createRequire } from 'module'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'path'
 import { fileURLToPath } from 'url'
 // execa imported dynamically where needed to avoid missing module errors
-import { strToU8, unzipSync, zipSync } from 'fflate'
+// Import fflate functions with fallback if the package is unavailable.
+let strToU8: (input: string) => Uint8Array
+let unzipSync: (data: Uint8Array) => Record<string, Uint8Array>
+let zipSync: (entries: Record<string, Uint8Array>) => Uint8Array
+const requireDependency = createRequire(import.meta.url)
+try {
+  const fflate = requireDependency('fflate')
+  strToU8 = fflate.strToU8
+  unzipSync = fflate.unzipSync
+  zipSync = fflate.zipSync
+} catch {
+  const unavailable = () => {
+    throw new Error('fflate dependency is unavailable; governed Discord delivery artifacts cannot be packaged safely.')
+  }
+  strToU8 = (input: string) => new TextEncoder().encode(input)
+  zipSync = unavailable
+  unzipSync = unavailable
+}
 import { type DiscordOperatorRunContext } from './discordOperatorWork.js'
 
 type ExecaFunction = typeof import('execa')['execa']
