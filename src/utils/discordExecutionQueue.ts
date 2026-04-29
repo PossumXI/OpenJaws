@@ -137,11 +137,21 @@ export function shouldEnqueueDiscordExecutionJob(args: {
       !isDiscordExecutionTerminalStatus(job.status),
   )
   const activeProjectLease = args.jobs.some(
-    job =>
-      job.projectKey === args.candidate?.projectKey &&
-      (job.status === 'queued' || job.status === 'running'),
+    job => job.projectKey === args.candidate?.projectKey && hasActiveProjectLease(job),
   )
   return !matchingScope && !activeProjectLease
+}
+
+function hasActiveProjectLease(
+  job: Pick<DiscordExecutionTrackedJob, 'status' | 'approvalState'>,
+): boolean {
+  if (job.status === 'queued' || job.status === 'running') {
+    return true
+  }
+  return (
+    job.status === 'awaiting_approval' &&
+    normalizeDiscordExecutionApprovalState(job) === 'pending'
+  )
 }
 
 export function getNextQueuedDiscordExecutionJob<
@@ -163,6 +173,6 @@ export function findDiscordExecutionApprovalTarget<
         job.approvalState === 'pending' &&
         Boolean(job.branchName),
     ),
-    target === 'latest' ? null : target,
+    target,
   )
 }

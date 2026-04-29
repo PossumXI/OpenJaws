@@ -21,7 +21,7 @@ function formatTerminalBenchHeadline(): string {
     terminalBench.benchmarkFailedTrials > 0 &&
     terminalBench.executionErrorTrials > 0
   ) {
-    return `${terminalBench.benchmarkFailedTrials} benchmark failures // ${terminalBench.executionErrorTrials} runtime errors`
+    return `${terminalBench.benchmarkFailedTrials} benchmark failures / ${terminalBench.executionErrorTrials} runtime errors`
   }
 
   if (terminalBench.benchmarkFailedTrials > 0) {
@@ -44,26 +44,33 @@ export function BenchmarkSnapshotSection(): React.ReactNode {
     >
       <div className="section-heading">
         <span className="eyebrow">Benchmark snapshot</span>
-        <h2>Measured, not invented.</h2>
-        <p>{BENCHMARK_SNAPSHOT.source}</p>
+        <h2>Proof you can inspect.</h2>
+        <p>
+          OpenJaws publishes practical benchmark receipts so teams can see what
+          ran, what passed, and what still needs work.
+        </p>
       </div>
 
       <div className="benchmark-snapshot-meta">
         <span>Generated {formatSnapshotDate(BENCHMARK_SNAPSHOT.generatedAt)}</span>
-        <span>Local + official receipts</span>
-        <span>Typed traces + canonical signed receipts</span>
-        <span>Shared preflight + deterministic seeds</span>
-        <span>No synthetic benchmark claims</span>
+        <span>Verified receipts</span>
+        <span>Repeatable runs</span>
+        <span>Public results only</span>
       </div>
 
       <div className="benchmark-snapshot-grid">
         <article className="benchmark-card benchmark-card-highlight">
           <span className="benchmark-label">BridgeBench</span>
-          <strong>{BENCHMARK_SNAPSHOT.bridgeBench.scorePercent.toFixed(2)}%</strong>
+          <strong>
+            {BENCHMARK_SNAPSHOT.bridgeBench.scorePercent !== null
+              ? `${BENCHMARK_SNAPSHOT.bridgeBench.scorePercent.toFixed(2)}%`
+              : formatStatusLabel(BENCHMARK_SNAPSHOT.bridgeBench.status)}
+          </strong>
           <p>{BENCHMARK_SNAPSHOT.bridgeBench.summary}</p>
           <div className="benchmark-card-footnote">
             <span>Best pack: {BENCHMARK_SNAPSHOT.bridgeBench.bestPack}</span>
             <span>ID: {BENCHMARK_SNAPSHOT.bridgeBench.benchmarkId}</span>
+            <span>Status: {formatStatusLabel(BENCHMARK_SNAPSHOT.bridgeBench.status)}</span>
           </div>
         </article>
 
@@ -115,7 +122,7 @@ export function BenchmarkSnapshotSection(): React.ReactNode {
         <article className="benchmark-card">
           <span className="benchmark-label">TerminalBench Soak</span>
           <strong>
-            {BENCHMARK_SNAPSHOT.terminalBenchSoak.cycleCount} cycles //
+            {BENCHMARK_SNAPSHOT.terminalBenchSoak.cycleCount} cycles /
             {' '}
             {BENCHMARK_SNAPSHOT.terminalBenchSoak.totalTrials} trials
           </strong>
@@ -133,12 +140,13 @@ export function BenchmarkSnapshotSection(): React.ReactNode {
         </article>
 
         <article className="benchmark-card">
-          <span className="benchmark-label">W&B</span>
+          <span className="benchmark-label">Receipt Publishing</span>
           <strong>{BENCHMARK_SNAPSHOT.wandb.status}</strong>
           <p>{BENCHMARK_SNAPSHOT.wandb.summary}</p>
           <div className="benchmark-card-footnote">
-            <span>Enabled: {BENCHMARK_SNAPSHOT.wandb.enabled ? 'yes' : 'no'}</span>
-            <span>Source: {BENCHMARK_SNAPSHOT.wandb.source}</span>
+            <span>
+              Mode: {BENCHMARK_SNAPSHOT.wandb.enabled ? 'external + local' : 'local receipt archive'}
+            </span>
             {BENCHMARK_SNAPSHOT.wandb.url ? (
               <a
                 href={BENCHMARK_SNAPSHOT.wandb.url}

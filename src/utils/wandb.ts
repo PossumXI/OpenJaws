@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'fs'
+
 export type WandbResolutionStatus = 'enabled' | 'disabled' | 'incomplete'
 export type WandbResolutionSource = 'cli' | 'env' | 'mixed' | 'none'
 
@@ -24,6 +26,27 @@ function normalizeOptionalValue(value: string | null | undefined): string | null
   }
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+
+function resolveOptionalFileValue(pathValue: string | null | undefined): string | null {
+  const normalizedPath = normalizeOptionalValue(pathValue)
+  if (!normalizedPath || !existsSync(normalizedPath)) {
+    return null
+  }
+  try {
+    return normalizeOptionalValue(readFileSync(normalizedPath, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+function resolveApiKeyPresence(env: NodeJS.ProcessEnv): boolean {
+  return Boolean(
+    normalizeOptionalValue(env.IMMACULATE_WANDB_API_KEY) ??
+      normalizeOptionalValue(env.WANDB_API_KEY) ??
+      resolveOptionalFileValue(env.IMMACULATE_WANDB_API_KEY_FILE) ??
+      resolveOptionalFileValue(env.WANDB_API_KEY_FILE),
+  )
 }
 
 function buildWandbUrl(
@@ -64,8 +87,12 @@ export function resolveWandbConfig(
 ): WandbResolution {
   const cliProject = normalizeOptionalValue(args.project)
   const cliEntity = normalizeOptionalValue(args.entity)
-  const envProject = normalizeOptionalValue(env.WANDB_PROJECT)
-  const envEntity = normalizeOptionalValue(env.WANDB_ENTITY)
+  const envProject =
+    normalizeOptionalValue(env.IMMACULATE_WANDB_PROJECT) ??
+    normalizeOptionalValue(env.WANDB_PROJECT)
+  const envEntity =
+    normalizeOptionalValue(env.IMMACULATE_WANDB_ENTITY) ??
+    normalizeOptionalValue(env.WANDB_ENTITY)
 
   const project = cliProject ?? envProject
   const entity = cliEntity ?? envEntity
@@ -96,7 +123,7 @@ export function resolveWandbConfig(
     status,
     source,
     missing,
-    apiKeyPresent: Boolean(normalizeOptionalValue(env.WANDB_API_KEY)),
+    apiKeyPresent: resolveApiKeyPresence(env),
     url,
     summary: buildWandbSummary({
       project,

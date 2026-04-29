@@ -1,4 +1,4 @@
-import { mkdirSync } from 'fs'
+import { mkdirSync, readFileSync } from 'fs'
 import { dirname, resolve } from 'path'
 import sharp from 'sharp'
 
@@ -6,11 +6,85 @@ const root = process.cwd()
 const emblemPath = resolve(root, 'website', 'public', 'assets', 'images', 'q-emblem.png')
 const posterPath = resolve(root, 'website', 'public', 'assets', 'images', 'q-poster.png')
 const outputPath = resolve(root, 'website', 'public', 'assets', 'images', 'q-share-card.png')
+const snapshotPath = resolve(root, 'website', 'lib', 'benchmarkSnapshot.generated.json')
 
 const width = 1600
 const height = 900
 
+type BenchmarkSnapshot = {
+  bridgeBench?: {
+    status?: string
+    scorePercent?: number | null
+  }
+  soak?: {
+    successCount?: number
+    totalProbes?: number
+  }
+  terminalBench?: {
+    taskName?: string
+    outcome?: string
+    executionErrorTrials?: number
+    benchmarkFailedTrials?: number
+  }
+}
+
+function escapeText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function formatStatus(value: string | undefined): string {
+  return value ? value.replace(/_/g, ' ') : 'unknown'
+}
+
+function readSnapshot(): BenchmarkSnapshot {
+  return JSON.parse(readFileSync(snapshotPath, 'utf8')) as BenchmarkSnapshot
+}
+
+function buildBenchmarkLines(snapshot: BenchmarkSnapshot): {
+  bridgeBench: string
+  soak: string
+  terminalBench: string
+  receiptTask: string
+  receiptSummary: string
+} {
+  const bridgeScore = snapshot.bridgeBench?.scorePercent
+  const bridgeBench =
+    typeof bridgeScore === 'number'
+      ? `BridgeBench ${bridgeScore.toFixed(2)}%`
+      : `BridgeBench ${formatStatus(snapshot.bridgeBench?.status)}`
+  const soak =
+    typeof snapshot.soak?.successCount === 'number' &&
+    typeof snapshot.soak?.totalProbes === 'number'
+      ? `Soak ${snapshot.soak.successCount}/${snapshot.soak.totalProbes}`
+      : 'Soak receipt ready'
+  const terminalBench = snapshot.terminalBench?.outcome
+    ? `TerminalBench ${snapshot.terminalBench.outcome}`
+    : 'TerminalBench receipt ready'
+  const receiptTask =
+    snapshot.terminalBench?.taskName &&
+    snapshot.terminalBench.taskName !== 'unknown'
+      ? `terminal-bench/${snapshot.terminalBench.taskName}`
+      : 'terminal-bench public task'
+  const runtimeErrors = snapshot.terminalBench?.executionErrorTrials ?? 0
+  const benchmarkFailures = snapshot.terminalBench?.benchmarkFailedTrials ?? 0
+  const receiptSummary = `Runtime errors ${runtimeErrors}. Benchmark failures ${benchmarkFailures}.`
+
+  return {
+    bridgeBench,
+    soak,
+    terminalBench,
+    receiptTask,
+    receiptSummary,
+  }
+}
+
 function buildOverlaySvg(): string {
+  const lines = buildBenchmarkLines(readSnapshot())
+
   return `
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
       <defs>
@@ -79,22 +153,16 @@ function buildOverlaySvg(): string {
 
       <rect x="530" y="662" width="388" height="184" rx="26" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.08)" stroke-width="2"/>
       <text x="564" y="712" fill="#ffd26b" font-size="18" letter-spacing="4" font-family="Segoe UI, Arial, sans-serif">BENCHMARKS</text>
-      <text x="564" y="756" fill="#f4fbff" font-size="30" font-family="Segoe UI, Arial, sans-serif">BridgeBench 42.11%</text>
-      <text x="564" y="792" fill="#f4fbff" font-size="30" font-family="Segoe UI, Arial, sans-serif">Soak 52/52</text>
-      <text x="564" y="828" fill="#8fb5cd" font-size="20" font-family="Segoe UI, Arial, sans-serif">Official TerminalBench task receipt landed.</text>
+      <text x="564" y="756" fill="#f4fbff" font-size="30" font-family="Segoe UI, Arial, sans-serif">${escapeText(lines.bridgeBench)}</text>
+      <text x="564" y="792" fill="#f4fbff" font-size="30" font-family="Segoe UI, Arial, sans-serif">${escapeText(lines.soak)}</text>
+      <text x="564" y="828" fill="#8fb5cd" font-size="20" font-family="Segoe UI, Arial, sans-serif">${escapeText(lines.terminalBench)}</text>
 
       <text x="1040" y="118" fill="#ffd26b" font-size="18" letter-spacing="5" font-family="Segoe UI, Arial, sans-serif">Q_AGENTS // OPENJAWS // QLINE.SITE</text>
-      <text x="1040" y="172" fill="#f4fbff" font-size="64" font-weight="700" font-family="Segoe UI, Arial, sans-serif">A cleaner</text>
-      <text x="1040" y="238" fill="#f4fbff" font-size="64" font-weight="700" font-family="Segoe UI, Arial, sans-serif">surface for Q.</text>
-      <line x1="1040" y1="278" x2="1480" y2="278" stroke="url(#line)" stroke-width="4" stroke-linecap="round"/>
-      <text x="1040" y="334" fill="#8fb5cd" font-size="28" font-family="Segoe UI, Arial, sans-serif">OpenJaws gives Q a real cockpit.</text>
-      <text x="1040" y="372" fill="#8fb5cd" font-size="28" font-family="Segoe UI, Arial, sans-serif">Q_agents keep co-work memory.</text>
-      <text x="1040" y="410" fill="#8fb5cd" font-size="28" font-family="Segoe UI, Arial, sans-serif">Immaculate keeps the control layer visible.</text>
 
-      <rect x="1030" y="696" width="436" height="118" rx="28" fill="rgba(5, 14, 24, 0.92)" stroke="rgba(255,210,107,0.24)" stroke-width="2"/>
+      <rect x="1030" y="696" width="436" height="142" rx="28" fill="rgba(5, 14, 24, 0.92)" stroke="rgba(255,210,107,0.24)" stroke-width="2"/>
       <text x="1066" y="744" fill="#ffd26b" font-size="18" letter-spacing="4" font-family="Segoe UI, Arial, sans-serif">PUBLIC RECEIPT</text>
-      <text x="1066" y="786" fill="#f4fbff" font-size="28" font-family="Segoe UI, Arial, sans-serif">terminal-bench/circuit-fibsqrt</text>
-      <text x="1066" y="818" fill="#8fb5cd" font-size="19" font-family="Segoe UI, Arial, sans-serif">Completed cleanly at the harness level. Reward stayed 0.0.</text>
+      <text x="1066" y="786" fill="#f4fbff" font-size="28" font-family="Segoe UI, Arial, sans-serif">${escapeText(lines.receiptTask)}</text>
+      <text x="1066" y="820" fill="#8fb5cd" font-size="19" font-family="Segoe UI, Arial, sans-serif">${escapeText(lines.receiptSummary)}</text>
     </svg>
   `
 }
@@ -105,9 +173,10 @@ async function main(): Promise<void> {
   const overlay = Buffer.from(buildOverlaySvg())
   const emblem = await sharp(emblemPath).resize(188, 188).png().toBuffer()
   const poster = await sharp(posterPath)
-    .resize(472, 710, { fit: 'cover', position: 'center' })
+    .resize(472, 520, { fit: 'cover', position: 'top' })
     .png()
     .toBuffer()
+  const smallEmblem = await sharp(emblem).resize(132, 132).png().toBuffer()
 
   await sharp({
     create: {
@@ -119,8 +188,8 @@ async function main(): Promise<void> {
   })
     .composite([
       { input: overlay, top: 0, left: 0 },
-      { input: poster, top: 140, left: 1070 },
-      { input: emblem, top: 610, left: 1310 },
+      { input: poster, top: 150, left: 1040 },
+      { input: smallEmblem, top: 556, left: 1354 },
     ])
     .png()
     .toFile(outputPath)

@@ -14,6 +14,8 @@ import {
   type ApexLaunchTarget,
   type ApexTenantGovernanceSummary,
   type ApexWorkspaceHealth,
+  type ApexWorkspaceSettings,
+  type ApexWorkspaceSettingsSummary,
   type ApexWorkspaceSummary,
   buildApexGovernanceRecommendations,
   cleanupApexChronoBackups,
@@ -29,11 +31,13 @@ import {
   getApexChronoSummary,
   getApexLaunchTarget,
   getApexLaunchTargets,
+  getApexSettingsSummary,
   getApexTenantGovernanceSummary,
   getApexWorkspaceHealth,
   getApexWorkspaceSummary,
   installApexStoreAppWithReceipt,
   moveApexMailMessage,
+  resetApexSettings,
   restoreApexChronoJob,
   runApexAction,
   sendApexChatMessage,
@@ -42,8 +46,11 @@ import {
   startApexWorkspaceApi,
   summarizeApexBrowser,
   summarizeApexChrono,
+  summarizeApexGovernedSpend,
+  summarizeApexSettings,
   summarizeApexTenantGovernance,
   summarizeApexWorkspace,
+  updateApexSettings,
 } from '../../utils/apexWorkspace.js'
 import {
   handoffBrowserPreviewSession,
@@ -80,6 +87,7 @@ type OverviewAction =
   | 'overview-chat'
   | 'overview-browser'
   | 'overview-chrono'
+  | 'overview-settings'
   | `overview-governance-${ApexGovernanceRecommendation['id']}`
   | `overview-app-${string}`
 
@@ -146,6 +154,14 @@ type ChatAction =
   | 'chat-refresh'
   | `chat-use-${string}`
 type StoreAction = 'store-app' | 'store-install' | 'store-refresh' | `store-use-${string}`
+type SettingsAction =
+  | 'settings-refresh'
+  | 'settings-toggle-telemetry'
+  | 'settings-toggle-privacy'
+  | 'settings-toggle-firewall'
+  | 'settings-toggle-realtime'
+  | 'settings-toggle-acceleration'
+  | 'settings-reset'
 type ChronoAction =
   | 'chrono-job-name'
   | 'chrono-source-path'
@@ -185,6 +201,17 @@ function getBrowserIntentFromAction(
       return 'preview'
     default:
       return null
+  }
+}
+
+function cloneApexWorkspaceSettings(
+  settings: ApexWorkspaceSettings,
+): ApexWorkspaceSettings {
+  return {
+    security: { ...settings.security },
+    performance: { ...settings.performance },
+    privacy: { ...settings.privacy },
+    users: { ...settings.users },
   }
 }
 
@@ -593,14 +620,15 @@ function ApexOverviewTab({
   const { headerFocused, focusHeader } = useTabHeaderFocus()
   const workspace = summarizeApexWorkspace(summary)
   const governance = summarizeApexTenantGovernance(governanceSummary)
+  const governedSpend = summarizeApexGovernedSpend(governanceSummary)
   const governanceRecommendations =
     buildApexGovernanceRecommendations(governanceSummary)
   const governanceOperatorActions =
     governanceSummary?.operatorActionBreakdown
-      .slice(0, 4)
+      ?.slice(0, 4)
       .map(action => `${action.name.replace(/_/g, ' ')} · ${action.count}`) ??
     governanceSummary?.governedActionBreakdown
-      .slice(0, 4)
+      ?.slice(0, 4)
       .map(action => `${action.name.replace(/_/g, ' ')} · ${action.count}`) ??
     []
   const browser = summarizeApexBrowser(browserSummary)
@@ -610,8 +638,12 @@ function ApexOverviewTab({
       .map(app => `${app.name} ${app.version} · ${app.installed ? 'installed' : 'catalog'}`) ?? []
   const governanceSources =
     governanceSummary?.topSources
-      .slice(0, 4)
+      ?.slice(0, 4)
       .map(source => `${source.name} · ${source.count}`) ?? []
+  const governedSpendActions =
+    governanceSummary?.spendActionBreakdown
+      ?.slice(0, 4)
+      .map(action => `${action.name.replace(/_/g, ' ')} · ${action.count}`) ?? []
   const governanceRecommendationDetails = governanceRecommendations.map(
     recommendation => `${recommendation.label} · ${recommendation.description}`,
   )
@@ -655,6 +687,12 @@ function ApexOverviewTab({
         label: 'Open Store tab',
         value: 'overview-store',
         description: 'Jump into the trusted app catalog to inspect or install Apex apps.',
+      },
+      {
+        label: 'Open Settings tab',
+        value: 'overview-settings',
+        description:
+          'Inspect and toggle bounded Apex privacy, telemetry, security, and performance controls.',
       },
       {
         label: 'Open Chat tab',
@@ -723,6 +761,14 @@ function ApexOverviewTab({
         <DetailList
           items={governanceOperatorActions}
           empty="No governed operator actions are visible yet."
+        />
+
+        <SectionTitle>Governed spend lane</SectionTitle>
+        <Text wrap="wrap">{governedSpend.headline}</Text>
+        <DetailList items={governedSpend.details} />
+        <DetailList
+          items={governedSpendActions}
+          empty="No governed spend labels are visible yet."
         />
 
         <SectionTitle>Recent operator receipts</SectionTitle>
@@ -1323,6 +1369,151 @@ function ApexStoreTab({
   )
 }
 
+function ApexSettingsTab({
+  summary,
+  onToggleTelemetry,
+  onTogglePrivacyMode,
+  onToggleFirewall,
+  onToggleRealtimeMonitoring,
+  onToggleHardwareAcceleration,
+  onReset,
+  onRefresh,
+  actionMessage,
+}: {
+  summary: ApexWorkspaceSettingsSummary | null
+  onToggleTelemetry: () => void
+  onTogglePrivacyMode: () => void
+  onToggleFirewall: () => void
+  onToggleRealtimeMonitoring: () => void
+  onToggleHardwareAcceleration: () => void
+  onReset: () => void
+  onRefresh: () => void
+  actionMessage: string | null
+}): React.ReactNode {
+  const { headerFocused, focusHeader } = useTabHeaderFocus()
+  const settings = summarizeApexSettings(summary)
+  const options = useMemo<OptionWithDescription<SettingsAction>[]>(
+    () => [
+      {
+        label: 'Refresh settings',
+        value: 'settings-refresh',
+        description: 'Reload the live Apex settings summary from workspace_api.',
+      },
+      {
+        label: summary?.settings.privacy.disableTelemetry
+          ? 'Turn telemetry on'
+          : 'Turn telemetry off',
+        value: 'settings-toggle-telemetry',
+        description:
+          'Toggle the Apex privacy telemetry switch through the trusted settings endpoint.',
+      },
+      {
+        label: summary?.settings.privacy.enablePrivacyMode
+          ? 'Turn privacy mode off'
+          : 'Turn privacy mode on',
+        value: 'settings-toggle-privacy',
+        description:
+          'Toggle privacy mode without leaving the OpenJaws command center.',
+      },
+      {
+        label: summary?.settings.security.enableFirewall
+          ? 'Turn firewall off'
+          : 'Turn firewall on',
+        value: 'settings-toggle-firewall',
+        description:
+          'Toggle the Apex firewall setting over workspace_api settings/update.',
+      },
+      {
+        label: summary?.settings.security.enableRealtimeMonitoring
+          ? 'Turn monitoring off'
+          : 'Turn monitoring on',
+        value: 'settings-toggle-realtime',
+        description: 'Toggle realtime monitoring in the Apex security settings.',
+      },
+      {
+        label: summary?.settings.performance.enableHardwareAcceleration
+          ? 'Turn acceleration off'
+          : 'Turn acceleration on',
+        value: 'settings-toggle-acceleration',
+        description:
+          'Toggle hardware acceleration in the Apex performance settings.',
+      },
+      {
+        label: 'Reset settings',
+        value: 'settings-reset',
+        description:
+          'Reset Apex settings to workspace defaults through the trusted bridge.',
+      },
+    ],
+    [summary],
+  )
+
+  return (
+    <Box flexDirection="row" gap={3}>
+      <Box width={38} flexDirection="column">
+        <Select
+          options={options}
+          layout="compact-vertical"
+          visibleOptionCount={10}
+          defaultFocusValue="settings-refresh"
+          onChange={value => {
+            if (value === 'settings-refresh') {
+              onRefresh()
+              return
+            }
+            if (value === 'settings-toggle-telemetry') {
+              onToggleTelemetry()
+              return
+            }
+            if (value === 'settings-toggle-privacy') {
+              onTogglePrivacyMode()
+              return
+            }
+            if (value === 'settings-toggle-firewall') {
+              onToggleFirewall()
+              return
+            }
+            if (value === 'settings-toggle-realtime') {
+              onToggleRealtimeMonitoring()
+              return
+            }
+            if (value === 'settings-toggle-acceleration') {
+              onToggleHardwareAcceleration()
+              return
+            }
+            if (value === 'settings-reset') {
+              onReset()
+            }
+          }}
+          isDisabled={headerFocused}
+          onUpFromFirstItem={focusHeader}
+        />
+      </Box>
+
+      <Box flexDirection="column" flexGrow={1} gap={1}>
+        <SectionTitle>Settings summary</SectionTitle>
+        <Text wrap="wrap">{settings.headline}</Text>
+        <DetailList items={settings.details} />
+
+        <SectionTitle>Control boundary</SectionTitle>
+        <DetailList
+          items={[
+            'Settings actions use the same workspace_api token boundary as mail, chat, store, and Chrono actions.',
+            'Each successful or failed toggle writes an Apex operator activity receipt for audit and public-safe showcase sync.',
+            'Vault and secrets remain launcher-only until they expose a narrower typed contract.',
+          ]}
+        />
+
+        <SectionTitle>Action result</SectionTitle>
+        <Text wrap="wrap">
+          {actionMessage ??
+            'Choose a guarded setting on the left. OpenJaws sends a full settings replacement only after reading the live summary.'}
+        </Text>
+      </Box>
+    </Box>
+  )
+}
+
 function ApexSystemTab({
   summary,
 }: {
@@ -1653,6 +1844,8 @@ function ApexCommandCenter({
   const [loading, setLoading] = useState(true)
   const [health, setHealth] = useState<ApexWorkspaceHealth | null>(null)
   const [summary, setSummary] = useState<ApexWorkspaceSummary | null>(null)
+  const [settingsSummary, setSettingsSummary] =
+    useState<ApexWorkspaceSettingsSummary | null>(null)
   const [tenantGovernanceSummary, setTenantGovernanceSummary] =
     useState<ApexTenantGovernanceSummary | null>(null)
   const [browserHealth, setBrowserHealth] = useState<ApexWorkspaceHealth | null>(null)
@@ -1685,6 +1878,8 @@ function ApexCommandCenter({
   const [chatActionMessage, setChatActionMessage] = useState<string | null>(null)
   const [selectedStoreAppId, setSelectedStoreAppId] = useState('')
   const [storeActionMessage, setStoreActionMessage] = useState<string | null>(null)
+  const [settingsActionMessage, setSettingsActionMessage] =
+    useState<string | null>(null)
   const [chronoJobName, setChronoJobName] = useState('Chrono Workspace Snapshot')
   const [chronoSourcePath, setChronoSourcePath] = useState('')
   const [chronoDestinationPath, setChronoDestinationPath] = useState('')
@@ -1702,7 +1897,7 @@ function ApexCommandCenter({
 
   const persistOperatorActivity = useCallback(
     async (input: {
-      app: 'mail' | 'chat' | 'store' | 'chrono' | 'browser'
+      app: 'mail' | 'chat' | 'store' | 'chrono' | 'browser' | 'settings'
       action: string
       status: 'ok' | 'failed'
       summary: string
@@ -1711,9 +1906,7 @@ function ApexCommandCenter({
     }) => {
       const receipt = await recordApexOperatorActivity(input)
       setOperatorActivityReceipt(receipt)
-      queuePublicShowcaseActivitySync({
-        root: process.cwd(),
-      })
+      queuePublicShowcaseActivitySync()
       return receipt
     },
     [],
@@ -1726,6 +1919,7 @@ function ApexCommandCenter({
     const [
       nextHealth,
       nextSummary,
+      nextSettingsSummary,
       nextTenantGovernanceSummary,
       nextBrowserHealth,
       nextBrowserSummary,
@@ -1736,6 +1930,7 @@ function ApexCommandCenter({
     ] = await Promise.all([
       getApexWorkspaceHealth(),
       getApexWorkspaceSummary(),
+      getApexSettingsSummary(),
       getApexTenantGovernanceSummary(),
       getApexBrowserHealth(),
       getApexBrowserSummary(),
@@ -1746,6 +1941,7 @@ function ApexCommandCenter({
     ])
     setHealth(nextHealth)
     setSummary(nextSummary)
+    setSettingsSummary(nextSettingsSummary)
     setTenantGovernanceSummary(nextTenantGovernanceSummary)
     setBrowserHealth(nextBrowserHealth)
     setBrowserSummary(nextBrowserSummary)
@@ -1760,11 +1956,13 @@ function ApexCommandCenter({
     return {
       ok:
         nextHealth !== null ||
+        nextSettingsSummary !== null ||
         nextTenantGovernanceSummary !== null ||
         nextBrowserHealth !== null ||
         nextChronoHealth !== null,
       message: [
         nextHealth !== null ? 'workspace bridge ready' : 'workspace bridge offline',
+        nextSettingsSummary !== null ? 'settings ready' : 'settings offline',
         nextGovernancePressure.message,
         nextBrowserHealth !== null ? 'browser bridge ready' : 'browser bridge offline',
         nextChronoHealth !== null ? 'chrono bridge ready' : 'chrono bridge offline',
@@ -2072,6 +2270,135 @@ function ApexCommandCenter({
     }
   }, [persistOperatorActivity, refreshWorkspace, selectedStoreAppId, summary])
 
+  const handleSettingsMutation = useCallback(
+    async (
+      action: string,
+      mutate: (settings: ApexWorkspaceSettings) => void,
+      successSummary: (settings: ApexWorkspaceSettings) => string,
+    ) => {
+      if (!settingsSummary) {
+        setSettingsActionMessage(
+          'Apex settings are unavailable. Start or refresh the Workspace API first.',
+        )
+        return
+      }
+
+      const nextSettings = cloneApexWorkspaceSettings(settingsSummary.settings)
+      mutate(nextSettings)
+      const result = await updateApexSettings({
+        settings: nextSettings,
+      })
+      await persistOperatorActivity({
+        app: 'settings',
+        action,
+        status: result.ok ? 'ok' : 'failed',
+        summary:
+          result.ok && result.data
+            ? successSummary(result.data.settings)
+            : result.message,
+        operatorActions: [`apex_settings_${action}`],
+        artifacts: ['apex:settings-update'],
+      })
+      setSettingsActionMessage(
+        result.ok && result.data
+          ? `${result.message} · ${successSummary(result.data.settings)}`
+          : result.message,
+      )
+      if (result.ok && result.data) {
+        setSettingsSummary({
+          settings: result.data.settings,
+          hasUnsavedChanges: result.data.hasUnsavedChanges,
+        })
+        setTimeout(() => {
+          void refreshWorkspace(true)
+        }, 750)
+      }
+    },
+    [persistOperatorActivity, refreshWorkspace, settingsSummary],
+  )
+
+  const handleToggleTelemetry = useCallback(async () => {
+    await handleSettingsMutation(
+      'toggle_telemetry',
+      settings => {
+        settings.privacy.disableTelemetry = !settings.privacy.disableTelemetry
+      },
+      settings =>
+        `Apex telemetry ${settings.privacy.disableTelemetry ? 'disabled' : 'enabled'}.`,
+    )
+  }, [handleSettingsMutation])
+
+  const handleTogglePrivacyMode = useCallback(async () => {
+    await handleSettingsMutation(
+      'toggle_privacy_mode',
+      settings => {
+        settings.privacy.enablePrivacyMode = !settings.privacy.enablePrivacyMode
+      },
+      settings =>
+        `Apex privacy mode ${settings.privacy.enablePrivacyMode ? 'enabled' : 'disabled'}.`,
+    )
+  }, [handleSettingsMutation])
+
+  const handleToggleFirewall = useCallback(async () => {
+    await handleSettingsMutation(
+      'toggle_firewall',
+      settings => {
+        settings.security.enableFirewall = !settings.security.enableFirewall
+      },
+      settings =>
+        `Apex firewall ${settings.security.enableFirewall ? 'enabled' : 'disabled'}.`,
+    )
+  }, [handleSettingsMutation])
+
+  const handleToggleRealtimeMonitoring = useCallback(async () => {
+    await handleSettingsMutation(
+      'toggle_realtime_monitoring',
+      settings => {
+        settings.security.enableRealtimeMonitoring =
+          !settings.security.enableRealtimeMonitoring
+      },
+      settings =>
+        `Apex realtime monitoring ${settings.security.enableRealtimeMonitoring ? 'enabled' : 'disabled'}.`,
+    )
+  }, [handleSettingsMutation])
+
+  const handleToggleHardwareAcceleration = useCallback(async () => {
+    await handleSettingsMutation(
+      'toggle_hardware_acceleration',
+      settings => {
+        settings.performance.enableHardwareAcceleration =
+          !settings.performance.enableHardwareAcceleration
+      },
+      settings =>
+        `Apex hardware acceleration ${settings.performance.enableHardwareAcceleration ? 'enabled' : 'disabled'}.`,
+    )
+  }, [handleSettingsMutation])
+
+  const handleResetSettings = useCallback(async () => {
+    const result = await resetApexSettings()
+    await persistOperatorActivity({
+      app: 'settings',
+      action: 'reset_settings',
+      status: result.ok ? 'ok' : 'failed',
+      summary:
+        result.ok && result.data
+          ? 'Apex settings reset to workspace defaults.'
+          : result.message,
+      operatorActions: ['apex_settings_reset'],
+      artifacts: ['apex:settings-reset'],
+    })
+    setSettingsActionMessage(result.message)
+    if (result.ok && result.data) {
+      setSettingsSummary({
+        settings: result.data.settings,
+        hasUnsavedChanges: result.data.hasUnsavedChanges,
+      })
+      setTimeout(() => {
+        void refreshWorkspace(true)
+      }, 750)
+    }
+  }, [persistOperatorActivity, refreshWorkspace])
+
   const handleOverviewAction = useCallback(
     (value: OverviewAction) => {
       if (value === 'overview-mail') {
@@ -2088,6 +2415,10 @@ function ApexCommandCenter({
       }
       if (value === 'overview-store') {
         setSelectedTab('Store')
+        return
+      }
+      if (value === 'overview-settings') {
+        setSelectedTab('Settings')
         return
       }
       if (value === 'overview-chat') {
@@ -2307,6 +2638,16 @@ function ApexCommandCenter({
         )}
       </Text>
       <Text>
+        Settings:{' '}
+        {settingsSummary ? (
+          <Text color={settingsSummary.hasUnsavedChanges ? 'warning' : 'success'}>
+            {settingsSummary.hasUnsavedChanges ? 'unsaved' : 'ready'}
+          </Text>
+        ) : (
+          <Text color="warning">offline</Text>
+        )}
+      </Text>
+      <Text>
         Governance:{' '}
         {tenantGovernanceSummary ? (
           <Text color={governancePressure.tone}>{governancePressure.bannerText}</Text>
@@ -2430,6 +2771,33 @@ function ApexCommandCenter({
               void refreshWorkspace()
             }}
             actionMessage={storeActionMessage}
+          />
+        </Tab>
+        <Tab title="Settings">
+          <ApexSettingsTab
+            summary={settingsSummary}
+            onToggleTelemetry={() => {
+              void handleToggleTelemetry()
+            }}
+            onTogglePrivacyMode={() => {
+              void handleTogglePrivacyMode()
+            }}
+            onToggleFirewall={() => {
+              void handleToggleFirewall()
+            }}
+            onToggleRealtimeMonitoring={() => {
+              void handleToggleRealtimeMonitoring()
+            }}
+            onToggleHardwareAcceleration={() => {
+              void handleToggleHardwareAcceleration()
+            }}
+            onReset={() => {
+              void handleResetSettings()
+            }}
+            onRefresh={() => {
+              void refreshWorkspace()
+            }}
+            actionMessage={settingsActionMessage}
           />
         </Tab>
         <Tab title="System">

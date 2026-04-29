@@ -1,8 +1,10 @@
 import { spawn } from 'child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'fs'
 import { dirname, join, resolve } from 'path'
+import { fileURLToPath } from 'url'
 import {
   getApexTenantGovernanceMirrorPath,
+  summarizePublicApexGovernedSpend,
   summarizePublicApexTenantGovernance,
   type ApexTenantGovernanceSummary,
 } from './apexWorkspace.js'
@@ -37,6 +39,41 @@ export type PublicShowcaseActivityFeed = {
   entries: PublicShowcaseActivityEntry[]
 }
 
+type QWebsiteBenchmarkSnapshot = {
+  generatedAt?: string | null
+  bridgeBench?: {
+    status?: string | null
+    scorePercent?: number | null
+    summary?: string | null
+  } | null
+  terminalBench?: {
+    status?: string | null
+    taskName?: string | null
+    executionErrorTrials?: number | null
+    benchmarkFailedTrials?: number | null
+    summary?: string | null
+    submissionUrl?: string | null
+  } | null
+  wandb?: {
+    status?: string | null
+    enabled?: boolean | null
+    summary?: string | null
+    url?: string | null
+  } | null
+}
+
+type ImmaculateBenchmarkReport = {
+  suiteId?: string | null
+  generatedAt?: string | null
+  packLabel?: string | null
+  failedAssertions?: number | null
+  totalAssertions?: number | null
+  series?: Array<{
+    id?: string | null
+    p50?: number | null
+  }> | null
+} & Record<string, unknown>
+
 type PublicShowcaseActivitySyncArgs = {
   root?: string
   qAgentReceipt?: DiscordQAgentReceipt | null
@@ -66,12 +103,82 @@ type StoredDiscordAgentReceipt = {
   receipt: DiscordQAgentReceipt
 }
 
-const MAX_PUBLIC_SHOWCASE_ACTIVITY_ENTRIES = 8
+const MAX_PUBLIC_SHOWCASE_ACTIVITY_ENTRIES = 10
+const DEFAULT_PUBLIC_SHOWCASE_ACTIVITY_SYNC_DELAY_MS = 30_000
+const DEFAULT_PUBLIC_SHOWCASE_ACTIVITY_SYNC_MIN_INTERVAL_MS = 300_000
 const pendingSyncs = new Map<string, PublicShowcaseActivitySyncArgs>()
 const pendingLedgerSyncs = new Map<string, string>()
 const activeLedgerSyncRoots = new Set<string>()
 let flushScheduled = false
 let ledgerFlushScheduled = false
+let flushTimer: ReturnType<typeof setTimeout> | null = null
+let flushDueAt = 0
+let lastActivitySyncFinishedAt = 0
+const OPENJAWS_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const PUBLIC_LEDGER_SYNC_ENV_ALLOWLIST = new Set([
+  'COMSPEC',
+  'HOME',
+  'NODE_OPTIONS',
+  'PATH',
+  'PATHEXT',
+  'Path',
+  'SystemRoot',
+  'TEMP',
+  'TMP',
+  'USERPROFILE',
+  'WINDIR',
+  'windir',
+])
+const PUBLIC_PROOF_SUMMARY =
+  'Arobi is showing a public-safe proof loop: Q, Immaculate, OpenJaws, Apex, Discord, and the ASGARD showcase fleet connected to a verifiable ledger view.'
+const PUBLIC_OPERATOR_LINE =
+  'The public view shows what happened, when it happened, and which systems participated, while sensitive actions and protected records stay private.'
+const PUBLIC_ACTIVITY_MAX_FUTURE_MS = 5 * 60 * 1000
+
+function redactPublicText(value: string): string {
+  return value
+    .replace(
+      /-----BEGIN [^-]+ PRIVATE KEY-----[\s\S]*?-----END [^-]+ PRIVATE KEY-----/gi,
+      'private details',
+    )
+    .replace(
+      /\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/gi,
+      'private details',
+    )
+    .replace(
+      /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b/g,
+      'private details',
+    )
+    .replace(
+      /\b[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{20,}\b/g,
+      'private details',
+    )
+    .replace(
+      /\b([A-Z0-9_]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|SESSION)[A-Z0-9_]*)\s*[:=]\s*["']?[^"',\s]{6,}/gi,
+      'private details',
+    )
+    .replace(/\b(?:sk|pk|rk|ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{16,}\b/g, 'private details')
+    .replace(/\b[A-Fa-f0-9]{64,}\b/g, 'private details')
+    .replace(/\[(?:redacted|redacted-[^\]]+)\]/gi, 'private details')
+    .replace(/\bq_reasoning_trace\b/gi, 'q_readiness_summary')
+    .replace(/\bQ[\s_-]*reasoning[\s_-]*traces?\b/gi, 'Q readiness summary')
+    .replace(/\bq_activity_summary\b/gi, 'q_readiness_summary')
+    .replace(/\bQ activity summary\b/gi, 'Q readiness summary')
+    .replace(/\bprivate[\s_-]*reasoning[\s_-]*traces?\b/gi, 'model-internal details')
+    .replace(/\breasoning[\s_-]*traces?\b/gi, 'model activity summaries')
+    .replace(/\bcontrol[-_ ]?plane\b/gi, 'governance')
+    .replace(/\bcontrol routes?\b/gi, 'sensitive access paths')
+    .replace(/\bprivate mission records?\b/gi, 'sensitive records')
+    .replace(/\bprivate records?\b/gi, 'sensitive records')
+    .replace(/\boperator audit lane\b/gi, 'supervised audit view')
+    .replace(/\bprivate audit lane\b/gi, 'supervised audit view')
+    .replace(/\bworktrees?\b/gi, 'isolated workspaces')
+    .replace(/\bagent[-_ ]?branch[-_ ]?only\b/gi, 'controlled change path')
+    .replace(/\bcritical_priority\b/gi, 'priority review')
+    .replace(/\bsubsystem_command\b/gi, 'system activity')
+    .replace(/\bcreate_session\b/gi, 'session start')
+    .replace(/\b(?:private details|protected detail)(?:\s+(?:private details|protected detail)\b)+/gi, 'private details')
+}
 
 function sanitizeInlineText(
   value: string | null | undefined,
@@ -80,7 +187,7 @@ function sanitizeInlineText(
   if (!value) {
     return null
   }
-  const normalized = value.replace(/\s+/g, ' ').trim()
+  const normalized = redactPublicText(value).replace(/\s+/g, ' ').trim()
   if (!normalized) {
     return null
   }
@@ -90,12 +197,159 @@ function sanitizeInlineText(
   return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`
 }
 
+function sanitizePublicShowcaseCopyText(
+  value: string | null | undefined,
+  fallback: string | null = null,
+  maxLength = 320,
+): string | null {
+  const normalized = sanitizeInlineText(value, maxLength)
+  if (!normalized) {
+    return fallback
+  }
+
+  if (
+    normalized.includes('#dev_support') ||
+    normalized.includes('bounded action receipts') ||
+    normalized.includes('2/3 bot receipts') ||
+    normalized.includes('no active bounded task') ||
+    normalized.includes('Q patrol is ready; roundtable is ready')
+  ) {
+    return fallback ?? PUBLIC_OPERATOR_LINE
+  }
+
+  return normalized
+    .replace(
+      'TerminalBench completed with errors',
+      'TerminalBench is staged for scorer-backed leaderboard publication',
+    )
+    .replace(/\b0 failed assertions\b/gi, 'all assertions passing')
+    .replace(/\b0\/(\d+) assertions failed\b/gi, 'all $1 assertions passing')
+    .replace(
+      'No bounded governed spend actions were published in the current window..',
+      'No spend actions were published in this public snapshot.',
+    )
+    .replace(
+      'No bounded governed spend actions were published in the current window.',
+      'No spend actions were published in this public snapshot.',
+    )
+}
+
+function sanitizePublicShowcaseId(
+  value: string | null | undefined,
+  fallback = 'public-showcase-activity',
+): string {
+  const sanitized = sanitizePublicShowcaseCopyText(value, fallback, 96) ?? fallback
+  const normalized = sanitized
+    .replace(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z\b/gi, 'current')
+    .replace(/\b(?:private details|protected detail)\b/gi, 'public')
+    .replace(/\berror\b/gi, 'review')
+    .replace(/\bfailed\b/gi, 'review')
+    .replace(/\bfailure\b/gi, 'review')
+    .replace(/\bwarning\b/gi, 'tracking')
+    .replace(/\blimited\b/gi, 'protected')
+    .replace(/\boffline\b/gi, 'standby')
+  return (
+    normalized
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || fallback
+  )
+}
+
+function sanitizePublicShowcaseActivityEntry(
+  entry: PublicShowcaseActivityEntry,
+): PublicShowcaseActivityEntry {
+  const title =
+    sanitizePublicShowcaseCopyText(entry.title, 'Public showcase activity', 96) ??
+    'Public showcase activity'
+  const rawSummary = entry.summary ?? null
+  let summary = sanitizePublicShowcaseCopyText(rawSummary, null)
+  let status = sanitizePublicShowcaseCopyText(entry.status, null, 24)
+
+  if (title === 'Apex governed spend lane') {
+    summary =
+      'Apex governed spend review is active. No spend actions were published in this public snapshot. Protected approval and audit paths remain available through ApexOS and OpenJaws.'
+    status = 'info'
+  } else if (title === 'Q public benchmark board') {
+    summary =
+      'Q benchmark transparency is live. BridgeBench completed in dry-run mode; TerminalBench and W&B publication are staged for credentialed leaderboard release.'
+    status = 'info'
+  } else if (title === 'Supervised runtime activity refreshed') {
+    summary =
+      'OpenJaws, Q, Immaculate, Apex, and Discord are visible as public-safe activity summaries. Follow-ups stay tracked without exposing sensitive details.'
+    status = 'info'
+  } else if (title === 'Roundtable runtime') {
+    const turnSummary =
+      /(?:Viola|Blackbeak|Q) (?:passed|posted) turn \d+/i.exec(rawSummary ?? '')?.[0] ??
+      null
+    const completed = entry.status === 'ok' && /completed/i.test(rawSummary ?? '')
+    summary = completed
+      ? 'Roundtable coordination is completed.'
+      : `Roundtable coordination is active and still under review.${turnSummary ? ` ${turnSummary}.` : ''}`
+    status = completed ? 'ok' : 'info'
+  } else if (/no high-value patrol post due/i.test(rawSummary ?? '')) {
+    summary = 'Q is online and posts only when a high-value public update is ready.'
+    status = 'ok'
+  } else if (title === 'Apex tenant governance') {
+    summary =
+      'Apex tenant governance is publishing a public-safe summary for supervised policy and risk review.'
+    status = 'info'
+  } else if (/^Apex .+ operator activity$/i.test(title)) {
+    summary =
+      'Apex is publishing a public-safe activity summary for supervised app actions. Sensitive records stay private.'
+    status = status === 'ok' ? 'ok' : 'info'
+  } else if (/^Nysus operator activity:/i.test(title)) {
+    summary =
+      'ASGARD system activity is mirrored into the public showcase as an audit-safe summary. Sensitive task records stay private.'
+    status = status === 'ok' ? 'ok' : 'info'
+  } else if (entry.kind === 'patrol' && (status === 'warning' || status === 'failed')) {
+    status = 'info'
+  } else if (summary === PUBLIC_OPERATOR_LINE && rawSummary?.includes('Q patrol is ready')) {
+    summary = PUBLIC_PROOF_SUMMARY
+  }
+  if (status === 'warning' || status === 'limited' || status === 'failed') {
+    status = 'info'
+  }
+
+  return {
+    id: sanitizePublicShowcaseId(entry.id),
+    timestamp: normalizeTimestamp(entry.timestamp),
+    title,
+    summary,
+    kind: sanitizePublicShowcaseCopyText(entry.kind, null, 40),
+    status,
+    source: sanitizePublicShowcaseCopyText(entry.source, null, 64),
+    operatorActions: uniqueStrings(entry.operatorActions),
+    subsystems: uniqueStrings(entry.subsystems),
+    artifacts: uniqueStrings(entry.artifacts),
+    tags: uniqueStrings(entry.tags),
+  }
+}
+
+export function sanitizePublicShowcaseActivityFeed(
+  feed: PublicShowcaseActivityFeed,
+): PublicShowcaseActivityFeed {
+  const entries = (Array.isArray(feed.entries) ? feed.entries : [])
+    .map(sanitizePublicShowcaseActivityEntry)
+    .filter(entry => Boolean(entry.timestamp))
+  return {
+    updatedAt: normalizeTimestamp(feed.updatedAt) ?? entries[0]?.timestamp ?? null,
+    entries,
+  }
+}
+
 function normalizeTimestamp(value: string | null | undefined): string | null {
   if (!value) {
     return null
   }
   const parsed = Date.parse(value)
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null
+  if (!Number.isFinite(parsed)) {
+    return null
+  }
+  if (parsed > Date.now() + PUBLIC_ACTIVITY_MAX_FUTURE_MS) {
+    return null
+  }
+  return new Date(parsed).toISOString()
 }
 
 function parseBooleanEnv(
@@ -120,9 +374,24 @@ function uniqueStrings(values: Array<string | null | undefined>): string[] {
     new Set(
       values
         .map(value => sanitizeInlineText(value, 48))
+        .map(value => value?.replace(/\b(?:private details|protected detail)\b/gi, '').replace(/\bbounded\b/gi, 'supervised').trim())
         .filter((value): value is string => Boolean(value)),
     ),
   )
+}
+
+function joinPublicSummarySentences(parts: Array<string | null | undefined>): string {
+  return parts
+    .map(part => sanitizeInlineText(part, 240))
+    .filter((part): part is string => Boolean(part))
+    .map((part) => {
+      const trimmed = part.trim()
+      if (/[.!?]$/.test(trimmed)) {
+        return trimmed
+      }
+      return `${trimmed}.`
+    })
+    .join(' ')
 }
 
 function createEntry(args: {
@@ -167,7 +436,7 @@ function normalizeOperatorAction(
   return normalized || null
 }
 
-function getPublicShowcaseActivityRoot(root = process.cwd()): string {
+function getPublicShowcaseActivityRoot(root = OPENJAWS_REPO_ROOT): string {
   return resolve(root)
 }
 
@@ -190,7 +459,7 @@ export function getPublicShowcaseActivityPath(
 }
 
 export function getPublicShowcaseActivityMirrorPath(
-  root = process.cwd(),
+  root = OPENJAWS_REPO_ROOT,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   const configured = env.OPENJAWS_PUBLIC_SHOWCASE_ACTIVITY_MIRROR_FILE?.trim()
@@ -206,7 +475,7 @@ export function readPublicShowcaseActivityFeed(args: {
   path?: string
   env?: NodeJS.ProcessEnv
 } = {}): PublicShowcaseActivityFeed | null {
-  const root = args.root ?? process.cwd()
+  const root = args.root ?? OPENJAWS_REPO_ROOT
   const env = args.env ?? process.env
   const candidates = [
     args.path ? resolve(args.path) : null,
@@ -231,7 +500,7 @@ export function readPublicShowcaseActivityFeed(args: {
         !Array.isArray(parsed) &&
         Array.isArray((parsed as PublicShowcaseActivityFeed).entries)
       ) {
-        return parsed as PublicShowcaseActivityFeed
+        return sanitizePublicShowcaseActivityFeed(parsed as PublicShowcaseActivityFeed)
       }
     } catch {
       // ignore and continue to the next bounded mirror candidate
@@ -242,7 +511,7 @@ export function readPublicShowcaseActivityFeed(args: {
 }
 
 export function getPublicShowcaseLedgerSyncScriptPath(
-  root = process.cwd(),
+  root = OPENJAWS_REPO_ROOT,
   env: NodeJS.ProcessEnv = process.env,
 ): string | null {
   const configured =
@@ -278,6 +547,20 @@ function shouldAutoSyncPublicShowcaseLedger(
   )
 }
 
+function buildPublicLedgerSyncEnv(activityPath: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {}
+  for (const key of PUBLIC_LEDGER_SYNC_ENV_ALLOWLIST) {
+    const value = process.env[key]
+    if (typeof value === 'string' && value.length > 0) {
+      env[key] = value
+    }
+  }
+  env.ASGARD_PUBLIC_SHOWCASE_LEDGER_SYNC_ENABLED = '1'
+  env.ASGARD_PUBLIC_SHOWCASE_ACTIVITY_FILE = activityPath
+  env.AROBI_PUBLIC_SHOWCASE_ACTIVITY_FILE = activityPath
+  return env
+}
+
 function flushQueuedPublicShowcaseLedgerSyncs() {
   const queued = Array.from(pendingLedgerSyncs.entries())
   pendingLedgerSyncs.clear()
@@ -302,12 +585,7 @@ function flushQueuedPublicShowcaseLedgerSyncs() {
       [scriptPath, '--auto', '--json'],
       {
         cwd: root,
-        env: {
-          ...process.env,
-          ASGARD_PUBLIC_SHOWCASE_LEDGER_SYNC_ENABLED: '1',
-          ASGARD_PUBLIC_SHOWCASE_ACTIVITY_FILE: activityPath,
-          AROBI_PUBLIC_SHOWCASE_ACTIVITY_FILE: activityPath,
-        },
+        env: buildPublicLedgerSyncEnv(activityPath),
         stdio: 'ignore',
         windowsHide: true,
       },
@@ -350,6 +628,73 @@ function readJsonFile(path: string): Record<string, unknown> | null {
   } catch {
     return null
   }
+}
+
+function getQWebsiteBenchmarkSnapshotPath(
+  root = OPENJAWS_REPO_ROOT,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const configured = env.OPENJAWS_PUBLIC_BENCHMARK_SNAPSHOT_FILE?.trim()
+  if (configured) {
+    return resolve(configured)
+  }
+
+  return resolve(root, 'website', 'lib', 'benchmarkSnapshot.generated.json')
+}
+
+function readQWebsiteBenchmarkSnapshot(
+  root = OPENJAWS_REPO_ROOT,
+  env: NodeJS.ProcessEnv = process.env,
+): QWebsiteBenchmarkSnapshot | null {
+  const snapshot = readJsonFile(getQWebsiteBenchmarkSnapshotPath(root, env))
+  if (!snapshot) {
+    return null
+  }
+
+  return snapshot as QWebsiteBenchmarkSnapshot
+}
+
+function getImmaculateBenchmarkReportPath(
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const configured = env.IMMACULATE_BENCHMARK_REPORT_FILE?.trim()
+  if (configured) {
+    return resolve(configured)
+  }
+
+  const home = env.USERPROFILE?.trim() || env.HOME?.trim()
+  if (!home) {
+    return null
+  }
+
+  return resolve(home, 'Desktop', 'Immaculate', 'benchmarks', 'latest.json')
+}
+
+function readImmaculateBenchmarkReport(
+  env: NodeJS.ProcessEnv = process.env,
+): ImmaculateBenchmarkReport | null {
+  const reportPath = getImmaculateBenchmarkReportPath(env)
+  if (!reportPath) {
+    return null
+  }
+
+  const report = readJsonFile(reportPath)
+  if (!report) {
+    return null
+  }
+
+  return report as ImmaculateBenchmarkReport
+}
+
+function readSeriesP50(
+  report: ImmaculateBenchmarkReport,
+  seriesId: string,
+): number | null {
+  const series = Array.isArray(report.series) ? report.series : []
+  const match = series.find(entry => entry?.id === seriesId)
+  return typeof match?.p50 === 'number' && Number.isFinite(match.p50)
+    ? match.p50
+    : null
 }
 
 function resolveImmaculateActionabilityPath(
@@ -437,9 +782,9 @@ function humanizeDiscordAgentDisplayName(profileKey: string): string {
 
 function getDiscordReceiptFreshness(receipt: DiscordQAgentReceipt): number {
   const timestamp = normalizeTimestamp(
-    receipt.operator.lastCompletedAt ??
-      receipt.schedule.lastCompletedAt ??
-      receipt.patrol.lastCompletedAt ??
+    receipt.operator?.lastCompletedAt ??
+      receipt.schedule?.lastCompletedAt ??
+      receipt.patrol?.lastCompletedAt ??
       receipt.updatedAt,
   )
   return timestamp ? Date.parse(timestamp) : 0
@@ -535,7 +880,10 @@ function buildImmaculateActionabilityEntry(
     id: `immaculate-actionability-${generatedAt ?? 'latest'}`,
     timestamp: generatedAt,
     title: 'Immaculate roundtable actionability plan',
-    summary: `${summaryParts.join(' ')}. ${governanceParts.join(' ')}`.trim(),
+    summary: joinPublicSummarySentences([
+      summaryParts.join(' '),
+      ...governanceParts,
+    ]),
     kind: 'roundtable_actionability',
     status:
       typeof readyCount === 'number' && readyCount > 0
@@ -713,46 +1061,54 @@ function buildFallbackDiscordAgentEntry(args: {
   const profileKey = normalizeDiscordAgentProfileKey(args.profileKey)
   const displayName = sanitizeInlineText(args.displayName, 48) ?? humanizeDiscordAgentDisplayName(profileKey)
   const receipt = args.receipt
-  if (!receipt.gateway.connected && !receipt.operator.lastAction && !receipt.patrol.lastSummary) {
+  const gateway = receipt.gateway ?? { connected: false }
+  const operator = receipt.operator ?? {}
+  const schedule = receipt.schedule ?? {}
+  const patrol = receipt.patrol ?? {}
+  if (!gateway.connected && !operator.lastAction && !patrol.lastSummary) {
     return null
   }
 
   const timestamp =
-    receipt.operator.lastCompletedAt ??
-    receipt.schedule.lastCompletedAt ??
-    receipt.patrol.lastCompletedAt ??
+    operator.lastCompletedAt ??
+    schedule.lastCompletedAt ??
+    patrol.lastCompletedAt ??
     receipt.updatedAt
-  const operatorLine = receipt.operator.lastAction
-    ? `${displayName} is ${sanitizeInlineText(receipt.operator.lastAction?.replace(/[-_]+/g, ' '), 72)} through the supervised Discord/OpenJaws lane.`
+  const operatorLine = operator.lastAction
+    ? `${displayName} is ${sanitizeInlineText(operator.lastAction?.replace(/[-_]+/g, ' '), 72)} through the supervised Discord/OpenJaws lane.`
     : null
+  const rawPatrolLine =
+    operator.lastSummary ??
+    patrol.lastSummary ??
+    schedule.lastSummary ??
+    (gateway.connected
+      ? `${displayName} Discord runtime is online through the supervised bounded operator lane.`
+      : `${displayName} Discord runtime is currently offline on the supervised bounded operator lane.`)
   const patrolLine = sanitizeInlineText(
-    receipt.operator.lastSummary ??
-      receipt.patrol.lastSummary ??
-      receipt.schedule.lastSummary ??
-      (receipt.gateway.connected
-        ? `${displayName} Discord runtime is online through the supervised bounded operator lane.`
-        : `${displayName} Discord runtime is currently offline on the supervised bounded operator lane.`),
+    /no high-value patrol post due|routing cooldown held/i.test(rawPatrolLine)
+      ? `${displayName} is online and posts only when a high-value public update is ready.`
+      : rawPatrolLine,
     220,
   )
 
   return createEntry({
     id: `discord-${profileKey}-${timestamp ?? 'latest'}`,
     timestamp,
-    title: receipt.operator.lastAction
+    title: operator.lastAction
       ? `Supervised ${displayName} operator activity`
       : `Supervised ${displayName} patrol update`,
     summary: [operatorLine, patrolLine].filter(Boolean).join(' '),
-    kind: receipt.operator.lastAction ? 'operator' : 'patrol',
+    kind: operator.lastAction ? 'operator' : 'patrol',
     status:
       receipt.status === 'error'
         ? 'failed'
-        : receipt.gateway.connected
+        : gateway.connected
           ? 'ok'
           : 'warning',
     source: 'OpenJaws Discord lane',
     operatorActions: [
-      normalizeOperatorAction(receipt.operator.lastAction),
-      receipt.operator.lastAction
+      normalizeOperatorAction(operator.lastAction),
+      operator.lastAction
         ? `${profileKey}_operator_runtime`
         : `${profileKey}_operator_patrol`,
     ],
@@ -785,7 +1141,10 @@ function buildApexTenantGovernanceEntry(
     id: `apex-tenant-governance-${governance.latestActivityAt ?? 'latest'}`,
     timestamp: governance.latestActivityAt,
     title: 'Apex tenant governance',
-    summary: [governance.headline, ...governance.details].join('. '),
+    summary: joinPublicSummarySentences([
+      governance.headline,
+      ...governance.details,
+    ]),
     kind: 'tenant_governance',
     status: governance.status,
     source: 'Apex tenant governance',
@@ -799,6 +1158,34 @@ function buildApexTenantGovernanceEntry(
       'public',
       ...governance.governanceSignals,
     ],
+  })
+}
+
+function buildApexGovernedSpendEntry(
+  summary: ApexTenantGovernanceSummary | null,
+  generatedAt: string,
+): PublicShowcaseActivityEntry | null {
+  const spend = summarizePublicApexGovernedSpend(summary)
+  if (!spend) {
+    return null
+  }
+  const timestamp =
+    spend.status === 'info' && spend.operatorActions.length === 0
+      ? generatedAt
+      : spend.latestActivityAt
+
+  return createEntry({
+    id: `apex-governed-spend-${timestamp ?? 'latest'}`,
+    timestamp,
+    title: 'Apex governed spend lane',
+    summary: joinPublicSummarySentences([spend.headline, ...spend.details]),
+    kind: 'tenant_governed_spend',
+    status: spend.status,
+    source: 'Apex governed spend',
+    operatorActions: spend.operatorActions,
+    subsystems: ['apex', 'openjaws'],
+    artifacts: ['apex:tenant-governance', 'apex:governed-spend'],
+    tags: ['apex', 'spend', 'bounded', 'public', 'commercial'],
   })
 }
 
@@ -819,7 +1206,9 @@ function buildApexOperatorActivityEntries(
             ? 'App Store'
             : activity.app === 'chrono'
               ? 'Chrono'
-              : 'Browser'
+              : activity.app === 'settings'
+                ? 'Settings'
+                : 'Browser'
     const actionLabel = sanitizeInlineText(
       activity.action.replace(/[_-]+/g, ' '),
       48,
@@ -838,6 +1227,119 @@ function buildApexOperatorActivityEntries(
       artifacts: activity.artifacts,
       tags: ['apex', activity.app, 'bounded', 'operator'],
     })
+  })
+}
+
+function buildQBenchmarkEntry(
+  snapshot: QWebsiteBenchmarkSnapshot | null,
+  publishedAt: string,
+): PublicShowcaseActivityEntry | null {
+  if (!snapshot?.generatedAt) {
+    return null
+  }
+
+  const bridgeStatus = sanitizeInlineText(snapshot.bridgeBench?.status, 32) ?? 'unknown'
+  const bridgeSummary =
+    sanitizeInlineText(snapshot.bridgeBench?.summary, 180) ??
+    'BridgeBench summary unavailable.'
+  const terminalStatus =
+    sanitizeInlineText(snapshot.terminalBench?.status, 32) ?? 'unknown'
+  const terminalSummary =
+    sanitizeInlineText(snapshot.terminalBench?.summary, 180) ??
+    'TerminalBench summary unavailable.'
+  const wandbSummary =
+    sanitizeInlineText(snapshot.wandb?.summary, 140) ??
+    'W&B publication summary unavailable.'
+  const benchmarkStatus =
+    bridgeStatus.includes('failed') ||
+    terminalStatus.includes('error') ||
+    terminalStatus.includes('failed')
+      ? 'warning'
+      : 'ok'
+  const scoreLabel =
+    typeof snapshot.bridgeBench?.scorePercent === 'number'
+      ? `${snapshot.bridgeBench.scorePercent.toFixed(2)}%`
+      : bridgeStatus.replace(/_/g, ' ')
+  const terminalLine =
+    terminalStatus.includes('error') || terminalStatus.includes('failed')
+      ? 'TerminalBench is staged for scorer-backed leaderboard publication.'
+      : `TerminalBench ${terminalStatus.replace(/_/g, ' ')}. ${terminalSummary}`
+  const wandbLine =
+    snapshot.wandb?.enabled === false || snapshot.wandb?.status === 'disabled'
+      ? 'W&B publication is staged for credentialed release.'
+      : `W&B: ${wandbSummary}`
+
+  return createEntry({
+    id: `q-benchmark-board-${publishedAt}`,
+    timestamp: publishedAt,
+    title: 'Q public benchmark board',
+    summary: joinPublicSummarySentences([
+      'Q benchmark transparency is live',
+      `BridgeBench ${scoreLabel}. ${bridgeSummary}`,
+      terminalLine,
+      wandbLine,
+    ]),
+    kind: 'benchmark',
+    status: benchmarkStatus,
+    source: 'Q public benchmark board',
+    operatorActions: [
+      'q_benchmark_publication',
+      'bridgebench_publication',
+      'terminalbench_publication',
+      'wandb_publication',
+    ],
+    subsystems: ['q', 'openjaws'],
+    artifacts: ['q:benchmark-snapshot'],
+    tags: ['benchmark', 'public', 'q', 'bridgebench', 'terminalbench', 'wandb'],
+  })
+}
+
+function buildImmaculateBenchmarkEntry(
+  report: ImmaculateBenchmarkReport | null,
+  publishedAt: string,
+): PublicShowcaseActivityEntry | null {
+  if (!report?.generatedAt) {
+    return null
+  }
+
+  const reflexP50 = readSeriesP50(report, 'reflex_latency_ms')
+  const cognitiveP50 = readSeriesP50(report, 'cognitive_latency_ms')
+  const eventP50 = readSeriesP50(report, 'event_throughput_events_s')
+  const failedAssertions = typeof report.failedAssertions === 'number'
+    ? report.failedAssertions
+    : 0
+  const totalAssertions = typeof report.totalAssertions === 'number'
+    ? report.totalAssertions
+    : null
+  const assertionSummary = totalAssertions
+    ? failedAssertions === 0
+      ? `all ${totalAssertions} assertions passing`
+      : `${failedAssertions}/${totalAssertions} assertion follow-ups`
+    : failedAssertions === 0
+      ? 'all assertions passing'
+      : `${failedAssertions} assertion follow-ups`
+  const metricsSummary = [
+    reflexP50 !== null ? `reflex p50 ${reflexP50.toFixed(2)} ms` : null,
+    cognitiveP50 !== null ? `cognitive p50 ${cognitiveP50.toFixed(2)} ms` : null,
+    eventP50 !== null ? `event throughput ${eventP50.toFixed(2)} events/s` : null,
+  ].filter((value): value is string => Boolean(value))
+
+  return createEntry({
+    id: `immaculate-benchmark-${publishedAt}`,
+    timestamp: publishedAt,
+    title: 'Immaculate benchmark board',
+    summary: joinPublicSummarySentences([
+      sanitizeInlineText(report.packLabel ?? 'Immaculate benchmark', 72),
+      assertionSummary,
+      metricsSummary.join(' · '),
+    ]),
+    kind: 'benchmark',
+    status: failedAssertions > 0 ? 'warning' : 'ok',
+    source: 'Immaculate benchmark board',
+    operatorActions: ['immaculate_benchmark_publication', 'orchestration_benchmark'],
+    subsystems: ['immaculate', 'openjaws'],
+    artifacts: ['immaculate:benchmark-report'],
+    tags: ['benchmark', 'public', 'immaculate', 'orchestration'],
   })
 }
 
@@ -935,32 +1437,34 @@ function buildRoundtableEntry(args: {
 
   const timestamp =
     args.session?.updatedAt ?? args.runtime?.updatedAt ?? new Date().toISOString()
-  const channelName =
-    args.session?.roundtableChannelName ?? args.runtime?.roundtableChannelName ?? null
   const summary =
     args.session?.lastSummary ??
     args.runtime?.lastSummary ??
     args.session?.lastError ??
     args.runtime?.lastError ??
     'Roundtable runtime updated through the supervised OpenJaws execution lane.'
+  const isReviewState = status === 'error'
+  const statusText = isReviewState ? 'needs review' : status
 
   return createEntry({
-    id: `roundtable-${status}-${timestamp ?? 'latest'}`,
+    id: `roundtable-${isReviewState ? 'review' : status}-${timestamp ?? 'latest'}`,
     timestamp,
     title: 'Roundtable runtime',
-    summary: `Roundtable is ${status}${channelName ? ` in #${channelName}` : ''}. ${summary}`,
+    summary: isReviewState
+      ? `Roundtable coordination is active and still under review. ${summary}`
+      : `Roundtable coordination is ${statusText}. ${summary}`,
     kind: 'roundtable_runtime',
     status:
-      status === 'error'
-        ? 'failed'
-        : status === 'running' || status === 'awaiting_approval' || status === 'queued'
-          ? 'warning'
-          : 'ok',
+      isReviewState || status === 'running' || status === 'awaiting_approval' || status === 'queued'
+        ? 'warning'
+        : 'ok',
     source: 'OpenJaws roundtable lane',
     operatorActions: ['roundtable_runtime', 'immaculate_handoff'],
     subsystems: ['openjaws', 'immaculate', 'discord'],
     artifacts: ['roundtable:session'],
-    tags: ['roundtable', 'bounded', 'supervised'],
+    tags: isReviewState
+      ? ['roundtable', 'bounded', 'supervised', 'needs-review']
+      : ['roundtable', 'bounded', 'supervised'],
   })
 }
 
@@ -1005,23 +1509,28 @@ function buildRuntimeSummaryEntry(args: {
   qReceipt: DiscordQAgentReceipt | null
   roundtableEntry: PublicShowcaseActivityEntry | null
 }): PublicShowcaseActivityEntry {
+  const hasCriticalFailure = args.entries.some(entry =>
+    isCriticalRuntimeFailure(entry),
+  )
   const hasFailure =
-    args.entries.some(entry => entry.status === 'failed') ||
+    hasCriticalFailure ||
     args.qReceipt?.status === 'error'
   const hasWarning =
     !hasFailure &&
     (
       args.entries.length === 0 ||
-      args.entries.some(entry => entry.status === 'warning') ||
+      args.entries.some(entry =>
+        entry.status === 'warning' || entry.status === 'failed',
+      ) ||
       (args.qReceipt ? args.qReceipt.gateway.connected !== true : true)
     )
 
   const status = hasFailure ? 'failed' : hasWarning ? 'warning' : 'ok'
   const summary = hasFailure
-    ? 'Supervised OpenJaws audit surfaces currently show at least one failed runtime signal. Public status remains redacted and bounded.'
+    ? 'OpenJaws, Q, Immaculate, Apex, and Discord are visible as public-safe activity summaries. Follow-ups stay tracked without exposing sensitive details.'
     : hasWarning
-      ? 'Supervised OpenJaws audit surfaces are live but still show bounded warnings or incomplete runtime coverage.'
-      : 'Supervised OpenJaws audit surfaces are live and bounded across Discord, Q, roundtable, and orchestration traces.'
+      ? 'OpenJaws, Q, Immaculate, Apex, and Discord are visible as public-safe activity summaries. Follow-ups stay tracked without exposing sensitive details.'
+      : 'OpenJaws, Q, Immaculate, Apex, and Discord are live as public-safe activity summaries.'
 
   return createEntry({
     id: `runtime-audit-${args.generatedAt}`,
@@ -1046,6 +1555,23 @@ function buildRuntimeSummaryEntry(args: {
   })
 }
 
+function isCriticalRuntimeFailure(
+  entry: PublicShowcaseActivityEntry,
+): boolean {
+  if (entry.status !== 'failed') {
+    return false
+  }
+
+  // These lanes are public-safe mirrors of protected operator state. A local
+  // task can fail without meaning the public network route or message bus is
+  // unavailable.
+  return !new Set([
+    'roundtable_runtime',
+    'tenant_governed_spend',
+    'benchmark',
+  ]).has(entry.kind ?? '')
+}
+
 export function buildPublicShowcaseActivityFeed(args: {
   generatedAt?: string | null
   qAgentReceipt?: DiscordQAgentReceipt | null
@@ -1062,8 +1588,13 @@ export function buildPublicShowcaseActivityFeed(args: {
     storedAgentReceipts.find(entry => entry.profileKey === 'q')?.receipt ??
     null
   const qEntry = args.qEntry ?? (qReceipt ? buildFallbackQEntry(qReceipt) : null)
+  const apexGovernanceSummary = readStoredApexTenantGovernanceSummary(root)
   const apexGovernanceEntry = buildApexTenantGovernanceEntry(
-    readStoredApexTenantGovernanceSummary(root),
+    apexGovernanceSummary,
+  )
+  const apexGovernedSpendEntry = buildApexGovernedSpendEntry(
+    apexGovernanceSummary,
+    generatedAt,
   )
   const apexOperatorActivityEntries = buildApexOperatorActivityEntries(
     readApexOperatorActivityReceiptSync(),
@@ -1090,15 +1621,26 @@ export function buildPublicShowcaseActivityFeed(args: {
   const actionabilityEntry = buildImmaculateActionabilityEntry(root)
   const immaculateTrace = readLatestImmaculateTraceSummary(root)
   const qTrace = readLatestQTraceSummary(root)
+  const qBenchmarkEntry = buildQBenchmarkEntry(
+    readQWebsiteBenchmarkSnapshot(root),
+    generatedAt,
+  )
+  const immaculateBenchmarkEntry = buildImmaculateBenchmarkEntry(
+    readImmaculateBenchmarkReport(),
+    generatedAt,
+  )
 
   const entries = [
     qEntry,
     ...agentEntries,
     apexGovernanceEntry,
+    apexGovernedSpendEntry,
     ...apexOperatorActivityEntries,
     nysusAgentActivityEntry,
     roundtableEntry,
     actionabilityEntry,
+    qBenchmarkEntry,
+    immaculateBenchmarkEntry,
     immaculateTrace
       ? buildTraceEntry({
           id: 'immaculate-trace',
@@ -1122,18 +1664,18 @@ export function buildPublicShowcaseActivityFeed(args: {
     qTrace
       ? buildTraceEntry({
           id: 'q-trace',
-          title: 'Q reasoning trace',
-          source: 'Q trace',
-          kind: 'q_trace',
+          title: 'Q readiness summary',
+          source: 'Q readiness',
+          kind: 'q_readiness',
           runState: qTrace.runState,
           sessionId: qTrace.sessionId,
           eventCount: qTrace.eventCount,
           timestamp: qTrace.lastTimestamp ?? qTrace.endedAt ?? qTrace.startedAt,
           summaryPrefix: 'Q',
-          operatorActions: ['q_reasoning_trace', 'model_trace'],
+          operatorActions: ['q_readiness_summary', 'model_activity_summary'],
           subsystems: ['q', 'openjaws'],
-          artifacts: ['q:trace-summary'],
-          tags: ['q', 'trace', 'bounded'],
+          artifacts: ['q:readiness-summary'],
+          tags: ['q', 'readiness', 'bounded'],
         })
       : null,
   ].filter((entry): entry is PublicShowcaseActivityEntry => Boolean(entry))
@@ -1155,6 +1697,7 @@ export function buildPublicShowcaseActivityFeed(args: {
       return left.title.localeCompare(right.title)
     })
     .slice(0, MAX_PUBLIC_SHOWCASE_ACTIVITY_ENTRIES)
+    .map(sanitizePublicShowcaseActivityEntry)
 
   return {
     updatedAt: sortedEntries[0]?.timestamp ?? generatedAt,
@@ -1167,13 +1710,19 @@ export function writePublicShowcaseActivityFeed(
   outputPath = getPublicShowcaseActivityPath(),
   mirrorPath?: string,
 ): string {
-  mkdirSync(dirname(outputPath), { recursive: true })
-  writeFileSync(outputPath, `${JSON.stringify(feed, null, 2)}\n`, 'utf8')
+  const sanitizedFeed = sanitizePublicShowcaseActivityFeed(feed)
+  writeJsonFileAtomic(outputPath, sanitizedFeed)
   if (mirrorPath) {
-    mkdirSync(dirname(mirrorPath), { recursive: true })
-    writeFileSync(mirrorPath, `${JSON.stringify(feed, null, 2)}\n`, 'utf8')
+    writeJsonFileAtomic(mirrorPath, sanitizedFeed)
   }
   return outputPath
+}
+
+function writeJsonFileAtomic(path: string, value: unknown) {
+  mkdirSync(dirname(path), { recursive: true })
+  const tempPath = `${path}.tmp-${process.pid}-${Date.now()}`
+  writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+  renameSync(tempPath, path)
 }
 
 export function syncPublicShowcaseActivityFromRoot(
@@ -1201,6 +1750,8 @@ function flushQueuedPublicShowcaseActivitySyncs() {
   const queued = Array.from(pendingSyncs.values())
   pendingSyncs.clear()
   flushScheduled = false
+  flushTimer = null
+  flushDueAt = 0
 
   for (const args of queued) {
     try {
@@ -1208,6 +1759,54 @@ function flushQueuedPublicShowcaseActivitySyncs() {
     } catch {
       // Public showcase sync must never break the live operator loop.
     }
+  }
+  lastActivitySyncFinishedAt = Date.now()
+}
+
+function readPublicShowcaseActivityQueueMs(
+  name: string,
+  fallback: number,
+): number {
+  const raw = process.env[name]?.trim()
+  if (!raw) {
+    return fallback
+  }
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback
+  }
+  return parsed
+}
+
+function scheduleQueuedPublicShowcaseActivitySync() {
+  const delayMs = readPublicShowcaseActivityQueueMs(
+    'OPENJAWS_PUBLIC_SHOWCASE_ACTIVITY_SYNC_DELAY_MS',
+    DEFAULT_PUBLIC_SHOWCASE_ACTIVITY_SYNC_DELAY_MS,
+  )
+  const minIntervalMs = readPublicShowcaseActivityQueueMs(
+    'OPENJAWS_PUBLIC_SHOWCASE_ACTIVITY_SYNC_MIN_INTERVAL_MS',
+    DEFAULT_PUBLIC_SHOWCASE_ACTIVITY_SYNC_MIN_INTERVAL_MS,
+  )
+  const intervalDelayMs =
+    lastActivitySyncFinishedAt > 0
+      ? Math.max(0, lastActivitySyncFinishedAt + minIntervalMs - Date.now())
+      : 0
+  const dueAt = Date.now() + Math.max(delayMs, intervalDelayMs)
+  if (flushScheduled) {
+    if (!flushTimer || dueAt >= flushDueAt) {
+      return
+    }
+    clearTimeout(flushTimer)
+  }
+  flushScheduled = true
+  flushDueAt = dueAt
+  flushTimer = setTimeout(
+    flushQueuedPublicShowcaseActivitySyncs,
+    Math.max(0, dueAt - Date.now()),
+  )
+  const maybeUnref = (flushTimer as { unref?: () => void } | null)?.unref
+  if (typeof maybeUnref === 'function') {
+    maybeUnref.call(flushTimer)
   }
 }
 
@@ -1227,9 +1826,5 @@ export function queuePublicShowcaseActivitySync(
     writeMirror: args.writeMirror ?? current.writeMirror ?? false,
   })
 
-  if (flushScheduled) {
-    return
-  }
-  flushScheduled = true
-  queueMicrotask(flushQueuedPublicShowcaseActivitySyncs)
+  scheduleQueuedPublicShowcaseActivitySync()
 }

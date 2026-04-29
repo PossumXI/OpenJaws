@@ -297,12 +297,13 @@ export async function getAnthropicClient({
     return new AnthropicVertex(vertexArgs) as unknown as Anthropic
   }
 
+  const oauthTokens = getOpenJawsOAuthTokens()
+  const useOAuthClientAuth = isOpenJawsSubscriber() && !!oauthTokens?.accessToken
+
   // Determine authentication method based on available tokens
   const clientConfig: ConstructorParameters<typeof Anthropic>[0] = {
-    apiKey: isOpenJawsSubscriber() ? null : apiKey || getAnthropicApiKey(),
-    authToken: isOpenJawsSubscriber()
-      ? getOpenJawsOAuthTokens()?.accessToken
-      : undefined,
+    apiKey: useOAuthClientAuth ? null : apiKey || getAnthropicApiKey(),
+    authToken: useOAuthClientAuth ? oauthTokens.accessToken : undefined,
     // Set baseURL from OAuth config when using staging OAuth
     ...(process.env.USER_TYPE === 'jaws' &&
     isEnvTruthy(process.env.USE_STAGING_OAUTH)

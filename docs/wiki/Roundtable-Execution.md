@@ -5,10 +5,12 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 ## What It Does
 
 - Immaculate or an operator can stage governed handoff JSON files into `local-command-station/roundtable-runtime/handoffs/`.
+- The `handoffs/*.json` files are source inputs, not a pending-work list. Check `discord-roundtable-queue.state.json`, `@Q operator roundtable-status`, or `bun run runtime:coherence` before acting on old handoff files.
 - OpenJaws ingests those handoffs into a persisted queue at `local-command-station/roundtable-runtime/discord-roundtable-queue.state.json`, with a compatibility mirror in `discord-roundtable.state.json`.
 - The live Discord/Q runtime now also writes a sanitized public activity overlay to `.arobi-public/showcase-activity.json`; the shared reader aggregates bounded persona receipts from `local-command-station/bots/*/discord-agent-receipt.json`, and Asgard merges that into `fabric.showcase.activityFeed` instead of the raw public ledger panel.
 - Each queued action runs through the same isolated worktree path as the direct Discord operator lane.
 - Verified code-bearing branches move into the existing approval queue in `local-command-station/openjaws-operator-state.json`.
+- If `local-command-station/openjaws-operator-state.json` is absent, treat it as an empty approval queue unless `pending-pushes` reports otherwise. Do not recreate it just because it is missing.
 - Nothing is pushed automatically.
 
 ## Safety Rules
@@ -26,7 +28,8 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 
 ## Operator Commands
 
-- Start the runtime once: `bun run roundtable:runtime -- --allow-root "C:\Users\Knight\Desktop\Immaculate" --allow-root "C:\Users\Knight\Desktop\cheeks\Asgard"`
+- Start the runtime once: `bun run roundtable:runtime -- --allow-root "D:\openjaws\OpenJaws" --allow-root "C:\Users\Knight\Desktop\Immaculate" --allow-root "C:\Users\Knight\Desktop\cheeks\Asgard"`
+- Start with the historical two-root example only when OpenJaws itself is not an approved target: `bun run roundtable:runtime -- --allow-root "C:\Users\Knight\Desktop\Immaculate" --allow-root "C:\Users\Knight\Desktop\cheeks\Asgard"`
 - Run it continuously: `bun run roundtable:runtime -- --loop --allow-root "C:\Users\Knight\Desktop\Immaculate" --allow-root "C:\Users\Knight\Desktop\cheeks\Asgard"`
 - Override the 4-hour window or approval TTL when you need a tighter operator pass: `bun run roundtable:runtime -- --duration-hours 2 --approval-ttl-hours 0.5`
 - Inspect state: `bun run roundtable:runtime`

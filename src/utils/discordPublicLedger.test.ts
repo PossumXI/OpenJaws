@@ -60,9 +60,12 @@ describe('discordPublicLedger', () => {
           subsystemCount: 16,
           onlineSubsystemCount: 4,
           simulatedSubsystemCount: 12,
+          publicHeight: 35639,
+          verifiedLedgerEntries: 16,
+          resultsReady: true,
           orchestrationProfile: 'immaculate-supervised-operator-loop',
           qAuthMode: 'iam',
-          summary: 'Controlled live showcase active.',
+          summary: 'Controlled live showcase active with token MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.AbCdEf.GhIjKlMnOpQrStUvWxYz0123456789.',
         },
       },
       brain: {
@@ -78,7 +81,16 @@ describe('discordPublicLedger', () => {
       'ASGARD Core 16',
     )
     expect(buildAuraGenesisStatusMessage(payload)).toContain(
+      'Public-safe pressure loop: 16 subsystem demo',
+    )
+    expect(buildAuraGenesisStatusMessage(payload)).toContain(
+      'private 00 payloads stay closed',
+    )
+    expect(buildAuraGenesisStatusMessage(payload)).toContain(
       'Immaculate immaculate-supervised-operator-loop',
+    )
+    expect(buildAuraGenesisStatusMessage(payload)).not.toContain(
+      'MTIzNDU2Nzg5MDEyMzQ1Njc4OQ',
     )
   })
 

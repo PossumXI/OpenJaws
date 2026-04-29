@@ -10,6 +10,7 @@ export type ApexOperatorActivityApp =
   | 'store'
   | 'chrono'
   | 'browser'
+  | 'settings'
 
 export type ApexOperatorActivityStatus = 'ok' | 'failed'
 
@@ -105,7 +106,8 @@ function isApexOperatorActivityApp(
     value === 'chat' ||
     value === 'store' ||
     value === 'chrono' ||
-    value === 'browser'
+    value === 'browser' ||
+    value === 'settings'
   )
 }
 
@@ -175,6 +177,8 @@ function appLabel(app: ApexOperatorActivityApp): string {
       return 'Chrono'
     case 'browser':
       return 'Browser'
+    case 'settings':
+      return 'Settings'
   }
 }
 
@@ -282,7 +286,7 @@ export function summarizeApexOperatorActivityReceipt(
     return {
       headline: 'No recent accountable Apex operator actions recorded yet.',
       details: [
-        'Bounded /apex mail, chat, store, chrono, and browser actions will land here when the operator lane performs real work.',
+        'Bounded /apex mail, chat, store, chrono, browser, and settings actions will land here when the operator lane performs real work.',
       ],
     }
   }

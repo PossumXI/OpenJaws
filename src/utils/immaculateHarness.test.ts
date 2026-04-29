@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+import { mkdtempSync, writeFileSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import {
   createImmaculateCrewBurstBudget,
   buildImmaculateActuationReceipt,
@@ -29,13 +32,23 @@ const ORIGINAL_ENV = {
   IMMACULATE_HARNESS_URL: process.env.IMMACULATE_HARNESS_URL,
   IMMACULATE_API_KEY: process.env.IMMACULATE_API_KEY,
   IMMACULATE_ACTOR: process.env.IMMACULATE_ACTOR,
+  IMMACULATE_ENV_FILE: process.env.IMMACULATE_ENV_FILE,
 }
 
 afterEach(() => {
-  process.env.IMMACULATE_HARNESS_URL = ORIGINAL_ENV.IMMACULATE_HARNESS_URL
-  process.env.IMMACULATE_API_KEY = ORIGINAL_ENV.IMMACULATE_API_KEY
-  process.env.IMMACULATE_ACTOR = ORIGINAL_ENV.IMMACULATE_ACTOR
+  restoreEnv('IMMACULATE_HARNESS_URL', ORIGINAL_ENV.IMMACULATE_HARNESS_URL)
+  restoreEnv('IMMACULATE_API_KEY', ORIGINAL_ENV.IMMACULATE_API_KEY)
+  restoreEnv('IMMACULATE_ACTOR', ORIGINAL_ENV.IMMACULATE_ACTOR)
+  restoreEnv('IMMACULATE_ENV_FILE', ORIGINAL_ENV.IMMACULATE_ENV_FILE)
 })
+
+function restoreEnv(name: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[name]
+    return
+  }
+  process.env[name] = value
+}
 
 describe('immaculate harness config', () => {
   test('normalizes default harness URL and loopback detection', () => {
@@ -70,6 +83,29 @@ describe('immaculate harness config', () => {
     })
   })
 
+  test('loads the local Immaculate env file when OpenJaws env is not seeded', () => {
+    delete process.env.IMMACULATE_HARNESS_URL
+    delete process.env.IMMACULATE_API_KEY
+    const dir = mkdtempSync(join(tmpdir(), 'openjaws-immaculate-env-'))
+    const envPath = join(dir, '.env.local')
+    writeFileSync(
+      envPath,
+      [
+        'IMMACULATE_API_KEY="local-key"',
+        'IMMACULATE_HOST=127.0.0.1',
+        'IMMACULATE_PORT=9797',
+      ].join('\n'),
+      'utf8',
+    )
+    process.env.IMMACULATE_ENV_FILE = envPath
+
+    expect(getImmaculateHarnessConfig()).toMatchObject({
+      harnessUrl: 'http://127.0.0.1:9797',
+      apiKey: 'local-key',
+      apiKeySource: 'IMMACULATE_ENV_FILE',
+    })
+  })
+
   test('applies explicit governance defaults for governed actions', () => {
     expect(getImmaculateHarnessGovernanceProfile('control')).toEqual({
       action: 'operator-control',
@@ -90,6 +126,20 @@ describe('immaculate harness config', () => {
       purpose: ['cognitive-execution'],
       policyId: 'cognitive-run-default',
       consentScope: 'system:intelligence',
+    })
+
+    expect(getImmaculateHarnessGovernanceProfile('tool_search')).toEqual({
+      action: 'internet-search',
+      purpose: ['internet-search'],
+      policyId: 'internet-search-default',
+      consentScope: 'system:research',
+    })
+
+    expect(getImmaculateHarnessGovernanceProfile('artifact_package')).toEqual({
+      action: 'document-delivery',
+      purpose: ['artifact-delivery'],
+      policyId: 'document-delivery-default',
+      consentScope: 'system:delivery',
     })
 
     expect(

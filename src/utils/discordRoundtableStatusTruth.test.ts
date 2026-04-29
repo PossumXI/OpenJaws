@@ -15,7 +15,11 @@ afterEach(() => {
   while (tempDirs.length > 0) {
     const path = tempDirs.pop()
     if (path) {
-      rmSync(path, { recursive: true, force: true })
+      try {
+          rmSync(path, { recursive: true, force: true })
+        } catch (e) {
+          // ignore cleanup errors
+        }
     }
   }
 })

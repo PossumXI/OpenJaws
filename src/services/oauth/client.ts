@@ -48,6 +48,7 @@ export function buildAuthUrl({
   state,
   port,
   isManual,
+  loginWithOpenJawsAccount,
   loginWithOpenJawsAi,
   inferenceOnly,
   orgUUID,
@@ -58,13 +59,17 @@ export function buildAuthUrl({
   state: string
   port: number
   isManual: boolean
+  loginWithOpenJawsAccount?: boolean
   loginWithOpenJawsAi?: boolean
   inferenceOnly?: boolean
   orgUUID?: string
   loginHint?: string
   loginMethod?: string
 }): string {
-  const authUrlBase = loginWithOpenJawsAi
+  const useOpenJawsAccount =
+    loginWithOpenJawsAccount ?? loginWithOpenJawsAi ?? false
+
+  const authUrlBase = useOpenJawsAccount
     ? getOauthConfig().CLAUDE_AI_AUTHORIZE_URL
     : getOauthConfig().CONSOLE_AUTHORIZE_URL
 

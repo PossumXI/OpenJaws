@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { basename, join } from 'path'
 import {
   createOperatorRunContext,
@@ -6,7 +6,9 @@ import {
   type DiscordOperatorRunContext,
 } from './discordOperatorWork.js'
 import {
+  collectDiscordOperatorDeliveryArtifacts,
   runScriptedOpenJawsOperatorJob,
+  type DiscordOperatorDeliveryArtifact,
   type DiscordOperatorExecutionResult,
 } from './discordOperatorExecution.js'
 
@@ -69,7 +71,50 @@ export type DiscordRoundtableReceipt = {
     markdownPath: string
     resultPath: string
     deliveryPath: string
+    deliveryArtifactManifestPath: string | null
+    deliveryArtifacts: DiscordOperatorDeliveryArtifact[]
   }
+}
+
+export function buildDiscordRoundtableOperatorPromptFooter(args: {
+  action: DiscordRoundtableExecutableAction
+  personaName: string
+  targetPath: string
+  gitRoot: string
+  targetRootLabel: string | null
+  runContext: DiscordOperatorRunContext
+}): string {
+  const now = new Date()
+  return [
+    'Discord roundtable execution context:',
+    `- runtime date/time: ${now.toISOString()}`,
+    `- persona: ${args.personaName}`,
+    `- target root: ${args.targetRootLabel ?? basename(args.targetPath)}`,
+    `- target path: ${args.targetPath}`,
+    `- canonical git root: ${args.gitRoot}`,
+    `- isolated worktree: ${args.runContext.worktreePath ?? 'not materialized'}`,
+    `- branch: ${args.runContext.branchName ?? 'none'}`,
+    `- action id: ${args.action.id}`,
+    'Freshness boundary: base Q model knowledge is current only through June 2024. Any current/latest/recent/status/version/benchmark/date-sensitive fact requires local receipts, tool output, or governed web research; if verification is unavailable, say so instead of guessing.',
+    'Produce scoped, code-bearing changes when the request is implementation work. Avoid PASS/no-diff/audit-only output unless the safest correct result is no code change.',
+    'Keep generated receipts and artifacts in the run output; do not commit output receipts, stdout/stderr, or delivery artifacts into the project branch.',
+  ].join('\n')
+}
+
+function resolveRoundtableOperatorAddDirs(args: {
+  targetPath: string
+  gitRoot: string
+  runContext: DiscordOperatorRunContext
+}): string[] {
+  return Array.from(
+    new Set(
+      [
+        args.gitRoot,
+        args.runContext.workspacePath,
+        args.targetPath,
+      ].filter((value): value is string => Boolean(value && existsSync(value))),
+    ),
+  )
 }
 
 const CODE_PATH_PREFIXES = ['src/', 'apps/', 'packages/', 'scripts/', 'internal/']
@@ -184,7 +229,7 @@ export function buildDiscordRoundtableReceipt(args: {
   outputDir: string
   job: Pick<
     DiscordOperatorExecutionResult,
-    'changedFiles' | 'commitSha' | 'verification'
+    'changedFiles' | 'commitSha' | 'delivery' | 'verification'
   > & {
     result: Pick<DiscordOperatorExecutionResult['result'], 'startedAt' | 'completedAt'>
   }
@@ -221,6 +266,12 @@ export function buildDiscordRoundtableReceipt(args: {
       markdownPath: join(args.outputDir, 'openjaws-output.md'),
       resultPath: join(args.outputDir, 'result.json'),
       deliveryPath: join(args.outputDir, 'delivery.json'),
+      deliveryArtifactManifestPath: args.job.deliveryArtifactManifestPath,
+      deliveryArtifacts: collectDiscordOperatorDeliveryArtifacts({
+        delivery: args.job.delivery ?? null,
+        outputDir: args.outputDir,
+        workspacePath: args.runContext.workspacePath,
+      }),
     },
   }
 }
@@ -273,6 +324,8 @@ export async function executeDiscordRoundtableAction(args: {
   )
   const transientConfigDir = join(outputDir, '.openjaws-config')
   mkdirSync(outputDir, { recursive: true })
+  const targetRootLabel =
+    findRoundtableRootDescriptor(targetPath, args.roots)?.label ?? basename(targetPath)
 
   const job = await runScriptedOpenJawsOperatorJob({
     runContext,
@@ -281,6 +334,19 @@ export async function executeDiscordRoundtableAction(args: {
     model: args.model,
     outputDir,
     transientConfigDir,
+    addDirs: resolveRoundtableOperatorAddDirs({
+      targetPath,
+      gitRoot,
+      runContext,
+    }),
+    promptFooter: buildDiscordRoundtableOperatorPromptFooter({
+      action: args.action,
+      personaName: args.personaName,
+      targetPath,
+      gitRoot,
+      targetRootLabel,
+      runContext,
+    }),
     timeoutMs: args.timeoutMs,
     commitAuthorName: `${args.personaName} Roundtable`,
     commitAuthorEmail: `${args.personaId}-roundtable@local.invalid`,
@@ -298,8 +364,6 @@ export async function executeDiscordRoundtableAction(args: {
     verificationPassed: job.verification.passed,
     commitSha: job.commitSha,
   })
-  const targetRootLabel =
-    findRoundtableRootDescriptor(targetPath, args.roots)?.label ?? basename(targetPath)
   const receipt = buildDiscordRoundtableReceipt({
     personaId: args.personaId,
     personaName: args.personaName,

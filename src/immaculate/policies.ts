@@ -84,11 +84,18 @@ export function shouldRequestImmaculateQRoute(args: {
   forceLocalLaunch: boolean
   fallbackWindow: { active: boolean } | null | undefined
 }): boolean {
+  if (args.forceLocalLaunch || args.preflightDecision === 'preflight_blocked') {
+    return false
+  }
+  if (args.routeMode === 'local') {
+    return false
+  }
+  if (args.routeMode === 'immaculate') {
+    return true
+  }
   return (
     args.preflightDecision === 'remote_required' &&
-    !args.forceLocalLaunch &&
-    !isQTransportFastPathSuppressed(args.fallbackWindow) &&
-    args.routeMode !== 'local'
+    !isQTransportFastPathSuppressed(args.fallbackWindow)
   )
 }
 

@@ -115,8 +115,8 @@ function PreviewOverview({
         Use /preview to keep browsing inside the OpenJaws TUI. The desktop Apex
         browser stays out of process and is only the fallback when you
         explicitly need an external window. User browsing history is not
-        persisted by default; only Q or agent-led browsing on the user&apos;s
-        behalf lands in accountable receipts.
+        persisted by default; only Q, operator, or agent-led browsing on the
+        user&apos;s behalf lands in accountable receipts.
       </Text>
 
       <SectionTitle>Accountable receipts</SectionTitle>
@@ -339,7 +339,7 @@ function PreviewLaunch({
         <SectionTitle>Recent accountable handoffs</SectionTitle>
         <DetailList
           items={recent}
-          empty="Only Q or agent-led browsing appears here."
+          empty="Only Q, operator, or agent-led browsing appears here."
         />
 
         <SectionTitle>Last action</SectionTitle>

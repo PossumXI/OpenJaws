@@ -24,6 +24,7 @@ import {
   resolveExternalModelConfig,
 } from './model/externalProviders.js';
 import { getRipgrepStatus } from './ripgrep.js';
+import { resolveOciQRuntime } from './ociQRuntime.js';
 import { SandboxManager } from './sandbox/sandbox-adapter.js';
 import { getSettings_DEPRECATED } from './settings/settings.js';
 import { evaluateStartupHarness } from './startupHarness.js';
@@ -75,6 +76,8 @@ function isRemoteControlStartupBlocked(context: StatusNoticeContext): boolean {
 function getStartupHarnessEvaluation(context: StatusNoticeContext) {
   const currentModel = getMainLoopModel();
   const externalModel = resolveExternalModelConfig(currentModel);
+  const ociRuntime =
+    externalModel?.provider === 'oci' ? resolveOciQRuntime() : null;
   const ripgrepStatus = getRipgrepStatus();
   return evaluateStartupHarness({
     platform: process.platform === 'win32' ? 'windows' : process.platform,
@@ -83,7 +86,8 @@ function getStartupHarnessEvaluation(context: StatusNoticeContext) {
     externalModel: externalModel ? {
       provider: externalModel.provider,
       label: externalModel.label,
-      apiKeySource: externalModel.apiKeySource
+      apiKeySource: externalModel.apiKeySource,
+      authReady: Boolean(ociRuntime?.authMode === 'iam' && ociRuntime.ready)
     } : null,
     gitBashStatus: process.platform === 'win32' ? getGitBashStatus() : null,
     ripgrepStatus,
@@ -95,10 +99,13 @@ function getStartupHarnessEvaluation(context: StatusNoticeContext) {
 function getProviderSetupWarning() {
   const currentModel = getMainLoopModel();
   const externalModel = resolveExternalModelConfig(currentModel);
+  const ociRuntime =
+    externalModel?.provider === 'oci' ? resolveOciQRuntime() : null;
   if (
     !externalModel ||
     externalModel.provider === 'ollama' ||
-    externalModel.apiKeySource
+    externalModel.apiKeySource ||
+    (ociRuntime?.authMode === 'iam' && ociRuntime.ready)
   ) {
     return null;
   }

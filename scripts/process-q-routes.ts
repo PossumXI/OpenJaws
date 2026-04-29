@@ -151,9 +151,14 @@ function printHelpAndExit(): never {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2))
+  let emittedPayload = false
   const outcome = await runQTrainingRouteWorker(options, payload => {
+    emittedPayload = true
     console.log(JSON.stringify(payload, null, 2))
   })
+  if (!emittedPayload) {
+    console.log(JSON.stringify(outcome.payload, null, 2))
+  }
   if (outcome.exitCode !== 0) {
     process.exit(outcome.exitCode)
   }

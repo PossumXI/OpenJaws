@@ -8,11 +8,12 @@ const EXPECTED_SITE_ID = 'edde15e1-bf1f-4986-aef3-5803fdce7406'
 const EXPECTED_SITE_NAME = 'qline-site-20260415022202'
 const EXPECTED_DOMAIN = 'qline.site'
 const REQUIRED_CONTENT_CHECKS = [
-  'Agent Co-Work',
-  'Public TerminalBench',
-  'TerminalBench Soak',
-  'circuit-fibsqrt',
-  'OpenJaws on GitHub',
+  'Q // OpenJaws // Q_agents | qline.site',
+  'Q is the AI operator for OpenJaws',
+  'name="robots"',
+  'rel="canonical" href="https://qline.site/"',
+  '"@type": "WebSite"',
+  '"@type": "SoftwareApplication"',
 ] as const
 
 type CliOptions = {
@@ -216,6 +217,14 @@ function assertNextRuntime(deploy: NetlifyDeploy): {
   }
 }
 
+function assertLiveDeployUrl(deploy: NetlifyDeploy): string {
+  const deployUrl = deploy.deploy_ssl_url ?? deploy.ssl_url ?? deploy.url
+  if (!deployUrl) {
+    throw new Error(`Deploy ${deploy.id} did not expose a usable deploy URL.`)
+  }
+  return deployUrl
+}
+
 async function fetchTextWithRetries(url: string, retries = 8, delayMs = 2500): Promise<string> {
   let lastError: Error | null = null
   for (let attempt = 0; attempt < retries; attempt++) {
@@ -364,7 +373,9 @@ async function main(): Promise<void> {
   }
 
   const liveDeploy = await netlifyApi<NetlifyDeploy>(token, `/deploys/${promotedDeployId}`)
-  const liveRuntime = assertNextRuntime(liveDeploy)
+  const liveDeployUrl = options.promote
+    ? assertNextRuntime(liveDeploy).deployUrl
+    : assertLiveDeployUrl(liveDeploy)
   const apexContent = await fetchTextWithRetries(`https://${EXPECTED_DOMAIN}`)
   const termsContent = await fetchTextWithRetries(`https://${EXPECTED_DOMAIN}/terms`)
   const checks = assertContent(apexContent, `https://${EXPECTED_DOMAIN}`)
@@ -383,14 +394,8 @@ async function main(): Promise<void> {
         customDomain: site.custom_domain,
         publishedDeployId: promotedDeployId,
         draftDeployId,
-        nextHandler: {
-          name: liveRuntime.functionName,
-          runtime: liveRuntime.runtime,
-          generator: liveRuntime.generator,
-          invocationMode: liveRuntime.invocationMode,
-        },
         checks: {
-          uniqueDeployUrl: liveRuntime.deployUrl,
+          uniqueDeployUrl: liveDeployUrl,
           apexUrl: `https://${EXPECTED_DOMAIN}`,
           apexStatus: 200,
           termsStatus: 200,

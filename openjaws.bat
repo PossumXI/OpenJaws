@@ -9,6 +9,10 @@ call :resolve_repo_build
 goto main
 
 :resolve_repo_build
+set "TARGET=%REPO_FALLBACK_1%"
+if exist "%TARGET%" exit /b 0
+set "TARGET=%USERPROFILE%\.local\bin\openjaws-real.exe"
+if exist "%TARGET%" exit /b 0
 set "TARGET="
 for /f "delims=" %%I in ('dir /b /a-d /o-d "%~dp0openjaws_patched*.exe" 2^>nul') do (
     if not defined TARGET set "TARGET=%~dp0%%I"
@@ -38,25 +42,6 @@ if not exist "%TARGET%" (
     if exist "%REPO_FALLBACK_3%" set "TARGET=%REPO_FALLBACK_3%"
 )
 
-if exist "%TARGET%" (
-    "%TARGET%" --version >nul 2>nul
-    if errorlevel 1 (
-        if exist "%USERPROFILE%\.local\bin\openjaws-real.exe" set "TARGET=%USERPROFILE%\.local\bin\openjaws-real.exe"
-        if exist "%TARGET%" (
-            "%TARGET%" --version >nul 2>nul
-        )
-        if errorlevel 1 if exist "%REPO_FALLBACK_1%" set "TARGET=%REPO_FALLBACK_1%"
-        if exist "%TARGET%" (
-            "%TARGET%" --version >nul 2>nul
-        )
-        if errorlevel 1 if exist "%REPO_FALLBACK_2%" set "TARGET=%REPO_FALLBACK_2%"
-        if exist "%TARGET%" (
-            "%TARGET%" --version >nul 2>nul
-        )
-        if errorlevel 1 if exist "%REPO_FALLBACK_3%" set "TARGET=%REPO_FALLBACK_3%"
-    )
-)
-
 if not exist "%TARGET%" (
     echo Error: OpenJaws binary not found.>&2
     exit /b 1
@@ -66,6 +51,8 @@ set "DISABLE_TELEMETRY=1"
 set "OPENJAWS_DISABLE_NONESSENTIAL_TRAFFIC=1"
 set "OPENJAWS_CONFIG_DIR=%CONFIG_DIR%"
 set "CLAUDE_CONFIG_DIR=%CONFIG_DIR%"
+set "OPENJAWS_OCI_BRIDGE_SCRIPT=%~dp0scripts\oci-q-response.py"
+set "OPENJAWS_CUSTOM_OAUTH_URL=https://qline.site"
 call :resolve_default_model
 
 if "%~1"=="-v" goto show_version
@@ -89,9 +76,9 @@ if defined OPENJAWS_DEFAULT_MODEL (
 exit /b %errorlevel%
 
 :show_version
-powershell -NoProfile -Command "& '%TARGET%' --version | ForEach-Object { $_ -replace 'Claude Code', 'OpenJaws' }"
-exit /b 0
+"%TARGET%" --version
+exit /b %errorlevel%
 
 :show_help
-powershell -NoProfile -Command "& '%TARGET%' --help | ForEach-Object { $_ -replace '^Usage: claude', 'Usage: openjaws' -replace 'claude auth login', 'openjaws auth login' -replace 'claude setup-token', 'openjaws setup-token' -replace 'claude update', 'openjaws update' -replace 'claude --chrome', 'openjaws --chrome' -replace 'claude --no-chrome', 'openjaws --no-chrome' -replace 'claude assistant', 'openjaws assistant' -replace 'claude ssh', 'openjaws ssh' -replace 'claude --resume', 'openjaws --resume' -replace '# claude up', '# openjaws up' -replace 'claude rollback', 'openjaws rollback' -replace 'claude-sonnet-4-6', 'gpt-5.4' -replace 'Claude in Chrome', 'OpenJaws in Chrome' }"
-exit /b 0
+"%TARGET%" --help
+exit /b %errorlevel%

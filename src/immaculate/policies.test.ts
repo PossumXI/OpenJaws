@@ -75,6 +75,30 @@ describe('immaculate policies', () => {
         forceLocalLaunch: false,
         fallbackWindow: { active: true },
       }),
+    ).toBe(true)
+    expect(
+      shouldRequestImmaculateQRoute({
+        preflightDecision: 'allow_local',
+        routeMode: 'immaculate',
+        forceLocalLaunch: false,
+        fallbackWindow: { active: false },
+      }),
+    ).toBe(true)
+    expect(
+      shouldRequestImmaculateQRoute({
+        preflightDecision: 'preflight_blocked',
+        routeMode: 'immaculate',
+        forceLocalLaunch: false,
+        fallbackWindow: { active: false },
+      }),
+    ).toBe(false)
+    expect(
+      shouldRequestImmaculateQRoute({
+        preflightDecision: 'remote_required',
+        routeMode: 'local',
+        forceLocalLaunch: false,
+        fallbackWindow: { active: false },
+      }),
     ).toBe(false)
     expect(isQTransportFastPathSuppressed({ active: true })).toBe(true)
     expect(isQTransportFastPathSuppressed({ active: false })).toBe(false)

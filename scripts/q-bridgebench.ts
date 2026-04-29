@@ -41,6 +41,7 @@ type CliOptions = {
   root: string | null
   bundleDir: string
   outputDir: string | null
+  deviceMode: BridgeBenchDeviceMode
   baseModel: string
   adapterDir: string | null
   lineageId: string | null
@@ -86,6 +87,8 @@ type BitsAndBytesProbe = {
   summary: string
 }
 
+export type BridgeBenchDeviceMode = 'public_claim' | 'rescue_device'
+
 const GIB = 1024 ** 3
 
 function parsePack(value: string): QBridgeBenchPack | null {
@@ -101,11 +104,27 @@ function parseOptionalInt(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function parseDeviceMode(value: string): BridgeBenchDeviceMode | null {
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'public' || normalized === 'public_claim') {
+    return 'public_claim'
+  }
+  if (
+    normalized === 'rescue' ||
+    normalized === 'device' ||
+    normalized === 'rescue_device'
+  ) {
+    return 'rescue_device'
+  }
+  return null
+}
+
 function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     root: null,
     bundleDir: resolveDefaultQBridgeBenchBundleDir(process.cwd()),
     outputDir: null,
+    deviceMode: 'public_claim',
     baseModel: DEFAULT_Q_BASE_MODEL,
     adapterDir: null,
     lineageId: null,
@@ -137,6 +156,13 @@ function parseArgs(argv: string[]): CliOptions {
     }
     if (arg === '--out-dir' && argv[i + 1]) {
       options.outputDir = resolve(argv[++i]!)
+      continue
+    }
+    if (arg === '--device-mode' && argv[i + 1]) {
+      const parsed = parseDeviceMode(argv[++i]!)
+      if (parsed) {
+        options.deviceMode = parsed
+      }
       continue
     }
     if (arg === '--base-model' && argv[i + 1]) {
@@ -227,6 +253,9 @@ function parseArgs(argv: string[]): CliOptions {
   if (options.packs.length === 0) {
     options.packs = getDefaultQBridgeBenchPacks()
   }
+  if (options.loadIn4bit) {
+    options.deviceMode = 'rescue_device'
+  }
 
   return options
 }
@@ -239,6 +268,7 @@ function printHelpAndExit(): never {
       'Options:',
       '  --bundle-dir <path>        Audited or prepared bundle directory with bundle-manifest.json',
       '  --out-dir <path>           Output directory for benchmark artifacts',
+      '  --device-mode <mode>       public | rescue (default public)',
       '  --base-model <id>          Base Q model family label or upstream checkpoint',
       '  --adapter-dir <path>       Optional adapter directory to benchmark instead of the base model alone',
       '  --lineage-id <id>          Optional lineage ID shared with related training receipts',
@@ -279,9 +309,24 @@ function readJsonIfExists(path: string): Record<string, unknown> | null {
   return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
 }
 
-function shouldAutoQuantizeBridgeBench(options: CliOptions): boolean {
+export function resolveQBridgeBenchOutputDir(args: {
+  root: string
+  benchmarkId: string
+  deviceMode: BridgeBenchDeviceMode
+}): string {
+  if (args.deviceMode === 'rescue_device') {
+    return resolve(args.root, 'artifacts', 'bridgebench-device', args.benchmarkId)
+  }
+  return resolve(args.root, 'artifacts', args.benchmarkId)
+}
+
+export function shouldAutoQuantizeBridgeBench(options: Pick<
+  CliOptions,
+  'adapterDir' | 'deviceMode' | 'useCpu'
+>): boolean {
   const override = process.env.OPENJAWS_BRIDGEBENCH_AUTO_4BIT?.trim().toLowerCase()
   return (
+    options.deviceMode === 'rescue_device' &&
     (override === '1' || override === 'true') &&
     process.platform === 'win32' &&
     options.useCpu &&
@@ -322,7 +367,14 @@ async function probeBitsAndBytes(
     python,
     [
       '-c',
-      "import bitsandbytes as bnb; print(getattr(bnb, '__version__', 'unknown'))",
+      [
+        'import importlib.metadata as metadata',
+        'import importlib.util',
+        'import json',
+        "spec = importlib.util.find_spec('bitsandbytes')",
+        "version = metadata.version('bitsandbytes') if spec is not None else None",
+        "print(json.dumps({'available': spec is not None, 'version': version}))",
+      ].join('; '),
     ],
     {
       cwd,
@@ -332,11 +384,37 @@ async function probeBitsAndBytes(
     },
   )
   if (result.exitCode === 0) {
-    const version = result.stdout.trim() || 'unknown'
+    let payload: {
+      available?: boolean
+      version?: string | null
+    }
+    try {
+      payload = JSON.parse(result.stdout.trim()) as {
+        available?: boolean
+        version?: string | null
+      }
+    } catch {
+      return {
+        available: false,
+        version: null,
+        summary:
+          tailText(result.stdout) ||
+          'bitsandbytes probe returned an unreadable payload',
+      }
+    }
+    if (!payload.available) {
+      return {
+        available: false,
+        version: null,
+        summary: 'bitsandbytes module not installed in the benchmark runtime',
+      }
+    }
+    const version = payload.version?.trim() || 'unknown'
     return {
       available: true,
       version,
-      summary: `bitsandbytes ${version} available`,
+      summary:
+        `bitsandbytes ${version} present; full import is deferred to the benchmark worker`,
     }
   }
 
@@ -450,7 +528,11 @@ async function main() {
   const benchmarkId = makeBenchmarkId()
   const lineageId = options.lineageId ?? benchmarkId
   const outputDir =
-    options.outputDir ?? resolve(root, 'artifacts', 'bridgebench', benchmarkId)
+    options.outputDir ?? resolveQBridgeBenchOutputDir({
+      root,
+      benchmarkId,
+      deviceMode: options.deviceMode,
+    })
   mkdirSync(outputDir, { recursive: true })
   const traceWriter = createBenchmarkTraceWriter({
     outputDir,
@@ -469,6 +551,17 @@ async function main() {
     entity: options.wandbEntity,
   })
   const autoLoadIn4bit = shouldAutoQuantizeBridgeBench(options)
+  const reportPath = join(outputDir, 'bridgebench-report.json')
+  const receiptPath = join(outputDir, 'bridgebench-receipt.json')
+  const artifactDiscovery = {
+    lane: options.deviceMode,
+    autoDiscoverableByDefault:
+      options.deviceMode === 'public_claim' && options.outputDir === null,
+    summary:
+      options.deviceMode === 'rescue_device'
+        ? 'Explicit rescue/device lane. Use the emitted reportPath or receiptPath directly; default public receipt discovery should not treat this as the claim lane.'
+        : 'Default public-claim lane. The default output directory is flat under artifacts/ so existing bridgebench receipt discovery can find it.',
+  }
   const quantizationProbe =
     options.loadIn4bit || autoLoadIn4bit
       ? await probeBitsAndBytes(options.python, root)
@@ -487,6 +580,10 @@ async function main() {
       bundleDir: options.bundleDir,
       bundleManifestPath: resolve(options.bundleDir, 'bundle-manifest.json'),
       outputDir,
+      deviceMode: options.deviceMode,
+      reportPath,
+      receiptPath,
+      artifactDiscovery,
       baseModel: options.baseModel,
       adapterDir: options.adapterDir,
       lineageId,
@@ -508,7 +605,6 @@ async function main() {
       honestyBoundary:
         'This is a local Q benchmark over audited OpenJaws packs. It is useful for in-repo comparison, but it is not the public Immaculate benchmark source of truth.',
     }
-    const reportPath = join(outputDir, 'bridgebench-report.json')
     closeBenchmarkTraceWriter(traceWriter)
     report.traceReferences = [buildImmaculateTraceReference(traceWriter.path)]
     writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
@@ -532,7 +628,6 @@ async function main() {
     } else {
       receipt.signature = null
     }
-    const receiptPath = join(outputDir, 'bridgebench-receipt.json')
     writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8')
     console.log(
       JSON.stringify(
@@ -836,6 +931,10 @@ async function main() {
   const evaluated = packResults.filter(
     result => result.status === 'evaluated',
   )
+  const failedResults = packResults.filter(result => result.status === 'failed')
+  const runtimeFailures = failedResults.filter(
+    result => result.exitCode !== undefined && result.exitCode !== null,
+  )
   const bestResult =
     evaluated
       .filter(result => result.score !== null)
@@ -846,14 +945,20 @@ async function main() {
     generatedAt: new Date().toISOString(),
     status: options.dryRun
       ? 'dry_run'
-      : packResults.some(result => result.status === 'failed')
+      : failedResults.length > 0
         ? evaluated.length > 0
           ? 'completed_with_errors'
-          : 'failed_preflight'
+          : runtimeFailures.length > 0
+            ? 'completed_with_errors'
+            : 'failed_preflight'
         : 'completed',
     bundleDir: options.bundleDir,
     bundleManifestPath: resolve(options.bundleDir, 'bundle-manifest.json'),
     outputDir,
+    deviceMode: options.deviceMode,
+    reportPath,
+    receiptPath,
+    artifactDiscovery,
     baseModel: options.baseModel,
     adapterDir: options.adapterDir,
     lineageId,
@@ -888,13 +993,14 @@ async function main() {
       ? 'Q BridgeBench dry run completed.'
       : bestResult
         ? `Q BridgeBench completed. Best pack: ${bestResult.pack} (${bestResult.score?.toFixed(2) ?? 'n/a'}).`
-        : packResults.some(result => result.status === 'failed')
-          ? 'Q BridgeBench blocked before evaluation; see per-pack preflight details.'
+        : runtimeFailures.length > 0
+          ? 'Q BridgeBench launched but failed during evaluation; see per-pack runtime details.'
+          : failedResults.length > 0
+            ? 'Q BridgeBench blocked before evaluation; see per-pack preflight details.'
           : 'Q BridgeBench completed without an evaluated pack result.',
     honestyBoundary:
       'This is a local Q benchmark over audited OpenJaws packs. It is useful for in-repo comparison, but it is not the public Immaculate benchmark source of truth.',
   }
-  const reportPath = join(outputDir, 'bridgebench-report.json')
   closeBenchmarkTraceWriter(traceWriter)
   report.traceReferences = [buildImmaculateTraceReference(traceWriter.path)]
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
@@ -918,7 +1024,6 @@ async function main() {
   } else {
     receipt.signature = null
   }
-  const receiptPath = join(outputDir, 'bridgebench-receipt.json')
   writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8')
   writeFileSync(
     join(outputDir, 'reward.json'),

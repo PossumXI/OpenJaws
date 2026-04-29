@@ -1,9 +1,23 @@
 import { describe, expect, it } from 'bun:test'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { strToU8, zipSync } from 'fflate'
 import {
   buildDiscordRoundtableReceipt,
+  buildDiscordRoundtableOperatorPromptFooter,
   classifyDiscordRoundtableExecution,
   inspectDiscordRoundtableExecution,
 } from './discordRoundtableExecution.js'
+
+function writeOfficeXmlFixture(path: string): void {
+  writeFileSync(
+    path,
+    Buffer.from(zipSync({
+      'docProps/core.xml': strToU8('<coreProperties>fixture</coreProperties>'),
+    })),
+  )
+}
 
 describe('discordRoundtableExecution', () => {
   it('classifies verified code commits as mergeable', () => {
@@ -101,7 +115,49 @@ describe('discordRoundtableExecution', () => {
     ).toBe(false)
   })
 
+  it('builds roundtable operator footers with freshness and scoped-branch constraints', () => {
+    const footer = buildDiscordRoundtableOperatorPromptFooter({
+      personaName: 'Viola',
+      targetPath: 'D:\\openjaws\\OpenJaws',
+      gitRoot: 'D:\\openjaws\\OpenJaws',
+      targetRootLabel: 'OpenJaws',
+      action: {
+        id: 'action-1',
+        title: 'Tighten planner shaping',
+        reason: 'Reduce PASS outcomes.',
+        targetPath: 'D:\\openjaws\\OpenJaws',
+        prompt: 'tighten planner shaping',
+      },
+      runContext: {
+        jobId: 'action-1',
+        requestedWorkspace: 'D:\\openjaws\\OpenJaws',
+        gitRoot: 'D:\\openjaws\\OpenJaws',
+        gitRelativePath: '.',
+        branchName: 'discord-roundtable-viola-openjaws-action-1',
+        worktreePath: 'D:\\openjaws\\worktrees\\discord-roundtable-viola-openjaws-action-1',
+        workspacePath: 'D:\\openjaws\\worktrees\\discord-roundtable-viola-openjaws-action-1',
+        repoLabel: 'openjaws',
+      },
+    })
+
+    expect(footer).toContain('runtime date/time:')
+    expect(footer).toContain('June 2024')
+    expect(footer).toContain('code-bearing changes')
+    expect(footer).toContain('do not commit output receipts')
+  })
+
   it('builds an isolated roundtable receipt with worktree metadata', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-receipt-'))
+    const outputDir = join(root, 'roundtable-output', 'job-1')
+    const workspacePath = join(root, 'worktrees', 'openjaws', 'discord-violet-openjaws-roundtable-1')
+    mkdirSync(outputDir, { recursive: true })
+    mkdirSync(workspacePath, { recursive: true })
+    writeFileSync(join(outputDir, 'openjaws-output.md'), '# output\n', 'utf8')
+    writeFileSync(join(outputDir, 'openjaws-output.txt'), 'output\n', 'utf8')
+    writeFileSync(join(outputDir, 'openjaws-output.html'), '<p>output</p>\n', 'utf8')
+    writeOfficeXmlFixture(join(outputDir, 'openjaws-output.docx'))
+    writeFileSync(join(outputDir, 'openjaws-output.pdf'), 'pdf', 'utf8')
+
     expect(
       buildDiscordRoundtableReceipt({
         personaId: 'violet',
@@ -110,22 +166,31 @@ describe('discordRoundtableExecution', () => {
           id: 'roundtable-1',
           title: 'Harden the branch-only lane',
           reason: 'Keep receipts isolated from repo output.',
-          targetPath: 'D:\\openjaws\\OpenJaws',
+          targetPath: root,
           prompt: 'fix the branch-only lane',
         },
-        targetPath: 'D:\\openjaws\\OpenJaws',
-        gitRoot: 'D:\\openjaws\\OpenJaws',
+        targetPath: root,
+        gitRoot: root,
         targetRootLabel: 'OpenJaws',
         runContext: {
           branchName: 'discord-violet-openjaws-roundtable-1',
-          worktreePath: 'D:\\openjaws\\worktrees\\openjaws\\discord-violet-openjaws-roundtable-1',
-          workspacePath:
-            'D:\\openjaws\\worktrees\\openjaws\\discord-violet-openjaws-roundtable-1',
+          worktreePath: workspacePath,
+          workspacePath,
         },
-        outputDir: 'D:\\openjaws\\roundtable-output\\job-1',
+        outputDir,
         job: {
           changedFiles: ['src/utils/discordRoundtableExecution.ts'],
           commitSha: 'abc123',
+          delivery: {
+            markdownPath: join(outputDir, 'openjaws-output.md'),
+            textPath: join(outputDir, 'openjaws-output.txt'),
+            htmlPath: join(outputDir, 'openjaws-output.html'),
+            docxPath: join(outputDir, 'openjaws-output.docx'),
+            pptxPath: join(outputDir, 'openjaws-output.pptx'),
+            xlsxPath: join(outputDir, 'openjaws-output.xlsx'),
+            pdfPath: join(outputDir, 'openjaws-output.pdf'),
+            workspaceFiles: null,
+          },
           verification: {
             passed: true,
             summary: 'Verification passed: bun run build',
@@ -152,15 +217,45 @@ describe('discordRoundtableExecution', () => {
       version: 1,
       targetRoot: 'OpenJaws',
       branchName: 'discord-violet-openjaws-roundtable-1',
-      worktreePath:
-        'D:\\openjaws\\worktrees\\openjaws\\discord-violet-openjaws-roundtable-1',
-      workspacePath:
-        'D:\\openjaws\\worktrees\\openjaws\\discord-violet-openjaws-roundtable-1',
+      worktreePath: workspacePath,
+      workspacePath,
       artifacts: {
-        stdoutPath: 'D:\\openjaws\\roundtable-output\\job-1\\stdout.txt',
-        markdownPath: 'D:\\openjaws\\roundtable-output\\job-1\\openjaws-output.md',
-        resultPath: 'D:\\openjaws\\roundtable-output\\job-1\\result.json',
-        deliveryPath: 'D:\\openjaws\\roundtable-output\\job-1\\delivery.json',
+        stdoutPath: join(outputDir, 'stdout.txt'),
+        markdownPath: join(outputDir, 'openjaws-output.md'),
+        resultPath: join(outputDir, 'result.json'),
+        deliveryPath: join(outputDir, 'delivery.json'),
+        deliveryArtifacts: [
+          {
+            kind: 'markdown',
+            path: join(outputDir, 'openjaws-output.md'),
+            name: 'openjaws-output.md',
+            relativePath: null,
+          },
+          {
+            kind: 'docx',
+            path: join(outputDir, 'openjaws-output.docx'),
+            name: 'openjaws-output.docx',
+            relativePath: null,
+          },
+          {
+            kind: 'pdf',
+            path: join(outputDir, 'openjaws-output.pdf'),
+            name: 'openjaws-output.pdf',
+            relativePath: null,
+          },
+          {
+            kind: 'html',
+            path: join(outputDir, 'openjaws-output.html'),
+            name: 'openjaws-output.html',
+            relativePath: null,
+          },
+          {
+            kind: 'text',
+            path: join(outputDir, 'openjaws-output.txt'),
+            name: 'openjaws-output.txt',
+            relativePath: null,
+          },
+        ],
       },
       executionQuality: {
         mergeable: true,

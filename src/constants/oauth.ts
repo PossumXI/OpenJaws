@@ -57,15 +57,16 @@ export const ALL_OAUTH_SCOPES = Array.from(
   new Set([...CONSOLE_OAUTH_SCOPES, ...CLAUDE_AI_OAUTH_SCOPES]),
 )
 
+const QLINE_SITE_URL = 'https://qline.site' as const
+
 type OauthConfig = {
   BASE_API_URL: string
   CONSOLE_AUTHORIZE_URL: string
   CLAUDE_AI_AUTHORIZE_URL: string
   /**
-   * The openjaws.dev web origin. Separate from CLAUDE_AI_AUTHORIZE_URL because
-   * that now routes through claude.com/cai/* for attribution — deriving
-   * .origin from it would give claude.com, breaking links to /code,
-   * /settings/connectors, and other openjaws.dev web pages.
+   * The Qline web origin. Separate from the authorize URL so browser-login
+   * links and post-login pages can move together without deriving unrelated
+   * paths from an OAuth endpoint.
    */
   CLAUDE_AI_ORIGIN: string
   TOKEN_URL: string
@@ -82,24 +83,20 @@ type OauthConfig = {
 
 // Production OAuth configuration - Used in normal operation
 const PROD_OAUTH_CONFIG = {
-  BASE_API_URL: 'https://api.anthropic.com',
-  CONSOLE_AUTHORIZE_URL: 'https://platform.openjaws.com/oauth/authorize',
-  // Bounces through claude.com/cai/* so CLI sign-ins connect to claude.com
-  // visits for attribution. 307s to openjaws.dev/oauth/authorize in two hops.
-  CLAUDE_AI_AUTHORIZE_URL: 'https://claude.com/cai/oauth/authorize',
-  CLAUDE_AI_ORIGIN: 'https://openjaws.dev',
-  TOKEN_URL: 'https://platform.openjaws.com/v1/oauth/token',
-  API_KEY_URL: 'https://api.anthropic.com/api/oauth/claude_cli/create_api_key',
-  ROLES_URL: 'https://api.anthropic.com/api/oauth/claude_cli/roles',
-  CONSOLE_SUCCESS_URL:
-    'https://platform.openjaws.com/buy_credits?returnUrl=/oauth/code/success%3Fapp%3Dopenjaws',
-  CLAUDEAI_SUCCESS_URL:
-    'https://platform.openjaws.com/oauth/code/success?app=openjaws',
-  MANUAL_REDIRECT_URL: 'https://platform.openjaws.com/oauth/code/callback',
+  BASE_API_URL: QLINE_SITE_URL,
+  CONSOLE_AUTHORIZE_URL: `${QLINE_SITE_URL}/oauth/authorize`,
+  CLAUDE_AI_AUTHORIZE_URL: `${QLINE_SITE_URL}/oauth/authorize`,
+  CLAUDE_AI_ORIGIN: QLINE_SITE_URL,
+  TOKEN_URL: `${QLINE_SITE_URL}/v1/oauth/token`,
+  API_KEY_URL: `${QLINE_SITE_URL}/api/oauth/claude_cli/create_api_key`,
+  ROLES_URL: `${QLINE_SITE_URL}/api/oauth/claude_cli/roles`,
+  CONSOLE_SUCCESS_URL: `${QLINE_SITE_URL}/oauth/code/success?app=openjaws`,
+  CLAUDEAI_SUCCESS_URL: `${QLINE_SITE_URL}/oauth/code/success?app=openjaws`,
+  MANUAL_REDIRECT_URL: `${QLINE_SITE_URL}/oauth/code/callback`,
   CLIENT_ID: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
   // No suffix for production config
   OAUTH_FILE_SUFFIX: '',
-  MCP_PROXY_URL: 'https://mcp-proxy.anthropic.com',
+  MCP_PROXY_URL: QLINE_SITE_URL,
   MCP_PROXY_PATH: '/v1/mcp/{server_id}',
 } as const
 
@@ -107,11 +104,11 @@ const PROD_OAUTH_CONFIG = {
  * Client ID Metadata Document URL for MCP OAuth (CIMD / SEP-991).
  * When an MCP auth server advertises client_id_metadata_document_supported: true,
  * OpenJaws uses this URL as its client_id instead of Dynamic Client Registration.
- * The URL must point to a JSON document hosted by Anthropic.
+ * The URL must point to the public OpenJaws client metadata document.
  * See: https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-00
  */
 export const MCP_CLIENT_METADATA_URL =
-  'https://openjaws.dev/oauth/openjaws-client-metadata'
+  `${QLINE_SITE_URL}/oauth/openjaws-client-metadata`
 
 // Staging OAuth configuration - only included in jaws builds with staging flag
 // Uses literal check for dead code elimination
@@ -174,9 +171,11 @@ function getLocalOauthConfig(): OauthConfig {
 }
 
 // Allowed base URLs for OPENJAWS_CUSTOM_OAUTH_URL override.
-// Only FedStart/PubSec deployments are permitted to prevent OAuth tokens
+// Only trusted hosted deployments are permitted to prevent OAuth tokens
 // from being sent to arbitrary endpoints.
 const ALLOWED_OAUTH_BASE_URLS = [
+  'https://qline.site',
+  'https://www.qline.site',
   'https://beacon.openjaws-ai.staging.ant.dev',
   'https://claude.fedstart.com',
   'https://claude-staging.fedstart.com',

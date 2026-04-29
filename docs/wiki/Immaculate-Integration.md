@@ -39,6 +39,26 @@ OpenJaws shows Immaculate through normal operator paths, not hidden internal con
 - `/immaculate` exposes topology and control state directly for operators who want a deeper view
 - `/status` and `/immaculate` prefer the current active Immaculate trace, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
 
+## Live Runtime Notes
+
+Current local/private harness port:
+
+- `http://127.0.0.1:8787`
+
+Current public-safe Nysus bridge that reflects Immaculate availability:
+
+- `http://127.0.0.1:8080/api/fabric/public-status`
+- `https://aura-genesis.org/.netlify/functions/fabric/status`
+
+As of April 22, 2026, the public `fabric/status` lane went degraded when the local Immaculate harness dropped, even though the public Arobi lane stayed healthy. That was the correct behavior. The fix was:
+
+1. restart the local harness
+2. verify `GET /api/health` on `127.0.0.1:8787`
+3. verify `latest_lane_ready=true` on the Nysus public-status bridge
+4. redeploy the Websites surface if it had already cached the stale degraded snapshot
+
+That means OpenJaws operators should treat Immaculate reachability as a first-class prerequisite for a healthy public-safe control-fabric lane.
+
 ## Shared Policy Layer
 
 OpenJaws now keeps the most important routed-`Q` and Immaculate timing rules in one shared module instead of letting the same numbers drift across launch helpers, routing code, and worker surfaces.
@@ -190,6 +210,7 @@ The current env contract is:
 - `IMMACULATE_WANDB_PROJECT` or `WANDB_PROJECT`
 - `IMMACULATE_WANDB_MODE` or `WANDB_MODE`
 - `IMMACULATE_WANDB_API_KEY` or `WANDB_API_KEY`
+- `IMMACULATE_WANDB_API_KEY_FILE` or `WANDB_API_KEY_FILE`
 - `IMMACULATE_WANDB_PYTHON`
 - `IMMACULATE_WANDB_PUBLISH_TIMEOUT_MS`
 
@@ -197,6 +218,7 @@ The actual behavior is:
 
 - `offline` mode only needs the SDK
 - `online` mode needs the SDK plus a real API key
+- OpenJaws now mirrors the same file-backed key contract in `src/utils/wandb.ts`, so local benchmark wrappers and Immaculate publication agree on the credential boundary
 - the bootstrap scripts install `wandb` into `.tools/wandb-venv`; they do not magically log you in
 
 In the current OpenJaws shell, the Immaculate-local W&B venv is present but not logged in. That means OpenJaws can report W&B readiness truthfully, but it should not claim a fresh live W&B publish until a real key or Vault-backed secret is active.

@@ -41,6 +41,7 @@ import {
   type QTerminalBenchSoakStopReason as TerminalBenchSoakStopReason,
   type QTerminalBenchTaskReceipt as TerminalBenchTaskReceipt,
   type QTerminalBenchTrialCounts as TerminalBenchTrialCounts,
+  type QTerminalBenchVerifierDiagnostics as TerminalBenchVerifierDiagnostics,
 } from '../src/q/terminalBench.js'
 import {
   resolveBenchmarkSigningPrivateKey,
@@ -87,6 +88,7 @@ type CliOptions = {
   soakDurationMinutes: number | null
   soakIntervalMs: number
   officialSubmission: boolean
+  useRuntimeBundle: boolean
 }
 
 function parseOptionalInt(value: string | undefined): number | null {
@@ -138,6 +140,7 @@ export function parseArgs(argv: string[]): CliOptions {
     soakDurationMinutes: null,
     soakIntervalMs: 0,
     officialSubmission: false,
+    useRuntimeBundle: true,
   }
 
   for (let i = 0; i < argv.length; i++) {
@@ -312,12 +315,32 @@ export function parseArgs(argv: string[]): CliOptions {
       options.officialSubmission = true
       continue
     }
+    if (arg === '--use-runtime-bundle') {
+      options.useRuntimeBundle = true
+      continue
+    }
+    if (arg === '--source-tree-runtime') {
+      options.useRuntimeBundle = false
+      continue
+    }
     if (arg === '--help' || arg === '-h') {
       printHelpAndExit()
     }
   }
 
   return options
+}
+
+export function applyOfficialSubmissionDefaults(options: CliOptions): CliOptions {
+  const next = { ...options }
+  next.dataset = 'terminal-bench@2.0'
+  next.nAttempts = Math.max(next.nAttempts, 5)
+  next.maxTurns = Math.max(next.maxTurns, 20)
+  next.agentSetupTimeoutMultiplier = Math.max(
+    next.agentSetupTimeoutMultiplier ?? 0,
+    5,
+  )
+  return next
 }
 
 function printHelpAndExit(): never {
@@ -349,6 +372,8 @@ function printHelpAndExit(): never {
       '  --soak-duration-minutes <n>  Optional wall-clock ceiling for soak mode',
       '  --soak-interval-ms <n>       Delay between soak cycles in milliseconds (default 0)',
       '  --official-submission        Force Terminal-Bench 2.0 leaderboard-compliant settings',
+      '  --use-runtime-bundle         Use the Harbor runtime CLI bundle (default)',
+      '  --source-tree-runtime        Debug the raw source-tree lane instead of the default runtime bundle',
       '  --dry-run                    Run only preflight checks and emit the command receipt',
       '  --force                      Run Harbor even if provider preflight fails',
       '  --export-traces              Ask Harbor to export ATIF traces after the job',
@@ -382,6 +407,29 @@ function tailText(text: string, maxLines = 30, maxChars = 4000): string {
   return tailLines.length > maxChars
     ? tailLines.slice(tailLines.length - maxChars)
     : tailLines
+}
+
+function readTextFileTail(path: string): string | null {
+  if (!existsSync(path)) {
+    return null
+  }
+  try {
+    return tailText(readFileSync(path, 'utf8'), 20, 2000)
+  } catch {
+    return null
+  }
+}
+
+function getFileSize(path: string): number | null {
+  if (!existsSync(path)) {
+    return null
+  }
+  try {
+    const stats = statSync(path)
+    return stats.isFile() ? stats.size : null
+  } catch {
+    return null
+  }
 }
 
 function sanitizeSubmissionSlug(value: string): string {
@@ -434,7 +482,10 @@ export async function resolveTerminalBenchSessionMetadata(args: {
   }
 }
 
-function collectAgentEnv(options?: { officialSubmission?: boolean; model?: string | null }): Record<string, string> {
+export function collectAgentEnv(options?: {
+  officialSubmission?: boolean
+  model?: string | null
+}): Record<string, string> {
   const envNames = [
     'Q_API_KEY',
     'Q_BASE_URL',
@@ -483,7 +534,6 @@ function collectAgentEnv(options?: { officialSubmission?: boolean; model?: strin
   const collected: Record<string, string> = {}
   for (const name of envNames) {
     if (
-      options?.officialSubmission &&
       options.model === 'oci:Q' &&
       !officialAllowedNames.has(name)
     ) {
@@ -495,6 +545,41 @@ function collectAgentEnv(options?: { officialSubmission?: boolean; model?: strin
     }
   }
   return collected
+}
+
+const windowsDockerDesktopContext = 'desktop-linux'
+const windowsDockerDesktopHost = 'npipe:////./pipe/dockerDesktopLinuxEngine'
+
+export function resolveHarborDockerEnv(options?: {
+  env?: Record<string, string | undefined>
+  platform?: string
+}): Record<string, string> {
+  const platform = options?.platform ?? process.platform
+  if (platform !== 'win32') {
+    return {}
+  }
+
+  const sourceEnv = options?.env ?? process.env
+  const configuredContext = sourceEnv.DOCKER_CONTEXT?.trim()
+  const configuredHost = sourceEnv.DOCKER_HOST?.trim()
+  const dockerEnv: Record<string, string> = {}
+
+  if (configuredHost) {
+    dockerEnv.DOCKER_HOST = configuredHost
+    if (configuredContext) {
+      dockerEnv.DOCKER_CONTEXT = configuredContext
+    }
+    return dockerEnv
+  }
+
+  if (configuredContext && configuredContext !== windowsDockerDesktopContext) {
+    dockerEnv.DOCKER_CONTEXT = configuredContext
+    return dockerEnv
+  }
+
+  dockerEnv.DOCKER_CONTEXT = configuredContext || windowsDockerDesktopContext
+  dockerEnv.DOCKER_HOST = windowsDockerDesktopHost
+  return dockerEnv
 }
 
 function normalizeTaskFilter(options: CliOptions, value: string): string {
@@ -550,6 +635,9 @@ export function buildHarborArgs(options: CliOptions, cycle: number, attempt: num
       '--ak',
       `max_turns=${options.maxTurns}`,
     )
+    if (options.useRuntimeBundle) {
+      args.push('--ak', 'use_runtime_bundle=true')
+    }
     if (options.model) {
       args.push('--model', options.model)
     }
@@ -574,6 +662,7 @@ export function buildHarborArgs(options: CliOptions, cycle: number, attempt: num
 function buildHarborProcessEnv(options: CliOptions): Record<string, string> {
   const env: Record<string, string> = {
     ...buildBenchmarkSeedEnv(options.seed),
+    ...resolveHarborDockerEnv(),
     PYTHONUTF8: '1',
     PYTHONIOENCODING: 'utf-8',
     NO_COLOR: '1',
@@ -590,6 +679,25 @@ function buildHarborProcessEnv(options: CliOptions): Record<string, string> {
     )
   }
   return env
+}
+
+async function runHarborDockerEnvCheck(options: CliOptions): Promise<PreflightCheck> {
+  const result = await execa('docker', ['info'], {
+    cwd: options.root,
+    reject: false,
+    windowsHide: true,
+    timeout: 30_000,
+    env: buildHarborProcessEnv(options),
+  })
+  return {
+    name: 'harbor-docker-env',
+    status: result.exitCode === 0 ? 'passed' : 'failed',
+    summary:
+      result.exitCode === 0
+        ? 'Docker reachable with the exact Harbor process environment.'
+        : tailText(result.stderr || result.stdout) ||
+          'Docker failed with the exact Harbor process environment.',
+  }
 }
 
 function redactHarborArgs(args: string[]): string[] {
@@ -941,16 +1049,132 @@ function listHarborTrialResultPaths(jobRoot: string | null): string[] {
     .sort((left, right) => left.localeCompare(right))
 }
 
-function buildTaskSummary(args: {
+export function buildVerifierDiagnostics(
+  trialResultPath: string,
+): TerminalBenchVerifierDiagnostics {
+  const trialRoot = dirname(trialResultPath)
+  const verifierDir = join(trialRoot, 'verifier')
+  const rewardTextPath = join(verifierDir, 'reward.txt')
+  const rewardJsonPath = join(verifierDir, 'reward.json')
+  const testStdoutPath = join(verifierDir, 'test-stdout.txt')
+  const testStderrPath = join(verifierDir, 'test-stderr.txt')
+  const logAliasProbePath = join(verifierDir, '.openjaws-log-alias-probe.txt')
+  const verifierCommandProbePath = join(
+    verifierDir,
+    '.openjaws-verifier-command-probe.txt',
+  )
+  const verifierDirExists = existsSync(verifierDir)
+  const verifierFileNames = verifierDirExists
+    ? readdirSync(verifierDir, { withFileTypes: true })
+        .map(entry => `${entry.name}${entry.isDirectory() ? '/' : ''}`)
+        .sort((left, right) => left.localeCompare(right))
+    : []
+
+  return {
+    verifierDir,
+    verifierDirExists,
+    verifierFileNames,
+    rewardTextPath,
+    rewardTextExists: existsSync(rewardTextPath),
+    rewardJsonPath,
+    rewardJsonExists: existsSync(rewardJsonPath),
+    testStdoutPath,
+    testStdoutExists: existsSync(testStdoutPath),
+    testStdoutBytes: getFileSize(testStdoutPath),
+    testStdoutTail: readTextFileTail(testStdoutPath),
+    testStderrPath,
+    testStderrExists: existsSync(testStderrPath),
+    testStderrBytes: getFileSize(testStderrPath),
+    testStderrTail: readTextFileTail(testStderrPath),
+    logAliasProbePath,
+    logAliasProbeExists: existsSync(logAliasProbePath),
+    verifierCommandProbePath,
+    verifierCommandProbeExists: existsSync(verifierCommandProbePath),
+  }
+}
+
+type OpenJawsAgentOutcome = {
+  subtype: string | null
+  summary: string | null
+  selfReportedIncomplete: boolean
+}
+
+function isOpenJawsSelfReportedIncomplete(value: string | null): boolean {
+  if (!value) {
+    return false
+  }
+  const normalized = value.replace(/\s+/g, ' ').toLowerCase()
+  return [
+    'placeholder',
+    'scaffold-only',
+    'does not yet compute',
+    'does not satisfy',
+    'not implemented',
+    'partial attempt',
+    'cannot be produced',
+    'beyond the scope',
+    'trivial copy',
+  ].some(snippet => normalized.includes(snippet))
+}
+
+function summarizeOpenJawsResultText(value: string | null): string | null {
+  if (!value) {
+    return null
+  }
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (!normalized) {
+    return null
+  }
+  return normalized.length > 240 ? `${normalized.slice(0, 237)}...` : normalized
+}
+
+export function readOpenJawsAgentOutcome(
+  trialResultPath: string,
+): OpenJawsAgentOutcome {
+  const agentResultPath = join(dirname(trialResultPath), 'agent', 'openjaws-result.json')
+  const payload = readJsonIfExists(agentResultPath)
+  if (!payload) {
+    return {
+      subtype: null,
+      summary: null,
+      selfReportedIncomplete: false,
+    }
+  }
+
+  const rawSummary =
+    readOptionalString(payload.summary) ??
+    readOptionalString(payload.output_text) ??
+    readOptionalString(payload.message) ??
+    readOptionalString(payload.result)
+
+  return {
+    subtype: readOptionalString(payload.subtype),
+    summary: summarizeOpenJawsResultText(rawSummary),
+    selfReportedIncomplete: isOpenJawsSelfReportedIncomplete(rawSummary),
+  }
+}
+
+export function buildTaskSummary(args: {
   taskName: string | null
   executionStatus: TerminalBenchExecutionStatus
   benchmarkStatus: TerminalBenchBenchmarkStatus
   rewardTotal: number | null
+  exceptionType: string | null
   exceptionMessage: string | null
   permissionDenialCount: number | null
+  agentResultSubtype?: string | null
+  agentResultSummary?: string | null
+  agentResultSelfReportedIncomplete?: boolean | null
 }): string {
   const taskName = args.taskName ?? 'Terminal-Bench task'
   if (args.executionStatus === 'error') {
+    if (
+      args.exceptionType === 'RewardFileNotFoundError' &&
+      args.agentResultSubtype === 'success' &&
+      args.agentResultSummary
+    ) {
+      return `${taskName} completed without verifier output: ${args.agentResultSummary}`
+    }
     const permissionNote =
       args.permissionDenialCount && args.permissionDenialCount > 0
         ? ` (${args.permissionDenialCount} permission denial${args.permissionDenialCount === 1 ? '' : 's'})`
@@ -967,6 +1191,9 @@ function buildTaskSummary(args: {
     return `${taskName} passed${permissionNote}.`
   }
   if (args.benchmarkStatus === 'failed') {
+    if (args.agentResultSelfReportedIncomplete && args.agentResultSummary) {
+      return `${taskName} failed after self-reported incomplete agent output: ${args.agentResultSummary}`
+    }
     return args.rewardTotal !== null
       ? `${taskName} completed with reward ${args.rewardTotal.toFixed(2)}${permissionNote}.`
       : `${taskName} completed with a failing verifier result.`
@@ -1021,10 +1248,13 @@ function readHarborTaskReceipts(
       const exceptionMessage =
         readOptionalString(exceptionInfo?.exception_message) ??
         readOptionalString(payload.exception_message)
+      const exceptionType = readOptionalString(exceptionInfo?.exception_type)
       const taskName = readOptionalString(payload.task_name)
       const permissionDenialCount = Array.isArray(metadata?.permission_denials)
         ? metadata.permission_denials.length
         : null
+      const agentOutcome = readOpenJawsAgentOutcome(path)
+      const verifierDiagnostics = buildVerifierDiagnostics(path)
 
       return {
         cycle,
@@ -1042,8 +1272,12 @@ function readHarborTaskReceipts(
           executionStatus,
           benchmarkStatus,
           rewardTotal,
+          exceptionType,
           exceptionMessage,
           permissionDenialCount,
+          agentResultSubtype: agentOutcome.subtype,
+          agentResultSummary: agentOutcome.summary,
+          agentResultSelfReportedIncomplete: agentOutcome.selfReportedIncomplete,
         }),
         startedAt: readOptionalString(payload.started_at),
         finishedAt: readOptionalString(payload.finished_at),
@@ -1070,8 +1304,12 @@ function readHarborTaskReceipts(
         isError:
           typeof metadata?.is_error === 'boolean' ? (metadata.is_error as boolean) : null,
         permissionDenialCount,
-        exceptionType: readOptionalString(exceptionInfo?.exception_type),
+        exceptionType,
         exceptionMessage,
+        agentResultSubtype: agentOutcome.subtype,
+        agentResultSummary: agentOutcome.summary,
+        agentResultSelfReportedIncomplete: agentOutcome.selfReportedIncomplete,
+        verifierDiagnostics,
       }
     })
     .filter((task): task is TerminalBenchTaskReceipt => task !== null)
@@ -1145,7 +1383,7 @@ async function runHarborAttempt(args: {
   }
 }
 
-function validateOfficialSubmissionOptions(options: CliOptions): void {
+export function validateOfficialSubmissionOptions(options: CliOptions): void {
   if (!options.officialSubmission) {
     return
   }
@@ -1156,8 +1394,13 @@ function validateOfficialSubmissionOptions(options: CliOptions): void {
   if (options.nAttempts < 5) {
     violations.push('n-attempts must be at least 5')
   }
-  if (options.agentSetupTimeoutMultiplier !== null) {
-    violations.push('agent-setup-timeout-multiplier must be omitted')
+  if (
+    options.agentSetupTimeoutMultiplier !== null &&
+    options.agentSetupTimeoutMultiplier < 5
+  ) {
+    violations.push(
+      'agent-setup-timeout-multiplier must be at least 5 when official submission defaults enable it',
+    )
   }
   if (options.repeat !== 1) {
     violations.push('repeat must stay at 1 for a single official submission job')
@@ -1211,7 +1454,7 @@ function writeSignedBenchmarkArtifacts(args: {
 }
 
 async function main() {
-  const options = parseArgs(process.argv.slice(2))
+  let options = parseArgs(process.argv.slice(2))
   const runId = makeRunId(options)
   const outputDir =
     options.outputDir ?? resolve(options.root, 'artifacts', 'terminalbench', runId)
@@ -1222,9 +1465,7 @@ async function main() {
     mkdirSync(options.jobsDir, { recursive: true })
   }
   if (options.officialSubmission) {
-    options.dataset = 'terminal-bench@2.0'
-    options.nAttempts = Math.max(options.nAttempts, 5)
-    options.agentSetupTimeoutMultiplier = null
+    options = applyOfficialSubmissionDefaults(options)
     options.jobsDir = options.jobsDir ?? join(outputDir, 'jobs')
     options.jobName = options.jobName ?? `${runId}-official`
   }
@@ -1252,6 +1493,9 @@ async function main() {
     timeoutMs: 30_000,
     warnOnProviderFailure: true,
   })
+  if (options.env === 'docker') {
+    checks.push(await runHarborDockerEnvCheck(options))
+  }
   appendBenchmarkTraceEvent(traceWriter, 'route.dispatched', {
     routeId: `${runId}-preflight`,
     runId,

@@ -1,6 +1,7 @@
+import { spawnSync } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'fs'
 import { execa } from 'execa'
-import { resolve } from 'path'
+import { relative, resolve } from 'path'
 
 type ScopeKey = 'src' | 'scripts'
 
@@ -23,6 +24,7 @@ type LcovEntry = {
 }
 
 const rootDir = process.cwd()
+const gitIgnoredPathCache = new Map<string, boolean>()
 const allScopes: Record<ScopeKey, TestScope> = {
   src: {
     key: 'src',
@@ -32,6 +34,31 @@ const allScopes: Record<ScopeKey, TestScope> = {
     key: 'scripts',
     cwd: resolve(rootDir, 'scripts'),
   },
+}
+
+function isGitIgnoredPath(path: string): boolean {
+  if (!existsSync(resolve(rootDir, '.git'))) {
+    return false
+  }
+  const relativePath = relative(rootDir, path).replace(/\\/g, '/')
+  if (!relativePath || relativePath.startsWith('../')) {
+    return false
+  }
+  const cached = gitIgnoredPathCache.get(relativePath)
+  if (cached !== undefined) {
+    return cached
+  }
+  const result = spawnSync(
+    'git',
+    ['check-ignore', '--quiet', '--', relativePath],
+    {
+      cwd: rootDir,
+      windowsHide: true,
+    },
+  )
+  const ignored = result.status === 0
+  gitIgnoredPathCache.set(relativePath, ignored)
+  return ignored
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -97,6 +124,7 @@ function parseLcovFile(path: string, scope: TestScope): LcovEntry[] {
     const resolvedFile = resolve(scope.cwd, currentFile)
     if (
       resolvedFile.startsWith(scope.cwd) &&
+      !isGitIgnoredPath(resolvedFile) &&
       !/\.test\.[cm]?[jt]sx?$/.test(resolvedFile) &&
       !/\.spec\.[cm]?[jt]sx?$/.test(resolvedFile)
     ) {

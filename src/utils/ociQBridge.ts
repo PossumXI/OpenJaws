@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { execa } from 'execa'
 import { resolveOciQRuntime } from './ociQRuntime.js'
+import { appendQRuntimeFreshnessBlock } from '../q/freshness.js'
 
 export type OciQBridgeAuthMode = 'bearer' | 'iam'
 
@@ -16,6 +17,80 @@ export type OciQBridgeResponse = {
   auth_mode: OciQBridgeAuthMode
   profile: string | null
   response?: Record<string, unknown> | null
+}
+
+const WEB_EVIDENCE_TOOL_PATTERNS = [
+  /^(?:websearch|web_search|web-search)$/i,
+  /^(?:webfetch|web_fetch|web-fetch)$/i,
+  /^web[_-]?search/i,
+  /^web[_-]?fetch/i,
+  /^brave[_-]?web[_-]?search/i,
+  /^tavily[_-]?search/i,
+  /^exa[_-]?search/i,
+  /^fetch[_-]?(?:url|web|http)/i,
+  /^http[_-]?fetch/i,
+  /^browser/i,
+  /^playwright/i,
+  /^chrome/i,
+  /^mcp__[^_]+__(?:brave[_-]?web[_-]?search|web[_-]?search|web[_-]?fetch|browser|playwright|chrome)/i,
+  /^mcp__[^_]*(?:browser|playwright|chrome)[^_]*__/i,
+]
+
+function normalizeToolIdentifier(value: string): string {
+  return value.trim().replace(/\s+/g, '_')
+}
+
+function collectOciToolIdentifiers(tool: unknown): string[] {
+  if (typeof tool === 'string') {
+    return [normalizeToolIdentifier(tool)].filter(Boolean)
+  }
+  if (!tool || typeof tool !== 'object') {
+    return []
+  }
+
+  const record = tool as Record<string, unknown>
+  const identifiers = [
+    record.type,
+    record.name,
+    record.id,
+    record.tool,
+    record.toolName,
+    record.function_name,
+  ].filter((value): value is string => typeof value === 'string')
+
+  const functionValue = record.function
+  if (functionValue && typeof functionValue === 'object') {
+    const functionRecord = functionValue as Record<string, unknown>
+    if (typeof functionRecord.name === 'string') {
+      identifiers.push(functionRecord.name)
+    }
+  }
+
+  return identifiers.map(normalizeToolIdentifier).filter(Boolean)
+}
+
+export function hasOciQBridgeWebEvidenceTool(tools: unknown[] | undefined): boolean {
+  if (!Array.isArray(tools) || tools.length === 0) {
+    return false
+  }
+
+  return tools.some(tool =>
+    collectOciToolIdentifiers(tool).some(identifier =>
+      WEB_EVIDENCE_TOOL_PATTERNS.some(pattern => pattern.test(identifier)),
+    ),
+  )
+}
+
+function tryParseBridgePayload(stdout: string): OciQBridgeResponse | null {
+  const trimmed = stdout.trim()
+  if (!trimmed) {
+    return null
+  }
+  try {
+    return JSON.parse(trimmed) as OciQBridgeResponse
+  } catch {
+    return null
+  }
 }
 
 export type OciQBridgeRuntimeOverride =
@@ -191,11 +266,14 @@ export async function queryOciQViaPython(args: {
       )
     }
 
-    if (args.systemPrompt?.trim()) {
+    const systemPrompt = appendQRuntimeFreshnessBlock(args.systemPrompt, {
+      webResearchAvailable: false,
+    })
+    if (systemPrompt.trim()) {
       const systemFile = await writeBridgeTextFile(
         tempDir,
         'system.txt',
-        args.systemPrompt.trim(),
+        systemPrompt.trim(),
       )
       cliArgs.push('--system-file', systemFile)
     }
@@ -210,13 +288,24 @@ export async function queryOciQViaPython(args: {
       env: args.env,
     })
 
+    const payload = tryParseBridgePayload(result.stdout)
+    if (payload?.ok) {
+      return payload
+    }
+
     if (result.exitCode !== 0) {
       throw new Error(
         result.stderr.trim() || result.stdout.trim() || 'OCI Q bridge failed.',
       )
     }
 
-    return JSON.parse(result.stdout) as OciQBridgeResponse
+    if (payload) {
+      return payload
+    }
+
+    throw new Error(
+      result.stderr.trim() || result.stdout.trim() || 'OCI Q bridge returned malformed output.',
+    )
   })
 }
 
@@ -307,11 +396,14 @@ export async function queryOciResponsesViaPython(args: {
       )
     }
 
-    if (args.instructions?.trim()) {
+    const instructions = appendQRuntimeFreshnessBlock(args.instructions, {
+      webResearchAvailable: hasOciQBridgeWebEvidenceTool(args.tools),
+    })
+    if (instructions.trim()) {
       const instructionsFile = await writeBridgeTextFile(
         tempDir,
         'instructions.txt',
-        args.instructions.trim(),
+        instructions.trim(),
       )
       cliArgs.push('--instructions-file', instructionsFile)
     }
@@ -337,12 +429,25 @@ export async function queryOciResponsesViaPython(args: {
       env: args.env,
     })
 
+    const payload = tryParseBridgePayload(result.stdout)
+    if (payload?.ok) {
+      return payload
+    }
+
     if (result.exitCode !== 0) {
       throw new Error(
         result.stderr.trim() || result.stdout.trim() || 'OCI Responses bridge failed.',
       )
     }
 
-    return JSON.parse(result.stdout) as OciQBridgeResponse
+    if (payload) {
+      return payload
+    }
+
+    throw new Error(
+      result.stderr.trim() ||
+        result.stdout.trim() ||
+        'OCI Responses bridge returned malformed output.',
+    )
   })
 }

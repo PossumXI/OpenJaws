@@ -15,6 +15,15 @@ type QTraceSummaryReadOptions = {
   activeWindowMs?: number
 }
 
+function isQTraceScopeRoot(entry: string): boolean {
+  const normalized = entry.toLowerCase()
+  return (
+    normalized.startsWith('q-') ||
+    normalized === 'terminalbench' ||
+    normalized === 'bridgebench'
+  )
+}
+
 export function listQTraceFiles(root = process.cwd()): string[] {
   const artifactsDir = resolve(root, 'artifacts')
   if (!existsSync(artifactsDir)) {
@@ -51,7 +60,9 @@ export function listQTraceFiles(root = process.cwd()): string[] {
         continue
       }
       if (stats.isDirectory()) {
-        const inQScope = current.inQScope || (currentDir === artifactsDir && entry.startsWith('q-'))
+        const inQScope =
+          current.inQScope ||
+          (currentDir === artifactsDir && isQTraceScopeRoot(entry))
         if (inQScope) {
           queue.push({ dir: path, inQScope })
         }

@@ -7,6 +7,7 @@ coverage/
 # Runtime state and generated artifacts
 artifacts/
 jobs/
+local-command-station/
 wandb/
 latest
 .tmp-config/
@@ -15,6 +16,8 @@ latest
 .runtime/
 .runtime-*/
 .runtime-smoke-*/
+.cache/
+.coverage/
 *.bun-build
 
 # Local env and secrets
@@ -57,6 +60,7 @@ website/.data/
 website/.netlify/
 website/.netlify-cli-config/
 website/.next/
+website/tsconfig.tsbuildinfo
 
 # IDE / OS noise
 .DS_Store

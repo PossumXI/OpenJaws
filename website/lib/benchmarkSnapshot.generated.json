@@ -1,11 +1,12 @@
 {
-  "generatedAt": "2026-04-22T15:46:21.702Z",
-  "source": "Generated from benchmark receipts: D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260422-rerun-1522\\bridgebench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-soak-live-20260416\\q-soak-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-official-public-20260422-circuit-fibsqrt-v2\\terminalbench-report.json, D:\\openjaws\\OpenJaws\\artifacts\\q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3\\terminalbench-report.json, and D:\\openjaws\\OpenJaws\\artifacts\\q-bridgebench-live-20260422\\bridgebench-report.json.",
+  "generatedAt": "2026-04-29T02:45:07.319Z",
+  "source": "Generated from 5 verified OpenJaws benchmark receipt sources.",
   "bridgeBench": {
-    "benchmarkId": "q-bridgebench-20260422T153441",
+    "benchmarkId": "q-bridgebench-20260429T024506",
+    "status": "dry_run",
     "bestPack": "all",
-    "scorePercent": 36.84,
-    "summary": "All pack · 36.84% mean token accuracy · score 36.84 · 1 eval sample"
+    "scorePercent": null,
+    "summary": "Q BridgeBench dry run completed."
   },
   "soak": {
     "runId": "q-soakbench-20260416T005306",
@@ -16,17 +17,17 @@
     "summary": "30-minute bounded soak. 52/52 probes succeeded with 0 errors. OpenJaws p95 latency: 8455 ms. Direct OCI-Q p95 latency: 4254 ms."
   },
   "terminalBench": {
-    "runId": "q-terminalbench-20260422T142207",
+    "runId": "q-terminalbench-20260429T020055",
     "taskName": "circuit-fibsqrt",
     "scope": "Official TerminalBench 2.0 public task",
-    "status": "failed",
+    "status": "completed_with_errors",
     "submissionState": "submitted",
     "agent": "openjaws",
     "model": "oci:Q",
-    "outcome": "reward 0.0 // 5 trials",
-    "executionErrorTrials": 1,
-    "benchmarkFailedTrials": 4,
-    "summary": "OpenJaws ran circuit-fibsqrt on OCI Q with 5 trials, 1 runtime errors, and 4 benchmark-failing trials. Mean reward: 0.0. The official leaderboard submission discussion is linked here.",
+    "outcome": "reward 0.0 / 5 trials",
+    "executionErrorTrials": 0,
+    "benchmarkFailedTrials": 5,
+    "summary": "OpenJaws ran circuit-fibsqrt on OCI Q with 5 trials, 0 runtime errors, and 5 benchmark-failing trials. Mean reward: 0.0. The official leaderboard submission discussion is linked here.",
     "submissionUrl": "https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard/discussions/141"
   },
   "terminalBenchSoak": {
@@ -40,10 +41,10 @@
     "summary": "Repeated TerminalBench soak over terminal-bench/circuit-fibsqrt. 2 cycles produced 2 total trials, 0 runtime errors, and 2 benchmark-failing trials."
   },
   "wandb": {
-    "status": "auth missing",
+    "status": "local receipts",
     "enabled": false,
     "source": "cli",
     "url": "https://wandb.ai/arobi-arobi-technology-alliance/openjaws-q",
-    "summary": "A live W&B project target was configured for this benchmark pass, but no local WANDB login/API key was available, so the receipts stayed local only."
+    "summary": "External W&B publishing is not enabled for this public snapshot. Verified local receipts remain available for audit."
   }
 }

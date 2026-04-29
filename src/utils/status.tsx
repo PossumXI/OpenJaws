@@ -76,6 +76,7 @@ import {
   getApexWorkspaceSummary,
   summarizeApexBrowser,
   summarizeApexChrono,
+  summarizeApexGovernedSpend,
   summarizeApexTenantGovernance,
   summarizeApexWorkspace,
   type ApexBrowserSummary,
@@ -183,6 +184,8 @@ export function buildExecutionProperties(
     });
   }
   const externalModel = mainLoopModel ? resolveExternalModelConfig(mainLoopModel) : null;
+  const ociRuntime =
+    externalModel?.provider === 'oci' ? resolveOciQRuntime() : null;
   const ripgrepStatus = getRipgrepStatus();
   const startupHarness = evaluateStartupHarness({
     platform: getPlatform(),
@@ -191,7 +194,8 @@ export function buildExecutionProperties(
     externalModel: externalModel ? {
       provider: externalModel.provider,
       label: externalModel.label,
-      apiKeySource: externalModel.apiKeySource
+      apiKeySource: externalModel.apiKeySource,
+      authReady: Boolean(ociRuntime?.authMode === 'iam' && ociRuntime.ready)
     } : null,
     gitBashStatus: getPlatform() === 'windows' ? getGitBashStatus() : null,
     ripgrepStatus,
@@ -204,8 +208,6 @@ export function buildExecutionProperties(
     value: summarizeStartupHarness(startupHarness)
   });
   if (externalModel) {
-    const ociRuntime =
-      externalModel.provider === 'oci' ? resolveOciQRuntime() : null
     properties.push({
       label: 'Model provider',
       value: externalModel.label
@@ -673,6 +675,7 @@ export function buildDiscordQAgentProperties(
         ? [`heartbeat ${receipt.gateway.lastHeartbeatAt}`]
         : []),
       ...(receipt.gateway.lastReplyAt ? [`reply ${receipt.gateway.lastReplyAt}`] : []),
+      ...(receipt.gateway.lastError ? [receipt.gateway.lastError] : []),
     ],
   })
   properties.push({
@@ -781,6 +784,7 @@ export function buildApexWorkspaceProperties(
   }
   const workspace = summarizeApexWorkspace(summary)
   const governance = summarizeApexTenantGovernance(governanceSummary)
+  const governedSpend = summarizeApexGovernedSpend(governanceSummary)
   const governanceRecommendations =
     buildApexGovernanceRecommendations(governanceSummary)
   const operatorActivity = summarizeApexOperatorActivityReceipt(
@@ -825,6 +829,13 @@ export function buildApexWorkspaceProperties(
             value: [
               governance.headline,
               ...governance.details.slice(0, 3),
+            ],
+          } satisfies Property,
+          {
+            label: 'Apex spend lane',
+            value: [
+              governedSpend.headline,
+              ...governedSpend.details.slice(0, 2),
             ],
           } satisfies Property,
           ...(governanceRecommendations.length > 0

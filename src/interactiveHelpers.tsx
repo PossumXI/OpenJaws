@@ -36,19 +36,36 @@ export function completeOnboarding(): void {
     lastOnboardingVersion: MACRO.VERSION
   }));
 }
-export function showDialog<T = void>(root: Root, renderer: (done: (result: T) => void) => React.ReactNode): Promise<T> {
+export function showDialog<T = void>(
+  root: Root,
+  renderer: (done: (result: T) => void) => React.ReactNode,
+  options?: {
+    stallHint?: string
+    stallHintDelayMs?: number
+  },
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     // A pending Promise does not keep the Bun event loop alive on Windows.
     // Hold a tiny keepalive timer for setup dialogs so the interactive startup
     // path cannot fall back to the shell before the first screen settles.
     const keepAlive = setInterval(() => {}, 1000)
     let resolved = false
+    const stallHintTimer = options?.stallHint
+      ? setTimeout(() => {
+          if (!resolved) {
+            process.stderr.write(options.stallHint!)
+          }
+        }, options.stallHintDelayMs ?? 8000)
+      : undefined
     const done = (result: T): void => {
       if (resolved) {
         return
       }
       resolved = true
       clearInterval(keepAlive)
+      if (stallHintTimer) {
+        clearTimeout(stallHintTimer)
+      }
       void resolve(result)
     }
 
@@ -56,6 +73,9 @@ export function showDialog<T = void>(root: Root, renderer: (done: (result: T) =>
       root.render(renderer(done))
     } catch (error) {
       clearInterval(keepAlive)
+      if (stallHintTimer) {
+        clearTimeout(stallHintTimer)
+      }
       reject(error)
     }
   })
@@ -103,10 +123,15 @@ export async function exitWithMessage(root: Root, message: string, options?: {
  */
 export function showSetupDialog<T = void>(root: Root, renderer: (done: (result: T) => void) => React.ReactNode, options?: {
   onChangeAppState?: typeof onChangeAppState;
+  stallHint?: string;
+  stallHintDelayMs?: number;
 }): Promise<T> {
   return showDialog<T>(root, done => <AppStateProvider onChangeAppState={options?.onChangeAppState}>
       <KeybindingSetup>{renderer(done)}</KeybindingSetup>
-    </AppStateProvider>);
+    </AppStateProvider>, {
+    stallHint: options?.stallHint,
+    stallHintDelayMs: options?.stallHintDelayMs
+  });
 }
 
 /**
@@ -154,7 +179,10 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
       const {
         TrustDialog
       } = await import('./components/TrustDialog/TrustDialog.js');
-      await showSetupDialog(root, done => <TrustDialog commands={commands} onDone={done} />);
+      await showSetupDialog(root, done => <TrustDialog commands={commands} onDone={done} />, {
+        stallHint: process.platform === 'win32' ? '\nOpenJaws is waiting for workspace trust confirmation. If the TUI looks blank, focus this terminal and press Enter to trust this folder or Esc to exit.\n' : undefined,
+        stallHintDelayMs: 8000
+      });
     }
 
     // Signal that trust has been verified for this session.

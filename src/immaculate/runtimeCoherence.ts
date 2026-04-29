@@ -35,6 +35,8 @@ export type RuntimeCoherenceReport = {
   checks: RuntimeCoherenceCheck[]
 }
 
+const DISCORD_GATEWAY_CONFIG_CLOSE_CODES = new Set([1015, 4004, 4010, 4011, 4013, 4014])
+
 function summarizeTrace(summary: {
   sessionId: string
   runState: string
@@ -97,6 +99,27 @@ function readTraceSessionStartedPath(path: string): string | null {
   }
 }
 
+function isRetryableDiscordGatewayClose(code: number | null | undefined): boolean {
+  return typeof code === 'number' && !DISCORD_GATEWAY_CONFIG_CLOSE_CODES.has(code)
+}
+
+function getRoundtableRuntimeCheckStatus(args: {
+  roundtable: RoundtableRuntimeSnapshot
+  qReceipt: DiscordQAgentReceipt | null
+}): RuntimeCoherenceStatus {
+  const status = args.roundtable.status?.toLowerCase() ?? 'unknown'
+  if (status === 'error' || status === 'stale') {
+    return 'warning'
+  }
+  if (
+    status === 'running' &&
+    !(args.qReceipt?.status === 'ready' && args.qReceipt.gateway.connected === true)
+  ) {
+    return 'failed'
+  }
+  return 'ok'
+}
+
 export function buildRuntimeCoherenceReport(args: {
   harnessStatus: ImmaculateHarnessStatus
   qAgentReceipt: DiscordQAgentReceipt | null
@@ -130,18 +153,34 @@ export function buildRuntimeCoherenceReport(args: {
   } else {
     const qRuntimeHealthy =
       qReceipt.status === 'ready' && qReceipt.gateway.connected === true
+    const qGatewayRetrying =
+      qReceipt.status === 'error' &&
+      qReceipt.gateway.connected === false &&
+      isRetryableDiscordGatewayClose(qReceipt.gateway.lastCloseCode)
+    const qReceiptStatus = qRuntimeHealthy
+      ? 'ok'
+      : qGatewayRetrying
+        ? 'warning'
+        : 'failed'
+    const qReceiptSummary = qRuntimeHealthy
+      ? `Q Discord runtime ready in ${qReceipt.guilds.length} guild${qReceipt.guilds.length === 1 ? '' : 's'}.`
+      : qGatewayRetrying
+        ? `Q Discord runtime is reconnecting after gateway close ${qReceipt.gateway.lastCloseCode}.`
+        : `Q Discord runtime is ${qReceipt.status} with gateway ${
+            qReceipt.gateway.connected ? 'connected' : 'offline'
+          }.`
     const voiceEnabled = qReceipt.voice.enabled === true
     const voiceReady = qReceipt.voice.ready === true
     const voiceConnected = qReceipt.voice.connected === true
     checks.push({
       id: 'discord-q-receipt',
-      status: qRuntimeHealthy ? 'ok' : 'failed',
-      summary: qRuntimeHealthy
-        ? `Q Discord runtime ready in ${qReceipt.guilds.length} guild${qReceipt.guilds.length === 1 ? '' : 's'}.`
-        : `Q Discord runtime is ${qReceipt.status} with gateway ${
-            qReceipt.gateway.connected ? 'connected' : 'offline'
-          }.`,
-      detail: qReceipt.gateway.lastReplyAt ?? qReceipt.gateway.lastHeartbeatAt ?? null,
+      status: qReceiptStatus,
+      summary: qReceiptSummary,
+      detail:
+        qReceipt.gateway.lastError ??
+        qReceipt.gateway.lastReplyAt ??
+        qReceipt.gateway.lastHeartbeatAt ??
+        null,
     })
 
     if (voiceEnabled) {
@@ -163,16 +202,19 @@ export function buildRuntimeCoherenceReport(args: {
     }
 
     if (qReceipt.patrol.snapshot) {
+      const snapshotMatches =
+        qReceipt.patrol.snapshot.harnessReachable === harnessReachable
+      const staleOfflineSnapshot =
+        qReceipt.patrol.snapshot.harnessReachable === false && harnessReachable
       checks.push({
         id: 'harness-receipt-alignment',
-        status:
-          qReceipt.patrol.snapshot.harnessReachable === harnessReachable
-            ? 'ok'
-            : 'failed',
+        status: snapshotMatches ? 'ok' : staleOfflineSnapshot ? 'warning' : 'failed',
         summary:
-          qReceipt.patrol.snapshot.harnessReachable === harnessReachable
+          snapshotMatches
             ? 'Discord patrol snapshot matches live harness reachability.'
-            : 'Discord patrol snapshot disagrees with live harness reachability.',
+            : staleOfflineSnapshot
+              ? 'Discord patrol snapshot is stale; live harness has recovered.'
+              : 'Discord patrol snapshot disagrees with live harness reachability.',
         detail: `receipt=${qReceipt.patrol.snapshot.harnessReachable} live=${harnessReachable}`,
       })
 
@@ -275,12 +317,13 @@ export function buildRuntimeCoherenceReport(args: {
   }
 
   if (args.roundtable) {
-    const roundtableHealthy =
-      args.roundtable.status !== 'running' ||
-      (qReceipt?.status === 'ready' && qReceipt.gateway.connected === true)
+    const roundtableStatus = getRoundtableRuntimeCheckStatus({
+      roundtable: args.roundtable,
+      qReceipt,
+    })
     checks.push({
       id: 'roundtable-runtime',
-      status: roundtableHealthy ? 'ok' : 'failed',
+      status: roundtableStatus,
       summary: `Roundtable is ${args.roundtable.status ?? 'unknown'}${
         args.roundtable.channelName ? ` in #${args.roundtable.channelName}` : ''
       }.`,
@@ -293,11 +336,22 @@ export function buildRuntimeCoherenceReport(args: {
   }
 
   for (const probe of args.probes ?? []) {
+    const probeReportsError =
+      probe.reachable &&
+      /^(blocked|error|failed|unhealthy|degraded)$/i.test(probe.status ?? '')
     checks.push({
       id: `probe-${probe.label}`,
-      status: probe.reachable ? 'ok' : 'warning',
-      summary: `${probe.label} ${probe.reachable ? 'reachable' : 'unreachable'} at ${probe.url}`,
-      detail: probe.status ?? probe.detail ?? null,
+      status: probeReportsError ? 'warning' : probe.reachable ? 'ok' : 'warning',
+      summary: `${probe.label} ${
+        probe.reachable
+          ? probeReportsError
+            ? 'reachable but reporting degraded health'
+            : 'reachable'
+          : 'unreachable'
+      } at ${probe.url}`,
+      detail: probeReportsError
+        ? probe.detail ?? probe.status ?? null
+        : probe.status ?? probe.detail ?? null,
     })
   }
 

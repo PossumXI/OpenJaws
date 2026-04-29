@@ -1,6 +1,28 @@
 export type QTerminalBenchExecutionStatus = 'completed' | 'error'
 export type QTerminalBenchBenchmarkStatus = 'passed' | 'failed' | 'unknown'
 
+export type QTerminalBenchVerifierDiagnostics = {
+  verifierDir: string
+  verifierDirExists: boolean
+  verifierFileNames: string[]
+  rewardTextPath: string
+  rewardTextExists: boolean
+  rewardJsonPath: string
+  rewardJsonExists: boolean
+  testStdoutPath: string
+  testStdoutExists: boolean
+  testStdoutBytes: number | null
+  testStdoutTail: string | null
+  testStderrPath: string
+  testStderrExists: boolean
+  testStderrBytes: number | null
+  testStderrTail: string | null
+  logAliasProbePath: string
+  logAliasProbeExists: boolean
+  verifierCommandProbePath: string
+  verifierCommandProbeExists: boolean
+}
+
 export type QTerminalBenchTaskReceipt = {
   cycle: number
   attempt: number
@@ -27,6 +49,10 @@ export type QTerminalBenchTaskReceipt = {
   permissionDenialCount: number | null
   exceptionType: string | null
   exceptionMessage: string | null
+  agentResultSubtype?: string | null
+  agentResultSummary?: string | null
+  agentResultSelfReportedIncomplete?: boolean | null
+  verifierDiagnostics?: QTerminalBenchVerifierDiagnostics | null
 }
 
 export type QTerminalBenchTrialCounts = {

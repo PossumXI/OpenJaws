@@ -3,9 +3,12 @@ import type { ToolUseContext } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import {
   callImmaculateHarness,
+  IMMACULATE_ARTIFACT_FORMATS,
   IMMACULATE_CONTROL_ACTIONS,
   IMMACULATE_HARNESS_ACTIONS,
   IMMACULATE_OLLAMA_ROLES,
+  IMMACULATE_SEARCH_FRESHNESS,
+  IMMACULATE_TOOL_RECEIPT_KINDS,
 } from '../../utils/immaculateHarness.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import {
@@ -86,6 +89,40 @@ const inputSchema = lazySchema(() =>
       })
       .optional()
       .describe('Optional payload for action="assign_worker"'),
+    receipts: z
+      .object({
+        kind: z.enum(IMMACULATE_TOOL_RECEIPT_KINDS).optional(),
+        limit: z.number().optional(),
+        receiptId: z.string().optional(),
+      })
+      .optional()
+      .describe('Optional payload for tool_receipts or tool_receipt actions'),
+    toolFetch: z
+      .object({
+        url: z.string(),
+        maxBytes: z.number().optional(),
+      })
+      .optional()
+      .describe('Required for action="tool_fetch"'),
+    toolSearch: z
+      .object({
+        query: z.string(),
+        maxResults: z.number().optional(),
+        freshness: z.enum(IMMACULATE_SEARCH_FRESHNESS).optional(),
+        domains: z.array(z.string()).optional(),
+      })
+      .optional()
+      .describe('Required for action="tool_search"'),
+    artifact: z
+      .object({
+        name: z.string().optional(),
+        format: z.enum(IMMACULATE_ARTIFACT_FORMATS),
+        content: z.string(),
+        sourceReceiptPath: z.string().optional(),
+        metadata: z.record(z.string(), z.unknown()).optional(),
+      })
+      .optional()
+      .describe('Required for action="artifact_package"'),
   }),
 )
 type InputSchema = ReturnType<typeof inputSchema>
@@ -120,6 +157,9 @@ const READ_ONLY_ACTIONS = new Set([
   'executions',
   'workers',
   'ollama_models',
+  'tool_capabilities',
+  'tool_receipts',
+  'tool_receipt',
 ])
 
 export const ImmaculateHarnessTool = buildTool({

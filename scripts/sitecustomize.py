@@ -1,0 +1,4 @@
+from harbor_windows_patch import apply_windows_harbor_patches
+
+
+apply_windows_harbor_patches()

@@ -24,7 +24,7 @@ export default function Page(): React.ReactNode {
           />
           <div>
             <span>Q</span>
-            <strong>OpenJaws // Q_agents</strong>
+            <strong>OpenJaws // Q Agents</strong>
           </div>
         </a>
 
@@ -48,12 +48,14 @@ export default function Page(): React.ReactNode {
 
       <section className="hero">
         <div className="hero-copy">
-          <span className="eyebrow">OPENJAWS // OCI Q // Q_AGENTS // AGENT CO-WORK</span>
+          <span className="eyebrow">Q AI OPERATORS // OPENJAWS // AGENT COMMAND CENTER</span>
           <h1>Q.</h1>
-          <p className="hero-kicker">OpenJaws for serious terminals.</p>
+          <p className="hero-kicker">
+            Give AI agents real tools, clear limits, and a record you can audit.
+          </p>
           <p className="hero-copy-minimal">
-            Q_agents, co-work memory, routed tools, hosted access. One visible
-            control layer.
+            Q runs the work. OpenJaws shows the plan, actions, files, and
+            receipts in one command center.
           </p>
 
           <div className="hero-actions">
@@ -74,12 +76,12 @@ export default function Page(): React.ReactNode {
           </div>
 
           <div className="hero-rail">
-            <span>OCI Q default</span>
-            <span>Agent Co-Work live</span>
-            <span>Release-checked qline.site</span>
-            <span>Public + soak TerminalBench receipts</span>
-            <span>Typed traces + canonical signed receipts</span>
-            <span>Shared preflight + seeded benches</span>
+            <span>Current-date context</span>
+            <span>Discord operator agents</span>
+            <span>Auditable action receipts</span>
+            <span>TerminalBench and BridgeBench receipts</span>
+            <span>Apex app actions</span>
+            <span>Human approval gates</span>
           </div>
         </div>
 
@@ -89,19 +91,19 @@ export default function Page(): React.ReactNode {
       <section className="signal-row">
         <article className="signal-card">
           <span>OpenJaws</span>
-          <strong>Terminal-first control deck.</strong>
+          <strong>Command center for AI operator work.</strong>
         </article>
         <article className="signal-card">
-          <span>Q_agents</span>
-          <strong>Helpers that keep phase memory.</strong>
+          <span>Q Agents</span>
+          <strong>Discord and terminal helpers that remember the mission.</strong>
         </article>
         <article className="signal-card">
           <span>Receipts</span>
-          <strong>Benchmark, soak, and route truth stays visible.</strong>
+          <strong>Every important action leaves a reviewable record.</strong>
         </article>
         <article className="signal-card">
           <span>Release gate</span>
-          <strong>Coverage floor plus dead-file scan before ship.</strong>
+          <strong>Checks run before public claims or deploys.</strong>
         </article>
       </section>
 
@@ -118,24 +120,24 @@ export default function Page(): React.ReactNode {
 
         <div className="asset-copy">
           <span className="eyebrow">Public Surface</span>
-          <h2>Qline is the front door. OpenJaws is the machine room.</h2>
+          <h2>Qline is where teams start with Q.</h2>
           <p>
-            Hosted keys and credits on the front end. OpenJaws, Q_agents,
-            Immaculate, and Agent Co-Work behind it.
+            Create access, choose a plan, and connect to OpenJaws when work
+            needs tools, files, Discord, or audit receipts.
           </p>
 
           <div className="asset-mini-grid">
             <article>
-              <strong>OpenJaws</strong>
-              <span>Tools, crews, routing, receipts.</span>
+              <strong>AI operators</strong>
+              <span>Give agents a place to work and report back.</span>
             </article>
             <article>
-              <strong>Q_agents</strong>
-              <span>Helpers with co-work memory.</span>
+              <strong>Accountability</strong>
+              <span>Review what happened before you trust the result.</span>
             </article>
             <article>
-              <strong>Public repo</strong>
-              <span>GitHub-linked and benchmarked.</span>
+              <strong>Benchmarks</strong>
+              <span>Publish results only from verified receipts.</span>
             </article>
           </div>
         </div>
@@ -144,91 +146,84 @@ export default function Page(): React.ReactNode {
       <section className="feature-band" id="openjaws">
         <div className="section-heading">
           <span className="eyebrow">OpenJaws</span>
-          <h2>The cockpit behind Q.</h2>
+          <h2>AI operators need a control center.</h2>
           <p>
-            OpenJaws is the terminal workspace. Q is the default mind. Q_agents
-            make it collaborative instead of lonely.
+            OpenJaws connects Q, Discord agents, local tools, browser previews,
+            and approval gates so people can supervise real work from one place.
           </p>
         </div>
 
         <div className="feature-grid">
           <article className="feature-card">
-            <span>Q_agents</span>
-            <strong>Spawn helpers that actually stay coordinated.</strong>
-            <p>One crew, one visible deck, one source of truth for progress.</p>
+            <span>Q Agents</span>
+            <strong>Put agents to work from Discord or the terminal.</strong>
+            <p>
+              Agents can take scoped tasks, use approved roots, and return
+              files, summaries, and receipts.
+            </p>
           </article>
           <article className="feature-card">
             <span>Agent Co-Work</span>
-            <strong>Reuse terminal, phase, and project context.</strong>
+            <strong>Keep the team on the same job.</strong>
             <p>
-              Hot registry plus phase memory so sibling agents stop
-              re-discovering the same work every handoff.
+              Shared project memory helps new agents pick up the right work
+              without repeating setup.
             </p>
           </article>
           <article className="feature-card">
             <span>Immaculate</span>
-            <strong>Keep orchestration visible.</strong>
+            <strong>See orchestration as it happens.</strong>
             <p>
-              Routing, pacing, worker state, and now typed trace receipts stay
-              inspectable instead of implied. `/status` and `/immaculate` read
-              the latest Immaculate trace summary directly, and `/status` also
-              surfaces the latest Q benchmark trace.
+              Route state, worker health, and trace summaries stay visible in
+              OpenJaws instead of being hidden in background processes.
             </p>
           </article>
           <article className="feature-card">
             <span>Benchmarks</span>
-            <strong>BridgeBench, soak, and Harbor receipts.</strong>
+            <strong>Show the work behind performance claims.</strong>
             <p>
-              Local tuning plus official public and repeated TerminalBench
-              receipts, all checked against one shared OCI Q preflight lane and
-              one typed Immaculate event contract with trace-backed canonical
-              receipts, declared seeds, and reproducible preflight state.
+              BridgeBench, TerminalBench, soak runs, W&B targets, seeds, and
+              preflight checks are tied to receipts people can inspect.
             </p>
           </article>
           <article className="feature-card">
             <span>Apex bridge</span>
-            <strong>Bounded local command-center lane.</strong>
+            <strong>Connect AI work to useful apps.</strong>
             <p>
-              `/apex` can fuse a trusted local workspace bridge for mail,
-              chat, store, security, and system actions, plus a dedicated
-              Chrono backup bridge for job creation, run, restore, and cleanup
-              without pretending the desktop GUI is a fake embedded pane.
+              OpenJaws can reach approved Apex surfaces for mail, chat, store,
+              security, system status, browser, and Chrono backup actions.
             </p>
           </article>
           <article className="feature-card">
             <span>Apex guardrails</span>
-            <strong>Bridges where the seams are real.</strong>
+            <strong>Keep sensitive actions supervised.</strong>
             <p>
-              Notifications and Argus stay outside generic agent control until
-              they have their own narrow localhost bridges, confirmation steps,
-              and audit ladders.
+              High-risk app actions stay behind narrow bridges, confirmation
+              points, and audit records.
             </p>
           </article>
           <article className="feature-card">
             <span>Accountable preview</span>
-            <strong>Real browser preview with a reason trail.</strong>
+            <strong>Browse with a reason trail.</strong>
             <p>
-              `/preview` opens local apps, research, and supervised watch/music
-              sessions through a real browser path while keeping intent,
-              rationale, requester, and handler visible in one receipt.
+              Browser previews can keep intent, requester, handler, and result
+              visible when an agent uses the web.
             </p>
           </article>
           <article className="feature-card">
             <span>Q media boundary</span>
-            <strong>Reasoning stays Q. Media stays explicit.</strong>
+            <strong>Use the right model for the right job.</strong>
             <p>
-              OCI Q owns chat, reasoning, and orchestration. When image or
-              video generation is needed, it stays on a separate explicit media
-              lane instead of silently swapping the mind behind the session.
+              Q handles reasoning and orchestration. Image, video, and voice
+              generation stay on explicit lanes with their own receipts.
             </p>
           </article>
           <article className="feature-card">
             <span>Release hardening</span>
-            <strong>Ship checks fail closed.</strong>
+            <strong>Make public launches harder to get wrong.</strong>
             <p>
-              Same-site qline deploy checks, scoped test lanes, and bounded
-              hygiene gates now run before public ship calls are treated as
-              clean.
+              Build checks, deploy checks, benchmark snapshots, and hygiene
+              scans run before a release is treated as ready.
             </p>
           </article>
         </div>
@@ -246,7 +241,7 @@ export default function Page(): React.ReactNode {
       <section className="plans" id="plans">
         <div className="section-heading">
           <span className="eyebrow">Plans</span>
-          <h2>Choose the lane.</h2>
+          <h2>Choose your Q access.</h2>
         </div>
 
         <div className="plan-grid">
@@ -268,10 +263,10 @@ export default function Page(): React.ReactNode {
       <section className="console-anchor" id="console">
         <div className="section-heading">
           <span className="eyebrow">Hosted lane</span>
-          <h2>Sign up. Checkout. Keys. Usage.</h2>
+          <h2>Start with a key. Scale with receipts.</h2>
           <p>
-            Clean public access on the front end. Real entitlements stay
-            server-side.
+            Plans, credits, keys, usage, and checkout stay simple for users and
+            controlled on the server.
           </p>
         </div>
 
@@ -281,11 +276,10 @@ export default function Page(): React.ReactNode {
       <section className="cowork-band">
         <div className="cowork-copy">
           <span className="eyebrow">Agent Co-Work</span>
-          <h2>One crew. Multiple terminals. Same thread.</h2>
+          <h2>One mission. Many agents. Clear handoffs.</h2>
           <p>
-            Active terminals keep their own IDs, but the phase memory stays
-            shared. That means cross-project help can keep the context that
-            matters instead of resetting every handoff.
+            Each agent keeps its own workspace identity while shared phase
+            memory keeps the mission, project, and deliverables easy to follow.
           </p>
         </div>
 
@@ -296,10 +290,10 @@ export default function Page(): React.ReactNode {
           </article>
           <article>
             <strong>Phase memory</strong>
-            <p>Requests, handoffs, and delivered outputs stay attached to one thread.</p>
+            <p>Requests, handoffs, and delivered outputs stay attached.</p>
           </article>
           <article>
-            <strong>Exact phase reuse</strong>
+            <strong>Cleaner handoffs</strong>
             <p>New work can bind to the right saved phase on purpose.</p>
           </article>
         </div>
@@ -307,8 +301,8 @@ export default function Page(): React.ReactNode {
 
       <section className="service-note">
         <div className="service-note-copy">
-          <span className="eyebrow">Still Backend-Owned</span>
-          <h2>The expensive truth belongs server-side.</h2>
+          <span className="eyebrow">Server-Owned Controls</span>
+          <h2>Billing, access, and usage stay protected.</h2>
         </div>
 
         <div className="service-grid">

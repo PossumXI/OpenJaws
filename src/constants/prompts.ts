@@ -60,6 +60,13 @@ import { logForDebugging } from '../utils/debug.js'
 import { loadMemoryPrompt } from '../memdir/memdir.js'
 import { isUndercover } from '../utils/undercover.js'
 import { isMcpInstructionsDeltaEnabled } from '../utils/mcpInstructionsDelta.js'
+import {
+  buildQRuntimeFreshnessBlock,
+  isQModelId,
+  Q_BASE_KNOWLEDGE_CUTOFF,
+} from '../q/freshness.js'
+import { WEB_FETCH_TOOL_NAME } from '../tools/WebFetchTool/prompt.js'
+import { WEB_SEARCH_TOOL_NAME } from '../tools/WebSearchTool/prompt.js'
 
 // Dead code elimination: conditional imports for feature-gated modules
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -454,14 +461,13 @@ export async function getSystemPrompt(
   }
 
   const cwd = getCwd()
+  const settings = getInitialSettings()
+  const enabledTools = new Set(tools.map(_ => _.name))
   const [skillToolCommands, outputStyleConfig, envInfo] = await Promise.all([
     getSkillToolCommands(cwd),
     getOutputStyleConfig(),
-    computeSimpleEnvInfo(model, additionalWorkingDirectories),
+    computeSimpleEnvInfo(model, additionalWorkingDirectories, enabledTools),
   ])
-
-  const settings = getInitialSettings()
-  const enabledTools = new Set(tools.map(_ => _.name))
 
   if (
     (feature('PROACTIVE') || feature('KAIROS')) &&
@@ -497,7 +503,7 @@ ${CYBER_RISK_INSTRUCTION}`,
       getJawsModelOverrideSection(),
     ),
     systemPromptSection('env_info_simple', () =>
-      computeSimpleEnvInfo(model, additionalWorkingDirectories),
+      computeSimpleEnvInfo(model, additionalWorkingDirectories, enabledTools),
     ),
     systemPromptSection('language', () =>
       getLanguageSection(settings.language),
@@ -606,6 +612,7 @@ ${instructionBlocks}`
 export async function computeEnvInfo(
   modelId: string,
   additionalWorkingDirectories?: string[],
+  enabledToolNames?: ReadonlySet<string>,
 ): Promise<string> {
   const [isGit, unameSR] = await Promise.all([getIsGit(), getUnameSR()])
 
@@ -632,9 +639,15 @@ export async function computeEnvInfo(
       ? `Additional working directories: ${additionalWorkingDirectories.join(', ')}\n`
       : ''
 
+  const isQModel = isQModelId(modelId)
   const cutoff = getKnowledgeCutoff(modelId)
-  const knowledgeCutoffMessage = cutoff
+  const knowledgeCutoffMessage = cutoff && !isQModel
     ? `\n\nAssistant knowledge cutoff is ${cutoff}.`
+    : ''
+  const qFreshnessMessage = isQModel
+    ? `\n\n${buildQRuntimeFreshnessBlock({
+        webResearchAvailable: hasWebResearchTool(enabledToolNames),
+      })}`
     : ''
 
   return `Here is useful information about the environment you are running in:
@@ -645,12 +658,13 @@ ${additionalDirsInfo}Platform: ${env.platform}
 ${getShellInfoLine()}
 OS Version: ${unameSR}
 </env>
-${modelDescription}${knowledgeCutoffMessage}`
+${modelDescription}${knowledgeCutoffMessage}${qFreshnessMessage}`
 }
 
 export async function computeSimpleEnvInfo(
   modelId: string,
   additionalWorkingDirectories?: string[],
+  enabledToolNames?: ReadonlySet<string>,
 ): Promise<string> {
   const [isGit, unameSR] = await Promise.all([getIsGit(), getUnameSR()])
 
@@ -666,9 +680,15 @@ export async function computeSimpleEnvInfo(
       : `You are powered by the model ${modelId}.`
   }
 
+  const isQModel = isQModelId(modelId)
   const cutoff = getKnowledgeCutoff(modelId)
-  const knowledgeCutoffMessage = cutoff
+  const knowledgeCutoffMessage = cutoff && !isQModel
     ? `Assistant knowledge cutoff is ${cutoff}.`
+    : null
+  const qFreshnessBlock = isQModel
+    ? buildQRuntimeFreshnessBlock({
+        webResearchAvailable: hasWebResearchTool(enabledToolNames),
+      })
     : null
 
   const cwd = getCwd()
@@ -706,11 +726,22 @@ export async function computeSimpleEnvInfo(
     `# Environment`,
     `You have been invoked in the following environment: `,
     ...prependBullets(envItems),
-  ].join(`\n`)
+    qFreshnessBlock,
+  ].filter(item => item !== null).join(`\n`)
+}
+
+function hasWebResearchTool(enabledToolNames?: ReadonlySet<string>): boolean {
+  return Boolean(
+    enabledToolNames?.has(WEB_SEARCH_TOOL_NAME) ||
+      enabledToolNames?.has(WEB_FETCH_TOOL_NAME),
+  )
 }
 
 // @[MODEL LAUNCH]: Add a knowledge cutoff date for the new model.
 function getKnowledgeCutoff(modelId: string): string | null {
+  if (isQModelId(modelId)) {
+    return Q_BASE_KNOWLEDGE_CUTOFF
+  }
   const canonical = getCanonicalName(modelId)
   if (canonical.includes('claude-sonnet-4-6')) {
     return 'August 2025'
@@ -781,7 +812,11 @@ export async function enhanceSystemPromptWithEnvDetails(
     (enabledToolNames?.has(DISCOVER_SKILLS_TOOL_NAME) ?? true)
       ? getDiscoverSkillsGuidance()
       : null
-  const envInfo = await computeEnvInfo(model, additionalWorkingDirectories)
+  const envInfo = await computeEnvInfo(
+    model,
+    additionalWorkingDirectories,
+    enabledToolNames,
+  )
   return [
     ...existingSystemPrompt,
     notes,

@@ -695,6 +695,10 @@ describe('buildApexWorkspaceProperties', () => {
           highRiskCalls: 1,
           criticalCalls: 0,
           pendingReviewCalls: 2,
+          spendActionCount: 2,
+          spendActionBreakdown: [
+            { name: 'payments', count: 2 },
+          ],
           operatorActionBreakdown: [
             { name: 'operator_runtime', count: 5 },
           ],
@@ -762,6 +766,14 @@ describe('buildApexWorkspaceProperties', () => {
           'Confidence 0.93 · avg risk 0.2 · detections 4',
           'Top operator action operator runtime · top signal policy guard · review approved',
           'Ethics passed 12 · failed 0 · telemetry scopes 3',
+        ],
+      },
+      {
+        label: 'Apex spend lane',
+        value: [
+          'Governed spend actions 2 · pending 2 · high risk 1',
+          'Top spend action payments · tracked labels 1',
+          'Signals policy guard',
         ],
       },
       {

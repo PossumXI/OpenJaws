@@ -23,6 +23,7 @@ export type StartupHarnessInput = {
         provider: string
         label: string
         apiKeySource: string | null
+        authReady?: boolean
       }
     | null
   gitBashStatus:
@@ -83,7 +84,8 @@ export function evaluateStartupHarness(
   if (
     input.externalModel &&
     input.externalModel.provider !== 'ollama' &&
-    !input.externalModel.apiKeySource
+    !input.externalModel.apiKeySource &&
+    input.externalModel.authReady !== true
   ) {
     issues.push(
       makeIssue(

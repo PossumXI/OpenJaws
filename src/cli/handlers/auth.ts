@@ -259,6 +259,8 @@ export async function authStatus(opts: {
   let authMethod: string = 'none'
   if (using3P) {
     authMethod = 'third_party'
+  } else if (authTokenSource === 'owner-local-bypass') {
+    authMethod = 'owner_local_bypass'
   } else if (authTokenSource === 'openjaws.dev') {
     authMethod = 'openjaws.dev'
   } else if (authTokenSource === 'apiKeyHelper') {
@@ -334,7 +336,7 @@ export async function authStatus(opts: {
         baseURL: provider.baseURL,
       }))
     }
-    if (authMethod === 'openjaws.dev') {
+    if (authMethod === 'openjaws.dev' || authMethod === 'owner_local_bypass') {
       output.email = oauthAccount?.emailAddress ?? null
       output.orgId = oauthAccount?.organizationUuid ?? null
       output.orgName = oauthAccount?.organizationName ?? null

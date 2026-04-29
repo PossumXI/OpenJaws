@@ -9,6 +9,7 @@ import {
   claimQTrainingRouteQueueEntry,
   evaluateQTrainingPreflight,
   finalizeQTrainingRouteQueueCompletion,
+  finalizeQTrainingRouteQueueDispatch,
   getLatestQTrainingSnapshot,
   getNextQTrainingRoutePendingRemoteResult,
   peekQTrainingFastPathWindow,
@@ -38,14 +39,17 @@ import {
   type QTrainingRouteWorkerExecutionProfile,
   type QTrainingRouteWorkerRuntimeEntry,
   upsertQTrainingRegistryEntry,
+  upsertQTrainingRouteQueueEntry,
   upsertQTrainingRouteWorker,
   upsertQTrainingRouteWorkerRuntimeStatus,
   updateQTrainingFastPathWindow,
+  updateQTrainingRouteQueueClaim,
   verifyQTrainingRouteManifest,
   verifyQTrainingRouteManifestIntegrity,
   verifyQTrainingRouteResultEnvelope,
 } from '../utils/qTraining.js'
 import {
+  assignImmaculateHarnessWorker,
   getImmaculateHarnessStatus,
   heartbeatImmaculateHarnessWorker,
   registerImmaculateHarnessWorker,
@@ -164,6 +168,20 @@ function isTrustedRouteExecutionHost(hostname: string): boolean {
     )
   }
   return false
+}
+
+export function resolveRemoteDispatchAckBlockReason(
+  remoteAck: RemoteDispatchAck,
+): string | null {
+  if (!remoteAck.accepted || remoteAck.status >= 400) {
+    return `remote dispatch ${remoteAck.status}${
+      remoteAck.summary ? ` · ${remoteAck.summary}` : ''
+    }`
+  }
+  if (!remoteAck.stateUrl?.trim()) {
+    return `remote dispatch ${remoteAck.status} accepted without stateUrl`
+  }
+  return null
 }
 
 export function validateRemoteExecutionEndpoint(args: {
@@ -600,6 +618,94 @@ export async function syncImmaculateWorkerRegistration(
   }
 }
 
+export async function refreshImmaculatePendingRouteAssignment(args: {
+  queueEntry: QTrainingRouteQueueEntry
+  root?: string | null
+  updatedAt?: string
+}): Promise<QTrainingRouteQueueEntry | null> {
+  if (!isQTrainingRouteQueuePendingAssignment(args.queueEntry)) {
+    return args.queueEntry
+  }
+
+  const root = args.root ?? process.cwd()
+  const updatedAt = args.updatedAt ?? new Date().toISOString()
+  const result = await assignImmaculateHarnessWorker({
+    requestedExecutionDecision:
+      args.queueEntry.requestedExecutionDecision ?? undefined,
+    baseModel: args.queueEntry.baseModel ?? undefined,
+    preferredLayerIds: args.queueEntry.recommendedLayerId
+      ? [args.queueEntry.recommendedLayerId]
+      : [],
+    recommendedLayerId: args.queueEntry.recommendedLayerId ?? null,
+    target: args.queueEntry.target ?? null,
+  })
+
+  if (!result) {
+    return getQTrainingRouteQueueEntry(args.queueEntry.runId, root)
+  }
+
+  const assignment = result.assignment
+  const nextEntry: QTrainingRouteQueueEntry = {
+    ...args.queueEntry,
+    updatedAt,
+    recommendedLayerId:
+      result.recommendedLayerId ?? args.queueEntry.recommendedLayerId ?? null,
+    healthyWorkerCount:
+      result.healthyWorkerCount ?? args.queueEntry.healthyWorkerCount ?? null,
+    staleWorkerCount:
+      result.staleWorkerCount ?? args.queueEntry.staleWorkerCount ?? null,
+    faultedWorkerCount:
+      result.faultedWorkerCount ?? args.queueEntry.faultedWorkerCount ?? null,
+    eligibleWorkerCount:
+      result.eligibleWorkerCount ?? args.queueEntry.eligibleWorkerCount ?? null,
+    blockedWorkerCount:
+      result.blockedWorkerCount ?? args.queueEntry.blockedWorkerCount ?? null,
+    assignment: assignment
+      ? {
+          workerId: assignment.workerId,
+          workerLabel: assignment.workerLabel ?? null,
+          hostLabel: assignment.hostLabel ?? null,
+          executionProfile: assignment.executionProfile,
+          executionEndpoint: assignment.executionEndpoint ?? null,
+          source: 'immaculate',
+          assignedAt: assignment.assignedAt,
+          reason: assignment.reason,
+          score: assignment.score,
+          healthStatus: assignment.healthStatus,
+          healthSummary: assignment.healthSummary ?? null,
+        }
+      : null,
+  }
+
+  upsertQTrainingRouteQueueEntry(nextEntry, root)
+  return getQTrainingRouteQueueEntry(args.queueEntry.runId, root)
+}
+
+export async function refreshPendingImmaculateRouteAssignments(args: {
+  root?: string | null
+}): Promise<QTrainingRouteQueueEntry[]> {
+  const root = args.root ?? process.cwd()
+  const pendingEntries = readQTrainingRouteQueue(root).filter(entry =>
+    isQTrainingRouteQueuePendingAssignment(entry),
+  )
+  const refreshed: QTrainingRouteQueueEntry[] = []
+  for (const entry of pendingEntries) {
+    try {
+      const nextEntry = await refreshImmaculatePendingRouteAssignment({
+        queueEntry: entry,
+        root,
+      })
+      if (nextEntry) {
+        refreshed.push(nextEntry)
+      }
+    } catch {
+      // Worker loops should not die just because the harness has no eligible
+      // assignment yet. The queue remains pending and is retried next heartbeat.
+    }
+  }
+  return refreshed
+}
+
 export function resolveQueueTarget(
   options: QRouteWorkerCliOptions,
 ): { manifestPath: string | null; queueEntry: QTrainingRouteQueueEntry | null } {
@@ -929,7 +1035,8 @@ export async function dispatchQTrainingRoute(
       endpoint: executionEndpoint!,
       envelope,
     })
-    if (!remoteAck.accepted || remoteAck.status >= 400) {
+    const remoteAckBlockReason = resolveRemoteDispatchAckBlockReason(remoteAck)
+    if (remoteAckBlockReason) {
       updateQTrainingFastPathWindow({
         root,
         observedAt: launchedAt,
@@ -945,18 +1052,14 @@ export async function dispatchQTrainingRoute(
         signatureVerified: routeSecurity.valid,
         integrityVerified: routeIntegrity.valid,
         preflight: localPreflight,
-        rejectionReason: `remote dispatch ${remoteAck.status}${
-          remoteAck.summary ? ` · ${remoteAck.summary}` : ''
-        }`,
+        rejectionReason: remoteAckBlockReason,
       })
       return {
         exitCode: 1,
         payload: {
           runId: manifest.runId,
           status: 'blocked',
-          blockedReason: `remote dispatch ${remoteAck.status}${
-            remoteAck.summary ? ` · ${remoteAck.summary}` : ''
-          }`,
+          blockedReason: remoteAckBlockReason,
           manifestPath,
           manifestDir,
           routeSecurity,
@@ -1022,7 +1125,7 @@ export async function dispatchQTrainingRoute(
     remoteAccepted: remoteAck?.accepted ?? null,
     remoteExecutionId: remoteAck?.executionId ?? null,
     remoteSummary: remoteAck?.summary ?? null,
-    remoteStateUrl: remoteAck?.stateUrl ?? null,
+    remoteStateUrl: remoteAck?.stateUrl?.trim() ?? null,
   })
 
   writeDispatchState({
@@ -1074,27 +1177,28 @@ export async function runQTrainingRouteWorker(
   const root = options.root ?? process.cwd()
   let idleStartedAt = Date.now()
   let preserveWorkerRuntimeStatus = false
-  upsertWorkerRegistration(options)
-  const registerSync = await syncImmaculateWorkerRegistration(
-    options,
-    'register',
-  )
-  writeWorkerRuntimeStatus(registerSync.runtime, root)
-  if (!registerSync.ok) {
-    preserveWorkerRuntimeStatus = true
-    return {
-      exitCode: 1,
-      payload: {
-        status: 'worker_register_failed',
-        summary: registerSync.runtime.summary,
-        workerId: options.workerId,
-        harnessUrl: registerSync.runtime.harnessUrl ?? null,
-        detail: registerSync.runtime.detail ?? null,
-      },
-    }
-  }
 
   try {
+    upsertWorkerRegistration(options)
+    const registerSync = await syncImmaculateWorkerRegistration(
+      options,
+      'register',
+    )
+    writeWorkerRuntimeStatus(registerSync.runtime, root)
+    if (!registerSync.ok) {
+      preserveWorkerRuntimeStatus = true
+      return {
+        exitCode: 1,
+        payload: {
+          status: 'worker_register_failed',
+          summary: registerSync.runtime.summary,
+          workerId: options.workerId,
+          harnessUrl: registerSync.runtime.harnessUrl ?? null,
+          detail: registerSync.runtime.detail ?? null,
+        },
+      }
+    }
+
     while (true) {
       reapStaleQTrainingRouteWorkers({ root })
       reapStaleQTrainingRouteQueueClaims({ root })
@@ -1119,6 +1223,7 @@ export async function runQTrainingRouteWorker(
           },
         }
       }
+      await refreshPendingImmaculateRouteAssignments({ root })
       const pendingRemoteResult = resolvePendingRemoteResultTarget(options)
       if (
         pendingRemoteResult.manifestPath &&

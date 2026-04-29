@@ -125,4 +125,35 @@ describe('q trace summary', () => {
       path: writer.path,
     })
   })
+
+  test('discovers TerminalBench traces from the default benchmark artifact tree', () => {
+    const root = mkdtempSync(join(tmpdir(), 'openjaws-q-trace-terminalbench-'))
+    tempRoots.push(root)
+    const terminalBenchOutputDir = join(
+      root,
+      'artifacts',
+      'terminalbench',
+      'runs',
+      'oci-q',
+    )
+    mkdirSync(terminalBenchOutputDir, { recursive: true })
+    const writer = createBenchmarkTraceWriter({
+      outputDir: terminalBenchOutputDir,
+      sessionId: 'terminalbench-q-session',
+    })
+    appendBenchmarkTraceEvent(writer, 'route.dispatched', {
+      routeId: 'route-terminalbench',
+      runId: 'run-terminalbench',
+      provider: 'oci',
+      model: 'Q',
+    })
+    closeBenchmarkTraceWriter(writer)
+
+    expect(readLatestQTraceSummary(root)).toMatchObject({
+      kind: 'benchmark',
+      sessionId: 'terminalbench-q-session',
+      latestRouteId: 'route-terminalbench',
+      path: writer.path,
+    })
+  })
 })

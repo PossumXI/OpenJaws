@@ -79,6 +79,21 @@ describe('evaluateStartupHarness', () => {
     expect(evaluation.status).toBe('ready')
   })
 
+  test('accepts provider runtimes with non-API-key auth', () => {
+    const evaluation = evaluateStartupHarness(
+      makeInput({
+        externalModel: {
+          provider: 'oci',
+          label: 'Q on OCI',
+          apiKeySource: null,
+          authReady: true,
+        },
+      }),
+    )
+
+    expect(evaluation.status).toBe('ready')
+  })
+
   test('blocks startup on Windows when git-bash is missing', () => {
     const evaluation = evaluateStartupHarness(
       makeInput({

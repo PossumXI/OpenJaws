@@ -16,6 +16,27 @@ import {
   WALKTHROUGH_TIMEOUT_MS,
 } from './interactiveWalkthroughHarness.js'
 
+function includesAppearanceMarker(frame: string): boolean {
+  return (
+    frame.includes('Search settings') &&
+    frame.includes('Reduce motion') &&
+    frame.includes('Theme') &&
+    frame.includes('Output style')
+  )
+}
+
+function includesPrivacyMarker(frame: string): boolean {
+  return frame.includes('Search settings') && frame.includes('Privacy mode')
+}
+
+function includesFullConfigMarker(frame: string): boolean {
+  return (
+    frame.includes('Search settings') &&
+    frame.includes('Auto-compact') &&
+    frame.includes('Show tips')
+  )
+}
+
 function includesUsageMarker(frame: string): boolean {
   return (
     frame.includes('Loading usage data') ||
@@ -93,18 +114,33 @@ async function main(): Promise<void> {
   recordStep('status', initialFrame)
 
   stdin.write('\x1b[C')
+  const appearanceFrame = await waitForFrame(
+    readFrame,
+    frame => includesAppearanceMarker(frame),
+    WALKTHROUGH_TIMEOUT_MS,
+    'Settings walkthrough did not reach the Appearance tab',
+  )
+  recordStep('appearance', appearanceFrame)
+
+  stdin.write('\x1b[C')
+  const privacyFrame = await waitForFrame(
+    readFrame,
+    frame => includesPrivacyMarker(frame),
+    WALKTHROUGH_TIMEOUT_MS,
+    'Settings walkthrough did not reach the Privacy tab',
+  )
+  recordStep('privacy', privacyFrame)
+
+  stdin.write('\x1b[C')
   const configFrame = await waitForFrame(
     readFrame,
-    frame =>
-      frame.includes('Search settings') &&
-      frame.includes('Theme') &&
-      frame.includes('Output style'),
+    frame => includesFullConfigMarker(frame),
     WALKTHROUGH_TIMEOUT_MS,
     'Settings walkthrough did not reach the Config tab',
   )
   recordStep('config', configFrame)
 
-  stdin.write('\t')
+  stdin.write('\x1b[C')
   const usageFrame = await waitForFrame(
     readFrame,
     frame => includesUsageMarker(frame),
@@ -116,10 +152,7 @@ async function main(): Promise<void> {
   stdin.write('\x1b[D')
   const configReturnFrame = await waitForFrame(
     readFrame,
-    frame =>
-      frame.includes('Search settings') &&
-      frame.includes('Theme') &&
-      frame.includes('Output style'),
+    frame => includesFullConfigMarker(frame),
     WALKTHROUGH_TIMEOUT_MS,
     'Settings walkthrough did not return to the Config tab',
   )

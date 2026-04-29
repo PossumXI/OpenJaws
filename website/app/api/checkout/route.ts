@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createCheckoutSession, stripeCheckoutReady, resolveStripeRuntimeConfig } from '../../../lib/stripe'
+import {
+  proxyHostedQServiceRequest,
+  resolveHostedQServiceMode,
+} from '../../../lib/hostedQService'
 
 type CheckoutRequest = {
   email?: string
@@ -9,6 +13,10 @@ type CheckoutRequest = {
 export const runtime = 'nodejs'
 
 export async function POST(request: Request): Promise<NextResponse> {
+  if (resolveHostedQServiceMode() === 'proxy') {
+    return proxyHostedQServiceRequest({ action: 'checkout', request })
+  }
+
   const body = (await request.json().catch(() => ({}))) as CheckoutRequest
   const config = resolveStripeRuntimeConfig()
   const email =

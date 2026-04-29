@@ -297,7 +297,7 @@ export async function runQPreflightChecks(
           await runCommandCheck({
             name: 'harbor',
             command: options.harborCommand ?? 'harbor',
-            argv: ['--help'],
+            argv: ['--version'],
             cwd: options.root,
             timeoutMs,
           }),

@@ -6,9 +6,15 @@ import {
   readFileSync,
   renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'fs'
 import { basename, dirname, extname, join, resolve } from 'path'
+import { fileURLToPath } from 'url'
+import {
+  collectDiscordOperatorDeliveryArtifacts,
+  type DiscordOperatorDeliveryArtifact,
+} from './discordOperatorExecution.js'
 import {
   executeDiscordRoundtableAction,
   type DiscordRoundtableExecutableAction,
@@ -17,6 +23,7 @@ import {
 } from './discordRoundtableExecution.js'
 import {
   getNextQueuedDiscordExecutionJob,
+  isDiscordExecutionTerminalStatus,
   reconcileDiscordExecutionJobs,
   shouldEnqueueDiscordExecutionJob,
   type DiscordExecutionApprovalState,
@@ -94,6 +101,8 @@ export type DiscordRoundtableTrackedJob = DiscordExecutionTrackedJob & {
   targetRootLabel: string | null
   receiptPath: string | null
   outputDir: string | null
+  deliveryArtifactManifestPath: string | null
+  deliveryArtifacts: DiscordOperatorDeliveryArtifact[]
   commitStatement: string | null
   decisionTraceId: string | null
   routeSuggestion: string | null
@@ -145,6 +154,8 @@ export type DiscordRoundtableTransitionReceipt = {
   commitSha: string | null
   verificationSummary: string | null
   receiptPath: string | null
+  deliveryArtifactManifestPath: string | null
+  deliveryArtifacts: DiscordOperatorDeliveryArtifact[]
   rejectionReason: string | null
   summary: string | null
 }
@@ -160,6 +171,7 @@ type DiscordRoundtableJobCounts = {
 }
 
 const DISCORD_ROUNDTABLE_SESSION_STALE_MS = 15 * 60 * 1000
+const OPENJAWS_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 export type DiscordRoundtableRuntimeOptions = {
   root?: string
@@ -221,6 +233,7 @@ type RawRoundtableHandoff = {
 
 type StoredOperatorState = {
   pendingPushes?: StoredOperatorPendingPush[]
+  [key: string]: unknown
 }
 
 type StoredOperatorPendingPush = {
@@ -269,6 +282,45 @@ function asStringArray(value: unknown): string[] {
     : []
 }
 
+function asDeliveryArtifacts(value: unknown): DiscordOperatorDeliveryArtifact[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value
+    .map(entry => {
+      const record = asRecord(entry)
+      const path = asString(record?.path)
+      const name = asString(record?.name)
+      const kind = asString(record?.kind) as
+        | DiscordOperatorDeliveryArtifact['kind']
+        | null
+      if (
+        !path ||
+        !name ||
+        !kind ||
+        ![
+          'markdown',
+          'text',
+          'html',
+          'docx',
+          'pptx',
+          'xlsx',
+          'pdf',
+          'workspace',
+        ].includes(kind)
+      ) {
+        return null
+      }
+      return {
+        kind,
+        path,
+        name,
+        relativePath: asString(record?.relativePath),
+      } satisfies DiscordOperatorDeliveryArtifact
+    })
+    .filter((entry): entry is DiscordOperatorDeliveryArtifact => Boolean(entry))
+}
+
 function sanitizeSegment(value: string): string {
   const normalized = value
     .toLowerCase()
@@ -285,13 +337,13 @@ function parseIsoTimestampMs(value: string | null | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function getDiscordRoundtableObservedRuntimeDirs(root = process.cwd()): string[] {
+function getDiscordRoundtableObservedRuntimeDirs(root = OPENJAWS_REPO_ROOT): string[] {
   const primary = getDiscordRoundtableRuntimeDir(root)
   const nested = join(primary, 'roundtable-runtime')
   return existsSync(nested) ? [primary, nested] : [primary]
 }
 
-function getDiscordRoundtableLogPath(root = process.cwd()): string {
+function getDiscordRoundtableLogPath(root = OPENJAWS_REPO_ROOT): string {
   const getTimestampedStdoutLogScore = (path: string): number => {
     const match = /discord-roundtable-(\d{8}T\d{6}Z)\.stdout\.log$/i.exec(
       path.replace(/\\/g, '/'),
@@ -389,7 +441,7 @@ function deriveRoundtableStatusFromSummary(
 }
 
 export function readDiscordRoundtableLogSnapshot(
-  root = process.cwd(),
+  root = OPENJAWS_REPO_ROOT,
 ): DiscordRoundtableLogSnapshot | null {
   const logPath = getDiscordRoundtableLogPath(root)
   if (!existsSync(logPath)) {
@@ -486,38 +538,38 @@ function writeJsonFile(path: string, value: unknown) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
 }
 
-export function getDiscordRoundtableRuntimeDir(root = process.cwd()): string {
+export function getDiscordRoundtableRuntimeDir(root = OPENJAWS_REPO_ROOT): string {
   return resolve(root, 'local-command-station', 'roundtable-runtime')
 }
 
-export function getDiscordRoundtableStatePath(root = process.cwd()): string {
+export function getDiscordRoundtableStatePath(root = OPENJAWS_REPO_ROOT): string {
   return join(getDiscordRoundtableRuntimeDir(root), 'discord-roundtable.state.json')
 }
 
-export function getDiscordRoundtableQueueStatePath(root = process.cwd()): string {
+export function getDiscordRoundtableQueueStatePath(root = OPENJAWS_REPO_ROOT): string {
   return join(
     getDiscordRoundtableRuntimeDir(root),
     'discord-roundtable-queue.state.json',
   )
 }
 
-export function getDiscordRoundtableSessionStatePath(root = process.cwd()): string {
+export function getDiscordRoundtableSessionStatePath(root = OPENJAWS_REPO_ROOT): string {
   return join(getDiscordRoundtableRuntimeDir(root), 'discord-roundtable.session.json')
 }
 
-export function getDiscordRoundtableInboxDir(root = process.cwd()): string {
+export function getDiscordRoundtableInboxDir(root = OPENJAWS_REPO_ROOT): string {
   return join(getDiscordRoundtableRuntimeDir(root), 'handoffs')
 }
 
-export function getDiscordRoundtableQuarantineDir(root = process.cwd()): string {
+export function getDiscordRoundtableQuarantineDir(root = OPENJAWS_REPO_ROOT): string {
   return join(getDiscordRoundtableRuntimeDir(root), 'handoff-quarantine')
 }
 
-export function getOpenJawsOperatorStatePath(root = process.cwd()): string {
+export function getOpenJawsOperatorStatePath(root = OPENJAWS_REPO_ROOT): string {
   return resolve(root, 'local-command-station', 'openjaws-operator-state.json')
 }
 
-function getDiscordRoundtableLegacyRuntimeDirs(root = process.cwd()): string[] {
+function getDiscordRoundtableLegacyRuntimeDirs(root = OPENJAWS_REPO_ROOT): string[] {
   const primary = getDiscordRoundtableRuntimeDir(root)
   const nested = join(primary, 'roundtable-runtime')
   return Array.from(new Set([...getDiscordRoundtableObservedRuntimeDirs(root), nested])).filter(
@@ -589,15 +641,31 @@ function buildBootstrappedRoundtableRuntimeState(args: {
   roundtableChannelName?: string | null
 }): DiscordRoundtableRuntimeState {
   const nowIso = args.now.toISOString()
+  const trackedSession = args.sessionState
+  const trackedEndsAtMs = parseIsoTimestampMs(trackedSession?.endsAt)
+  const shouldReuseTrackedSession =
+    trackedSession !== null &&
+    trackedSession.status !== 'completed' &&
+    trackedSession.status !== 'error' &&
+    (trackedEndsAtMs === null || trackedEndsAtMs > args.now.getTime())
   const state =
-    args.state ??
-    createDiscordRoundtableRuntimeState({
-      now: args.now,
-      roundtableChannelName: args.roundtableChannelName ?? null,
-    })
+    shouldReuseTrackedSession && args.state
+      ? args.state
+      : {
+          ...createDiscordRoundtableRuntimeState({
+            now: args.now,
+            roundtableChannelName: args.roundtableChannelName ?? null,
+          }),
+          jobs:
+            args.state?.jobs.filter(
+              job =>
+                job.status === 'awaiting_approval' &&
+                job.approvalState === 'pending',
+            ) ?? [],
+        }
   const roundtableChannelName =
     args.roundtableChannelName ??
-    args.sessionState?.roundtableChannelName ??
+    trackedSession?.roundtableChannelName ??
     state.roundtableChannelName ??
     null
   const summary =
@@ -730,7 +798,7 @@ export function bootstrapDiscordRoundtableRuntime(args?: {
   durationHours?: number
   now?: Date
 }): DiscordRoundtableBootstrapResult {
-  const runtimeRoot = args?.root ?? process.cwd()
+  const runtimeRoot = args?.root ?? OPENJAWS_REPO_ROOT
   const now = args?.now ?? new Date()
   const durationHours = args?.durationHours ?? DEFAULT_ROUNDTABLE_WINDOW_HOURS
   const storedRuntimeState = readStoredDiscordRoundtableRuntimeState(runtimeRoot)
@@ -821,7 +889,19 @@ function normalizeDiscordRoundtableRuntimeState(
           (entry): entry is string => typeof entry === 'string' && entry.length > 0,
         )
       : [],
-    jobs: Array.isArray(parsed.jobs) ? (parsed.jobs as DiscordRoundtableTrackedJob[]) : [],
+    jobs: Array.isArray(parsed.jobs)
+      ? parsed.jobs
+          .map(entry => asRecord(entry))
+          .filter((entry): entry is JsonRecord => Boolean(entry))
+          .map(entry => ({
+            ...(entry as unknown as DiscordRoundtableTrackedJob),
+            deliveryArtifactManifestPath:
+              typeof entry.deliveryArtifactManifestPath === 'string'
+                ? entry.deliveryArtifactManifestPath
+                : null,
+            deliveryArtifacts: asDeliveryArtifacts(entry.deliveryArtifacts),
+          }))
+      : [],
   }
 }
 
@@ -870,7 +950,7 @@ function normalizeDiscordRoundtableSessionState(
 }
 
 function readStoredDiscordRoundtableRuntimeState(
-  root = process.cwd(),
+  root = OPENJAWS_REPO_ROOT,
 ): DiscordRoundtableRuntimeState | null {
   return normalizeDiscordRoundtableRuntimeState(
     readJsonFile<Partial<DiscordRoundtableRuntimeState>>(
@@ -881,7 +961,7 @@ function readStoredDiscordRoundtableRuntimeState(
 }
 
 function readStoredDiscordRoundtableSessionState(
-  root = process.cwd(),
+  root = OPENJAWS_REPO_ROOT,
 ): DiscordRoundtableSessionState | null {
   return normalizeDiscordRoundtableSessionState(
     readJsonFile<Partial<DiscordRoundtableSessionState>>(
@@ -973,7 +1053,7 @@ function normalizeDiscordRoundtableSessionStatus(
 }
 
 function readLegacyDiscordRoundtableSessionState(
-  root = process.cwd(),
+  root = OPENJAWS_REPO_ROOT,
 ): Partial<DiscordRoundtableSessionState> | null {
   const legacySessionFields = [
     'startedAt',
@@ -1010,7 +1090,7 @@ function readLegacyDiscordRoundtableSessionState(
 }
 
 export function loadDiscordRoundtableRuntimeState(
-  root = process.cwd(),
+  root = OPENJAWS_REPO_ROOT,
 ): DiscordRoundtableRuntimeState {
   const state =
     readStoredDiscordRoundtableRuntimeState(root) ?? createDiscordRoundtableRuntimeState()
@@ -1030,7 +1110,7 @@ export function loadDiscordRoundtableRuntimeState(
 }
 
 export function loadDiscordRoundtableSessionState(
-  root = process.cwd(),
+  root = OPENJAWS_REPO_ROOT,
 ): DiscordRoundtableSessionState | null {
   const parsed = mergeDiscordRoundtableSessionStates({
     stored: readStoredDiscordRoundtableSessionState(root),
@@ -1125,7 +1205,7 @@ function resolvePreferredRoundtableChannelName(args: {
 }
 
 export function readDiscordRoundtableSessionSnapshot(
-  root = process.cwd(),
+  root = OPENJAWS_REPO_ROOT,
   now?: Date,
 ): DiscordRoundtableSessionState | null {
   const session = loadDiscordRoundtableSessionState(root)
@@ -1202,7 +1282,7 @@ function getSessionCompatibleRuntimeStatus(
 }
 
 export function syncDiscordRoundtableRuntimeState(
-  root = process.cwd(),
+  root = OPENJAWS_REPO_ROOT,
   now?: Date,
 ): DiscordRoundtableSyncResult {
   const storedRuntimeState =
@@ -1329,7 +1409,7 @@ export function stageDiscordRoundtableHandoff(args: {
   handoffPath: string
   now?: Date
 }): string {
-  const runtimeRoot = args.root ?? process.cwd()
+  const runtimeRoot = args.root ?? OPENJAWS_REPO_ROOT
   const sourcePath = resolve(args.handoffPath)
   if (!existsSync(sourcePath)) {
     throw new Error(`Roundtable handoff path not found: ${sourcePath}`)
@@ -1351,7 +1431,7 @@ export function stageDiscordRoundtableHandoff(args: {
   return targetPath
 }
 
-export function listDiscordRoundtableHandoffs(root = process.cwd()): string[] {
+export function listDiscordRoundtableHandoffs(root = OPENJAWS_REPO_ROOT): string[] {
   const inboxDir = getDiscordRoundtableInboxDir(root)
   if (!existsSync(inboxDir)) {
     return []
@@ -1463,7 +1543,7 @@ function quarantineDiscordRoundtableHandoff(args: {
   reason: string
   now?: Date
 }): string {
-  const runtimeRoot = args.root ?? process.cwd()
+  const runtimeRoot = args.root ?? OPENJAWS_REPO_ROOT
   const sourcePath = resolve(args.handoffPath)
   const quarantineDir = getDiscordRoundtableQuarantineDir(runtimeRoot)
   mkdirSync(quarantineDir, { recursive: true })
@@ -1539,9 +1619,6 @@ function normalizeRuntimeStatus(
   lastError: string | null,
   currentStatus?: DiscordRoundtableRuntimeState['status'],
 ): DiscordRoundtableRuntimeState['status'] {
-  if (lastError) {
-    return 'error'
-  }
   if (jobs.some(job => job.status === 'running')) {
     return 'running'
   }
@@ -1551,8 +1628,11 @@ function normalizeRuntimeStatus(
   if (jobs.some(job => job.status === 'queued')) {
     return 'queued'
   }
-  if (currentStatus === 'running') {
-    return 'running'
+  if (
+    lastError &&
+    jobs.some(job => !isDiscordExecutionTerminalStatus(job.status))
+  ) {
+    return 'error'
   }
   return 'idle'
 }
@@ -1652,7 +1732,9 @@ function buildRoundtableTransitionReceipts(args: {
       previous.branchName !== job.branchName ||
       previous.receiptPath !== job.receiptPath ||
       previous.rejectionReason !== job.rejectionReason ||
-      previous.commitSha !== job.commitSha
+      previous.commitSha !== job.commitSha ||
+      previous.deliveryArtifactManifestPath !== job.deliveryArtifactManifestPath ||
+      previous.deliveryArtifacts.length !== job.deliveryArtifacts.length
     if (!changed) {
       continue
     }
@@ -1666,6 +1748,8 @@ function buildRoundtableTransitionReceipts(args: {
       commitSha: job.commitSha ?? null,
       verificationSummary: job.verificationSummary ?? null,
       receiptPath: job.receiptPath ?? null,
+      deliveryArtifactManifestPath: job.deliveryArtifactManifestPath ?? null,
+      deliveryArtifacts: job.deliveryArtifacts,
       rejectionReason: job.rejectionReason ?? null,
       summary: job.summary ?? null,
     })
@@ -1684,6 +1768,9 @@ function formatRoundtableQueueJobLine(
   segments.push(job.summary ?? job.objective)
   if (job.receiptPath) {
     segments.push(`receipt ${job.receiptPath}`)
+  }
+  if (job.deliveryArtifacts.length > 0) {
+    segments.push(`artifacts ${job.deliveryArtifacts.length}`)
   }
   return segments.join(' · ')
 }
@@ -1752,6 +1839,8 @@ function createTrackedJob(args: {
     targetRootLabel: scope.rootLabel,
     receiptPath: null,
     outputDir: null,
+    deliveryArtifactManifestPath: null,
+    deliveryArtifacts: [],
     commitStatement: args.action.commitStatement,
     decisionTraceId: args.action.decisionTraceId,
     routeSuggestion: args.action.routeSuggestion,
@@ -1840,6 +1929,44 @@ function loadOperatorState(path: string): StoredOperatorState {
   return readJsonFile<StoredOperatorState>(path) ?? { pendingPushes: [] }
 }
 
+function hasOperatorStatePayload(
+  state: StoredOperatorState,
+  pendingPushes: StoredOperatorPendingPush[] = state.pendingPushes ?? [],
+): boolean {
+  if (pendingPushes.length > 0) {
+    return true
+  }
+  return Object.entries(state).some(([key, value]) => {
+    if (key === 'pendingPushes' || value === null || value === undefined) {
+      return false
+    }
+    if (typeof value === 'string') {
+      return value.trim().length > 0
+    }
+    if (Array.isArray(value)) {
+      return value.length > 0
+    }
+    if (typeof value === 'object') {
+      return Object.keys(value).length > 0
+    }
+    return true
+  })
+}
+
+function writeOrDeleteOperatorState(path: string, state: StoredOperatorState) {
+  const pendingPushes = state.pendingPushes ?? []
+  if (!hasOperatorStatePayload(state, pendingPushes)) {
+    try {
+      unlinkSync(path)
+    } catch {}
+    return
+  }
+  writeJsonFile(path, {
+    ...state,
+    pendingPushes,
+  })
+}
+
 function appendOperatorPendingPush(args: {
   path: string
   job: DiscordRoundtableTrackedJob
@@ -1899,10 +2026,12 @@ function pruneOperatorPendingPushes(args: {
     }
     return activeApprovalJobs.has(push.jobId)
   })
+  // If the pending pushes haven't changed, no need to write.
   if (nextPendingPushes.length === (state.pendingPushes ?? []).length) {
+    writeOrDeleteOperatorState(args.path, state)
     return
   }
-  writeJsonFile(args.path, {
+  writeOrDeleteOperatorState(args.path, {
     ...state,
     pendingPushes: nextPendingPushes,
   })
@@ -1969,6 +2098,11 @@ async function runQueuedJob(args: {
     timeoutMs: args.options.timeoutMs ?? 12 * 60_000,
   })
   const completedAt = (args.options.now?.() ?? new Date()).toISOString()
+  const deliveryArtifacts = collectDiscordOperatorDeliveryArtifacts({
+    delivery: execution.job.delivery ?? null,
+    outputDir: execution.outputDir,
+    workspacePath: execution.runContext.workspacePath,
+  })
   const nextJobs = state.jobs.map(candidate => {
     if (candidate.id !== args.job.id) {
       return candidate
@@ -1990,6 +2124,8 @@ async function runQueuedJob(args: {
       targetRootLabel: execution.targetRootLabel,
       receiptPath: execution.receiptPath,
       outputDir: execution.outputDir,
+      deliveryArtifactManifestPath: execution.job.deliveryArtifactManifestPath,
+      deliveryArtifacts,
       completedAt,
       leaseExpiresAt: null,
       leaseOwner: null,
@@ -2045,7 +2181,7 @@ async function runQueuedJob(args: {
 export async function processDiscordRoundtableRuntime(
   options: DiscordRoundtableRuntimeOptions,
 ): Promise<DiscordRoundtableProcessResult> {
-  const runtimeRoot = options.root ?? process.cwd()
+  const runtimeRoot = options.root ?? OPENJAWS_REPO_ROOT
   mkdirSync(getDiscordRoundtableRuntimeDir(runtimeRoot), { recursive: true })
   mkdirSync(options.outputRoot, { recursive: true })
   mkdirSync(options.worktreeRoot, { recursive: true })
@@ -2326,6 +2462,17 @@ export function formatDiscordRoundtableTransitionReceipt(
   }
   if (receipt.receiptPath) {
     lines.push(`Receipt: ${receipt.receiptPath}`)
+  }
+  if (receipt.deliveryArtifactManifestPath) {
+    lines.push('Manifest: delivery-artifacts.manifest.json')
+  }
+  if (receipt.deliveryArtifacts.length > 0) {
+    lines.push(
+      `Artifacts: ${receipt.deliveryArtifacts
+        .slice(0, 5)
+        .map(artifact => artifact.name)
+        .join(', ')}${receipt.deliveryArtifacts.length > 5 ? ` +${receipt.deliveryArtifacts.length - 5} more` : ''}`,
+    )
   }
   if (receipt.status === 'awaiting_approval') {
     lines.push(`Confirm: @Q operator confirm-push ${receipt.jobId}`)

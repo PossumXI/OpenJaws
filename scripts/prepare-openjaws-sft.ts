@@ -15,6 +15,7 @@ type CliOptions = {
   inputPath: string
   outDir: string
   evalRatio: number
+  seedPaths: string[]
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -22,6 +23,15 @@ function parseArgs(argv: string[]): CliOptions {
     inputPath: resolve(process.cwd(), 'data', 'sft', 'openjaws-sft.jsonl'),
     outDir: resolve(process.cwd(), 'data', 'sft', 'prepared'),
     evalRatio: 0.05,
+    seedPaths: [
+      resolve(
+        process.cwd(),
+        'training',
+        'q',
+        'seeds',
+        'q-freshness-tool-evidence.jsonl',
+      ),
+    ],
   }
 
   for (let i = 0; i < argv.length; i++) {
@@ -41,6 +51,14 @@ function parseArgs(argv: string[]): CliOptions {
       }
       continue
     }
+    if (arg === '--seed' && argv[i + 1]) {
+      options.seedPaths.push(resolve(argv[++i]!))
+      continue
+    }
+    if (arg === '--no-default-seeds') {
+      options.seedPaths = []
+      continue
+    }
     if (arg === '--help' || arg === '-h') {
       printHelpAndExit()
     }
@@ -58,14 +76,33 @@ function printHelpAndExit(): never {
       '  --in <path>           Input JSONL from export:sft',
       '  --out-dir <path>      Output directory for prepared files',
       '  --eval-ratio <n>      Eval split ratio, default 0.05',
+      '  --seed <path>         Extra JSONL seed file; may be repeated',
+      '  --no-default-seeds    Do not merge tracked training/q/seeds files',
       '  -h, --help            Show this help',
     ].join('\n'),
   )
   process.exit(0)
 }
 
-async function loadSamples(path: string): Promise<OpenJawsSftSample[]> {
-  const content = await readFile(path, 'utf8')
+async function loadSamples(
+  path: string,
+  options: { optional?: boolean } = {},
+): Promise<OpenJawsSftSample[]> {
+  let content: string
+  try {
+    content = await readFile(path, 'utf8')
+  } catch (error) {
+    if (
+      options.optional &&
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === 'ENOENT'
+    ) {
+      return []
+    }
+    throw error
+  }
   return content
     .split(/\r?\n/)
     .map(line => line.trim())
@@ -88,7 +125,16 @@ async function writeJsonl(path: string, rows: PreparedOpenJawsSftSample[]) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2))
-  const input = await loadSamples(options.inputPath)
+  const input = [
+    ...(await loadSamples(options.inputPath)),
+    ...(
+      await Promise.all(
+        options.seedPaths.map(seedPath =>
+          loadSamples(seedPath, { optional: true }),
+        ),
+      )
+    ).flat(),
+  ]
   const prepared = prepareOpenJawsSftDataset(input, {
     evalRatio: options.evalRatio,
   })
@@ -148,6 +194,7 @@ async function main() {
     JSON.stringify(
       {
         inputPath: options.inputPath,
+        seedPaths: options.seedPaths,
         outDir: options.outDir,
         evalRatio: options.evalRatio,
         ...prepared.manifest,

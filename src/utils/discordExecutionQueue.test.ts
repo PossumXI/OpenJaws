@@ -97,6 +97,86 @@ describe('discordExecutionQueue', () => {
     ).toBe(true)
   })
 
+  it('blocks a same-project job when the prior job is awaiting approval', () => {
+    expect(
+      shouldEnqueueDiscordExecutionJob({
+        candidate: {
+          workKey: 'openjaws::docs',
+          projectKey: 'openjaws',
+        },
+        jobs: [
+          buildJob({
+            id: 'job-awaiting-approval',
+            status: 'awaiting_approval',
+            approvalState: null,
+            workKey: 'openjaws::src',
+            projectKey: 'openjaws',
+          }),
+        ],
+        maxActiveJobs: 2,
+      }),
+    ).toBe(false)
+  })
+
+  it('releases a project lease only after approval resolves or expires', () => {
+    const candidate = {
+      workKey: 'openjaws::docs',
+      projectKey: 'openjaws',
+    }
+    const pendingApprovalJob = buildJob({
+      id: 'job-pending',
+      status: 'awaiting_approval',
+      approvalState: 'pending',
+      workKey: 'openjaws::src',
+      projectKey: 'openjaws',
+      completedAt: '2026-04-20T08:00:00.000Z',
+    })
+
+    expect(
+      shouldEnqueueDiscordExecutionJob({
+        candidate,
+        jobs: [pendingApprovalJob],
+        maxActiveJobs: 2,
+      }),
+    ).toBe(false)
+
+    expect(
+      shouldEnqueueDiscordExecutionJob({
+        candidate,
+        jobs: [{ ...pendingApprovalJob, approvalState: 'approved' }],
+        maxActiveJobs: 2,
+      }),
+    ).toBe(true)
+
+    expect(
+      shouldEnqueueDiscordExecutionJob({
+        candidate,
+        jobs: [
+          {
+            ...pendingApprovalJob,
+            status: 'rejected',
+            approvalState: 'rejected',
+          },
+        ],
+        maxActiveJobs: 2,
+      }),
+    ).toBe(true)
+
+    const expiredApprovalJob = reconcileDiscordExecutionJobs([pendingApprovalJob], {
+      nowMs: Date.parse('2026-04-20T12:00:00.000Z'),
+      approvalTtlHours: 2,
+    })
+
+    expect(expiredApprovalJob[0]?.status).toBe('rejected')
+    expect(
+      shouldEnqueueDiscordExecutionJob({
+        candidate,
+        jobs: expiredApprovalJob,
+        maxActiveJobs: 2,
+      }),
+    ).toBe(true)
+  })
+
   it('only releases the next queued job when no job is running', () => {
     const queued = buildJob({ id: 'job-queued', status: 'queued' })
     const running = buildJob({ id: 'job-running', status: 'running' })
@@ -122,6 +202,7 @@ describe('discordExecutionQueue', () => {
     expect(findDiscordExecutionApprovalTarget(jobs, 'job-old')?.id).toBe(
       'job-old',
     )
-    expect(findDiscordExecutionApprovalTarget(jobs, null)?.id).toBe('job-new')
+    expect(findDiscordExecutionApprovalTarget(jobs, null)).toBeNull()
+    expect(findDiscordExecutionApprovalTarget(jobs, 'latest')?.id).toBe('job-new')
   })
 })

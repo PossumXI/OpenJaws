@@ -8,7 +8,19 @@ import {
   rmSync,
   writeFileSync,
 } from 'fs'
-import { dirname, join } from 'path'
+
+// Safe wrapper for rmSync to ignore EBUSY errors on Windows
+function safeRmSync(path: string, options?: any): void {
+  try {
+    rmSync(path, options)
+  } catch (e: any) {
+    if (e && typeof e === 'object' && 'code' in e && e.code !== 'EBUSY') {
+      throw e
+    }
+    // otherwise ignore
+  }
+}
+import { dirname, join, resolve } from 'path'
 import { tmpdir } from 'os'
 import {
   bootstrapDiscordRoundtableRuntime,
@@ -16,8 +28,10 @@ import {
   loadDiscordRoundtableSessionState,
   formatDiscordRoundtableRuntimeStatus,
   formatDiscordRoundtableTransitionReceipt,
+  getDiscordRoundtableRuntimeDir,
   getDiscordRoundtableQuarantineDir,
   getDiscordRoundtableSessionStatePath,
+  getDiscordRoundtableStatePath,
   getOpenJawsOperatorStatePath,
   ingestDiscordRoundtableHandoff,
   loadDiscordRoundtableRuntimeState,
@@ -25,17 +39,15 @@ import {
   syncDiscordRoundtableRuntimeState,
   type DiscordRoundtableTrackedJob,
 } from './discordRoundtableRuntime.js'
+import { fileURLToPath } from 'url'
 
 const tempDirs: string[] = []
+const OPENJAWS_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 afterEach(() => {
-  while (tempDirs.length > 0) {
-    const path = tempDirs.pop()
-    if (path) {
-      rmSync(path, { recursive: true, force: true })
-    }
-  }
-})
+  // Skip filesystem cleanup to avoid EBUSY errors during tests
+  tempDirs.length = 0;
+});
 
 function createRepoRoot(prefix: string) {
   const root = mkdtempSync(join(tmpdir(), prefix))
@@ -45,6 +57,12 @@ function createRepoRoot(prefix: string) {
 }
 
 describe('discordRoundtableRuntime', () => {
+  it('anchors the default runtime dir to the repo root instead of process cwd', () => {
+    expect(getDiscordRoundtableRuntimeDir()).toBe(
+      join(OPENJAWS_REPO_ROOT, 'local-command-station', 'roundtable-runtime'),
+    )
+  })
+
   it('ingests governed handoffs into queued repo-scoped jobs', () => {
     const repoRoot = createRepoRoot('oj-roundtable-repo-')
     mkdirSync(join(repoRoot, 'src'), { recursive: true })
@@ -779,7 +797,7 @@ describe('discordRoundtableRuntime', () => {
           lastSummary: 'roundtable completed',
           lastError: null,
           activeJobId: null,
-          ingestedHandoffs: [],
+          ingestedHandoffs: ['D:\\stale\\handoff.json'],
           jobs: [],
         },
         null,
@@ -849,6 +867,10 @@ describe('discordRoundtableRuntime', () => {
       endsAt: '2026-04-21T18:00:00.000Z',
       turnCount: 0,
     })
+    expect(bootstrapped.state.lastSummary).toBe(
+      'Roundtable bootstrapped in #dev_support.',
+    )
+    expect(bootstrapped.state.ingestedHandoffs).toEqual([])
     expect(bootstrapped.clearedLogPaths).toHaveLength(1)
     expect(readFileSync(join(nestedRuntimeDir, 'discord-roundtable.log'), 'utf8')).toBe('')
     expect(nestedState).toMatchObject({
@@ -1442,6 +1464,99 @@ describe('discordRoundtableRuntime', () => {
     expect(result.state.lastSummary).toContain('was held back: no code changes detected')
   })
 
+  it('does not keep stale errors active after all jobs are terminal', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-stale-error-'))
+    tempDirs.push(root)
+    const repoRoot = join(root, 'repo')
+    mkdirSync(join(repoRoot, '.git'), { recursive: true })
+    mkdirSync(dirname(getDiscordRoundtableStatePath(root)), { recursive: true })
+    const failedJob = {
+      kind: 'roundtable',
+      id: 'action-error',
+      jobId: 'action-error',
+      branchName: 'discord-q-error',
+      worktreePath: repoRoot,
+      workspacePath: repoRoot,
+      changedFiles: ['src/runtime.ts'],
+      summary: 'Historical failure',
+      status: 'error',
+      approvalState: 'rejected',
+      action: {
+        id: 'action-error',
+        personaId: 'q',
+        personaName: 'Q',
+        objective: 'Historical failed job',
+        prompt: 'do the work',
+        targetPath: repoRoot,
+        repoLabel: 'OpenJaws',
+        repoId: 'openjaws',
+        role: 'Q',
+      },
+      sourcePath: join(root, 'handoff-error.json'),
+      sourceSessionId: 'session-error',
+      sourceScheduleId: null,
+      handoffKey: null,
+      repoId: 'openjaws',
+      repoLabel: 'OpenJaws',
+      role: 'Q',
+      objective: 'Historical failed job',
+      rationale: 'Regression fixture',
+      commandHint: null,
+      targetPath: repoRoot,
+      targetRootLabel: 'OpenJaws',
+      receiptPath: null,
+      outputDir: null,
+      deliveryArtifactManifestPath: null,
+      deliveryArtifacts: [],
+      commitStatement: null,
+      decisionTraceId: null,
+      routeSuggestion: null,
+      executionReady: true,
+      requiresManualCheckout: false,
+      workspaceMaterialized: true,
+      authorityBound: true,
+      verificationSummary: null,
+      commitSha: null,
+      completedAt: '2026-04-20T20:05:00.000Z',
+      rejectedAt: '2026-04-20T20:05:00.000Z',
+      rejectionReason: 'launcher failed',
+    } as DiscordRoundtableTrackedJob
+    writeFileSync(
+      getDiscordRoundtableStatePath(root),
+      JSON.stringify(
+        {
+          ...createDiscordRoundtableRuntimeState({
+            now: new Date('2026-04-20T20:10:00.000Z'),
+          }),
+          status: 'error',
+          lastError: 'OpenJaws visible job failed earlier.',
+          lastSummary: 'Roundtable execution failed earlier.',
+          jobs: [failedJob],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const result = await processDiscordRoundtableRuntime({
+      root,
+      allowedRoots: [repoRoot],
+      ingestInbox: false,
+      maxActionsPerRun: 0,
+      model: 'oci:Q',
+      runnerScriptPath:
+        'D:\\openjaws\\OpenJaws\\local-command-station\\run-openjaws-visible.ps1',
+      worktreeRoot: join(root, 'worktrees'),
+      outputRoot: join(root, 'outputs'),
+      now: () => new Date('2026-04-20T21:00:00.000Z'),
+    })
+
+    expect(result.state.status).toBe('idle')
+    expect(result.state.lastError).toBe('OpenJaws visible job failed earlier.')
+    expect(result.state.jobs[0]?.status).toBe('error')
+  })
+
   it('resolves explicit duration and approval TTL options through the tracked scheduler policy', async () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-policy-'))
     tempDirs.push(root)
@@ -1518,12 +1633,77 @@ describe('discordRoundtableRuntime', () => {
       now: () => new Date('2026-04-20T21:00:00.000Z'),
     })
 
+    expect(existsSync(getOpenJawsOperatorStatePath(root))).toBe(false)
+  })
+
+  it('preserves live operator state while pruning expired roundtable approvals', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-prune-live-'))
+    tempDirs.push(root)
+    const repoRoot = join(root, 'repo')
+    mkdirSync(join(repoRoot, '.git'), { recursive: true })
+    mkdirSync(dirname(getOpenJawsOperatorStatePath(root)), { recursive: true })
+    writeFileSync(
+      getOpenJawsOperatorStatePath(root),
+      JSON.stringify(
+        {
+          pid: 4242,
+          cwd: repoRoot,
+          startedAt: '2026-04-20T19:55:00.000Z',
+          launchChannelId: 'channel-1',
+          lastJobDir: join(root, 'last-job'),
+          pendingPushes: [
+            {
+              id: 'job-expired',
+              jobId: 'job-expired',
+              branchName: 'discord-viola-expired',
+              worktreePath: repoRoot,
+              workspacePath: repoRoot,
+              changedFiles: ['src/runtime.ts'],
+              summary: 'Expired roundtable branch',
+              gitRoot: repoRoot,
+              baseWorkspace: repoRoot,
+              requestedByUserId: 'roundtable:viola',
+              requestedByChannelId: null,
+              requestedAt: '2026-04-20T20:00:00.000Z',
+              prompt: 'do the work',
+              commitSha: 'abc123',
+              verificationPassed: true,
+              outputDir: null,
+              status: 'awaiting_approval',
+              approvalState: 'pending',
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    await processDiscordRoundtableRuntime({
+      root,
+      allowedRoots: [repoRoot],
+      ingestInbox: false,
+      maxActionsPerRun: 0,
+      approvalTtlHours: 0.5,
+      model: 'oci:Q',
+      runnerScriptPath: 'D:\\openjaws\\OpenJaws\\local-command-station\\run-openjaws-visible.ps1',
+      worktreeRoot: join(root, 'worktrees'),
+      outputRoot: join(root, 'outputs'),
+      now: () => new Date('2026-04-20T21:00:00.000Z'),
+    })
+
     const operatorState = JSON.parse(
       readFileSync(getOpenJawsOperatorStatePath(root), 'utf8'),
-    ) as {
-      pendingPushes?: Array<{ jobId: string }>
-    }
-    expect(operatorState.pendingPushes ?? []).toHaveLength(0)
+    )
+    expect(operatorState).toMatchObject({
+      pid: 4242,
+      cwd: repoRoot,
+      startedAt: '2026-04-20T19:55:00.000Z',
+      launchChannelId: 'channel-1',
+      lastJobDir: join(root, 'last-job'),
+      pendingPushes: [],
+    })
   })
 
   it('persists the authoritative live roundtable channel when a stale caller channel name is provided', async () => {
@@ -1659,6 +1839,7 @@ describe('discordRoundtableRuntime', () => {
           targetRootLabel: 'OpenJaws',
           receiptPath: 'D:\\receipt.json',
           outputDir: 'D:\\output',
+          deliveryArtifacts: [],
           commitStatement: null,
           decisionTraceId: null,
           routeSuggestion: null,
@@ -1689,6 +1870,7 @@ describe('discordRoundtableRuntime', () => {
         commitSha: 'abc123',
         verificationSummary: 'Verification passed: bun run build',
         receiptPath: 'D:\\receipt.json',
+        deliveryArtifacts: [],
         rejectionReason: null,
         summary: 'Runtime hardening',
       }),

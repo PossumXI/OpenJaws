@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   buildRouteDispatchPythonArgs,
   getWorkerLeaseDurationMs,
+  resolveRemoteDispatchAckBlockReason,
   validateRemoteExecutionEndpoint,
 } from './routing.js'
 
@@ -142,5 +143,27 @@ describe('q routing helpers', () => {
       ok: true,
       endpoint: 'http://127.0.0.1:8787/execute',
     })
+  })
+
+  test('requires remote dispatch acknowledgements to include a state URL', () => {
+    expect(
+      resolveRemoteDispatchAckBlockReason({
+        accepted: true,
+        executionId: 'exec-1',
+        summary: 'accepted',
+        stateUrl: null,
+        status: 202,
+      }),
+    ).toBe('remote dispatch 202 accepted without stateUrl')
+
+    expect(
+      resolveRemoteDispatchAckBlockReason({
+        accepted: true,
+        executionId: 'exec-1',
+        summary: 'accepted',
+        stateUrl: ' https://route.example/state/run-1.json ',
+        status: 202,
+      }),
+    ).toBeNull()
   })
 })

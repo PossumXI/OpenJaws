@@ -122,7 +122,7 @@ describe('generate-website-benchmark-snapshot helpers', () => {
     expect(resolved).toBe(preferredReceipt)
   })
 
-  test('builds an auth-missing W&B summary when the key is absent', () => {
+  test('builds a public-safe local receipt summary when W&B auth is absent', () => {
     expect(
       buildWandbSummary({
         enabled: true,
@@ -131,12 +131,12 @@ describe('generate-website-benchmark-snapshot helpers', () => {
         url: 'https://wandb.ai/example/run',
       }),
     ).toEqual({
-      status: 'auth missing',
+      status: 'local receipts',
       enabled: false,
       source: 'env',
       url: 'https://wandb.ai/example/run',
       summary:
-        'A live W&B project target was configured for this benchmark pass, but no local WANDB login/API key was available, so the receipts stayed local only.',
+        'External W&B publishing is not enabled for this public snapshot. Verified local receipts remain available for audit.',
     })
   })
 
@@ -165,6 +165,7 @@ describe('generate-website-benchmark-snapshot helpers', () => {
     const resolved = resolveLatestPreferredReceipt(
       [resolve(dir, 'q-soak-live-*', 'q-soak-report.json')],
       newestFailedReceipt,
+      false,
       patterns => collectMatchingReceiptPaths(patterns),
       path =>
         path === olderPassedReceipt
@@ -194,6 +195,9 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
 
     const snapshot = buildSnapshot(options, {
       resolveLatestReceipt: (patterns, fallbackPath) => {
+        if (patterns.some(pattern => pattern.includes('q-bridgebench-'))) {
+          return fakePaths.bridge
+        }
         if (patterns.some(pattern => pattern.includes('q-terminalbench-official-public-'))) {
           return fakePaths.terminal
         }
@@ -204,7 +208,7 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
       },
       collectMatchingReceiptPaths: patterns => {
         const first = patterns[0] ?? ''
-        if (first.includes('q-bridgebench-live-')) {
+        if (first.includes('q-bridgebench-')) {
           return [fakePaths.bridge, fakePaths.wandb]
         }
         if (first.includes('q-soak-live-')) {
@@ -300,8 +304,9 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
     expect(snapshot.terminalBench.summary).toContain('official leaderboard submission')
     expect(snapshot.terminalBench.summary).toContain('5 benchmark-failing trials')
     expect(snapshot.terminalBenchSoak.cycleCount).toBe(2)
-    expect(snapshot.wandb.status).toBe('auth missing')
-    expect(snapshot.source).toContain(fakePaths.bridge)
+    expect(snapshot.wandb.status).toBe('local receipts')
+    expect(snapshot.source).toContain('verified OpenJaws benchmark receipt')
+    expect(snapshot.source).not.toContain(fakePaths.bridge)
   })
 
   test('buildSnapshot prefers the latest clean soak and the latest authful W&B receipt', () => {
@@ -318,6 +323,9 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
 
     const snapshot = buildSnapshot(options, {
       resolveLatestReceipt: (patterns, fallbackPath) => {
+        if (patterns.some(pattern => pattern.includes('q-bridgebench-'))) {
+          return fakePaths.bridgePreferred
+        }
         if (patterns.some(pattern => pattern.includes('q-terminalbench-official-public-'))) {
           return fakePaths.terminal
         }
@@ -328,7 +336,7 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
       },
       collectMatchingReceiptPaths: patterns => {
         const first = patterns[0] ?? ''
-        if (first.includes('q-bridgebench-live-')) {
+        if (first.includes('q-bridgebench-')) {
           return [fakePaths.bridgePreferred, fakePaths.bridgeWandb]
         }
         if (first.includes('q-soak-live-')) {
@@ -432,7 +440,7 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
     expect(snapshot.bridgeBench.benchmarkId).toBe('bridge-preferred')
     expect(snapshot.soak.runId).toBe('soak-clean')
     expect(snapshot.soak.summary).toContain('30-minute bounded soak.')
-    expect(snapshot.wandb.status).toBe('auth missing')
+    expect(snapshot.wandb.status).toBe('local receipts')
     expect(snapshot.wandb.url).toBe('https://wandb.ai/example/project')
   })
 
@@ -449,6 +457,9 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
 
     const snapshot = buildSnapshot(options, {
       resolveLatestReceipt: (patterns, fallbackPath) => {
+        if (patterns.some(pattern => pattern.includes('q-bridgebench-'))) {
+          return fakePaths.bridge
+        }
         if (patterns.some(pattern => pattern.includes('q-terminalbench-official-public-'))) {
           return fakePaths.terminal
         }
@@ -459,7 +470,7 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
       },
       collectMatchingReceiptPaths: patterns => {
         const first = patterns[0] ?? ''
-        if (first.includes('q-bridgebench-live-')) {
+        if (first.includes('q-bridgebench-')) {
           return [fakePaths.bridge, fakePaths.wandb]
         }
         if (first.includes('q-soak-live-')) {
@@ -558,6 +569,9 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
 
     const snapshot = buildSnapshot(options, {
       resolveLatestReceipt: (patterns, fallbackPath) => {
+        if (patterns.some(pattern => pattern.includes('q-bridgebench-'))) {
+          return fakePaths.bridge
+        }
         if (patterns.some(pattern => pattern.includes('q-terminalbench-soak-live-'))) {
           return fakePaths.terminalSoak
         }
@@ -565,7 +579,7 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
       },
       collectMatchingReceiptPaths: patterns => {
         const first = patterns[0] ?? ''
-        if (first.includes('q-bridgebench-live-')) {
+        if (first.includes('q-bridgebench-')) {
           return [fakePaths.bridge, fakePaths.wandb]
         }
         if (first.includes('q-soak-live-')) {
@@ -667,6 +681,124 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
     expect(snapshot.terminalBench.status).toBe('failed')
   })
 
+  test('buildSnapshot preserves a bridgebench preflight block instead of flattening it into a fake zero score', () => {
+    const options = parseArgs([])
+
+    const fakePaths = {
+      bridge: 'fake://bridgebench-blocked',
+      soak: 'fake://soak',
+      terminal: 'fake://terminalbench',
+      terminalSoak: 'fake://terminalbench-soak',
+      wandb: 'fake://wandb',
+    }
+
+    const snapshot = buildSnapshot(options, {
+      resolveLatestReceipt: (patterns, fallbackPath) => {
+        if (patterns.some(pattern => pattern.includes('q-bridgebench-'))) {
+          return fakePaths.bridge
+        }
+        if (patterns.some(pattern => pattern.includes('q-terminalbench-soak-live-'))) {
+          return fakePaths.terminalSoak
+        }
+        return fallbackPath
+      },
+      collectMatchingReceiptPaths: patterns => {
+        const first = patterns[0] ?? ''
+        if (first.includes('q-bridgebench-')) {
+          return [fakePaths.bridge, fakePaths.wandb]
+        }
+        if (first.includes('q-soak-live-')) {
+          return [fakePaths.soak]
+        }
+        if (first.includes('q-terminalbench-official-public-')) {
+          return [fakePaths.terminal]
+        }
+        if (first.includes('q-terminalbench-soak-live-')) {
+          return [fakePaths.terminalSoak]
+        }
+        return []
+      },
+      readJson: path => {
+        switch (path) {
+          case fakePaths.bridge:
+            return {
+              benchmarkId: 'bridge-blocked',
+              generatedAt: '2026-04-22T16:08:09.140Z',
+              status: 'failed_preflight',
+              summary: 'Q BridgeBench blocked before evaluation; see per-pack preflight details.',
+              results: [
+                {
+                  pack: 'all',
+                  status: 'failed',
+                  summary: 'All pack blocked: Local host memory too tight for Q Lite.',
+                },
+              ],
+            }
+          case fakePaths.soak:
+            return {
+              runId: 'soak-1',
+              generatedAt: '2026-04-16T00:05:00.000Z',
+              durationMinutes: 30,
+              summary: {
+                totalProbes: 52,
+                successCount: 52,
+                errorCount: 0,
+                byMode: {
+                  openjaws: { latencyMs: { p95: 1200 } },
+                  'oci-q': { latencyMs: { p95: 800 } },
+                },
+              },
+            }
+          case fakePaths.terminal:
+            return {
+              runId: 'terminal-1',
+              generatedAt: '2026-04-22T16:50:24.483Z',
+              officialSubmission: true,
+              status: 'completed_with_errors',
+              tasks: [{ taskName: 'circuit-fibsqrt' }],
+              aggregate: {
+                totalTrials: 5,
+                executionErrorTrials: 5,
+                benchmarkFailedTrials: 0,
+                avgReward: 0,
+              },
+              agent: 'openjaws',
+              model: 'oci:Q',
+            }
+          case fakePaths.terminalSoak:
+            return {
+              runId: 'terminal-soak-1',
+              generatedAt: '2026-04-16T00:12:00.000Z',
+              status: 'completed_with_errors',
+              tasks: [{ taskName: 'terminal-bench/circuit-fibsqrt' }],
+              cycles: [{}, {}],
+              aggregate: {
+                totalTrials: 2,
+                executionErrorTrials: 0,
+                benchmarkFailedTrials: 2,
+              },
+            }
+          case fakePaths.wandb:
+            return {
+              generatedAt: '2026-04-22T16:08:09.140Z',
+              wandb: {
+                enabled: false,
+                apiKeyPresent: false,
+                source: 'none',
+              },
+            }
+          default:
+            throw new Error(`Unexpected path ${path}`)
+        }
+      },
+    })
+
+    expect(snapshot.bridgeBench.status).toBe('failed_preflight')
+    expect(snapshot.bridgeBench.bestPack).toBe('all')
+    expect(snapshot.bridgeBench.scorePercent).toBeNull()
+    expect(snapshot.bridgeBench.summary).toContain('blocked before evaluation')
+  })
+
   test('writeIfChanged only touches disk when the content changes', () => {
     const dir = makeTempDir('openjaws-snapshot-write-')
     const file = resolve(dir, 'benchmarkSnapshot.generated.json')
@@ -684,6 +816,7 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
       source: 'checked-in snapshot fallback',
       bridgeBench: {
         benchmarkId: 'fallback-bridge',
+        status: 'completed',
         bestPack: 'all',
         scorePercent: 42.11,
         summary: 'Fallback bridge summary',
@@ -721,7 +854,7 @@ describe('generate-website-benchmark-snapshot integration helpers', () => {
         summary: 'Fallback terminal soak summary',
       },
       wandb: {
-        status: 'auth missing',
+        status: 'local receipts',
         enabled: false,
         source: 'env',
         summary: 'Fallback wandb summary',

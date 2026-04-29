@@ -28,6 +28,7 @@ import {
 } from '../src/utils/immaculateTraceReceipt.js'
 import { queryOciQViaPython } from '../src/utils/ociQBridge.js'
 import { resolveOciQRuntime } from '../src/utils/ociQRuntime.js'
+import { appendQRuntimeFreshnessBlock } from '../src/q/freshness.js'
 
 type CliOptions = {
   root: string
@@ -93,7 +94,10 @@ function parseArgs(argv: string[]): CliOptions {
     maxProbes: null,
     openjawsModel: 'oci:Q',
     prompt: 'Reply with the single word OK.',
-    systemPrompt: 'Reply briefly and operationally.',
+    systemPrompt: appendQRuntimeFreshnessBlock('Reply briefly and operationally.', {
+      benchmarkMode: true,
+      webResearchAvailable: false,
+    }),
     seed: resolveDeterministicSeed(),
     dryRun: false,
   }

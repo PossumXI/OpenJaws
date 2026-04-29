@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
-import { basename, resolve } from 'path'
+import { basename, dirname, resolve } from 'path'
+import { fileURLToPath } from 'url'
 import { queuePublicShowcaseActivitySync } from './publicShowcaseActivity.js'
 
 export type DiscordQAgentRoutePolicy = {
@@ -80,6 +81,9 @@ export type DiscordQAgentReceipt = {
     guildCount: number
     lastMessageAt?: string | null
     lastReplyAt?: string | null
+    lastClosedAt?: string | null
+    lastCloseCode?: number | null
+    lastError?: string | null
   }
   schedule: {
     enabled: boolean
@@ -105,6 +109,8 @@ export type DiscordQAgentReceipt = {
     stagedReady?: boolean
     stagedSummary?: string | null
     runtimeUrl?: string | null
+    renderProvider?: string | null
+    renderSummary?: string | null
     connected?: boolean
     voiceId?: string | null
     voiceIdSource?: string | null
@@ -114,6 +120,8 @@ export type DiscordQAgentReceipt = {
     channelName?: string | null
     joinedAt?: string | null
     lastRenderedAt?: string | null
+    lastRenderProvider?: string | null
+    lastRenderSummary?: string | null
     lastSpokenText?: string | null
     lastChannelName?: string | null
     lastHeardUserId?: string | null
@@ -134,6 +142,7 @@ export type DiscordQAgentReceipt = {
 }
 
 const MAX_DISCORD_Q_AGENT_EVENTS = 25
+const OPENJAWS_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 function humanizeDiscordOperatorAction(
   action: string | null | undefined,
@@ -196,6 +205,20 @@ function trimDiscordReceiptLine(value: string, limit = 160): string {
   return value.length > limit ? `${value.slice(0, limit - 1)}…` : value
 }
 
+const PUBLIC_SHOWCASE_OPERATOR_LINE =
+  'The public view shows what happened, when it happened, and which systems participated, while sensitive actions and protected records stay private.'
+
+function isLegacyPublicShowcaseOperatorLine(value: string): boolean {
+  const normalized = value.toLowerCase()
+  return (
+    normalized.includes('#dev_support') ||
+    normalized.includes('bounded action receipts') ||
+    normalized.includes('2/3 bot receipts') ||
+    normalized.includes('no active bounded task') ||
+    normalized.includes('q patrol is ready; roundtable is ready')
+  )
+}
+
 function normalizeDiscordReceiptTimestamp(
   value: string | null | undefined,
 ): string | null {
@@ -217,6 +240,9 @@ function normalizeDiscordPublicOperatorLine(
     return null
   }
   const normalized = value.replace(/\s+/g, ' ').trim()
+  if (isLegacyPublicShowcaseOperatorLine(normalized)) {
+    return PUBLIC_SHOWCASE_OPERATOR_LINE
+  }
   return normalized.length > 0 ? normalized : null
 }
 
@@ -235,7 +261,11 @@ function isAggregateControlledOperatorLine(
     normalized.includes('operator state is ready') ||
     normalized.includes('discord transport is ready') ||
     normalized.includes('bot receipts are ready') ||
-    normalized.includes('oci-backed q is ready')
+    normalized.includes('oci-backed q is ready') ||
+    normalized.includes('redacted proof loop') ||
+    normalized.includes('asgard showcase fleet') ||
+    normalized.includes('private routes') ||
+    normalized.includes('the public view shows what happened')
   )
 }
 
@@ -257,7 +287,7 @@ export function buildDiscordQAgentPublicOperatorLine(
     )
   }
   if (receipt.gateway.connected) {
-    return 'Q is online through the supervised OCI-backed Discord operator lane with no active bounded task.'
+    return 'Q is online through the supervised OCI-backed Discord operator lane and posts only when a high-value public update is ready.'
   }
   return null
 }
@@ -372,7 +402,7 @@ export function buildDiscordQAgentPublicShowcaseActivityEntry(
   return null
 }
 
-export function getDiscordQAgentReceiptPath(root = process.cwd()): string {
+export function getDiscordQAgentReceiptPath(root = OPENJAWS_REPO_ROOT): string {
   return resolve(root, 'local-command-station', 'discord-q-agent-receipt.json')
 }
 
@@ -506,6 +536,8 @@ export function createDiscordQAgentReceipt(args: {
   voiceId?: string | null
   voiceIdSource?: string | null
   voiceModelId?: string | null
+  voiceRenderProvider?: string | null
+  voiceRenderSummary?: string | null
 }): DiscordQAgentReceipt {
   const now = new Date().toISOString()
   return {
@@ -520,6 +552,9 @@ export function createDiscordQAgentReceipt(args: {
       userId: null,
       guildCount: 0,
       lastSequence: null,
+      lastClosedAt: null,
+      lastCloseCode: null,
+      lastError: null,
     },
     schedule: {
       enabled: args.scheduleEnabled,
@@ -543,6 +578,8 @@ export function createDiscordQAgentReceipt(args: {
       stagedReady: false,
       stagedSummary: null,
       runtimeUrl: null,
+      renderProvider: args.voiceRenderProvider ?? null,
+      renderSummary: args.voiceRenderSummary ?? null,
       connected: false,
       voiceId: args.voiceId ?? null,
       voiceIdSource: args.voiceIdSource ?? null,
@@ -552,6 +589,8 @@ export function createDiscordQAgentReceipt(args: {
       channelName: null,
       joinedAt: null,
       lastRenderedAt: null,
+      lastRenderProvider: null,
+      lastRenderSummary: null,
       lastSpokenText: null,
       lastChannelName: null,
       lastHeardUserId: null,
@@ -592,7 +631,7 @@ export function createDiscordQAgentReceipt(args: {
 }
 
 export function readDiscordQAgentReceipt(
-  root = process.cwd(),
+  root = OPENJAWS_REPO_ROOT,
 ): DiscordQAgentReceipt | null {
   const receiptPath = getDiscordQAgentReceiptPath(root)
   if (!existsSync(receiptPath)) {
@@ -605,7 +644,7 @@ export function readDiscordQAgentReceipt(
 
 export function writeDiscordQAgentReceipt(
   receipt: DiscordQAgentReceipt,
-  root = process.cwd(),
+  root = OPENJAWS_REPO_ROOT,
 ) {
   const receiptPath = getDiscordQAgentReceiptPath(root)
   writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8')

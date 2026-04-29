@@ -20,17 +20,65 @@ import {
   buildWindowsApexLaunchCommand,
   getApexTenantGovernanceSummary,
   getApexTenantGovernanceMirrorPath,
+  getApexSettingsSummary,
   readApexTenantGovernanceMirror,
+  resetApexSettings,
   summarizeApexBrowser,
   getApexLaunchTarget,
   getApexLaunchTargets,
+  resolveApexAsgardRoot,
+  resolveApexProjectRoot,
+  summarizeApexGovernedSpend,
   summarizePublicApexTenantGovernance,
+  summarizePublicApexGovernedSpend,
   summarizeApexChrono,
+  summarizeApexSettings,
   summarizeApexTenantGovernance,
   summarizeApexWorkspace,
+  updateApexSettings,
 } from './apexWorkspace.js'
 
 describe('apexWorkspace', () => {
+  it('prefers the active D: Asgard checkout when the desktop stub is absent', () => {
+    const home = 'C:\\Users\\Knight'
+    const activeAsgard = 'D:\\cheeks\\Asgard'
+
+    expect(
+      resolveApexAsgardRoot({
+        env: {},
+        home,
+        exists: path => path === activeAsgard,
+      }),
+    ).toBe(resolve(activeAsgard))
+
+    expect(
+      resolveApexProjectRoot({
+        env: {},
+        asgardRoot: activeAsgard,
+      }),
+    ).toBe(resolve('D:\\cheeks\\Asgard\\ignite\\apex-os-project'))
+  })
+
+  it('honors explicit Apex root overrides before active checkout discovery', () => {
+    expect(
+      resolveApexAsgardRoot({
+        env: {
+          OPENJAWS_APEX_ASGARD_ROOT: 'E:\\Asgard',
+        },
+        home: 'C:\\Users\\Knight',
+        exists: () => false,
+      }),
+    ).toBe(resolve('E:\\Asgard'))
+
+    expect(
+      resolveApexProjectRoot({
+        env: {
+          OPENJAWS_APEX_ROOT: 'E:\\Asgard\\ignite\\apex-os-project',
+        },
+      }),
+    ).toBe(resolve('E:\\Asgard\\ignite\\apex-os-project'))
+  })
+
   it('registers the guarded workspace bridge and native app targets', () => {
     const targets = getApexLaunchTargets()
     expect(targets.some(target => target.id === 'workspace_api')).toBe(true)
@@ -261,6 +309,10 @@ describe('apexWorkspace', () => {
       highRiskCalls: 1,
       criticalCalls: 0,
       pendingReviewCalls: 2,
+      spendActionCount: 2,
+      spendActionBreakdown: [
+        { name: 'payments', count: 2 },
+      ],
       operatorActionBreakdown: [
         { name: 'operator_runtime', count: 5 },
         { name: 'payments', count: 2 },
@@ -304,6 +356,10 @@ describe('apexWorkspace', () => {
       highRiskCalls: 0,
       criticalCalls: 0,
       pendingReviewCalls: 0,
+      spendActionCount: 2,
+      spendActionBreakdown: [
+        { name: 'payments', count: 2 },
+      ],
       operatorActionBreakdown: [
         { name: 'operator_runtime', count: 5 },
         { name: 'payments', count: 2 },
@@ -334,6 +390,107 @@ describe('apexWorkspace', () => {
     expect(summary?.details.join(' ')).not.toContain('apex-mail')
   })
 
+  it('builds dedicated governed spend summaries for protected and public operator surfaces', () => {
+    const protectedSummary = summarizeApexGovernedSpend({
+      totalDecisions: 12,
+      ethicsPassed: 12,
+      ethicsFailed: 0,
+      avgConfidence: 0.93,
+      avgRiskScore: 0.2,
+      detectionEventCount: 4,
+      telemetryScopeCount: 3,
+      latestActivityAt: '2026-04-21T12:31:06Z',
+      highRiskCalls: 1,
+      criticalCalls: 0,
+      pendingReviewCalls: 2,
+      spendActionCount: 3,
+      spendActionBreakdown: [
+        { name: 'payment_captured', count: 2 },
+        { name: 'token_purchase_paid', count: 1 },
+      ],
+      operatorActionBreakdown: [{ name: 'operator_runtime', count: 5 }],
+      governedActionBreakdown: [{ name: 'payments', count: 2 }],
+      governanceSignalBreakdown: [{ name: 'policy_guard', count: 3 }],
+      reviewStatusBreakdown: [],
+      categoryBreakdown: [],
+      topSources: [{ name: 'apex-billing', count: 3 }],
+      topModels: [],
+      narrative: 'Spend narrative should stay bounded.',
+    })
+
+    const publicSummary = summarizePublicApexGovernedSpend({
+      totalDecisions: 12,
+      ethicsPassed: 12,
+      ethicsFailed: 0,
+      avgConfidence: 0.93,
+      avgRiskScore: 0.2,
+      detectionEventCount: 4,
+      telemetryScopeCount: 3,
+      latestActivityAt: '2026-04-21T12:31:06Z',
+      highRiskCalls: 1,
+      criticalCalls: 0,
+      pendingReviewCalls: 2,
+      spendActionCount: 3,
+      spendActionBreakdown: [
+        { name: 'payment_captured', count: 2 },
+        { name: 'token_purchase_paid', count: 1 },
+      ],
+      operatorActionBreakdown: [{ name: 'operator_runtime', count: 5 }],
+      governedActionBreakdown: [{ name: 'payments', count: 2 }],
+      governanceSignalBreakdown: [{ name: 'policy_guard', count: 3 }],
+      reviewStatusBreakdown: [],
+      categoryBreakdown: [],
+      topSources: [{ name: 'apex-billing', count: 3 }],
+      topModels: [],
+      narrative: 'Spend narrative should stay bounded.',
+    })
+
+    expect(protectedSummary.headline).toContain('Governed spend actions 3')
+    expect(protectedSummary.details[0]).toContain('payment captured')
+    expect(publicSummary).toMatchObject({
+      operatorActions: ['payment_captured', 'token_purchase_paid'],
+      latestActivityAt: '2026-04-21T12:31:06Z',
+      status: 'warning',
+    })
+  })
+
+  it('keeps a bounded public governed spend lane visible when no spend actions were published', () => {
+    const publicSummary = summarizePublicApexGovernedSpend({
+      totalDecisions: 5,
+      ethicsPassed: 5,
+      ethicsFailed: 0,
+      avgConfidence: 0.88,
+      avgRiskScore: 0.4,
+      detectionEventCount: 1,
+      telemetryScopeCount: 2,
+      latestActivityAt: '2026-04-22T12:14:20Z',
+      highRiskCalls: 0,
+      criticalCalls: 0,
+      pendingReviewCalls: 1,
+      spendActionCount: 0,
+      spendActionBreakdown: [],
+      operatorActionBreakdown: [
+        { name: 'system_tuning', count: 3 },
+        { name: 'operator_runtime', count: 1 },
+      ],
+      governedActionBreakdown: [{ name: 'host_posture', count: 3 }],
+      governanceSignalBreakdown: [{ name: 'policy_guard', count: 1 }],
+      reviewStatusBreakdown: [{ name: 'pending_review', count: 1 }],
+      categoryBreakdown: [{ name: 'system', count: 3 }],
+      topSources: [{ name: 'system_monitor', count: 2 }],
+      topModels: [{ name: 'workspace_api_local', count: 5 }],
+      narrative: 'No spend actions yet.',
+    })
+
+    expect(publicSummary).toMatchObject({
+      headline: 'Apex governed spend review is active',
+      operatorActions: [],
+      latestActivityAt: '2026-04-22T12:14:20Z',
+      status: 'info',
+    })
+    expect(publicSummary?.details[0]).toContain('No spend actions were published')
+  })
+
   it('builds governance-driven operator recommendations for the Apex TUI', () => {
     const recommendations = buildApexGovernanceRecommendations({
       totalDecisions: 12,
@@ -347,6 +504,8 @@ describe('apexWorkspace', () => {
       highRiskCalls: 3,
       criticalCalls: 1,
       pendingReviewCalls: 4,
+      spendActionCount: 0,
+      spendActionBreakdown: [],
       operatorActionBreakdown: [
         { name: 'security_review', count: 3 },
         { name: 'system_tuning', count: 2 },
@@ -411,6 +570,8 @@ describe('apexWorkspace', () => {
           highRiskCalls: 1,
           criticalCalls: 0,
           pendingReviewCalls: 1,
+          spendActionCount: 2,
+          spendActionBreakdown: [{ name: 'payments', count: 2 }],
           operatorActionBreakdown: [{ name: 'operator_runtime', count: 4 }],
           governedActionBreakdown: [{ name: 'payments', count: 2 }],
           governanceSignalBreakdown: [{ name: 'policy_guard', count: 2 }],
@@ -461,6 +622,8 @@ describe('apexWorkspace', () => {
           highRiskCalls: 0,
           criticalCalls: 0,
           pendingReviewCalls: 1,
+          spendActionCount: 0,
+          spendActionBreakdown: [],
           operatorActionBreakdown: [{ name: 'operator_runtime', count: 3 }],
           governedActionBreakdown: [{ name: 'email', count: 2 }],
           governanceSignalBreakdown: [{ name: 'policy_guard', count: 1 }],
@@ -574,6 +737,8 @@ describe('apexWorkspace', () => {
                 highRiskCalls: 1,
                 criticalCalls: 0,
                 pendingReviewCalls: 2,
+                spendActionCount: 0,
+                spendActionBreakdown: [],
                 operatorActionBreakdown: [{ name: 'security_review', count: 3 }],
                 governedActionBreakdown: [{ name: 'security_controls', count: 3 }],
                 governanceSignalBreakdown: [{ name: 'policy_guard', count: 1 }],
@@ -623,6 +788,228 @@ describe('apexWorkspace', () => {
       delete process.env.OPENJAWS_WEBSOCKET_AUTH_FILE_DESCRIPTOR
       setSessionIngressToken(originalCachedToken ?? null)
       rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('reads and summarizes workspace_api settings through the trusted sidecar state', async () => {
+    const stateDir = join(tmpdir(), 'openjaws-apex')
+    const statePath = join(stateDir, 'workspace-api-state.json')
+    const originalFetch = globalThis.fetch
+    const originalState = existsSync(statePath)
+      ? readFileSync(statePath, 'utf8')
+      : null
+    try {
+      mkdirSync(stateDir, { recursive: true })
+      writeFileSync(
+        statePath,
+        `${JSON.stringify({
+          pid: process.pid,
+          startedAt: '2026-04-24T00:00:00Z',
+          token: 'apex-settings-token',
+          workspaceApiUrl: 'http://127.0.0.1:8797',
+        }, null, 2)}\n`,
+        'utf8',
+      )
+
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        expect(String(input)).toContain('/api/v1/settings/summary')
+        expect(init?.headers).toMatchObject({
+          'x-openjaws-apex-token': 'apex-settings-token',
+        })
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              settings: {
+                security: {
+                  enableRealtimeMonitoring: true,
+                  blockSuspiciousActivity: true,
+                  requirePasswordForSettings: true,
+                  autoLockTimeoutMinutes: 15,
+                  enableFirewall: true,
+                  enableAntivirus: true,
+                },
+                performance: {
+                  maxCpuUsagePercent: 80,
+                  maxMemoryUsageMb: 4096,
+                  enableHardwareAcceleration: true,
+                  vsyncEnabled: true,
+                  targetFps: 60,
+                },
+                privacy: {
+                  enablePrivacyMode: true,
+                  blockTrackingCookies: true,
+                  disableTelemetry: true,
+                  encryptUserData: true,
+                  macAddressRandomization: true,
+                },
+                users: {
+                  currentUser: 'operator',
+                  theme: 'dark',
+                  language: 'en-US',
+                  timezone: 'America/New_York',
+                  dateFormat: 'YYYY-MM-DD',
+                },
+              },
+              hasUnsavedChanges: false,
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        )
+      }) as typeof fetch
+
+      const summary = await getApexSettingsSummary()
+      expect(summary).toMatchObject({
+        hasUnsavedChanges: false,
+        settings: {
+          privacy: {
+            disableTelemetry: true,
+          },
+          users: {
+            theme: 'dark',
+          },
+        },
+      })
+      expect(summarizeApexSettings(summary).headline).toContain('telemetry off')
+      expect(summarizeApexSettings(summary).details[0]).toContain('firewall on')
+    } finally {
+      globalThis.fetch = originalFetch
+      if (originalState !== null) {
+        writeFileSync(statePath, originalState, 'utf8')
+      } else {
+        rmSync(statePath, { force: true })
+      }
+    }
+  })
+
+  it('updates and resets Apex settings through the trusted workspace_api actions', async () => {
+    const stateDir = join(tmpdir(), 'openjaws-apex')
+    const statePath = join(stateDir, 'workspace-api-state.json')
+    const originalFetch = globalThis.fetch
+    const originalState = existsSync(statePath)
+      ? readFileSync(statePath, 'utf8')
+      : null
+    const settings = {
+      security: {
+        enableRealtimeMonitoring: true,
+        blockSuspiciousActivity: true,
+        requirePasswordForSettings: true,
+        autoLockTimeoutMinutes: 15,
+        enableFirewall: true,
+        enableAntivirus: true,
+      },
+      performance: {
+        maxCpuUsagePercent: 80,
+        maxMemoryUsageMb: 4096,
+        enableHardwareAcceleration: false,
+        vsyncEnabled: true,
+        targetFps: 60,
+      },
+      privacy: {
+        enablePrivacyMode: true,
+        blockTrackingCookies: true,
+        disableTelemetry: true,
+        encryptUserData: true,
+        macAddressRandomization: true,
+      },
+      users: {
+        currentUser: 'operator',
+        theme: 'dark',
+        language: 'en-US',
+        timezone: 'America/New_York',
+        dateFormat: 'YYYY-MM-DD',
+      },
+    }
+    const seenPaths: string[] = []
+
+    try {
+      mkdirSync(stateDir, { recursive: true })
+      writeFileSync(
+        statePath,
+        `${JSON.stringify({
+          pid: process.pid,
+          startedAt: '2026-04-24T00:00:00Z',
+          token: 'apex-settings-token',
+          workspaceApiUrl: 'http://127.0.0.1:8797',
+        }, null, 2)}\n`,
+        'utf8',
+      )
+
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        seenPaths.push(new URL(url).pathname)
+        expect(init?.headers).toMatchObject({
+          'x-openjaws-apex-token': 'apex-settings-token',
+        })
+        if (url.includes('/api/v1/settings/update')) {
+          expect(init?.method).toBe('POST')
+          expect(JSON.parse(String(init?.body))).toMatchObject({
+            settings: {
+              privacy: {
+                disableTelemetry: true,
+              },
+            },
+          })
+          return new Response(
+            JSON.stringify({
+              success: true,
+              data: {
+                message: 'Saved Apex system settings',
+                settings,
+                hasUnsavedChanges: false,
+              },
+            }),
+            {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            },
+          )
+        }
+        if (url.includes('/api/v1/settings/reset')) {
+          expect(init?.method).toBe('POST')
+          return new Response(
+            JSON.stringify({
+              success: true,
+              data: {
+                message: 'Reset Apex system settings to defaults',
+                settings,
+                hasUnsavedChanges: false,
+              },
+            }),
+            {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            },
+          )
+        }
+        throw new Error(`Unexpected fetch ${url}`)
+      }) as typeof fetch
+
+      await expect(updateApexSettings({ settings })).resolves.toMatchObject({
+        ok: true,
+        message: 'Saved Apex system settings',
+        data: {
+          hasUnsavedChanges: false,
+        },
+      })
+      await expect(resetApexSettings()).resolves.toMatchObject({
+        ok: true,
+        message: 'Reset Apex system settings to defaults',
+      })
+      expect(seenPaths).toEqual([
+        '/api/v1/settings/update',
+        '/api/v1/settings/reset',
+      ])
+    } finally {
+      globalThis.fetch = originalFetch
+      if (originalState !== null) {
+        writeFileSync(statePath, originalState, 'utf8')
+      } else {
+        rmSync(statePath, { force: true })
+      }
     }
   })
 })

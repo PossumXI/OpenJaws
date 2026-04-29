@@ -12,7 +12,7 @@ import {
   verifyQTrainingRouteManifestIntegrity,
 } from '../src/utils/qTraining.js'
 
-type CheckStatus = 'passed' | 'failed' | 'warning'
+export type CheckStatus = 'passed' | 'failed' | 'warning'
 
 type CheckResult = {
   name: string
@@ -34,7 +34,52 @@ type CommandCheckOptions = {
   allowFailure?: boolean
 }
 
+type CommandExecutionResult = {
+  timedOut: boolean
+  exitCode: number | null
+  stdout: string
+  stderr: string
+}
+
+const directConnectFeatureModuleSpecifiers = [
+  './server/parseConnectUrl.js',
+  './server/server.js',
+  './server/sessionManager.js',
+  './server/backends/dangerousBackend.js',
+  './server/serverBanner.js',
+  './server/serverLog.js',
+  './server/lockfile.js',
+  './server/connectHeadless.js',
+] as const
+
+const operatorReleaseSurfaceFiles = [
+  'scripts/discord-agent-auth-preflight.ts',
+  'scripts/discord-agent-auth-preflight.test.ts',
+  'scripts/personaplex-probe.ts',
+  'scripts/runtime-coherence.ts',
+  'src/tools/ImmaculateHarnessTool/ImmaculateHarnessTool.ts',
+  'src/utils/discordGovernedWeb.ts',
+  'src/utils/discordGovernedWeb.test.ts',
+  'src/utils/discordOperatorExecution.ts',
+  'src/utils/discordOperatorWork.ts',
+  'src/utils/discordQAgentRuntime.ts',
+  'src/utils/discordRoundtableExecution.ts',
+  'src/utils/discordRoundtablePlanner.ts',
+  'src/utils/discordRoundtableRuntime.ts',
+  'src/utils/discordRoundtableStatusTruth.test.ts',
+  'src/utils/immaculateHarness.ts',
+] as const
+
 const rootDir = process.cwd()
+const cliArgs = process.argv.slice(2)
+const liveHealthOnly = cliArgs.includes('--live-health')
+const featureSurfaceOnly = cliArgs.includes('--feature-surface-only')
+const failOnWarnings = cliArgs.includes('--fail-on-warnings')
+const checkMode = featureSurfaceOnly
+  ? 'feature-surface'
+  : liveHealthOnly
+    ? 'live-health'
+    : 'full'
 const runId = `system-check-${new Date()
   .toISOString()
   .replace(/[-:]/g, '')
@@ -49,6 +94,14 @@ const qSmokeBaseModelSource =
   process.env.OPENJAWS_Q_SMOKE_MODEL ?? Q_SMOKE_BASE_MODEL
 const qSmokeBaseModel = getOpenJawsTrainingModelDisplay(qSmokeBaseModelSource)
 const qPythonCommand = resolveQTrainingPythonCommand(rootDir)
+const openJawsReleaseBinary = resolve(
+  rootDir,
+  'dist',
+  process.platform === 'win32' ? 'openjaws.exe' : 'openjaws',
+)
+const openJawsCliCommand = existsSync(openJawsReleaseBinary)
+  ? openJawsReleaseBinary
+  : 'openjaws'
 
 function tailText(text: string, maxLines = 40, maxChars = 4000): string {
   const trimmed = text.trim()
@@ -68,6 +121,101 @@ function normalizeError(error: unknown): string {
   return String(error)
 }
 
+async function terminateProcessTree(pid: number | undefined): Promise<void> {
+  if (!pid) {
+    return
+  }
+  if (process.platform === 'win32') {
+    await execa('taskkill', ['/PID', String(pid), '/T', '/F'], {
+      reject: false,
+      timeout: 10_000,
+      forceKillAfterDelay: 2_000,
+      windowsHide: true,
+    }).catch(() => undefined)
+    return
+  }
+  try {
+    process.kill(pid, 'SIGKILL')
+  } catch {
+    // The process may have already exited after the timeout fired.
+  }
+}
+
+export async function executeCommandWithHardTimeout(
+  command: string,
+  args: string[],
+  options: CommandCheckOptions = {},
+): Promise<CommandExecutionResult> {
+  const timeoutMs = options.timeoutMs ?? 120_000
+  const subprocess = execa(command, args, {
+    cwd: options.cwd ?? rootDir,
+    reject: false,
+    timeout: 0,
+    cleanup: true,
+    forceKillAfterDelay: 2_000,
+    windowsHide: true,
+  })
+  const subprocessResult = subprocess
+    .then(result => ({
+      timedOut: false,
+      exitCode: result.exitCode,
+      stdout: result.stdout ?? '',
+      stderr: result.stderr ?? '',
+    }))
+    .catch(error => {
+      throw error
+    })
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+  const timeoutResult = new Promise<CommandExecutionResult>(resolve => {
+    timeoutHandle = setTimeout(() => {
+      void terminateProcessTree(subprocess.pid)
+      resolve({
+        timedOut: true,
+        exitCode: null,
+        stdout: '',
+        stderr: `Command timed out after ${timeoutMs} milliseconds and the process tree was terminated.`,
+      })
+    }, timeoutMs)
+  })
+
+  const result = await Promise.race([subprocessResult, timeoutResult])
+  if (timeoutHandle) {
+    clearTimeout(timeoutHandle)
+  }
+  if (result.timedOut) {
+    subprocess.catch(() => undefined)
+  }
+  return result
+}
+
+async function writeSystemCheckProgress(args: {
+  name: string
+  command: string
+  startedAt: string
+}) {
+  try {
+    await mkdir(runDir, { recursive: true })
+    await writeFile(
+      join(runDir, 'progress.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          mode: checkMode,
+          updatedAt: new Date().toISOString(),
+          current: args,
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    )
+  } catch {
+    // Progress markers are diagnostic only; never fail a health check because
+    // the marker could not be written.
+  }
+}
+
 async function readJson<T>(path: string): Promise<T> {
   return JSON.parse(await readFile(path, 'utf8')) as T
 }
@@ -80,13 +228,13 @@ async function runCommandCheck(
 ): Promise<CheckResult> {
   const startedAt = Date.now()
   const renderedCommand = [command, ...args].join(' ')
+  await writeSystemCheckProgress({
+    name,
+    command: renderedCommand,
+    startedAt: new Date(startedAt).toISOString(),
+  })
   try {
-    const result = await execa(command, args, {
-      cwd: options.cwd ?? rootDir,
-      reject: false,
-      timeout: options.timeoutMs ?? 120_000,
-      windowsHide: true,
-    })
+    const result = await executeCommandWithHardTimeout(command, args, options)
     const durationMs = Date.now() - startedAt
     const status: CheckStatus =
       result.exitCode === 0 ? 'passed' : options.allowFailure ? 'warning' : 'failed'
@@ -99,6 +247,8 @@ async function runCommandCheck(
       summary:
         result.exitCode === 0
           ? options.successSummary ?? `${name} passed`
+          : result.timedOut
+            ? `${name} timed out`
           : options.failureSummary ?? `${name} failed`,
       stdoutTail: tailText(result.stdout),
       stderrTail: tailText(result.stderr),
@@ -135,6 +285,63 @@ function parseJsonStdout(stdout: string): unknown {
   }
 
   return JSON.parse(trimmed)
+}
+
+function getJsonReportedStatus(details: unknown): 'ok' | 'warning' | 'failed' | null {
+  if (typeof details !== 'object' || details === null || Array.isArray(details)) {
+    return null
+  }
+  const record = details as Record<string, unknown>
+  const rawStatus =
+    typeof record.overallStatus === 'string'
+      ? record.overallStatus
+      : typeof record.status === 'string'
+        ? record.status
+        : null
+  const status = rawStatus?.trim().toLowerCase()
+  if (!status) {
+    return null
+  }
+  if (status === 'warning' || status === 'degraded') {
+    return 'warning'
+  }
+  if (
+    status === 'failed' ||
+    status === 'failure' ||
+    status === 'error' ||
+    status === 'blocked'
+  ) {
+    return 'failed'
+  }
+  if (status === 'ok' || status === 'passed' || status === 'success' || status === 'ready') {
+    return 'ok'
+  }
+  return null
+}
+
+export function normalizeJsonCommandStatus(args: {
+  status: CheckStatus
+  summary: string
+  details: unknown
+  allowFailure?: boolean
+}): { status: CheckStatus; summary: string } {
+  if (args.status !== 'passed') {
+    return { status: args.status, summary: args.summary }
+  }
+  const reportedStatus = getJsonReportedStatus(args.details)
+  if (reportedStatus === 'warning') {
+    return {
+      status: 'warning',
+      summary: `${args.summary}; JSON reported warning`,
+    }
+  }
+  if (reportedStatus === 'failed') {
+    return {
+      status: args.allowFailure ? 'warning' : 'failed',
+      summary: `${args.summary}; JSON reported ${args.allowFailure ? 'allowed failure' : 'failure'}`,
+    }
+  }
+  return { status: args.status, summary: args.summary }
 }
 
 function normalizeTaskkillResult(
@@ -229,14 +436,14 @@ async function runJsonCommandCheck(
 ): Promise<CheckResult> {
   const startedAt = Date.now()
   const renderedCommand = [command, ...args].join(' ')
+  await writeSystemCheckProgress({
+    name,
+    command: renderedCommand,
+    startedAt: new Date(startedAt).toISOString(),
+  })
 
   try {
-    const result = await execa(command, args, {
-      cwd: options.cwd ?? rootDir,
-      reject: false,
-      timeout: options.timeoutMs ?? 120_000,
-      windowsHide: true,
-    })
+    const result = await executeCommandWithHardTimeout(command, args, options)
     const status: CheckStatus =
       result.exitCode === 0 ? 'passed' : options.allowFailure ? 'warning' : 'failed'
     const check: CheckResult = {
@@ -248,6 +455,8 @@ async function runJsonCommandCheck(
       summary:
         result.exitCode === 0
           ? options.successSummary ?? `${name} passed`
+          : result.timedOut
+            ? `${name} timed out`
           : options.failureSummary ?? `${name} failed`,
       stdoutTail: tailText(result.stdout),
       stderrTail: tailText(result.stderr),
@@ -259,8 +468,16 @@ async function runJsonCommandCheck(
 
     try {
       const details = parseJsonStdout(result.stdout)
+      const normalized = normalizeJsonCommandStatus({
+        status: check.status,
+        summary: check.summary,
+        details,
+        allowFailure: options.allowFailure,
+      })
       return {
         ...check,
+        status: normalized.status,
+        summary: normalized.summary,
         details,
       }
     } catch (error) {
@@ -286,6 +503,43 @@ async function runJsonCommandCheck(
   }
 }
 
+async function writeSystemCheckReport(results: CheckResult[]) {
+  const statusCounts = results.reduce(
+    (acc, result) => {
+      acc[result.status]++
+      return acc
+    },
+    { passed: 0, failed: 0, warning: 0 },
+  )
+
+  const report = {
+    runId,
+    generatedAt: new Date().toISOString(),
+    rootDir,
+    runDir,
+    mode: checkMode,
+    overallStatus:
+      statusCounts.failed > 0
+        ? 'failed'
+        : statusCounts.warning > 0
+          ? 'warning'
+          : 'passed',
+    counts: statusCounts,
+    results,
+  }
+
+  await mkdir(dirname(join(runDir, 'report.json')), { recursive: true })
+  await writeFile(join(runDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8')
+
+  console.log(JSON.stringify(report, null, 2))
+
+  if (statusCounts.failed > 0 || (failOnWarnings && statusCounts.warning > 0)) {
+    process.exitCode = 1
+  }
+
+  return report
+}
+
 async function readLatestRegistryEntry() {
   const registryPath = resolve(rootDir, 'artifacts', 'q-runs', 'registry.json')
   if (!existsSync(registryPath)) {
@@ -307,6 +561,105 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+export function inspectFeatureSourceModules(args: {
+  importerPath: string
+  specifiers: readonly string[]
+  exists?: (path: string) => boolean
+}): Array<{
+  specifier: string
+  sourcePath: string
+  present: boolean
+}> {
+  const exists = args.exists ?? existsSync
+  const importerDir = dirname(args.importerPath)
+  return args.specifiers.map(specifier => {
+    const resolvedPath = resolve(importerDir, specifier)
+    const sourcePath = resolvedPath.endsWith('.js')
+      ? `${resolvedPath.slice(0, -'.js'.length)}.ts`
+      : resolvedPath
+    return {
+      specifier,
+      sourcePath,
+      present: exists(sourcePath),
+    }
+  })
+}
+
+export function inspectRequiredProjectFiles(args: {
+  rootPath: string
+  relativePaths: readonly string[]
+  exists?: (path: string) => boolean
+}): Array<{
+  relativePath: string
+  path: string
+  present: boolean
+}> {
+  const exists = args.exists ?? existsSync
+  return args.relativePaths.map(relativePath => {
+    const path = resolve(args.rootPath, relativePath)
+    return {
+      relativePath,
+      path,
+      present: exists(path),
+    }
+  })
+}
+
+async function checkDirectConnectFeatureSurface(): Promise<CheckResult> {
+  const startedAt = Date.now()
+  await writeSystemCheckProgress({
+    name: 'direct-connect-feature-surface',
+    command: 'static feature import check',
+    startedAt: new Date(startedAt).toISOString(),
+  })
+  const modules = inspectFeatureSourceModules({
+    importerPath: resolve(rootDir, 'src', 'main.tsx'),
+    specifiers: directConnectFeatureModuleSpecifiers,
+  })
+  const missing = modules.filter(module => !module.present)
+  return {
+    name: 'direct-connect-feature-surface',
+    status: missing.length > 0 ? 'warning' : 'passed',
+    durationMs: Date.now() - startedAt,
+    summary:
+      missing.length > 0
+        ? `Direct Connect is feature-gated but incomplete (${missing.length} missing source modules)`
+        : 'Direct Connect feature-gated imports resolve to source modules',
+    details: {
+      feature: 'DIRECT_CONNECT',
+      missingCount: missing.length,
+      modules,
+    },
+  }
+}
+
+async function checkOperatorReleaseSurface(): Promise<CheckResult> {
+  const startedAt = Date.now()
+  await writeSystemCheckProgress({
+    name: 'operator-release-surface',
+    command: 'static operator release surface check',
+    startedAt: new Date(startedAt).toISOString(),
+  })
+  const files = inspectRequiredProjectFiles({
+    rootPath: rootDir,
+    relativePaths: operatorReleaseSurfaceFiles,
+  })
+  const missing = files.filter(file => !file.present)
+  return {
+    name: 'operator-release-surface',
+    status: missing.length > 0 ? 'failed' : 'passed',
+    durationMs: Date.now() - startedAt,
+    summary:
+      missing.length > 0
+        ? `Operator release surface is incomplete (${missing.length} missing files)`
+        : 'Operator release surface files are present',
+    details: {
+      missingCount: missing.length,
+      files,
+    },
+  }
+}
+
 async function main() {
   await rm(runDir, { recursive: true, force: true })
   await mkdir(runDir, { recursive: true })
@@ -318,6 +671,13 @@ async function main() {
   const preparedDir = join(runDir, 'prepared-sample')
   const auditedDir = join(runDir, 'audited-sample')
   const liveTrainDir = join(runDir, 'q-live-smoke')
+
+  if (featureSurfaceOnly) {
+    results.push(await checkDirectConnectFeatureSurface())
+    results.push(await checkOperatorReleaseSurface())
+    await writeSystemCheckReport(results)
+    return
+  }
 
   results.push(
     await runCommandCheck('unit-tests', 'bun', ['run', 'test'], {
@@ -357,17 +717,19 @@ async function main() {
     }),
   )
   results.push(
-    await runCommandCheck('cli-version', 'openjaws', ['--version'], {
+    await runCommandCheck('cli-version', openJawsCliCommand, ['--version'], {
       successSummary: 'CLI version check passed',
       timeoutMs: 30_000,
     }),
   )
   results.push(
-    await runCommandCheck('cli-help', 'openjaws', ['--help'], {
+    await runCommandCheck('cli-help', openJawsCliCommand, ['--help'], {
       successSummary: 'CLI help check passed',
       timeoutMs: 30_000,
     }),
   )
+  results.push(await checkDirectConnectFeatureSurface())
+  results.push(await checkOperatorReleaseSurface())
   results.push(
     await runJsonCommandCheck('settings-walkthrough-live', 'bun', [
       'run',
@@ -528,6 +890,17 @@ async function main() {
     }),
   )
   results.push(
+    await runJsonCommandCheck('discord-auth-preflight-live', 'bun', [
+      'run',
+      'discord:auth:preflight',
+    ], {
+      successSummary: 'Discord agent bot-token preflight completed',
+      failureSummary: 'Discord agent bot-token preflight failed',
+      timeoutMs: 45_000,
+      allowFailure: true,
+    }),
+  )
+  results.push(
     await runJsonCommandCheck('startup-harness-live', 'bun', [
       '-e',
       [
@@ -540,16 +913,18 @@ async function main() {
         "const { getSettings_DEPRECATED } = await import('./src/utils/settings/settings.ts')",
         "const { getEnvironmentSelectionInfo } = await import('./src/utils/teleport/environmentSelection.ts')",
         "const { resolveExternalModelConfig } = await import('./src/utils/model/externalProviders.ts')",
+        "const { resolveOciQRuntime } = await import('./src/utils/ociQRuntime.ts')",
         "const { evaluateStartupHarness } = await import('./src/utils/startupHarness.ts')",
         'const settings = getSettings_DEPRECATED()',
         'const envInfo = await getEnvironmentSelectionInfo().catch(() => null)',
         'const configuredModel = settings?.model ?? null',
         'const externalModel = configuredModel ? resolveExternalModelConfig(configuredModel) : null',
+        "const ociRuntime = externalModel?.provider === 'oci' ? resolveOciQRuntime() : null",
         'const evaluation = evaluateStartupHarness({',
         '  platform: getPlatform(),',
         '  remoteControlAtStartup: getRemoteControlAtStartup(),',
         '  remoteControlStartupIssue: null,',
-        '  externalModel: externalModel ? { provider: externalModel.provider, label: externalModel.label, apiKeySource: externalModel.apiKeySource } : null,',
+        "  externalModel: externalModel ? { provider: externalModel.provider, label: externalModel.label, apiKeySource: externalModel.apiKeySource, authReady: Boolean(ociRuntime?.authMode === 'iam' && ociRuntime.ready) } : null,",
         "  gitBashStatus: getPlatform() === 'windows' ? getGitBashStatus() : null,",
         '  ripgrepStatus: getRipgrepStatus(),',
         '  configuredDefaultEnvironmentId: envInfo?.configuredDefaultEnvironmentId ?? null,',
@@ -590,6 +965,21 @@ async function main() {
       allowFailure: true,
     }),
   )
+  results.push(
+    await runJsonCommandCheck('personaplex-probe-live', 'bun', [
+      'run',
+      'personaplex:probe',
+    ], {
+      successSummary: 'PersonaPlex live bridge probe passed',
+      failureSummary: 'PersonaPlex live bridge probe failed',
+      timeoutMs: 120_000,
+      allowFailure: true,
+    }),
+  )
+  if (liveHealthOnly) {
+    await writeSystemCheckReport(results)
+    return
+  }
   results.push(
     await runJsonCommandCheck('prepare-sft-sample', 'bun', [
       'scripts/prepare-openjaws-sft.ts',
@@ -1086,37 +1476,9 @@ async function main() {
     }
   }
 
-  const statusCounts = results.reduce(
-    (acc, result) => {
-      acc[result.status]++
-      return acc
-    },
-    { passed: 0, failed: 0, warning: 0 },
-  )
-
-  const report = {
-    runId,
-    generatedAt: new Date().toISOString(),
-    rootDir,
-    runDir,
-    overallStatus:
-      statusCounts.failed > 0
-        ? 'failed'
-        : statusCounts.warning > 0
-          ? 'warning'
-          : 'passed',
-    counts: statusCounts,
-    results,
-  }
-
-  await mkdir(dirname(join(runDir, 'report.json')), { recursive: true })
-  await writeFile(join(runDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8')
-
-  console.log(JSON.stringify(report, null, 2))
-
-  if (statusCounts.failed > 0) {
-    process.exitCode = 1
-  }
+  await writeSystemCheckReport(results)
 }
 
-await main()
+if (import.meta.main) {
+  await main()
+}

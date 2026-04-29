@@ -40,6 +40,21 @@ async function waitForLocalWorker(
   return []
 }
 
+async function waitForHarnessWorker(
+  workerId: string,
+  timeoutMs = 10_000,
+): Promise<Awaited<ReturnType<typeof getImmaculateHarnessWorkers>> | null> {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    const workers = await getImmaculateHarnessWorkers().catch(() => null)
+    if (workers?.workers.some(worker => worker.workerId === workerId)) {
+      return workers
+    }
+    await Bun.sleep(100)
+  }
+  return await getImmaculateHarnessWorkers().catch(() => null)
+}
+
 async function main() {
   const repoRoot = process.cwd()
   const routeRoot = makeRoot()
@@ -218,7 +233,7 @@ async function main() {
       '--layer',
       'router-core',
       '--idle-exit-ms',
-      '5000',
+      '45000',
       '--poll-ms',
       '250',
     ],
@@ -231,7 +246,7 @@ async function main() {
 
   try {
     const localWorkersBeforeLaunch = await waitForLocalWorker(routeRoot, workerId)
-    const harnessWorkersBeforeLaunch = await getImmaculateHarnessWorkers().catch(() => null)
+    const harnessWorkersBeforeLaunch = await waitForHarnessWorker(workerId)
     const launch = await execa(
       'bun',
       [
@@ -334,8 +349,7 @@ async function main() {
         registeredWorker.healthStatus === 'faulted' &&
         registeredWorker.assignmentEligible === false &&
         registeredWorker.assignmentBlockedReason ===
-          'unverified federation worker') ||
-        noVisibleWorker) &&
+          'unverified federation worker')) &&
       launch.exitCode === 0 &&
       launchJson.status === 'route_requested' &&
       launchJson.routeQueue?.assignment === null &&
@@ -371,6 +385,7 @@ async function main() {
           launchJson,
           requestLog,
           stateRequests,
+          localOnlyHarnessRegistrationGap: noVisibleWorker,
           queueEntry,
           routeDispatchFromState,
           workerResult: {

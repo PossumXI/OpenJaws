@@ -166,12 +166,24 @@ function readRecentRoundtableActions(root: string): DiscordRoundtableRecentActio
     .filter((entry): entry is DiscordRoundtableRecentAction => Boolean(entry))
 }
 
-function hasPendingInboxHandoffs(root: string): boolean {
+function hasPendingInboxHandoffs(
+  root: string,
+  ingestedHandoffs: string[] = [],
+): boolean {
   const inboxDir = getDiscordRoundtableInboxDir(root)
   if (!existsSync(inboxDir)) {
     return false
   }
-  return readdirSync(inboxDir).some(name => name.toLowerCase().endsWith('.json'))
+  const ingested = new Set(
+    ingestedHandoffs
+      .map(path => normalizeAbsolutePath(path))
+      .filter((path): path is string => Boolean(path))
+      .map(path => path.toLowerCase()),
+  )
+  return readdirSync(inboxDir)
+    .filter(name => name.toLowerCase().endsWith('.json'))
+    .map(name => normalizeAbsolutePath(join(inboxDir, name)) ?? join(inboxDir, name))
+    .some(path => !ingested.has(path.toLowerCase()))
 }
 
 function hasActiveTrackedJobs(jobs: DiscordRoundtableTrackedJob[]): boolean {
@@ -220,7 +232,8 @@ function looksPassHeavy(args: {
   ]
     .filter(Boolean)
     .join('\n')
-  return /\bpass(?:ed)? turn\b/i.test(combined) || /\bPASS\b/.test(combined)
+  // Detect pass-heavy summaries, including completed actions marked as pass
+  return /\bpass(?:ed)? turn\b/i.test(combined) || /action completed.*pass/i.test(combined)
 }
 
 function normalizePlannerRoots(allowedRoots: string[]): DiscordRoundtableSchedulerRoot[] {
@@ -387,7 +400,7 @@ export function planDiscordRoundtableFollowThrough(args: {
     }
   }
 
-  if (hasPendingInboxHandoffs(runtimeRoot)) {
+  if (hasPendingInboxHandoffs(runtimeRoot, runtimeState.ingestedHandoffs)) {
     return {
       staged: false,
       reason: 'roundtable inbox already contains staged handoffs',

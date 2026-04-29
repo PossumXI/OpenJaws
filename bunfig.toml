@@ -10,6 +10,25 @@ auto = "fallback"
 # Node options
 nodeOptions = ""
 
+[test]
+# Generated benchmark bundles, operator worktrees, and runtime mirrors can contain
+# copied test files from older source snapshots. They are not part of the live repo.
+pathIgnorePatterns = [
+  "artifacts/**",
+  "jobs/**",
+  "local-command-station/**",
+  ".coverage/**",
+  ".next/**",
+  ".runtime/**",
+  ".runtime-*/**",
+  ".tmp-config/**",
+  ".tmp-config-*/**",
+  ".tmp-governance-check/**",
+  "dist/**",
+  "website/.data/**",
+  "website/.next/**",
+]
+
 [build]
 # Target for compilation
 target = "bun"

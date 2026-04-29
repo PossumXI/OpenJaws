@@ -1,3 +1,4 @@
+import { feature } from 'bun:bundle'
 import * as React from 'react'
 import { Box, Text, usePreviewTheme, useTheme, useThemeSetting } from '../ink.js'
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js'
@@ -63,7 +64,6 @@ export function ThemePicker({
 }: ThemePickerProps): React.ReactNode {
   const [theme] = useTheme()
   const themeSetting = useThemeSetting()
-  const autoThemeAvailable = feature('AUTO_THEME')
   const { columns } = useTerminalSize()
   const colorModuleUnavailableReason = getColorModuleUnavailableReason()
   const syntaxTheme =
@@ -111,10 +111,10 @@ export function ThemePicker({
   const liveThemeSummary = formatThemeName(theme)
   const themeOptions = React.useMemo(
     () =>
-      autoThemeAvailable || themeSetting === 'auto'
+      feature('AUTO_THEME') || themeSetting === 'auto'
         ? THEME_OPTIONS
         : THEME_OPTIONS.filter(option => option.value !== 'auto'),
-    [autoThemeAvailable, themeSetting],
+    [themeSetting],
   )
 
   const content = (

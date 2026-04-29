@@ -22,7 +22,8 @@ The current OpenJaws side exposes:
 - dedicated `chrono-bridge` health, summary, and bounded backup actions from inside `/apex`
 - browser bridge health plus native session summary inside `/apex`
 - bounded operator handoff receipts from `/apex` Browser into accountable `/preview`
-- bounded recent operator receipts from `/apex` mail/chat/store/chrono/browser actions, surfaced in `/status`, Overview, and the shared public-safe showcase feed
+- bounded recent operator receipts from `/apex` mail/chat/store/chrono/browser/settings actions, surfaced in `/status`, Overview, and the shared public-safe showcase feed
+- Apex `workspace_api` also writes a local append-only operator ledger for settings update/reset, vault add/extract/delete, mail compose/move/delete/flag, chat session/create/send, and store install actions
 - `/status` now surfaces Apex browser bridge truth separately from the general browser preview receipt
 - `/status` now fuses Apex system and security posture instead of only showing bridge reachability
 - guarded launchers for:
@@ -136,6 +137,24 @@ The live bridge runtime files live under `%TEMP%\openjaws-apex\`:
 
 Those files are the source of truth for launcher ownership, health snapshots, and bounded operator status receipts. Do not invent a second path in ad hoc scripts.
 
+## Settings Lane
+
+As of this pass, `/apex` also exposes a bounded `Settings` tab over the existing `workspace_api` settings endpoints:
+
+- `GET /api/v1/settings/summary`
+- `POST /api/v1/settings/update`
+- `POST /api/v1/settings/reset`
+
+OpenJaws reads the live settings summary first, clones that full settings view, mutates only the selected bounded toggle, and sends the full replacement back through `settings/update`. The current TUI actions cover telemetry, privacy mode, firewall, realtime monitoring, hardware acceleration, refresh, and reset. Each action writes an Apex operator activity receipt and uses the same `x-openjaws-apex-token` trust boundary as the mail/chat/store/Chrono actions.
+
+The local OpenJaws receipt is separate from the Apex `workspace_api` append-only ledger. The receipt is for local operator status and public-safe summaries; the Apex ledger is the local evidence chain. Only sanitized summaries or hashes should cross into the public showcase lane.
+
+Important boundary:
+
+- this is not a secrets or vault lane
+- settings are only sent through the trusted localhost bridge
+- vault add/extract/delete routes stay behind the trusted localhost bridge and now write bounded ledger metadata without exposing full local paths
+
 ## What Fits Well Next
 
 The high-value follow-up is not “embed every Rust app.”
@@ -143,12 +162,8 @@ The high-value follow-up is not “embed every Rust app.”
 The cleaner next steps are:
 
 - richer `/status` fusion for `system_monitor` and `security_center`
-- a bounded `Settings` lane over the existing `workspace_api` endpoints:
-  - `GET /api/v1/settings/summary`
-  - `POST /api/v1/settings/update`
-  - `POST /api/v1/settings/reset`
-- more bounded mail/chat/store operator actions over `workspace_api`
-- launcher-backed security/vault actions with better receipts while `vault` stays out of the typed TUI lane
+- extend the append-only Apex operator ledger into `chrono-bridge` and `browser-bridge` mutations
+- add public-safe projections from the Apex ledger only after sanitizer tests prove raw ledger paths and private payloads cannot leak
 - keep launcher-backed browser actions separate, and add stable bridge endpoints first whenever deeper OpenJaws browser control is needed
 
 ## Tenant Governance Parity
@@ -181,4 +196,5 @@ Important boundary:
 - the public showcase overlay should read the mirrored sanitized governance summary, not issue a second live tenant-analytics fetch
 - forward-looking producers should seed `analytics_dimensions.operator_actions`
 - the TUI keeps `governedActionBreakdown` as a fallback only for older data already in the lane
-- recent `/apex` operator actions now land in a separate bounded local receipt so public-safe activity can prove real mail/chat/store/chrono/browser work without leaking payload bodies or private browser history
+- recent `/apex` operator actions now land in a separate bounded local receipt so public-safe activity can summarize sanitized mail/chat/store/chrono/browser/settings receipt metadata without leaking payload bodies or private browser history
+- local Apex workspace API mutations now also land in the Apex append-only operator ledger; OpenJaws public-safe feeds should mirror only sanitized summaries or hashes, not raw ledger files

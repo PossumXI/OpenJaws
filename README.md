@@ -352,12 +352,13 @@ OpenJaws now has a bounded `/apex` command for a local Apex sidecar and launcher
 - `workspace_api` is the typed bridge, not a hidden shell
 - `chrono-bridge` is now a dedicated backup sidecar around `apps/chrono/src/lib.rs`, not a fake embedded backup pane
 - browser, security center, vault, mail, and related Rust UIs stay out of process
-- `/apex` now has live `Overview`, `Launch`, `Mail`, `Chat`, `Store`, `System`, `Chrono`, and `Security` tabs over the bridge-backed workspace summary
+- `/apex` now has live `Overview`, `Launch`, `Mail`, `Chat`, `Store`, `Settings`, `System`, `Chrono`, and `Security` tabs over the bridge-backed workspace summary
 - `/status` now also surfaces bounded Apex governance recommendations, so the same tenant-governance lane can point operators toward `Mail`, `Security`, `System`, or `Store` follow-up work without widening the bridge contract
 - `/status` now surfaces Apex bridge health, workspace summary, and Chrono bridge state when the local Apex roots are configured
 - Aegis Mail now has bounded move / delete / flag actions over the trusted bridge
 - Shadow Chat can now create bridged sessions in addition to sending into existing ones
 - Store installs now return a structured install receipt instead of a bare success string
+- Settings now use `workspace_api` for bounded telemetry, privacy, firewall, realtime monitoring, hardware acceleration, refresh, and reset controls, with operator activity receipts for audit
 - Apex launches now use a reduced allowlisted environment instead of inheriting the full OpenJaws secret surface
 - the workspace bridge launcher now auto-discovers a local `libclang` runtime when the upstream Rust workspace needs it on Windows
 - the bridge is only trusted when OpenJaws launched it itself, unless the operator explicitly sets `OPENJAWS_APEX_TRUST_LOCALHOST=1`
@@ -373,7 +374,7 @@ OpenJaws now has a bounded `/apex` command for a local Apex sidecar and launcher
   - `chrono-bridge-state.json`
   - `browser-bridge.log`
   - `browser-bridge-state.json`
-- the next safe upstream-backed TUI seam is `settings` over `workspace_api` (`/api/v1/settings/summary`, `/api/v1/settings/update`, `/api/v1/settings/reset`); `vault` remains launcher-backed until it gets a narrower trust contract
+- the settings lane is now bridged over `workspace_api` (`/api/v1/settings/summary`, `/api/v1/settings/update`, `/api/v1/settings/reset`); `vault` remains launcher-backed until it gets a narrower trust contract
 - `Notifications` and `argus` still stay out of agent control until they have their own narrow localhost bridges plus explicit confirmation and audit ladders
 
 See [Apex Workspace Bridge](docs/wiki/Apex-Workspace.md) for setup, trust boundaries, and the current “bridge not kernel embed” contract.
@@ -464,9 +465,13 @@ OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
 
 Current local benchmark snapshot from this workspace:
 
-- BridgeBench best pack: `all` at `42.11`
+- BridgeBench latest lane: `q-bridgebench-20260429T024506` dry-run completed; the local scored pack lane is still blocked by host memory pressure, so no new public score is claimed from this pass
+- historical local BridgeBench score retained for comparison: best pack `all` at `36.84`
 - 30-minute soak: `52/52` successful probes with `0` errors
 - local W&B lane: attempted, but no local auth was configured so the pass stayed receipt-only
+- April 29, 2026 official TerminalBench public-task rerun:
+  - artifact: `artifacts/q-terminalbench-official-public-20260429-circuit-fibsqrt-rerun/terminalbench-report.json`
+  - `circuit-fibsqrt` finished `5` trials with `0` execution-error trials, `5` benchmark-failing trials, reward `0.0`, and `0` benchmark passes
 - April 18, 2026 direct Q reasoning validation:
   - direct OCI `Q` answered the fallback-hysteresis check correctly: `t = 70s`
 - April 18, 2026 direct Q media validation:
@@ -474,18 +479,19 @@ Current local benchmark snapshot from this workspace:
   - explicit image/video requests should stay on a separate media lane instead of silently replacing `Q` as the active mind
   - the dedicated Gemini media lane is restored for that purpose, but the current Gemini project on this machine is still quota-blocked
 - local Harbor / Terminal-Bench lane:
-  - single-task live receipt now reaches clean Harbor completion under OCI `Q`
-  - official public-task five-attempt receipt now exists at `artifacts/q-terminalbench-official-public-20260416-circuit-fibsqrt-v2/terminalbench-report.json`
+  - the preflight now checks Docker with the exact Harbor process environment before a run, which caught the earlier Windows Docker Desktop context mismatch
+  - single-task live receipt reaches clean Harbor completion under OCI `Q`
+  - official public-task five-attempt receipt now exists at `artifacts/q-terminalbench-official-public-20260429-circuit-fibsqrt-rerun/terminalbench-report.json`
     - task: `circuit-fibsqrt`
     - harness result: `completed_with_errors`
-    - truth: the official task completed with `5` attempts, `0` runtime errors, reward `0.0`, and Harbor raw env bundles scrubbed in place
+    - truth: the official task completed with `5` attempts, `0` runtime errors, `5` verifier failures, reward `0.0`, and Harbor raw env bundles scrubbed in place
   - official leaderboard submission discussion: `https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard/discussions/141`
   - repeated-attempt stability receipt captured `1` benchmark-failing trial plus `1` execution-error trial across `2` attempts
   - repeated soak live receipt now exists at `artifacts/q-terminalbench-soak-live-20260417-circuit-fibsqrt-v3/terminalbench-report.json`
     - result: `completed_with_errors`
     - truth: `2` cycles produced `2` total trials, `0` runtime errors, and `2` benchmark-failing trials under one managed jobs lane
   - real concurrent receipt captured `2` live tasks at concurrency `2`
-  - a fresh bounded April 18 wrapper proof now reaches Harbor execution on the current code path, but the Windows Harbor/Docker environment still throws `NotImplementedError` during trial environment startup, so the official five-attempt public receipt above remains the truthful published TerminalBench record
+  - latest blocker: infrastructure and verifier receipt capture are working; Q still needs task-quality improvement because the public task attempts produced placeholder, pass-through, or incomplete `gates.txt` artifacts
 
 Important boundary:
 

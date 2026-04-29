@@ -1,4 +1,6 @@
 import axios from 'axios'
+import { existsSync, readFileSync } from 'fs'
+import { join } from 'path'
 import { jsonStringify } from './slowOperations.js'
 import { getSettings_DEPRECATED } from './settings/settings.js'
 import {
@@ -15,6 +17,12 @@ export const IMMACULATE_HARNESS_ACTIONS = [
   'executions',
   'workers',
   'ollama_models',
+  'tool_capabilities',
+  'tool_receipts',
+  'tool_receipt',
+  'tool_fetch',
+  'tool_search',
+  'artifact_package',
   'register_ollama',
   'register_worker',
   'heartbeat_worker',
@@ -48,6 +56,33 @@ export const IMMACULATE_OLLAMA_ROLES = [
 ] as const
 
 export type ImmaculateOllamaRole = (typeof IMMACULATE_OLLAMA_ROLES)[number]
+
+export const IMMACULATE_TOOL_RECEIPT_KINDS = ['fetch', 'search'] as const
+
+export type ImmaculateToolReceiptKind =
+  (typeof IMMACULATE_TOOL_RECEIPT_KINDS)[number]
+
+export const IMMACULATE_SEARCH_FRESHNESS = [
+  'day',
+  'week',
+  'month',
+  'year',
+] as const
+
+export type ImmaculateSearchFreshness =
+  (typeof IMMACULATE_SEARCH_FRESHNESS)[number]
+
+export const IMMACULATE_ARTIFACT_FORMATS = [
+  'markdown',
+  'text',
+  'json',
+  'html',
+  'docx',
+  'pdf',
+] as const
+
+export type ImmaculateArtifactFormat =
+  (typeof IMMACULATE_ARTIFACT_FORMATS)[number]
 
 type ImmaculateHarnessSettingsLike = {
   immaculate?: {
@@ -220,9 +255,12 @@ function normalizeInlineText(value: string): string {
 }
 
 const DEFAULT_HARNESS_URL = 'http://127.0.0.1:8787'
+let localImmaculateEnvCache:
+  | { cacheKey: string; values: Record<string, string> }
+  | null = null
 const DEFAULT_ACTOR = 'openjaws'
 const REQUEST_TIMEOUT_MS = 20_000
-const HEALTH_TIMEOUT_MS = 2_500
+const HEALTH_TIMEOUT_MS = 7_500
 const DEFAULT_ACTUATION_TIMEOUT_MS = 1_500
 const DEFAULT_OBJECTIVE_LENGTH = 180
 
@@ -283,6 +321,42 @@ const GOVERNANCE_PROFILES: Partial<
     policyId: 'cognitive-run-default',
     consentScope: 'system:intelligence',
   },
+  tool_capabilities: {
+    action: 'cognitive-trace-read',
+    purpose: ['cognitive-trace-read'],
+    policyId: 'cognitive-trace-read-default',
+    consentScope: 'system:intelligence',
+  },
+  tool_receipts: {
+    action: 'event-read',
+    purpose: ['event-read'],
+    policyId: 'event-read-default',
+    consentScope: 'system:audit',
+  },
+  tool_receipt: {
+    action: 'event-read',
+    purpose: ['event-read'],
+    policyId: 'event-read-default',
+    consentScope: 'system:audit',
+  },
+  tool_fetch: {
+    action: 'internet-fetch',
+    purpose: ['internet-fetch'],
+    policyId: 'internet-fetch-default',
+    consentScope: 'system:research',
+  },
+  tool_search: {
+    action: 'internet-search',
+    purpose: ['internet-search'],
+    policyId: 'internet-search-default',
+    consentScope: 'system:research',
+  },
+  artifact_package: {
+    action: 'document-delivery',
+    purpose: ['artifact-delivery'],
+    policyId: 'document-delivery-default',
+    consentScope: 'system:delivery',
+  },
 }
 
 export function normalizeImmaculateHarnessUrl(url?: string | null): string {
@@ -302,6 +376,78 @@ export function isLoopbackHarnessUrl(url: string): boolean {
   }
 }
 
+function stripDotEnvQuotes(value: string): string {
+  const trimmed = value.trim()
+  if (
+    (trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+    (trimmed.startsWith('"') && trimmed.endsWith('"'))
+  ) {
+    return trimmed.slice(1, -1)
+  }
+  return trimmed
+}
+
+function getLocalImmaculateEnvPaths(): string[] {
+  const configured = process.env.IMMACULATE_ENV_FILE?.trim()
+  if (configured) {
+    return [configured]
+  }
+  const userProfile = process.env.USERPROFILE?.trim()
+  return Array.from(
+    new Set(
+      [
+        userProfile ? join(userProfile, 'Desktop', 'Immaculate', '.env.local') : null,
+        userProfile ? join(userProfile, 'Desktop', 'Immaculate', '.env') : null,
+      ].filter((value): value is string => Boolean(value)),
+    ),
+  )
+}
+
+function readLocalImmaculateEnv(): Record<string, string> {
+  const paths = getLocalImmaculateEnvPaths()
+  const cacheKey = paths.join('|')
+  if (localImmaculateEnvCache?.cacheKey === cacheKey) {
+    return localImmaculateEnvCache.values
+  }
+
+  const values: Record<string, string> = {}
+  for (const path of paths) {
+    if (!existsSync(path)) {
+      continue
+    }
+    const content = readFileSync(path, 'utf8')
+    for (const rawLine of content.split(/\r?\n/)) {
+      const line = rawLine.trim()
+      if (!line || line.startsWith('#')) {
+        continue
+      }
+      const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/)
+      if (!match) {
+        continue
+      }
+      values[match[1]] = stripDotEnvQuotes(match[2])
+    }
+  }
+
+  localImmaculateEnvCache = { cacheKey, values }
+  return values
+}
+
+function getLocalImmaculateEnvValue(name: string): string | undefined {
+  const value = readLocalImmaculateEnv()[name]?.trim()
+  return value || undefined
+}
+
+function resolveLocalImmaculateHarnessUrl(): string | undefined {
+  const direct = getLocalImmaculateEnvValue('IMMACULATE_HARNESS_URL')
+  if (direct) {
+    return direct
+  }
+  const port = getLocalImmaculateEnvValue('IMMACULATE_PORT')
+  const host = getLocalImmaculateEnvValue('IMMACULATE_HOST') || '127.0.0.1'
+  return port ? `http://${host}:${port}` : undefined
+}
+
 function resolveImmaculateApiKey(
   settings: ImmaculateHarnessSettingsLike,
 ): { apiKey?: string; apiKeySource?: string } {
@@ -317,6 +463,14 @@ function resolveImmaculateApiKey(
     return {
       apiKey: process.env.IMMACULATE_API_KEY.trim(),
       apiKeySource: 'IMMACULATE_API_KEY',
+    }
+  }
+
+  const localApiKey = getLocalImmaculateEnvValue('IMMACULATE_API_KEY')
+  if (localApiKey) {
+    return {
+      apiKey: localApiKey,
+      apiKeySource: 'IMMACULATE_ENV_FILE',
     }
   }
 
@@ -338,7 +492,9 @@ export function getImmaculateHarnessConfig(
     enabled: settings?.immaculate?.enabled !== false,
     mode: settings?.immaculate?.mode?.trim() || 'balanced',
     harnessUrl: normalizeImmaculateHarnessUrl(
-      process.env.IMMACULATE_HARNESS_URL || settings?.immaculate?.harnessUrl,
+      process.env.IMMACULATE_HARNESS_URL ||
+        settings?.immaculate?.harnessUrl ||
+        resolveLocalImmaculateHarnessUrl(),
     ),
     apiKey,
     apiKeySource,
@@ -410,6 +566,11 @@ function getImmaculateHarnessRoute(
     worker?: {
       workerId?: string
     }
+    receipts?: {
+      kind?: ImmaculateToolReceiptKind
+      limit?: number
+      receiptId?: string
+    }
   },
 ): { method: 'GET' | 'POST'; route: string } {
   switch (action) {
@@ -429,6 +590,42 @@ function getImmaculateHarnessRoute(
       return { method: 'GET', route: '/api/intelligence/workers' }
     case 'ollama_models':
       return { method: 'GET', route: '/api/intelligence/ollama/models' }
+    case 'tool_capabilities':
+      return { method: 'GET', route: '/api/tools/capabilities' }
+    case 'tool_receipts': {
+      const params = new URLSearchParams()
+      if (input?.receipts?.kind) {
+        params.set('kind', input.receipts.kind)
+      }
+      if (
+        typeof input?.receipts?.limit === 'number' &&
+        Number.isFinite(input.receipts.limit)
+      ) {
+        params.set('limit', String(input.receipts.limit))
+      }
+      const query = params.toString()
+      return {
+        method: 'GET',
+        route: `/api/tools/receipts${query ? `?${query}` : ''}`,
+      }
+    }
+    case 'tool_receipt': {
+      const kind = input?.receipts?.kind?.trim()
+      const receiptId = input?.receipts?.receiptId?.trim()
+      if (!kind || !receiptId) {
+        throw new Error('tool_receipt requires receipts.kind and receipts.receiptId')
+      }
+      return {
+        method: 'GET',
+        route: `/api/tools/receipts/${encodeURIComponent(kind)}/${encodeURIComponent(receiptId)}`,
+      }
+    }
+    case 'tool_fetch':
+      return { method: 'POST', route: '/api/tools/fetch' }
+    case 'tool_search':
+      return { method: 'POST', route: '/api/tools/search' }
+    case 'artifact_package':
+      return { method: 'POST', route: '/api/artifacts/package' }
     case 'register_ollama':
       return { method: 'POST', route: '/api/intelligence/ollama/register' }
     case 'register_worker':
@@ -497,6 +694,51 @@ function summarizeImmaculateHarnessResponse(
       return `${Array.isArray(data?.workers) ? data.workers.length : 0} workers · ${String(data?.recommendedLayerId ?? 'layer pending')}`
     case 'ollama_models':
       return `${Array.isArray(data?.models) ? data.models.length : 0} local models`
+    case 'tool_capabilities': {
+      const capabilities =
+        data?.capabilities && typeof data.capabilities === 'object'
+          ? (data.capabilities as Record<string, unknown>)
+          : null
+      const internet =
+        capabilities?.internet && typeof capabilities.internet === 'object'
+          ? (capabilities.internet as Record<string, unknown>)
+          : null
+      const search =
+        internet?.search && typeof internet.search === 'object'
+          ? (internet.search as Record<string, unknown>)
+          : null
+      return `tools ready · search ${String(search?.status ?? 'unknown')}`
+    }
+    case 'tool_receipts': {
+      const receipts =
+        data?.receipts && typeof data.receipts === 'object'
+          ? (data.receipts as Record<string, unknown>)
+          : null
+      return `${String(receipts?.count ?? 0)} tool receipts`
+    }
+    case 'tool_receipt':
+      return data?.record ? 'tool receipt loaded' : 'tool receipt response received'
+    case 'tool_fetch': {
+      const receipt =
+        data?.receipt && typeof data.receipt === 'object'
+          ? (data.receipt as Record<string, unknown>)
+          : null
+      return `fetch receipt ${String(receipt?.id ?? 'created')} · HTTP ${String(receipt?.status ?? '?')}`
+    }
+    case 'tool_search': {
+      const receipt =
+        data?.receipt && typeof data.receipt === 'object'
+          ? (data.receipt as Record<string, unknown>)
+          : null
+      return `search receipt ${String(receipt?.id ?? 'created')} · ${String(receipt?.resultCount ?? 0)} results`
+    }
+    case 'artifact_package': {
+      const receipt =
+        data?.receipt && typeof data.receipt === 'object'
+          ? (data.receipt as Record<string, unknown>)
+          : null
+      return `artifact ${String(receipt?.name ?? 'created')} · ${String(receipt?.format ?? 'unknown')} · ${String(receipt?.byteLength ?? '?')} bytes`
+    }
     case 'register_ollama':
       return data?.accepted === true
         ? `accepted · ${String(data?.layer && typeof data.layer === 'object' && data.layer !== null && 'model' in data.layer ? data.layer.model : 'layer registered')}`
@@ -786,6 +1028,28 @@ export async function callImmaculateHarness(
       recommendedLayerId?: string | null
       target?: string | null
     }
+    receipts?: {
+      kind?: ImmaculateToolReceiptKind
+      limit?: number
+      receiptId?: string
+    }
+    toolFetch?: {
+      url: string
+      maxBytes?: number
+    }
+    toolSearch?: {
+      query: string
+      maxResults?: number
+      freshness?: ImmaculateSearchFreshness
+      domains?: string[]
+    }
+    artifact?: {
+      name?: string
+      format: ImmaculateArtifactFormat
+      content: string
+      sourceReceiptPath?: string
+      metadata?: Record<string, unknown>
+    }
   },
   options: {
     signal?: AbortSignal
@@ -814,6 +1078,21 @@ export async function callImmaculateHarness(
     data = input.worker ?? {}
   } else if (input.action === 'assign_worker') {
     data = input.assignWorker ?? {}
+  } else if (input.action === 'tool_fetch') {
+    if (!input.toolFetch?.url?.trim()) {
+      throw new Error('tool_fetch requires toolFetch.url')
+    }
+    data = input.toolFetch
+  } else if (input.action === 'tool_search') {
+    if (!input.toolSearch?.query?.trim()) {
+      throw new Error('tool_search requires toolSearch.query')
+    }
+    data = input.toolSearch
+  } else if (input.action === 'artifact_package') {
+    if (!input.artifact?.format || typeof input.artifact.content !== 'string') {
+      throw new Error('artifact_package requires artifact.format and artifact.content')
+    }
+    data = input.artifact
   }
 
   try {

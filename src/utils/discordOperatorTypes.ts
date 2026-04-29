@@ -1,0 +1,11 @@
+export type DiscordQOperatorAction =
+  | 'workspaces'
+  | 'openjaws-status'
+  | 'roundtable-status'
+  | 'start-openjaws'
+  | 'stop-openjaws'
+  | 'ask-openjaws'
+  | 'github-status'
+  | 'ask-github-openjaws'
+  | 'pending-pushes'
+  | 'confirm-push'

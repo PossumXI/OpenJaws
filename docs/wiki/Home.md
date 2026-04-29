@@ -121,11 +121,12 @@ See [Accountable Browser Preview](Browser-Preview.md) for the exact boundary.
 
 ## Live Benchmark Record
 
-Immaculate is not just a future idea in this project. The current benchmark story is backed by live W&B runs and a repo-documented benchmark snapshot:
+Immaculate is not just a future idea in this project. The current benchmark story is backed by published Immaculate W&B runs plus repo-documented local `Q` benchmark receipts:
 
 - 60-minute soak with verified integrity and checkpointed recovery
 - 60-second benchmark snapshot from a live Immaculate run
 - a plain explanation of why those numbers matter for OpenJaws routing, pacing, retries, and remote execution
+- fresh local `Q` receipts for BridgeBench, TerminalBench, and bounded soak comparison, with W&B truth carried separately when auth is actually present
 
 OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 

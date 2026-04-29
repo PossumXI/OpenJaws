@@ -19,14 +19,42 @@ import { which } from './which.js'
 
 const DEFAULT_WINDOWS_HOME =
   process.env.USERPROFILE?.trim() || process.env.HOME?.trim() || process.cwd()
-const DEFAULT_ASGARD_ROOT = resolve(
-  process.env.OPENJAWS_APEX_ASGARD_ROOT?.trim() ||
-    join(DEFAULT_WINDOWS_HOME, 'Desktop', 'cheeks', 'Asgard'),
-)
-export const APEX_PROJECT_ROOT = resolve(
-  process.env.OPENJAWS_APEX_ROOT?.trim() ||
-    join(DEFAULT_ASGARD_ROOT, 'ignite', 'apex-os-project'),
-)
+
+export function resolveApexAsgardRoot(args: {
+  env?: NodeJS.ProcessEnv
+  home?: string
+  exists?: (path: string) => boolean
+} = {}): string {
+  const env = args.env ?? process.env
+  const configured = env.OPENJAWS_APEX_ASGARD_ROOT?.trim()
+  if (configured) {
+    return resolve(configured)
+  }
+
+  const home = args.home ?? DEFAULT_WINDOWS_HOME
+  const exists = args.exists ?? existsSync
+  const candidates = [
+    'D:\\cheeks\\Asgard',
+    join(home, 'Desktop', 'cheeks', 'Asgard'),
+  ]
+  return resolve(candidates.find(candidate => exists(candidate)) ?? candidates[0]!)
+}
+
+export function resolveApexProjectRoot(args: {
+  env?: NodeJS.ProcessEnv
+  asgardRoot?: string
+} = {}): string {
+  const env = args.env ?? process.env
+  return resolve(
+    env.OPENJAWS_APEX_ROOT?.trim() ||
+      join(args.asgardRoot ?? resolveApexAsgardRoot({ env }), 'ignite', 'apex-os-project'),
+  )
+}
+
+const DEFAULT_ASGARD_ROOT = resolveApexAsgardRoot()
+export const APEX_PROJECT_ROOT = resolveApexProjectRoot({
+  asgardRoot: DEFAULT_ASGARD_ROOT,
+})
 export const APEX_KERNEL_ROOT = resolve(join(APEX_PROJECT_ROOT, 'kernel'))
 export const APEX_APPS_ROOT = resolve(join(APEX_PROJECT_ROOT, 'apps'))
 export const APEX_NOTIFICATIONS_ROOT = resolve(
@@ -270,6 +298,57 @@ export type ApexWorkspaceSummary = {
   }
 }
 
+export type ApexWorkspaceSecuritySettings = {
+  enableRealtimeMonitoring: boolean
+  blockSuspiciousActivity: boolean
+  requirePasswordForSettings: boolean
+  autoLockTimeoutMinutes: number
+  enableFirewall: boolean
+  enableAntivirus: boolean
+}
+
+export type ApexWorkspacePerformanceSettings = {
+  maxCpuUsagePercent: number
+  maxMemoryUsageMb: number
+  enableHardwareAcceleration: boolean
+  vsyncEnabled: boolean
+  targetFps: number
+}
+
+export type ApexWorkspacePrivacySettings = {
+  enablePrivacyMode: boolean
+  blockTrackingCookies: boolean
+  disableTelemetry: boolean
+  encryptUserData: boolean
+  macAddressRandomization: boolean
+}
+
+export type ApexWorkspaceUserSettings = {
+  currentUser: string
+  theme: string
+  language: string
+  timezone: string
+  dateFormat: string
+}
+
+export type ApexWorkspaceSettings = {
+  security: ApexWorkspaceSecuritySettings
+  performance: ApexWorkspacePerformanceSettings
+  privacy: ApexWorkspacePrivacySettings
+  users: ApexWorkspaceUserSettings
+}
+
+export type ApexWorkspaceSettingsSummary = {
+  settings: ApexWorkspaceSettings
+  hasUnsavedChanges: boolean
+}
+
+export type ApexWorkspaceSettingsReceipt = {
+  message: string
+  settings: ApexWorkspaceSettings
+  hasUnsavedChanges: boolean
+}
+
 export type ApexBreakdownEntry = {
   name: string
   count: number
@@ -287,6 +366,8 @@ export type ApexTenantGovernanceSummary = {
   highRiskCalls: number
   criticalCalls: number
   pendingReviewCalls: number
+  spendActionCount: number
+  spendActionBreakdown: ApexBreakdownEntry[]
   operatorActionBreakdown: ApexBreakdownEntry[]
   governedActionBreakdown: ApexBreakdownEntry[]
   governanceSignalBreakdown: ApexBreakdownEntry[]
@@ -315,7 +396,7 @@ export type ApexBrowserSession = {
   id: string
   intent: string
   rationale: string
-  requestedBy: 'user' | 'agent'
+  requestedBy: 'user' | 'agent' | 'operator'
   recordHistory: boolean
   title: string
   url: string
@@ -394,6 +475,8 @@ type ApexTenantAnalyticsResponse = {
     highRiskCalls?: number
     criticalCalls?: number
     pendingReviewCalls?: number
+    spendActionCount?: number
+    spendActionBreakdown?: ApexBreakdownEntry[]
     operatorActionBreakdown?: ApexBreakdownEntry[]
     governedActionBreakdown?: ApexBreakdownEntry[]
     governanceSignalBreakdown?: ApexBreakdownEntry[]
@@ -462,6 +545,9 @@ export function readApexTenantGovernanceMirror(
       highRiskCalls: numberFromUnknown(record.highRiskCalls),
       criticalCalls: numberFromUnknown(record.criticalCalls),
       pendingReviewCalls: numberFromUnknown(record.pendingReviewCalls),
+      spendActionBreakdown: breakdownEntriesFromUnknown(
+        record.spendActionBreakdown,
+      ),
       operatorActionBreakdown: breakdownEntriesFromUnknown(
         record.operatorActionBreakdown,
       ),
@@ -695,6 +781,7 @@ function buildApexLaunchEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
     'RUST_LOG',
     'NUMBER_OF_PROCESSORS',
     'OS',
+    'APEX_CHRONO_ALLOWED_ROOTS',
   ] as const
 
   const env: NodeJS.ProcessEnv = {}
@@ -709,6 +796,20 @@ function buildApexLaunchEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
     ...env,
     ...extra,
   }
+}
+
+function buildDefaultChronoAllowedRoots(): string {
+  return Array.from(
+    new Set(
+      [
+        DEFAULT_ASGARD_ROOT,
+        APEX_PROJECT_ROOT,
+        APEX_APPS_ROOT,
+        APEX_NOTIFICATIONS_ROOT,
+        APEX_ARGUS_ROOT,
+      ].filter(root => existsSync(root)),
+    ),
+  ).join(';')
 }
 
 function readApexSidecarState(statePath: string): ApexWorkspaceApiState | null {
@@ -1075,6 +1176,19 @@ export async function getApexWorkspaceSummary(): Promise<ApexWorkspaceSummary | 
   return payload.data
 }
 
+export async function getApexSettingsSummary(): Promise<ApexWorkspaceSettingsSummary | null> {
+  const payload = await fetchApexJson<ApexApiEnvelope<ApexWorkspaceSettingsSummary>>(
+    APEX_WORKSPACE_API_URL,
+    APEX_WORKSPACE_API_STATE,
+    '/api/v1/settings/summary',
+    2500,
+  )
+  if (!payload?.success) {
+    return null
+  }
+  return payload.data
+}
+
 async function getApexWorkspaceGovernanceSummary(): Promise<ApexTenantGovernanceSummary | null> {
   const payload = await fetchApexJson<ApexApiEnvelope<ApexTenantGovernanceSummary>>(
     APEX_WORKSPACE_API_URL,
@@ -1092,6 +1206,12 @@ function normalizeApexTenantGovernanceSummary(
   analyticsPayload: ApexTenantAnalyticsResponse,
 ): ApexTenantGovernanceSummary {
   const analysis = analyticsPayload.decision_analysis
+  const operatorActionBreakdown =
+    analysis?.operatorActionBreakdown ?? analysis?.governedActionBreakdown ?? []
+  const spendActionBreakdown =
+    analysis?.spendActionBreakdown?.length
+      ? analysis.spendActionBreakdown
+      : filterGovernedSpendBreakdown(operatorActionBreakdown)
 
   return {
     totalDecisions: analyticsPayload.total_decisions ?? 0,
@@ -1105,10 +1225,13 @@ function normalizeApexTenantGovernanceSummary(
     highRiskCalls: analysis?.highRiskCalls ?? 0,
     criticalCalls: analysis?.criticalCalls ?? 0,
     pendingReviewCalls: analysis?.pendingReviewCalls ?? 0,
-    operatorActionBreakdown:
-      analysis?.operatorActionBreakdown ?? analysis?.governedActionBreakdown ?? [],
+    spendActionCount:
+      analysis?.spendActionCount ??
+      spendActionBreakdown.reduce((sum, entry) => sum + entry.count, 0),
+    spendActionBreakdown,
+    operatorActionBreakdown,
     governedActionBreakdown:
-      analysis?.governedActionBreakdown ?? analysis?.operatorActionBreakdown ?? [],
+      analysis?.governedActionBreakdown ?? operatorActionBreakdown,
     governanceSignalBreakdown: analysis?.governanceSignalBreakdown ?? [],
     reviewStatusBreakdown: analyticsPayload.by_review_status ?? [],
     categoryBreakdown: analyticsPayload.by_category ?? [],
@@ -1256,6 +1379,32 @@ export async function installApexStoreApp(input: {
       app_id: appId,
     },
     'App Store install',
+  )
+}
+
+export async function updateApexSettings(input: {
+  settings: ApexWorkspaceSettings
+}): Promise<ApexStructuredActionResult<ApexWorkspaceSettingsReceipt>> {
+  return postApexStructuredAction<ApexWorkspaceSettingsReceipt>(
+    APEX_WORKSPACE_API_URL,
+    APEX_WORKSPACE_API_STATE,
+    '/api/v1/settings/update',
+    {
+      settings: input.settings,
+    },
+    'Apex settings update',
+  )
+}
+
+export async function resetApexSettings(): Promise<
+  ApexStructuredActionResult<ApexWorkspaceSettingsReceipt>
+> {
+  return postApexStructuredAction<ApexWorkspaceSettingsReceipt>(
+    APEX_WORKSPACE_API_URL,
+    APEX_WORKSPACE_API_STATE,
+    '/api/v1/settings/reset',
+    {},
+    'Apex settings reset',
   )
 }
 
@@ -1508,7 +1657,7 @@ export async function openApexBrowserSession(input: {
   url: string
   intent: string
   rationale: string
-  requestedBy?: 'user' | 'agent'
+  requestedBy?: 'user' | 'agent' | 'operator'
   recordHistory?: boolean
 }): Promise<
   ApexStructuredActionResult<{
@@ -1539,7 +1688,7 @@ export async function openApexBrowserSession(input: {
       rationale,
       requestedBy: input.requestedBy ?? 'user',
       recordHistory:
-        input.recordHistory ?? (input.requestedBy ?? 'user') === 'agent',
+        input.recordHistory ?? (input.requestedBy ?? 'user') !== 'user',
     },
     'Browser session open',
   )
@@ -1881,6 +2030,9 @@ export async function startApexChronoBridge(): Promise<ApexActionResult> {
             APEX_CHRONO_API_PORT: chronoSocket.port,
           }
         : {}),
+      APEX_CHRONO_ALLOWED_ROOTS:
+        process.env.APEX_CHRONO_ALLOWED_ROOTS?.trim() ||
+        buildDefaultChronoAllowedRoots(),
       APEX_CHRONO_API_TOKEN: token,
     }),
   })
@@ -2144,6 +2296,42 @@ export function summarizeApexWorkspace(summary: ApexWorkspaceSummary | null): {
   }
 }
 
+function onOff(value: boolean): string {
+  return value ? 'on' : 'off'
+}
+
+export function summarizeApexSettings(
+  summary: ApexWorkspaceSettingsSummary | null,
+): {
+  headline: string
+  details: string[]
+} {
+  if (!summary) {
+    return {
+      headline: 'Apex settings bridge offline.',
+      details: [
+        'Start the Workspace API from /apex before changing telemetry, privacy, firewall, or performance controls.',
+      ],
+    }
+  }
+
+  const { settings } = summary
+  return {
+    headline: [
+      `Apex settings ${summary.hasUnsavedChanges ? 'unsaved changes pending' : 'saved'}`,
+      `telemetry ${settings.privacy.disableTelemetry ? 'off' : 'on'}`,
+      `theme ${settings.users.theme}`,
+      `${settings.performance.targetFps} FPS`,
+    ].join(' · '),
+    details: [
+      `Security: realtime ${onOff(settings.security.enableRealtimeMonitoring)}, firewall ${onOff(settings.security.enableFirewall)}, antivirus ${onOff(settings.security.enableAntivirus)}, settings password ${onOff(settings.security.requirePasswordForSettings)}, auto-lock ${settings.security.autoLockTimeoutMinutes}m.`,
+      `Privacy: privacy mode ${onOff(settings.privacy.enablePrivacyMode)}, tracking cookies ${settings.privacy.blockTrackingCookies ? 'blocked' : 'allowed'}, telemetry ${settings.privacy.disableTelemetry ? 'disabled' : 'enabled'}, encrypted user data ${onOff(settings.privacy.encryptUserData)}, MAC randomization ${onOff(settings.privacy.macAddressRandomization)}.`,
+      `Performance: CPU cap ${settings.performance.maxCpuUsagePercent}%, memory cap ${settings.performance.maxMemoryUsageMb} MB, acceleration ${onOff(settings.performance.enableHardwareAcceleration)}, vsync ${onOff(settings.performance.vsyncEnabled)}, target ${settings.performance.targetFps} FPS.`,
+      `User: ${settings.users.currentUser} · ${settings.users.language} · ${settings.users.timezone} · ${settings.users.dateFormat}.`,
+    ],
+  }
+}
+
 export function summarizeApexTenantGovernance(
   summary: ApexTenantGovernanceSummary | null,
 ): {
@@ -2178,6 +2366,49 @@ export function summarizeApexTenantGovernance(
   }
 }
 
+export function summarizeApexGovernedSpend(
+  summary: ApexTenantGovernanceSummary | null,
+): {
+  headline: string
+  details: string[]
+} {
+  if (!summary) {
+    return {
+      headline: 'Governed spend lane unavailable',
+      details: [
+        'Tenant analytics and protected Apex governance mirrors are both unavailable.',
+      ],
+    }
+  }
+
+  const spendBreakdown =
+    Array.isArray(summary.spendActionBreakdown) &&
+    summary.spendActionBreakdown.length > 0
+      ? summary.spendActionBreakdown
+      : filterGovernedSpendBreakdown(
+          summary.operatorActionBreakdown.length > 0
+            ? summary.operatorActionBreakdown
+            : summary.governedActionBreakdown,
+        )
+  const spendCount =
+    typeof summary.spendActionCount === 'number' && Number.isFinite(summary.spendActionCount)
+      ? summary.spendActionCount
+      : spendBreakdown.reduce((sum, entry) => sum + entry.count, 0)
+  const topSpendAction = formatBreakdownName(
+    spendBreakdown[0]?.name,
+  )
+  const latest = summary.latestActivityAt ?? 'no recent spend activity'
+
+  return {
+    headline: `Governed spend actions ${spendCount} · pending ${summary.pendingReviewCalls} · high risk ${summary.highRiskCalls}`,
+    details: [
+      `Top spend action ${topSpendAction} · tracked labels ${spendBreakdown.length}`,
+      `Signals ${summary.governanceSignalBreakdown.slice(0, 2).map(entry => formatBreakdownName(entry.name)).join(' · ') || 'routine'}`,
+      `Latest spend activity ${latest}`,
+    ],
+  }
+}
+
 function findBreakdownCount(
   entries: ApexBreakdownEntry[],
   name: string,
@@ -2187,6 +2418,31 @@ function findBreakdownCount(
 
 function formatBreakdownName(name: string | null | undefined): string {
   return (name ?? 'routine').replace(/_/g, ' ')
+}
+
+function isGovernedSpendAction(
+  value: string | null | undefined,
+): boolean {
+  const normalized = value?.trim().toLowerCase()
+  if (!normalized) {
+    return false
+  }
+
+  return normalized === 'payment'
+    || normalized === 'payments'
+    || normalized === 'billing'
+    || normalized === 'commercial'
+    || normalized.startsWith('payment_')
+    || normalized.startsWith('subscription_')
+    || normalized.startsWith('token_purchase_')
+    || normalized.includes('checkout')
+    || normalized.includes('billing')
+}
+
+function filterGovernedSpendBreakdown(
+  entries: ApexBreakdownEntry[],
+): ApexBreakdownEntry[] {
+  return entries.filter(entry => isGovernedSpendAction(entry.name))
 }
 
 export function buildApexGovernanceRecommendations(
@@ -2320,6 +2576,60 @@ export function summarizePublicApexTenantGovernance(
             summary.highRiskCalls > 0
           ? 'warning'
           : 'ok',
+  }
+}
+
+export function summarizePublicApexGovernedSpend(
+  summary: ApexTenantGovernanceSummary | null,
+): {
+  headline: string
+  details: string[]
+  operatorActions: string[]
+  latestActivityAt: string | null
+  status: 'ok' | 'warning' | 'info'
+} | null {
+  if (!summary) {
+    return null
+  }
+
+  const spendBreakdown =
+    Array.isArray(summary.spendActionBreakdown) &&
+    summary.spendActionBreakdown.length > 0
+      ? summary.spendActionBreakdown
+      : filterGovernedSpendBreakdown(
+          summary.operatorActionBreakdown.length > 0
+            ? summary.operatorActionBreakdown
+            : summary.governedActionBreakdown,
+        )
+  const spendCount =
+    typeof summary.spendActionCount === 'number' && Number.isFinite(summary.spendActionCount)
+      ? summary.spendActionCount
+      : spendBreakdown.reduce((sum, entry) => sum + entry.count, 0)
+  if (spendCount <= 0) {
+    return {
+      headline: 'Apex governed spend review is active',
+      details: [
+        'No spend actions were published in this public snapshot.',
+        'Protected approval and audit paths remain available through ApexOS and OpenJaws.',
+      ],
+      operatorActions: [],
+      latestActivityAt: summary.latestActivityAt,
+      status: 'info',
+    }
+  }
+
+  const spend = summarizeApexGovernedSpend(summary)
+  return {
+    headline: spend.headline,
+    details: spend.details.slice(0, 3),
+    operatorActions: spendBreakdown
+      .slice(0, 4)
+      .map(entry => entry.name),
+    latestActivityAt: summary.latestActivityAt,
+    status:
+      summary.pendingReviewCalls > 0 || summary.highRiskCalls > 0
+        ? 'warning'
+        : 'ok',
   }
 }
 

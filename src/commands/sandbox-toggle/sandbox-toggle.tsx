@@ -9,7 +9,7 @@ import { getSettings_DEPRECATED, getSettingsFilePathForSource } from '../../util
 import type { ThemeName } from '../../utils/theme.js';
 export async function call(onDone: (result?: string) => void, _context: unknown, args?: string): Promise<React.ReactNode | null> {
   const settings = getSettings_DEPRECATED();
-  const themeName: ThemeName = settings.theme as ThemeName || 'light';
+  const themeName: ThemeName = (settings.theme as ThemeName) ?? 'dark';
   const platform = getPlatform();
   if (!SandboxManager.isSupportedPlatform()) {
     // WSL1 users will see this since isSupportedPlatform returns false for WSL1

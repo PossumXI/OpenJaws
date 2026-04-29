@@ -4,10 +4,17 @@ import { join, resolve } from 'path'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import {
+  applyOfficialSubmissionDefaults,
   buildHarborArgs,
+  buildTaskSummary,
+  buildVerifierDiagnostics,
+  collectAgentEnv,
   parseArgs,
   resolveDiscoveredHarborJobResultPath,
+  resolveHarborDockerEnv,
   resolveTerminalBenchSessionMetadata,
+  readOpenJawsAgentOutcome,
+  validateOfficialSubmissionOptions,
 } from './q-terminalbench.ts'
 import { createBenchmarkTraceWriter } from '../src/immaculate/benchmarkTrace.js'
 import { buildQProviderProbeCheck } from '../src/q/runtime.js'
@@ -129,6 +136,212 @@ describe('q-terminalbench soak options', () => {
 
     rmSync(sandbox, { force: true, recursive: true })
   })
+
+  test('official submission defaults raise benchmark turn and setup budgets', () => {
+    const options = applyOfficialSubmissionDefaults(
+      parseArgs(['--official-submission', '--max-turns', '12']),
+    )
+
+    expect(options.dataset).toBe('terminal-bench@2.0')
+    expect(options.nAttempts).toBe(5)
+    expect(options.maxTurns).toBe(20)
+    expect(options.agentSetupTimeoutMultiplier).toBe(5)
+    expect(buildHarborArgs(options, 1, 1)).toEqual(
+      expect.arrayContaining([
+        '--timeout-multiplier',
+        '5',
+        '--ak',
+        'max_turns=20',
+      ]),
+    )
+  })
+
+  test('defaults to the runtime bundle lane unless source-tree runtime is explicitly requested', () => {
+    const defaultOptions = parseArgs([])
+    const sourceTreeOptions = parseArgs(['--source-tree-runtime'])
+
+    expect(buildHarborArgs(defaultOptions, 1, 1)).toEqual(
+      expect.arrayContaining(['--ak', 'use_runtime_bundle=true']),
+    )
+    expect(buildHarborArgs(sourceTreeOptions, 1, 1)).not.toEqual(
+      expect.arrayContaining(['--ak', 'use_runtime_bundle=true']),
+    )
+  })
+
+  test('keeps oci q Harbor runs scoped to OCI env names', () => {
+    const originalEnv = {
+      Q_BASE_URL: process.env.Q_BASE_URL,
+      OCI_BASE_URL: process.env.OCI_BASE_URL,
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    }
+    process.env.Q_BASE_URL = 'https://oci.example/openai/v1'
+    process.env.OCI_BASE_URL = 'https://oci.example/openai/v1'
+    process.env.OPENAI_API_KEY = 'should-not-leak'
+    process.env.GEMINI_API_KEY = 'should-not-leak'
+
+    const env = collectAgentEnv({ model: 'oci:Q' })
+
+    expect(env.Q_BASE_URL).toBe('https://oci.example/openai/v1')
+    expect(env.OCI_BASE_URL).toBe('https://oci.example/openai/v1')
+    expect(env.OPENAI_API_KEY).toBeUndefined()
+    expect(env.GEMINI_API_KEY).toBeUndefined()
+
+    process.env.Q_BASE_URL = originalEnv.Q_BASE_URL
+    process.env.OCI_BASE_URL = originalEnv.OCI_BASE_URL
+    process.env.OPENAI_API_KEY = originalEnv.OPENAI_API_KEY
+    process.env.GEMINI_API_KEY = originalEnv.GEMINI_API_KEY
+  })
+
+  test('pins Harbor to Docker Desktop on Windows when Docker env is unset', () => {
+    expect(
+      resolveHarborDockerEnv({
+        env: {},
+        platform: 'win32',
+      }),
+    ).toEqual({
+      DOCKER_CONTEXT: 'desktop-linux',
+      DOCKER_HOST: 'npipe:////./pipe/dockerDesktopLinuxEngine',
+    })
+  })
+
+  test('respects explicit Docker host settings for Harbor on Windows', () => {
+    expect(
+      resolveHarborDockerEnv({
+        env: {
+          DOCKER_CONTEXT: 'custom-context',
+          DOCKER_HOST: 'npipe:////./pipe/customDockerEngine',
+        },
+        platform: 'win32',
+      }),
+    ).toEqual({
+      DOCKER_CONTEXT: 'custom-context',
+      DOCKER_HOST: 'npipe:////./pipe/customDockerEngine',
+    })
+  })
+
+  test('does not inject Docker Desktop settings for non-Windows Harbor runs', () => {
+    expect(
+      resolveHarborDockerEnv({
+        env: {},
+        platform: 'linux',
+      }),
+    ).toEqual({})
+  })
+
+  test('official submission validation accepts the sanctioned setup budget', () => {
+    const options = applyOfficialSubmissionDefaults(
+      parseArgs(['--official-submission']),
+    )
+
+    expect(() => validateOfficialSubmissionOptions(options)).not.toThrow()
+  })
+
+  test('surfaces non-executing success when the verifier reward file is missing', () => {
+    expect(
+      buildTaskSummary({
+        taskName: 'circuit-fibsqrt',
+        executionStatus: 'error',
+        benchmarkStatus: 'unknown',
+        rewardTotal: null,
+        exceptionType: 'RewardFileNotFoundError',
+        exceptionMessage: 'No reward file found',
+        permissionDenialCount: 0,
+        agentResultSubtype: 'success',
+        agentResultSummary:
+          'completed the task but only returned a prose explanation instead of changing the workspace',
+      }),
+    ).toContain('completed without verifier output')
+  })
+
+  test('captures verifier reward and log diagnostics from Harbor trial directories', () => {
+    const sandbox = mkdtempSync(join(tmpdir(), 'q-terminalbench-verifier-'))
+    try {
+      const trialRoot = join(sandbox, 'task__trial')
+      const verifierDir = join(trialRoot, 'verifier')
+      mkdirSync(verifierDir, { recursive: true })
+      const resultPath = join(trialRoot, 'result.json')
+      writeFileSync(resultPath, '{}\n', 'utf8')
+      writeFileSync(join(verifierDir, 'test-stdout.txt'), 'line 1\nline 2\n', 'utf8')
+      writeFileSync(
+        join(verifierDir, '.openjaws-log-alias-probe.txt'),
+        'openjaws harbor linux logs alias ready\n',
+        'utf8',
+      )
+      writeFileSync(
+        join(verifierDir, '.openjaws-verifier-command-probe.txt'),
+        'openjaws verifier command write probe\n',
+        'utf8',
+      )
+
+      expect(buildVerifierDiagnostics(resultPath)).toMatchObject({
+        verifierDir,
+        verifierDirExists: true,
+        verifierFileNames: [
+          '.openjaws-log-alias-probe.txt',
+          '.openjaws-verifier-command-probe.txt',
+          'test-stdout.txt',
+        ],
+        rewardTextExists: false,
+        rewardJsonExists: false,
+        testStdoutExists: true,
+        testStdoutBytes: 14,
+        testStdoutTail: 'line 1\nline 2',
+        testStderrExists: false,
+        logAliasProbeExists: true,
+        verifierCommandProbeExists: true,
+      })
+    } finally {
+      rmSync(sandbox, { force: true, recursive: true })
+    }
+  })
+
+  test('summarizes OpenJaws CLI result text from Harbor task artifacts', () => {
+    const sandbox = mkdtempSync(join(tmpdir(), 'q-terminalbench-agent-result-'))
+    try {
+      const trialRoot = join(sandbox, 'task__trial')
+      const agentDir = join(trialRoot, 'agent')
+      mkdirSync(agentDir, { recursive: true })
+      const resultPath = join(trialRoot, 'result.json')
+      writeFileSync(resultPath, '{}\n', 'utf8')
+      writeFileSync(
+        join(agentDir, 'openjaws-result.json'),
+        JSON.stringify({
+          subtype: 'success',
+          result:
+            'Implemented a placeholder gates.txt, but it does not yet compute fib(isqrt(N)) modulo 2^32.',
+        }),
+        'utf8',
+      )
+
+      expect(readOpenJawsAgentOutcome(resultPath)).toEqual({
+        subtype: 'success',
+        summary:
+          'Implemented a placeholder gates.txt, but it does not yet compute fib(isqrt(N)) modulo 2^32.',
+        selfReportedIncomplete: true,
+      })
+    } finally {
+      rmSync(sandbox, { force: true, recursive: true })
+    }
+  })
+
+  test('surfaces self-reported incomplete agent output in failed task summaries', () => {
+    expect(
+      buildTaskSummary({
+        taskName: 'circuit-fibsqrt',
+        executionStatus: 'completed',
+        benchmarkStatus: 'failed',
+        rewardTotal: 0,
+        exceptionType: null,
+        exceptionMessage: null,
+        permissionDenialCount: 0,
+        agentResultSubtype: 'success',
+        agentResultSummary:
+          'Generated a placeholder gates.txt that does not yet compute the requested function.',
+        agentResultSelfReportedIncomplete: true,
+      }),
+    ).toContain('failed after self-reported incomplete agent output')
+  })
 })
 
 describe('q-terminalbench provenance', () => {
@@ -188,7 +401,6 @@ describe('q-terminalbench provenance', () => {
     })
   })
 })
-
 describe('q-terminalbench soak receipts', () => {
   test('builds a cycle receipt and top-level aggregate without Harbor', () => {
     const attempts = [

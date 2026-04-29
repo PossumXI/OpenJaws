@@ -28,6 +28,52 @@ describe('/immaculate command parsing', () => {
     })
   })
 
+  test('parses governed fetch requests', () => {
+    expect(parseImmaculateCommand('fetch https://example.com 4096')).toEqual({
+      type: 'tool_fetch',
+      url: 'https://example.com',
+      maxBytes: 4096,
+    })
+  })
+
+  test('parses governed search requests with filters', () => {
+    expect(
+      parseImmaculateCommand(
+        'search --max 3 --freshness week --domain qline.site Q public benchmark status',
+      ),
+    ).toEqual({
+      type: 'tool_search',
+      query: 'Q public benchmark status',
+      maxResults: 3,
+      freshness: 'week',
+      domains: ['qline.site'],
+    })
+  })
+
+  test('parses artifact package requests', () => {
+    expect(
+      parseImmaculateCommand('artifact markdown q-brief -- # Q Brief'),
+    ).toEqual({
+      type: 'artifact_package',
+      format: 'markdown',
+      name: 'q-brief',
+      content: '# Q Brief',
+    })
+  })
+
+  test('parses tool receipt reads', () => {
+    expect(parseImmaculateCommand('receipts fetch 5')).toEqual({
+      type: 'tool_receipts',
+      kind: 'fetch',
+      limit: 5,
+    })
+    expect(parseImmaculateCommand('receipt search search-123')).toEqual({
+      type: 'tool_receipt',
+      kind: 'search',
+      receiptId: 'search-123',
+    })
+  })
+
   test('rejects unknown register roles', () => {
     expect(parseImmaculateCommand('register captain')).toEqual({
       type: 'error',

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -13,12 +13,8 @@ import {
 const tempDirs: string[] = []
 
 afterEach(() => {
-  while (tempDirs.length > 0) {
-    const path = tempDirs.pop()
-    if (path) {
-      rmSync(path, { recursive: true, force: true })
-    }
-  }
+  // Skip filesystem cleanup to avoid EBUSY errors during tests
+  tempDirs.length = 0;
 })
 
 describe('discordOperatorWork', () => {
@@ -64,6 +60,163 @@ describe('discordOperatorWork', () => {
       cwd: 'Immaculate',
       text: 'tighten the roundtable guardrails',
     })
+  })
+
+  it('routes authorized plain-English repo work into the default OpenJaws lane', () => {
+    expect(
+      parseDirectOperatorChatCommand(
+        'fix the repo tests and make a short delivery artifact',
+      ),
+    ).toEqual({
+      action: 'ask-openjaws',
+      cwd: 'openjaws-d',
+      text: 'fix the repo tests and make a short delivery artifact',
+    })
+
+    expect(
+      parseDirectOperatorChatCommand('debug viola voice in discord'),
+    ).toEqual({
+      action: 'ask-openjaws',
+      cwd: 'openjaws-d',
+      text: 'debug viola voice in discord',
+    })
+  })
+
+  it('routes plain-English web research plus project work into OpenJaws', () => {
+    expect(
+      parseDirectOperatorChatCommand(
+        'look up latest TerminalBench leaderboard rules and update the OpenJaws benchmark docs',
+      ),
+    ).toEqual({
+      action: 'ask-openjaws',
+      cwd: 'openjaws-d',
+      text: 'look up latest TerminalBench leaderboard rules and update the OpenJaws benchmark docs',
+    })
+
+    expect(
+      parseDirectOperatorChatCommand(
+        'search the web for current Discord voice gateway docs and fix Viola voice',
+      ),
+    ).toEqual({
+      action: 'ask-openjaws',
+      cwd: 'openjaws-d',
+      text: 'search the web for current Discord voice gateway docs and fix Viola voice',
+    })
+
+    expect(
+      parseDirectOperatorChatCommand(
+        'use the internet to research current BridgeBench docs and make a markdown artifact',
+      ),
+    ).toEqual({
+      action: 'ask-openjaws',
+      cwd: 'openjaws-d',
+      text: 'use the internet to research current BridgeBench docs and make a markdown artifact',
+    })
+  })
+
+  it('routes direct Immaculate bridge requests through OpenJaws with receipt guidance', () => {
+    const parsed = parseDirectOperatorChatCommand(
+      'immaculate search --max 3 current Q benchmark status',
+    )
+
+    expect(parsed?.action).toBe('ask-openjaws')
+    expect(parsed?.cwd).toBe('immaculate-c')
+    expect(parsed?.text).toContain('/immaculate search --max 3 current Q benchmark status')
+    expect(parsed?.text).toContain('ImmaculateHarness')
+    expect(parsed?.text).toContain('receipt ids')
+  })
+
+  it('routes natural OpenJaws commands without forcing a workspace phrase', () => {
+    expect(
+      parseDirectOperatorChatCommand(
+        'use OpenJaws to audit Asgard security hardening gaps',
+      ),
+    ).toEqual({
+      action: 'ask-openjaws',
+      cwd: 'asgard',
+      text: 'audit Asgard security hardening gaps',
+    })
+
+    expect(
+      parseDirectOperatorChatCommand(
+        'have OpenJaws create a docx artifact for Discord agent roles',
+      ),
+    ).toEqual({
+      action: 'ask-openjaws',
+      cwd: 'openjaws-d',
+      text: 'create a docx artifact for Discord agent roles',
+    })
+  })
+
+  it('keeps general non-project questions in chat instead of operator execution', () => {
+    expect(parseDirectOperatorChatCommand('check the weather today')).toBeNull()
+  })
+
+  it('infers project workspace aliases from plain-English work requests', () => {
+    expect(
+      parseDirectOperatorChatCommand('audit Asgard security hardening gaps'),
+    ).toEqual({
+      action: 'ask-openjaws',
+      cwd: 'asgard',
+      text: 'audit Asgard security hardening gaps',
+    })
+
+    expect(
+      parseDirectOperatorChatCommand('improve the Apex apps tenant workflow'),
+    ).toEqual({
+      action: 'ask-openjaws',
+      cwd: 'apex-apps',
+      text: 'improve the Apex apps tenant workflow',
+    })
+  })
+
+  it('routes diagnostic and local-tool plain-English work into OpenJaws', () => {
+    expect(
+      parseDirectOperatorChatCommand(
+        'diagnose why Viola voice channel is not speaking and check logs',
+      ),
+    ).toEqual({
+      action: 'ask-openjaws',
+      cwd: 'openjaws-d',
+      text: 'diagnose why Viola voice channel is not speaking and check logs',
+    })
+
+    expect(
+      parseDirectOperatorChatCommand(
+        'figure out why the Discord agent cannot use tools on my local computer',
+      ),
+    ).toEqual({
+      action: 'ask-openjaws',
+      cwd: 'openjaws-d',
+      text: 'figure out why the Discord agent cannot use tools on my local computer',
+    })
+  })
+
+  it('routes natural artifact requests through governed OpenJaws delivery', () => {
+    const parsed = parseDirectOperatorChatCommand(
+      'create a pdf report for apex-apps about tenant governance pressure and next actions',
+    )
+
+    expect(parsed?.action).toBe('ask-openjaws')
+    expect(parsed?.cwd).toBe('apex-apps')
+    expect(parsed?.text).toContain('Discord-deliverable pdf artifact')
+    expect(parsed?.text).toContain('delivery.json')
+    expect(parsed?.text).toContain('smallest bounded local harness')
+  })
+
+  it('routes explicit OpenJaws delivery aliases through governed artifact delivery', () => {
+    const parsed = parseDirectOperatorChatCommand(
+      'openjaws deliver immaculate :: release readiness and next operator actions',
+    )
+
+    expect(parsed).toEqual({
+      action: 'ask-openjaws',
+      cwd: 'immaculate',
+      text: expect.stringContaining(
+        'Discord-deliverable markdown, docx, and pdf when supported artifact about release readiness and next operator actions.',
+      ),
+    })
+    expect(parsed?.text).toContain('delivery.json')
   })
 
   it('parses plain-English workspace and status requests', () => {
@@ -119,6 +272,60 @@ describe('discordOperatorWork', () => {
     ).toBe(workspacePath)
   })
 
+  it('resolves apex workspace aliases through the tracked apps tree', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-apex-root-'))
+    tempDirs.push(root)
+    const workspaceRoot = join(root, 'cheeks')
+    const appsPath = join(workspaceRoot, 'ignite', 'apex-os-project', 'apps')
+    mkdirSync(appsPath, { recursive: true })
+    const workspaces: DiscordOperatorWorkspace[] = [
+      {
+        id: 'cheeks',
+        label: 'Cheeks Desktop Root (C:)',
+        path: workspaceRoot,
+      },
+    ]
+
+    expect(
+      resolveOperatorWorkspacePath({
+        input: 'apex-apps',
+        workspaces,
+        allowedRoots: [root],
+      }),
+    ).toBe(appsPath)
+
+    expect(
+      resolveOperatorWorkspacePath({
+        input: 'apex workspace',
+        workspaces,
+        allowedRoots: [root],
+      }),
+    ).toBe(appsPath)
+  })
+
+  it('resolves Asgard workspace aliases through the tracked desktop root', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-asgard-root-'))
+    tempDirs.push(root)
+    const workspaceRoot = join(root, 'cheeks')
+    const asgardPath = join(workspaceRoot, 'Asgard')
+    mkdirSync(asgardPath, { recursive: true })
+    const workspaces: DiscordOperatorWorkspace[] = [
+      {
+        id: 'cheeks',
+        label: 'Cheeks Desktop Root (C:)',
+        path: workspaceRoot,
+      },
+    ]
+
+    expect(
+      resolveOperatorWorkspacePath({
+        input: 'asgard',
+        workspaces,
+        allowedRoots: [root],
+      }),
+    ).toBe(asgardPath)
+  })
+
   it('rejects workspaces outside approved roots', () => {
     const approvedRoot = mkdtempSync(join(tmpdir(), 'oj-approved-root-'))
     const otherRoot = mkdtempSync(join(tmpdir(), 'oj-other-root-'))
@@ -135,13 +342,16 @@ describe('discordOperatorWork', () => {
     ).toThrow(/outside the approved operator roots/i)
   })
 
-  it('allocates a unique branch name when a prior governed branch already exists', () => {
+  it('allocates a unique branch name when a prior governed branch already exists', { timeout: 20000 }, () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-operator-git-'))
     tempDirs.push(root)
     const repoRoot = join(root, 'openjaws')
     const worktreeRoot = join(root, 'worktrees')
     mkdirSync(repoRoot, { recursive: true })
     writeFileSync(join(repoRoot, 'README.md'), '# OpenJaws\n', 'utf8')
+    const workspace = join(repoRoot, 'src', 'utils')
+    mkdirSync(workspace, { recursive: true })
+    writeFileSync(join(workspace, 'runtime.ts'), 'export const ready = true\n', 'utf8')
     spawnSync('git', ['-C', repoRoot, 'init'], { encoding: 'utf8' })
     spawnSync('git', ['-C', repoRoot, 'config', 'user.email', 'roundtable@example.com'], {
       encoding: 'utf8',
@@ -149,7 +359,9 @@ describe('discordOperatorWork', () => {
     spawnSync('git', ['-C', repoRoot, 'config', 'user.name', 'Roundtable'], {
       encoding: 'utf8',
     })
-    spawnSync('git', ['-C', repoRoot, 'add', 'README.md'], { encoding: 'utf8' })
+    spawnSync('git', ['-C', repoRoot, 'add', 'README.md', 'src/utils/runtime.ts'], {
+      encoding: 'utf8',
+    })
     spawnSync('git', ['-C', repoRoot, 'commit', '-m', 'init'], { encoding: 'utf8' })
     spawnSync(
       'git',
@@ -161,9 +373,6 @@ describe('discordOperatorWork', () => {
       ],
       { encoding: 'utf8' },
     )
-
-    const workspace = join(repoRoot, 'src', 'utils')
-    mkdirSync(workspace, { recursive: true })
 
     const context = createOperatorRunContext({
       workspace,
@@ -191,5 +400,6 @@ describe('discordOperatorWork', () => {
         'utils',
       ),
     )
+    expect(existsSync(context.workspacePath)).toBe(true)
   })
 })

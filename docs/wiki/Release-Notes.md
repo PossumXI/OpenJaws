@@ -58,15 +58,16 @@ This page summarizes the current public OpenJaws surface that is already working
 - `/apex` now gives OpenJaws a bounded local command-center lane for an external Apex workspace
 - the typed `workspace_api` bridge can surface mail, chat, store, system, and security summaries directly into OpenJaws
 - the new dedicated `chrono-bridge` wraps `apps/chrono/src/lib.rs` into a bounded localhost backup surface instead of pretending the desktop GUI is native TUI UI
-- the `/apex` deck now exposes those bridge-backed surfaces through dedicated `Mail`, `Chat`, `Store`, `System`, `Chrono`, and `Security` tabs
+- the `/apex` deck now exposes those bridge-backed surfaces through dedicated `Mail`, `Chat`, `Store`, `Settings`, `System`, `Chrono`, and `Security` tabs
 - `/status` now also surfaces bounded Apex governance recommendations, so the shared tenant-governance lane can point operators toward `Mail`, `Security`, `System`, or `Store` follow-up work without widening the bridge contract
 - `/apex` can now send Aegis Mail drafts, move/delete/flag selected mail items, create Shadow Chat sessions, post into those sessions, and install Store apps with a structured receipt through the same trusted bridge contract
+- `/apex` can now read Apex system settings and toggle telemetry, privacy mode, firewall, realtime monitoring, and hardware acceleration through the trusted `workspace_api` settings contract, with reset and receipt logging included
 - browser, security center, vault, and related Apex desktop apps stay launcher-backed and out of process instead of being hard-embedded into the TUI
 - the browser now has a dedicated bridge-backed preview lane inside OpenJaws; launcher-only desktop apps remain outside the TUI
 - Apex launches now use a reduced allowlisted environment, and the bridge is only trusted when OpenJaws launched it itself unless the operator explicitly opts into trusting a pre-existing localhost listener
 - the workspace bridge launcher now auto-discovers a local `libclang` runtime on Windows when the upstream Apex workspace needs it to compile
 - the bounded runtime contract is now documented explicitly too: `8797` for `workspace_api`, `8798` for `chrono-bridge`, `8799` for the browser bridge, `%TEMP%\openjaws-apex\*` for the runtime logs/state files, and `x-openjaws-apex-token` as the default trust header for launched bridges
-- the next safe upstream-backed TUI seam is `settings` over `workspace_api`; `vault` remains launcher-backed until it has its own narrower trust contract
+- the settings lane is now bridged over `workspace_api`; `vault` remains launcher-backed until it has its own narrower trust contract
 - `Notifications` and `argus` remain intentionally outside agent control until they have their own narrow localhost bridges plus confirmation and audit ladders
 
 ## Accountable Browser Preview
@@ -160,17 +161,19 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 
 This is useful for tuning and honest before/after comparison. It is not a replacement for the public Immaculate benchmark source or a fake Harbor / Terminal-Bench leaderboard claim.
 
-Current April 16, 2026 local snapshot:
+Current April 29, 2026 local snapshot:
 
-- BridgeBench best pack: `all` at `42.11`
+- BridgeBench latest lane: `q-bridgebench-20260429T024506` dry-run completed; the local scored pack lane is still blocked by host memory pressure, so no new public score is claimed from this pass
+- historical local BridgeBench score retained for comparison: best pack `all` at `36.84`
 - 30-minute soak: `52/52` successful probes, `0` errors
 - local W&B lane: attempted, but no local auth was configured so the run stayed receipt-only
+- April 29 official TerminalBench rerun for `circuit-fibsqrt`: `5` trials with `0` execution-error trials, `5` benchmark-failing trials, reward `0.0`, and `0` benchmark passes
 - April 18 direct OCI `Q` reasoning validation answered the fallback-hysteresis check correctly with `t = 70s`
 - April 18 direct OCI `Q` media validation returned `404` on the native image endpoint, so image/video stays on a separate explicit media lane instead of silently replacing `Q` as the session mind
 - the dedicated Gemini media lane is restored for explicit image/video work, but the configured Gemini project on this machine is still quota-blocked
 - local Harbor / Terminal-Bench lane:
   - single-task live receipt now reaches clean Harbor completion under OCI `Q`
-  - official public-task five-attempt receipt now exists for `circuit-fibsqrt`, with `0` runtime errors, reward `0.0`, and Harbor raw env bundles scrubbed in place
+  - official public-task five-attempt receipt now exists at `artifacts/q-terminalbench-official-public-20260429-circuit-fibsqrt-rerun/terminalbench-report.json`, with `0` runtime errors, `5` benchmark failures, reward `0.0`, and Harbor raw env bundles scrubbed in place
   - that same receipt is now packaged and submitted through the official leaderboard discussion flow:
     - `https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard/discussions/141`
   - repeated-attempt stability receipt captured `1` benchmark-failing trial plus `1` execution-error trial across `2` attempts
@@ -178,8 +181,8 @@ Current April 16, 2026 local snapshot:
     - result: `completed_with_errors`
     - truth: `2` cycles produced `2` total trials, `0` runtime errors, and `2` benchmark-failing trials
   - real concurrent receipt captured `2` live tasks at concurrency `2`
-  - a fresh bounded April 18 wrapper proof now reaches Harbor execution on the current code path, but the Windows Harbor/Docker environment still throws `NotImplementedError` during trial environment startup, so the official five-attempt public receipt above remains the truthful published TerminalBench record
-  - task outcomes are still variant, so the lane is not ready for strong leaderboard positioning
+  - the earlier Windows Docker context mismatch is now covered by a Harbor-process Docker preflight check before public runs
+  - task outcomes are still reward-0, so the lane is credible for public execution proof but not ready for strong leaderboard positioning
 
 This pass also tightens the public `Q` runtime story:
 

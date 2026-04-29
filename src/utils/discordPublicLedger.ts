@@ -83,7 +83,17 @@ function sanitizeInlineText(
   if (!value) {
     return null
   }
-  const normalized = value.replace(/\s+/g, ' ').trim()
+  const normalized = value
+    .replace(
+      /\b[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{20,}\b/g,
+      '[redacted-discord-token]',
+    )
+    .replace(
+      /\b([A-Z0-9_]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|SESSION)[A-Z0-9_]*)\s*[:=]\s*["']?[^"',\s]{6,}/gi,
+      '$1=[redacted]',
+    )
+    .replace(/\s+/g, ' ')
+    .trim()
   if (!normalized) {
     return null
   }
@@ -246,6 +256,31 @@ export function buildAuraGenesisStatusMessage(
         simulatedSubsystemCount !== null
           ? `${simulatedSubsystemCount.toLocaleString()} simulated`
           : null,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+    )
+  }
+  if (subsystemCount !== null) {
+    const verifiedLedgerEntries =
+      status.fabric?.showcase?.verifiedLedgerEntries ?? null
+    const publicHeight = status.fabric?.showcase?.publicHeight ?? null
+    const resultsReady = status.fabric?.showcase?.resultsReady ?? null
+    lines.push(
+      [
+        `Public-safe pressure loop: ${subsystemCount.toLocaleString()} subsystem demo`,
+        verifiedLedgerEntries !== null
+          ? `${verifiedLedgerEntries.toLocaleString()} public ledger proofs`
+          : null,
+        publicHeight !== null
+          ? `public height ${publicHeight.toLocaleString()}`
+          : null,
+        resultsReady !== null
+          ? resultsReady
+            ? 'results ready'
+            : 'results pending'
+          : null,
+        'private 00 payloads stay closed',
       ]
         .filter(Boolean)
         .join(' · '),

@@ -162,7 +162,7 @@ function handleFileSystemError(error: unknown, path: string): void {
     error.code === 'ENOENT'
   ) {
     logForDebugging(
-      `Broken symlink or missing file encountered for settings.json at path: ${path}`,
+      `Optional settings file missing or broken symlink at path: ${path}`,
     )
   } else {
     logError(error)

@@ -81,6 +81,35 @@ import { clearToolSchemaCache } from './toolSchemaCache.js'
 
 /** Default TTL for API key helper cache in milliseconds (5 minutes) */
 const DEFAULT_API_KEY_HELPER_TTL = 5 * 60 * 1000
+const OWNER_LOCAL_BYPASS_ACCOUNT_UUID = 'openjaws-owner-local-bypass'
+const OWNER_LOCAL_BYPASS_ORG_UUID = 'openjaws-owner-local-org'
+const OWNER_LOCAL_BYPASS_CREATED_AT = '2026-04-26T00:00:00.000Z'
+
+export function isOwnerLocalLoginBypassEnabled(): boolean {
+  if (isBareMode()) return false
+  if (!isEnvTruthy(process.env.OPENJAWS_OWNER_LOGIN_BYPASS)) return false
+  if (isEnvTruthy(process.env.CI)) return false
+  return true
+}
+
+function getOwnerLocalBypassAccountInfo(): AccountInfo {
+  return {
+    accountUuid: OWNER_LOCAL_BYPASS_ACCOUNT_UUID,
+    emailAddress:
+      process.env.OPENJAWS_OWNER_LOGIN_BYPASS_EMAIL ??
+      'openjaws-local-owner@example.invalid',
+    organizationUuid: OWNER_LOCAL_BYPASS_ORG_UUID,
+    organizationName: 'OpenJaws Local Owner',
+    organizationRole: 'primary_owner',
+    workspaceRole: 'workspace_admin',
+    displayName:
+      process.env.OPENJAWS_OWNER_LOGIN_BYPASS_NAME ?? 'OpenJaws Local Owner',
+    hasExtraUsageEnabled: true,
+    billingType: 'stripe_subscription_contracted',
+    accountCreatedAt: OWNER_LOCAL_BYPASS_CREATED_AT,
+    subscriptionCreatedAt: OWNER_LOCAL_BYPASS_CREATED_AT,
+  }
+}
 
 /**
  * CCR and OpenJaws Desktop spawn the CLI with OAuth and should never fall back
@@ -113,6 +142,8 @@ export function isAnthropicAuthEnabled(): boolean {
   if (process.env.ANTHROPIC_UNIX_SOCKET) {
     return !!process.env.OPENJAWS_OAUTH_TOKEN
   }
+
+  if (isOwnerLocalLoginBypassEnabled()) return true
 
   const is3P =
     isEnvTruthy(process.env.OPENJAWS_USE_BEDROCK) ||
@@ -172,6 +203,10 @@ export function getAuthTokenSource() {
       return { source: 'apiKeyHelper' as const, hasToken: true }
     }
     return { source: 'none' as const, hasToken: false }
+  }
+
+  if (isOwnerLocalLoginBypassEnabled()) {
+    return { source: 'owner-local-bypass' as const, hasToken: true }
   }
 
   if (process.env.ANTHROPIC_AUTH_TOKEN && !isManagedOAuthContext()) {
@@ -1582,6 +1617,10 @@ async function checkAndRefreshOAuthTokenIfNeededImpl(
 }
 
 export function isOpenJawsSubscriber(): boolean {
+  if (isOwnerLocalLoginBypassEnabled()) {
+    return true
+  }
+
   if (!isAnthropicAuthEnabled()) {
     return false
   }
@@ -1598,6 +1637,10 @@ export function isOpenJawsSubscriber(): boolean {
  * generate 403 storms against /api/oauth/profile, bootstrap, etc.
  */
 export function hasProfileScope(): boolean {
+  if (isOwnerLocalLoginBypassEnabled()) {
+    return true
+  }
+
   return (
     getOpenJawsOAuthTokens()?.scopes?.includes(CLAUDE_AI_PROFILE_SCOPE) ?? false
   )
@@ -1633,6 +1676,10 @@ export function is1PApiCustomer(): boolean {
  * Returns undefined when using external API keys or third-party services.
  */
 export function getOauthAccountInfo(): AccountInfo | undefined {
+  if (isOwnerLocalLoginBypassEnabled()) {
+    return getOwnerLocalBypassAccountInfo()
+  }
+
   return isAnthropicAuthEnabled() ? getGlobalConfig().oauthAccount : undefined
 }
 
@@ -1685,6 +1732,10 @@ export function getSubscriptionType(): SubscriptionType | null {
     return getMockSubscriptionType()
   }
 
+  if (isOwnerLocalLoginBypassEnabled()) {
+    return 'enterprise'
+  }
+
   if (!isAnthropicAuthEnabled()) {
     return null
   }
@@ -1720,6 +1771,10 @@ export function isProSubscriber(): boolean {
 }
 
 export function getRateLimitTier(): string | null {
+  if (isOwnerLocalLoginBypassEnabled()) {
+    return 'default_claude_max_20x'
+  }
+
   if (!isAnthropicAuthEnabled()) {
     return null
   }

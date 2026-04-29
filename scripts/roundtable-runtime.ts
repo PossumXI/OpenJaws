@@ -124,7 +124,9 @@ async function runIteration(options: CliOptions) {
     durationHours,
     approvalTtlHours,
     model: process.env.DISCORD_Q_MODEL?.trim() || process.env.Q_AGENT_MODEL?.trim() || 'oci:Q',
-    runnerScriptPath: `${process.cwd()}\\local-command-station\\launch-openjaws-visible.ps1`,
+    // Roundtable execution needs the receipt-producing runner, not the detached
+    // visible launcher wrapper.
+    runnerScriptPath: `${process.cwd()}\\local-command-station\\run-openjaws-visible.ps1`,
     worktreeRoot: `${process.cwd()}\\local-command-station\\openjaws-operator-worktrees`,
     outputRoot: `${process.cwd()}\\local-command-station\\openjaws-operator-outputs`,
     roundtableChannelName: options.channelName,

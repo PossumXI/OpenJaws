@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { dirname, join, resolve } from 'path'
+import { fileURLToPath } from 'url'
 import {
   buildDiscordQAgentPublicShowcaseActivityEntry,
   buildDiscordQAgentPublicOperatorLine,
   createDiscordQAgentReceipt,
+  getDiscordQAgentReceiptPath,
   getDiscordQAgentRoutePolicies,
   readDiscordQAgentReceipt,
   recordDiscordQAgentEvent,
   resolveDiscordQAgentPublicShowcaseStatusMetadata,
   upsertDiscordQAgentRouteState,
 } from './discordQAgentRuntime.js'
+
+const OPENJAWS_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 describe('discordQAgentRuntime', () => {
   it('creates a receipt with the expanded gateway and voice defaults', () => {
@@ -33,6 +37,9 @@ describe('discordQAgentRuntime', () => {
       userId: null,
       guildCount: 0,
       lastSequence: null,
+      lastClosedAt: null,
+      lastCloseCode: null,
+      lastError: null,
     })
     expect(receipt.voice).toMatchObject({
       enabled: true,
@@ -42,6 +49,8 @@ describe('discordQAgentRuntime', () => {
       stagedReady: false,
       stagedSummary: null,
       runtimeUrl: null,
+      renderProvider: null,
+      renderSummary: null,
       connected: false,
       voiceId: 'zira',
       voiceIdSource: 'DISCORD_SYSTEM_VOICE_NAME',
@@ -50,6 +59,8 @@ describe('discordQAgentRuntime', () => {
       channelId: null,
       channelName: null,
       joinedAt: null,
+      lastRenderProvider: null,
+      lastRenderSummary: null,
       lastChannelName: null,
       lastHeardUserId: null,
       lastHeardAt: null,
@@ -178,13 +189,13 @@ describe('discordQAgentRuntime', () => {
         receipt,
         currentShowcase: {
           operatorLine:
-            'Q patrol is ready; roundtable is ready on #dev_support; 21 bounded action receipts are present; 2/3 bot receipts are ready; operator state is ready; OCI-backed Q is ready; Discord transport is ready; public-safe aggregate publication verified on the Arobi public lane (2 audit records accepted at height 35656)',
+            'The public view shows what happened, when it happened, and which systems participated, while sensitive actions and protected records stay private.',
           operatorUpdatedAt: '2026-04-22T12:08:37.852Z',
         },
       }),
     ).toEqual({
       operatorLine:
-        'Q patrol is ready; roundtable is ready on #dev_support; 21 bounded action receipts are present; 2/3 bot receipts are ready; operator state is ready; OCI-backed Q is ready; Discord transport is ready; public-safe aggregate publication verified on the Arobi public lane (2 audit records accepted at height 35656)',
+        'The public view shows what happened, when it happened, and which systems participated, while sensitive actions and protected records stay private.',
       operatorUpdatedAt: '2026-04-22T12:08:37.852Z',
     })
   })
@@ -205,15 +216,42 @@ describe('discordQAgentRuntime', () => {
         receipt,
         currentShowcase: {
           operatorLine:
-            'Q is online through the supervised OCI-backed Discord operator lane with no active bounded task.',
+            'Q is online through the supervised OCI-backed Discord operator lane and posts only when a high-value public update is ready.',
           summary:
-            'Q patrol is ready; roundtable is ready on #dev_support; 21 bounded action receipts are present; 2/3 bot receipts are ready; operator state is ready; OCI-backed Q is ready; Discord transport is ready; public-safe aggregate publication verified on the Arobi public lane (2 audit records accepted at height 35656)',
+            'The public view shows what happened, when it happened, and which systems participated, while sensitive actions and protected records stay private.',
           operatorUpdatedAt: '2026-04-22T12:08:37.852Z',
         },
       }),
     ).toEqual({
       operatorLine:
-        'Q patrol is ready; roundtable is ready on #dev_support; 21 bounded action receipts are present; 2/3 bot receipts are ready; operator state is ready; OCI-backed Q is ready; Discord transport is ready; public-safe aggregate publication verified on the Arobi public lane (2 audit records accepted at height 35656)',
+        'The public view shows what happened, when it happened, and which systems participated, while sensitive actions and protected records stay private.',
+      operatorUpdatedAt: '2026-04-22T12:08:37.852Z',
+    })
+  })
+
+  it('rewrites stale controlled public operator copy before preserving it', () => {
+    const receipt = createDiscordQAgentReceipt({
+      backend: 'Q backend',
+      scheduleEnabled: true,
+      scheduleIntervalMs: 900_000,
+      voiceEnabled: false,
+      voiceReady: false,
+    })
+    receipt.gateway.connected = true
+    receipt.updatedAt = '2026-04-22T12:23:16.628Z'
+
+    expect(
+      resolveDiscordQAgentPublicShowcaseStatusMetadata({
+        receipt,
+        currentShowcase: {
+          operatorLine:
+            'Q patrol is ready; roundtable is ready on #dev_support; 21 bounded action receipts are present; 2/3 bot receipts are ready; operator state is ready; OCI-backed Q is ready; Discord transport is ready.',
+          operatorUpdatedAt: '2026-04-22T12:08:37.852Z',
+        },
+      }),
+    ).toEqual({
+      operatorLine:
+        'The public view shows what happened, when it happened, and which systems participated, while sensitive actions and protected records stay private.',
       operatorUpdatedAt: '2026-04-22T12:08:37.852Z',
     })
   })
@@ -236,7 +274,7 @@ describe('discordQAgentRuntime', () => {
         receipt,
         currentShowcase: {
           operatorLine:
-            'Q patrol is ready; roundtable is ready on #dev_support; 21 bounded action receipts are present; 2/3 bot receipts are ready; operator state is ready; OCI-backed Q is ready; Discord transport is ready; public-safe aggregate publication verified on the Arobi public lane (2 audit records accepted at height 35656)',
+            'The public view shows what happened, when it happened, and which systems participated, while sensitive actions and protected records stay private.',
           operatorUpdatedAt: '2026-04-22T12:08:37.852Z',
         },
       }).operatorLine,
@@ -303,5 +341,15 @@ describe('discordQAgentRuntime', () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+
+  it('anchors the default receipt path to the repo root instead of process cwd', () => {
+    expect(getDiscordQAgentReceiptPath()).toBe(
+      join(
+        OPENJAWS_REPO_ROOT,
+        'local-command-station',
+        'discord-q-agent-receipt.json',
+      ),
+    )
   })
 })

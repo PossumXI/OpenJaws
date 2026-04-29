@@ -3,9 +3,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import time
 from pathlib import Path
 from datetime import datetime, timezone
+
+if os.name == "nt" and os.environ.get("PYTHONUTF8") != "1":
+    os.environ["PYTHONUTF8"] = "1"
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    os.execv(sys.executable, [sys.executable, *sys.argv])
 
 from datasets import load_dataset
 from peft import LoraConfig, PeftModel, get_peft_model
@@ -183,11 +189,17 @@ def resolve_lora_target_modules(model: AutoModelForCausalLM) -> list[str]:
 
 
 def resolve_report_to(args: argparse.Namespace) -> list[str]:
-    wandb_project = args.wandb_project or os.getenv("WANDB_PROJECT")
-    wandb_entity = args.wandb_entity or os.getenv("WANDB_ENTITY")
+    wandb_project = resolve_wandb_project(args)
+    wandb_entity = resolve_wandb_entity(args)
     if wandb_project and wandb_entity:
         os.environ.setdefault("WANDB_PROJECT", wandb_project)
         os.environ.setdefault("WANDB_ENTITY", wandb_entity)
+        wandb_mode = resolve_wandb_mode()
+        if wandb_mode:
+            os.environ.setdefault("WANDB_MODE", wandb_mode)
+        wandb_api_key = resolve_wandb_api_key()
+        if wandb_api_key:
+            os.environ.setdefault("WANDB_API_KEY", wandb_api_key)
         return ["wandb"]
     return []
 
@@ -199,11 +211,56 @@ def normalize_optional_env(value: str | None) -> str | None:
     return trimmed if trimmed else None
 
 
+def resolve_optional_file_value(path_value: str | None) -> str | None:
+    normalized_path = normalize_optional_env(path_value)
+    if not normalized_path:
+        return None
+    path = Path(normalized_path)
+    if not path.exists() or not path.is_file():
+        return None
+    try:
+        return normalize_optional_env(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def first_present_env(*names: str) -> str | None:
+    for name in names:
+        value = normalize_optional_env(os.getenv(name))
+        if value:
+            return value
+    return None
+
+
+def resolve_wandb_project(args: argparse.Namespace) -> str | None:
+    return normalize_optional_env(args.wandb_project) or first_present_env(
+        "IMMACULATE_WANDB_PROJECT", "WANDB_PROJECT"
+    )
+
+
+def resolve_wandb_entity(args: argparse.Namespace) -> str | None:
+    return normalize_optional_env(args.wandb_entity) or first_present_env(
+        "IMMACULATE_WANDB_ENTITY", "WANDB_ENTITY"
+    )
+
+
+def resolve_wandb_mode() -> str | None:
+    return first_present_env("IMMACULATE_WANDB_MODE", "WANDB_MODE")
+
+
+def resolve_wandb_api_key() -> str | None:
+    return (
+        first_present_env("IMMACULATE_WANDB_API_KEY", "WANDB_API_KEY")
+        or resolve_optional_file_value(os.getenv("IMMACULATE_WANDB_API_KEY_FILE"))
+        or resolve_optional_file_value(os.getenv("WANDB_API_KEY_FILE"))
+    )
+
+
 def resolve_wandb_metadata(args: argparse.Namespace) -> dict:
     cli_project = normalize_optional_env(args.wandb_project)
     cli_entity = normalize_optional_env(args.wandb_entity)
-    env_project = normalize_optional_env(os.getenv("WANDB_PROJECT"))
-    env_entity = normalize_optional_env(os.getenv("WANDB_ENTITY"))
+    env_project = first_present_env("IMMACULATE_WANDB_PROJECT", "WANDB_PROJECT")
+    env_entity = first_present_env("IMMACULATE_WANDB_ENTITY", "WANDB_ENTITY")
     project = cli_project or env_project
     entity = cli_entity or env_entity
     missing: list[str] = []
@@ -244,7 +301,7 @@ def resolve_wandb_metadata(args: argparse.Namespace) -> dict:
         "status": status,
         "source": source,
         "missing": missing,
-        "api_key_present": bool(os.getenv("WANDB_API_KEY")),
+        "api_key_present": bool(resolve_wandb_api_key()),
         "url": url,
         "summary": summary,
     }
@@ -414,6 +471,16 @@ def load_route_request(route_manifest_path: str | None) -> dict | None:
     return route_request
 
 
+def load_existing_run_state(run_state_path: Path) -> dict:
+    if not run_state_path.exists():
+        return {}
+    try:
+        existing = json.loads(run_state_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return existing if isinstance(existing, dict) else {}
+
+
 class RunStateWriter(TrainerCallback):
     def __init__(self, path: Path, base_state: dict) -> None:
         self.path = path
@@ -493,14 +560,17 @@ def main() -> None:
         else None
     )
     run_state_path = Path(args.output_dir, "run-state.json")
+    existing_run_state = load_existing_run_state(run_state_path)
+    route_request = load_route_request(args.route_manifest)
     run_state_writer = RunStateWriter(
         run_state_path,
         {
+            **existing_run_state,
             "status": "initializing",
             "executionMode": args.execution_mode,
             "mode": "eval_only" if args.eval_only else "train",
             "pid": os.getpid(),
-            "createdAt": now_iso(),
+            "createdAt": existing_run_state.get("createdAt", now_iso()),
             "baseModel": args.base_model,
             "trainFile": args.train_file,
             "evalFile": args.eval_file if raw_eval_dataset is not None else None,
@@ -514,8 +584,16 @@ def main() -> None:
             "adapterDir": args.adapter_dir,
             "curriculumProfile": args.curriculum_profile,
             "benchmarkPack": args.benchmark_pack,
-            "routeManifestPath": args.route_manifest,
-            "routeRequest": load_route_request(args.route_manifest),
+            "routeManifestPath": args.route_manifest
+            or existing_run_state.get("routeManifestPath"),
+            "routeRequest": route_request
+            if route_request is not None
+            else existing_run_state.get("routeRequest"),
+            "routeQueue": existing_run_state.get("routeQueue"),
+            "routeQueueDisplayStatus": existing_run_state.get(
+                "routeQueueDisplayStatus"
+            ),
+            "routeQueueSummary": existing_run_state.get("routeQueueSummary"),
             "useCpu": args.use_cpu,
             "maxSteps": args.max_steps,
             "maxTrainSamples": args.max_train_samples,
@@ -695,7 +773,7 @@ def main() -> None:
             trainer.save_model(args.output_dir)
             tokenizer.save_pretrained(args.output_dir)
         metrics_summary = build_metrics_summary(
-            trainer.state.log_history,
+            trainer.state.log_history if trainer is not None else [],
             explicit_train_metrics=explicit_train_metrics,
             explicit_eval_metrics=explicit_eval_metrics,
         )

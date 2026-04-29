@@ -19,6 +19,70 @@ import {
   WALKTHROUGH_TIMEOUT_MS,
 } from './interactiveWalkthroughHarness.js'
 
+function includesPreflightMarker(frame: string): boolean {
+  return (
+    frame.includes('Checking connectivity...') ||
+    frame.includes('Unable to connect to upstream services')
+  )
+}
+
+function includesThemeMarker(frame: string): boolean {
+  return frame.includes('Choose the text style that looks best in your terminal')
+}
+
+async function closeHttpServer(server: http.Server): Promise<void> {
+  await new Promise<void>(resolve => {
+    let settled = false
+    let forceCloseHandle: ReturnType<typeof setTimeout> | undefined
+    const settle = (): void => {
+      if (settled) {
+        return
+      }
+      settled = true
+      if (forceCloseHandle) {
+        clearTimeout(forceCloseHandle)
+      }
+      resolve()
+    }
+    forceCloseHandle = setTimeout(() => {
+      server.closeAllConnections?.()
+      settle()
+    }, 2_000)
+    forceCloseHandle.unref?.()
+
+    server.close(() => settle())
+    server.closeIdleConnections?.()
+  })
+}
+
+async function waitForWalkthroughExit(
+  exitPromise: Promise<unknown>,
+  unmount: () => void,
+  readFrame: () => string,
+): Promise<void> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      exitPromise,
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          unmount()
+          reject(
+            new Error(
+              `Onboarding walkthrough did not exit after completion\nLast frame:\n${readFrame()
+                .slice(-4000) || '<empty>'}`,
+            ),
+          )
+        }, WALKTHROUGH_TIMEOUT_MS)
+      }),
+    ])
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle)
+    }
+  }
+}
+
 async function startHarnessServer(): Promise<{
   url: string
   close: () => Promise<void>
@@ -74,16 +138,7 @@ async function startHarnessServer(): Promise<{
 
   return {
     url: `http://127.0.0.1:${address.port}`,
-    close: () =>
-      new Promise<void>((resolve, reject) => {
-        server.close(error => {
-          if (error) {
-            reject(error)
-            return
-          }
-          resolve()
-        })
-      }),
+    close: () => closeHttpServer(server),
   }
 }
 
@@ -159,16 +214,7 @@ async function startProviderServer(expectedApiKey: string): Promise<{
 
   return {
     url: `http://127.0.0.1:${address.port}`,
-    close: () =>
-      new Promise<void>((resolve, reject) => {
-        server.close(error => {
-          if (error) {
-            reject(error)
-            return
-          }
-          resolve()
-        })
-      }),
+    close: () => closeHttpServer(server),
   }
 }
 
@@ -240,13 +286,24 @@ async function main(): Promise<void> {
       stdin.write('\r')
     }
 
-    const themeFrame = await waitForFrame(
+    const preflightOrThemeFrame = await waitForFrame(
       readFrame,
-      frame =>
-        frame.includes('Choose the text style that looks best with your terminal'),
+      frame => includesPreflightMarker(frame) || includesThemeMarker(frame),
       WALKTHROUGH_TIMEOUT_MS,
-      'Onboarding walkthrough did not render the theme step',
+      'Onboarding walkthrough did not render the initial onboarding step',
     )
+
+    let themeFrame = preflightOrThemeFrame
+    if (includesPreflightMarker(preflightOrThemeFrame)) {
+      recordStep('preflight', preflightOrThemeFrame)
+      themeFrame = await waitForFrame(
+        readFrame,
+        frame => includesThemeMarker(frame),
+        WALKTHROUGH_TIMEOUT_MS,
+        'Onboarding walkthrough did not advance from preflight to the theme step',
+      )
+    }
+
     recordStep('theme', themeFrame)
     await confirmSelection()
 
@@ -338,7 +395,7 @@ async function main(): Promise<void> {
       await confirmSelection()
     }
 
-    await exitPromise
+    await waitForWalkthroughExit(exitPromise, () => instance.unmount(), readFrame)
 
     if (!completed) {
       throw new Error('Onboarding walkthrough did not finish cleanly')

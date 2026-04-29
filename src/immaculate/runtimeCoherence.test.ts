@@ -205,6 +205,80 @@ describe('runtimeCoherence', () => {
     ).toBe('failed')
   })
 
+  test('warns instead of failing when a stale patrol snapshot says the recovered harness is offline', () => {
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: {
+        version: 1,
+        updatedAt: '2026-04-20T12:00:00.000Z',
+        startedAt: '2026-04-20T10:00:00.000Z',
+        status: 'ready',
+        backend: 'Q backend',
+        guilds: [{ id: '1', name: 'Arobi' }],
+        gateway: {
+          connected: true,
+          userId: 'bot-1',
+          guildCount: 1,
+          lastSequence: 42,
+        },
+        schedule: {
+          enabled: true,
+          intervalMs: 900_000,
+          cycleCount: 2,
+        },
+        routing: {
+          lastDecision: null,
+          lastPostedChannelName: null,
+          lastPostedReason: null,
+          channels: [],
+        },
+        voice: {
+          enabled: false,
+          provider: 'off',
+          ready: false,
+          connected: false,
+        },
+        patrol: {
+          snapshot: {
+            harnessReachable: false,
+            harnessSummary: 'offline',
+            deckSummary: null,
+            workerSummary: null,
+            trainingSummary: null,
+            hybridSummary: null,
+            routeQueueSummary: null,
+            queueLength: 3,
+            recommendedLayerId: null,
+          },
+        },
+        knowledge: {
+          enabled: false,
+          ready: false,
+          fileCount: 0,
+          chunkCount: 0,
+        },
+        operator: {},
+        events: [],
+      },
+      immaculateTrace: null,
+      qTrace: null,
+      routeQueueDepth: 3,
+    })
+
+    expect(report.status).toBe('warning')
+    expect(
+      report.checks.find(check => check.id === 'harness-receipt-alignment'),
+    ).toMatchObject({
+      status: 'warning',
+      summary: 'Discord patrol snapshot is stale; live harness has recovered.',
+      detail: 'receipt=false live=true',
+    })
+  })
+
   test('warns when the voice runtime is enabled but not actually connected', () => {
     const report = buildRuntimeCoherenceReport({
       harnessStatus: {
@@ -278,6 +352,105 @@ describe('runtimeCoherence', () => {
     expect(
       report.checks.find(check => check.id === 'voice-runtime')?.status,
     ).toBe('warning')
+  })
+
+  test('warns when the roundtable runtime is in an error state', () => {
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: null,
+      immaculateTrace: null,
+      qTrace: null,
+      roundtable: {
+        status: 'error',
+        channelName: 'dev_support',
+        lastError: 'OpenJaws scripted operator job did not produce a result receipt.',
+      },
+    })
+
+    expect(report.status).toBe('warning')
+    expect(report.checks.find(check => check.id === 'roundtable-runtime')).toMatchObject({
+      status: 'warning',
+      summary: 'Roundtable is error in #dev_support.',
+      detail: 'OpenJaws scripted operator job did not produce a result receipt.',
+    })
+  })
+
+  test('warns when Q is reconnecting after a retryable Discord gateway close', () => {
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: {
+        version: 1,
+        updatedAt: '2026-04-25T12:38:13.768Z',
+        startedAt: '2026-04-25T12:07:36.900Z',
+        status: 'error',
+        backend: 'Q backend',
+        guilds: [{ id: '1', name: 'Arobi' }],
+        gateway: {
+          connected: false,
+          userId: 'bot-1',
+          guildCount: 1,
+          lastSequence: 8,
+          lastCloseCode: 1006,
+          lastError: 'Discord gateway closed with code 1006: Connection ended',
+        },
+        schedule: {
+          enabled: true,
+          intervalMs: 900_000,
+          cycleCount: 2,
+        },
+        routing: {
+          lastDecision: null,
+          lastPostedChannelName: null,
+          lastPostedReason: null,
+          channels: [],
+        },
+        voice: {
+          enabled: false,
+          provider: 'off',
+          ready: false,
+          connected: false,
+        },
+        patrol: {
+          snapshot: {
+            harnessReachable: true,
+            harnessSummary: 'reachable',
+            deckSummary: null,
+            workerSummary: null,
+            trainingSummary: null,
+            hybridSummary: null,
+            routeQueueSummary: null,
+            queueLength: 0,
+            recommendedLayerId: null,
+          },
+        },
+        knowledge: {
+          enabled: true,
+          ready: true,
+          fileCount: 10,
+          chunkCount: 10,
+        },
+        operator: {},
+        events: [],
+      },
+      immaculateTrace: null,
+      qTrace: null,
+      routeQueueDepth: 0,
+    })
+
+    expect(report.status).toBe('warning')
+    expect(report.checks.find(check => check.id === 'discord-q-receipt')).toMatchObject({
+      status: 'warning',
+      summary: 'Q Discord runtime is reconnecting after gateway close 1006.',
+      detail: 'Discord gateway closed with code 1006: Connection ended',
+    })
   })
 
   test('warns when the latest local trace summary points to a missing file path', () => {
@@ -530,5 +703,34 @@ describe('runtimeCoherence', () => {
     expect(report.checks.find(check => check.id === 'q-trace-provenance')?.status).toBe(
       'warning',
     )
+  })
+
+  test('warns when a reachable Discord agent probe reports degraded health', () => {
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: null,
+      immaculateTrace: null,
+      qTrace: null,
+      probes: [
+        {
+          label: 'Viola',
+          url: 'http://127.0.0.1:8789/health',
+          reachable: true,
+          status: 'error',
+          detail: 'Discord gateway authentication failed.',
+        },
+      ],
+    })
+
+    expect(report.status).toBe('warning')
+    expect(report.checks.find(check => check.id === 'probe-Viola')).toMatchObject({
+      status: 'warning',
+      summary: expect.stringContaining('reachable but reporting degraded health'),
+      detail: 'Discord gateway authentication failed.',
+    })
   })
 })

@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, realpathSync } from 'fs'
 import { basename, isAbsolute, join, relative, resolve } from 'path'
 import { spawnSync } from 'child_process'
-import { type DiscordQOperatorAction } from './discordQAgent.js'
+import { buildDiscordOperatorArtifactPrompt } from './discordOperatorArtifactPrompt.js'
+import { type DiscordQOperatorAction } from './discordOperatorTypes.js'
 
 export type DiscordOperatorWorkspace = {
   id: string
@@ -34,6 +35,118 @@ export function normalizeAbsolutePath(
   }
   const trimmed = value.trim()
   return isAbsolute(trimmed) ? resolve(trimmed) : resolve(process.cwd(), trimmed)
+}
+
+const OPERATOR_APEX_APPS_ALIASES = new Set([
+  'apex apps',
+  'apex-apps',
+  'apex workspace',
+])
+const OPERATOR_ASGARD_ALIASES = new Set([
+  'arobi',
+  'arobi network',
+  'asgard',
+  'asgard root',
+])
+
+const OPERATOR_PLAIN_ENGLISH_DEFAULT_WORKSPACE = 'openjaws-d'
+
+const OPERATOR_PROJECT_WORKSPACE_HINTS = [
+  {
+    pattern: /\b(?:apex[-\s]?apps?|apex workspace)\b/i,
+    workspace: 'apex-apps',
+  },
+  {
+    pattern: /\bimmaculate\b/i,
+    workspace: 'immaculate-c',
+  },
+  {
+    pattern: /\b(?:asgard|arobi(?: network)?)\b/i,
+    workspace: 'asgard',
+  },
+  {
+    pattern: /\b(?:openjaws|qline|qline\.site|website|site|tui)\b/i,
+    workspace: OPERATOR_PLAIN_ENGLISH_DEFAULT_WORKSPACE,
+  },
+] as const
+
+const OPERATOR_PLAIN_ENGLISH_WORK_VERBS =
+  /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:q\s+)?(?:fix|debug|diagnose|investigate|audit|review|inspect|research|look\s+into|look\s+up|search|browse|google|find\s+online|check\s+online|check(?:\s+logs?)?|verify|trace|figure\s+out|why\s+(?:is|are|does|do|did|can|can't|cannot|won't)|run|build|test|update|improve|continue|complete|implement|ship|harden|optimi[sz]e|use\s+(?:the\s+)?internet|use\s+(?:my\s+)?(?:local\s+)?computer|use\s+tools?|openjaws\s+(?:please\s+)?(?:fix|debug|diagnose|investigate|audit|review|inspect|research|look\s+into|look\s+up|search|browse|check|verify|trace|run|build|test|update|improve|continue|complete|implement|ship|harden|optimi[sz]e))\b/i
+const OPERATOR_PLAIN_ENGLISH_PROJECT_CONTEXT =
+  /\b(?:repo|repository|project|codebase|app|apps|site|website|qline|openjaws|immaculate|asgard|arobi|apex|discord|agent|agents|voice|voice\s+channel|viola|blackbeak|meme|tui|browser|internet|web|local\s+computer|terminal|shell|command|commands|log|logs|file|files|pdf|docx|markdown|md|artifact|deliverable|route|endpoint|api|service|backend|frontend|test|tests|build|security|vulnerability|dead\s+code|audit|integration|flow|flows|workflow|harness|orchestration|docs|documentation|benchmark|benchmarks|leaderboard)\b/i
+
+function normalizeWorkspaceAlias(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function resolveKnownWorkspaceAlias(
+  requested: string,
+  workspaces: DiscordOperatorWorkspace[],
+): string | null {
+  const alias = normalizeWorkspaceAlias(requested)
+  const wantsApexApps = OPERATOR_APEX_APPS_ALIASES.has(alias)
+  const wantsAsgard = OPERATOR_ASGARD_ALIASES.has(alias)
+
+  for (const workspace of workspaces) {
+    const workspacePath = normalizeAbsolutePath(workspace.path)
+    if (!workspacePath) {
+      continue
+    }
+    const candidates = wantsApexApps
+      ? [
+          workspacePath,
+          join(workspacePath, 'ignite', 'apex-os-project', 'apps'),
+          join(workspacePath, 'apex-os-project', 'apps'),
+        ]
+      : wantsAsgard
+        ? [workspacePath, join(workspacePath, 'Asgard')]
+        : []
+    for (const candidate of candidates) {
+      if (!existsSync(candidate)) {
+        continue
+      }
+      const normalizedCandidate = candidate.replace(/\\/g, '/').toLowerCase()
+      if (wantsApexApps && (
+          normalizedCandidate.includes('/ignite/apex-os-project/apps') ||
+          normalizedCandidate.endsWith('/apex-os-project/apps')
+        )) {
+        return candidate
+      }
+      if (wantsAsgard && normalizedCandidate.endsWith('/asgard')) {
+        return candidate
+      }
+    }
+  }
+
+  return null
+}
+
+function inferPlainEnglishOperatorWorkspace(content: string): string | null {
+  for (const hint of OPERATOR_PROJECT_WORKSPACE_HINTS) {
+    if (hint.pattern.test(content)) {
+      return hint.workspace
+    }
+  }
+  return null
+}
+
+function parsePlainEnglishOperatorWorkRequest(
+  trimmed: string,
+): DiscordOperatorParsedCommand | null {
+  if (!OPERATOR_PLAIN_ENGLISH_WORK_VERBS.test(trimmed)) {
+    return null
+  }
+  if (!OPERATOR_PLAIN_ENGLISH_PROJECT_CONTEXT.test(trimmed)) {
+    return null
+  }
+
+  return {
+    action: 'ask-openjaws',
+    cwd:
+      inferPlainEnglishOperatorWorkspace(trimmed) ??
+      OPERATOR_PLAIN_ENGLISH_DEFAULT_WORKSPACE,
+    text: trimmed,
+  }
 }
 
 export function sanitizeBranchSegment(value: string): string {
@@ -85,15 +198,30 @@ export function relativeWithinRoot(
   root: string,
   candidate: string,
 ): string | null {
-  const normalizedRoot = resolve(root).toLowerCase()
-  const normalizedCandidate = resolve(candidate).toLowerCase()
+  let normalizedRoot: string
+  let normalizedCandidate: string
+  try {
+    normalizedRoot = realpathSync.native(resolve(root))
+    normalizedCandidate = realpathSync.native(resolve(candidate))
+  } catch {
+    return null
+  }
+  if (process.platform === 'win32') {
+    normalizedRoot = normalizedRoot.toLowerCase()
+    normalizedCandidate = normalizedCandidate.toLowerCase()
+  }
   if (normalizedCandidate === normalizedRoot) {
     return '.'
   }
-  if (!normalizedCandidate.startsWith(`${normalizedRoot}\\`)) {
+  const relativePath = relative(normalizedRoot, normalizedCandidate)
+  if (
+    !relativePath ||
+    relativePath.startsWith('..') ||
+    isAbsolute(relativePath)
+  ) {
     return null
   }
-  return relative(root, candidate) || '.'
+  return relativePath
 }
 
 export function findGitRoot(path: string): string | null {
@@ -129,6 +257,36 @@ export function parseDirectOperatorChatCommand(
 ): DiscordOperatorParsedCommand | null {
   const trimmed = content.trim()
   const normalized = trimmed.toLowerCase()
+  const naturalArtifactMatch = trimmed.match(
+    /^(?:create|make|generate|draft|write|build|deliver|post|send)\s+(?:a|an|the)?\s*(?:(pdf|docx|markdown|md|html|txt|text)\s+)?(?:file|document|doc|report|brief|handoff|artifact)(?:\s+(?:in|inside|on|for(?: project| workspace)?)\s+(.+?))?(?:\s+(?:about|covering|on|for)\s+(.+))$/i,
+  )
+  if (naturalArtifactMatch) {
+    const format = naturalArtifactMatch[1]?.trim().toLowerCase() || null
+    const workspace = naturalArtifactMatch[2]?.trim() || null
+    const topic = naturalArtifactMatch[3]?.trim() || null
+    if (topic) {
+      return {
+        action: 'ask-openjaws',
+        cwd: workspace,
+        text: buildDiscordOperatorArtifactPrompt({ topic, format }),
+      }
+    }
+  }
+  const directImmaculateBridgeMatch = trimmed.match(
+    /^(?:use\s+)?(?:the\s+)?immaculate(?:\s+harness)?\s+(tools|tool-capabilities|fetch|search|artifact|receipts|receipt)\b\s*(.*)$/i,
+  )
+  if (directImmaculateBridgeMatch) {
+    const subcommand = directImmaculateBridgeMatch[1]?.trim() ?? 'tools'
+    const tail = directImmaculateBridgeMatch[2]?.trim() ?? ''
+    return {
+      action: 'ask-openjaws',
+      cwd: 'immaculate-c',
+      text: [
+        `Run the governed Immaculate bridge for: /immaculate ${subcommand}${tail ? ` ${tail}` : ''}.`,
+        'Use ImmaculateHarness directly, keep the raw API key out of shell/history, and report the returned receipt ids or capability status.',
+      ].join(' '),
+    }
+  }
   const naturalStartMatch = trimmed.match(
     /^start (?:an )?openjaws session(?: for project)?\s+(.+?)(?:\s+and\s+(.+))?$/i,
   )
@@ -158,6 +316,20 @@ export function parseDirectOperatorChatCommand(
       action: 'ask-openjaws',
       cwd: naturalAskMatch[1]?.trim() || null,
       text: naturalAskMatch[2]?.trim() || null,
+    }
+  }
+  const naturalOpenJawsDefaultMatch = trimmed.match(
+    /^(?:use|run|ask)\s+openjaws\s+to\s+(.+)$|^have\s+openjaws\s+(?:to\s+)?(.+)$/i,
+  )
+  if (naturalOpenJawsDefaultMatch) {
+    const prompt =
+      naturalOpenJawsDefaultMatch[1]?.trim() ||
+      naturalOpenJawsDefaultMatch[2]?.trim() ||
+      null
+    return {
+      action: 'ask-openjaws',
+      cwd: prompt ? inferPlainEnglishOperatorWorkspace(prompt) ?? OPERATOR_PLAIN_ENGLISH_DEFAULT_WORKSPACE : null,
+      text: prompt,
     }
   }
   if (
@@ -220,6 +392,10 @@ export function parseDirectOperatorChatCommand(
       cwd: null,
       text: null,
     }
+  }
+  const plainEnglishOperatorWork = parsePlainEnglishOperatorWorkRequest(trimmed)
+  if (plainEnglishOperatorWork) {
+    return plainEnglishOperatorWork
   }
   if (!/^openjaws\b/i.test(trimmed)) {
     return null
@@ -303,6 +479,34 @@ export function parseDirectOperatorChatCommand(
         text: askTokens.slice(1).join(' ').trim() || null,
       }
     }
+    case 'artifact':
+    case 'deliver':
+    case 'delivery':
+    case 'report': {
+      const artifactTail = remainder
+        .replace(/^(?:artifact|deliver|delivery|report)\b/i, '')
+        .trim()
+      if (!artifactTail) {
+        return { action: 'ask-openjaws', cwd: null, text: null }
+      }
+      if (artifactTail.includes('::')) {
+        const [workspace, topic] = artifactTail.split('::', 2)
+        return {
+          action: 'ask-openjaws',
+          cwd: workspace?.trim() || null,
+          text: topic?.trim()
+            ? buildDiscordOperatorArtifactPrompt({ topic: topic.trim() })
+            : null,
+        }
+      }
+      const artifactTokens = tokenizeDirectOperatorCommand(artifactTail)
+      const topic = artifactTokens.slice(1).join(' ').trim()
+      return {
+        action: 'ask-openjaws',
+        cwd: artifactTokens[0]?.trim() || null,
+        text: topic ? buildDiscordOperatorArtifactPrompt({ topic }) : null,
+      }
+    }
     default:
       return null
   }
@@ -317,6 +521,7 @@ export function resolveOperatorWorkspacePath(args: {
     throw new Error('operator actions require --cwd or a workspace path.')
   }
   const requested = args.input.trim()
+  const knownAliasPath = resolveKnownWorkspaceAlias(requested, args.workspaces)
   const aliased =
     args.workspaces.find(
       workspace =>
@@ -325,7 +530,7 @@ export function resolveOperatorWorkspacePath(args: {
         basename(workspace.path).toLowerCase() === requested.toLowerCase() ||
         workspace.label.toLowerCase().startsWith(`${requested.toLowerCase()} `),
     ) ?? null
-  const resolved = normalizeAbsolutePath(aliased?.path ?? requested)
+  const resolved = normalizeAbsolutePath(knownAliasPath ?? aliased?.path ?? requested)
   if (!resolved || !existsSync(resolved)) {
     throw new Error(`Workspace path not found: ${args.input}`)
   }
