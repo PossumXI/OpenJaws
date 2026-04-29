@@ -89,6 +89,9 @@ type CliOptions = {
   soakIntervalMs: number
   officialSubmission: boolean
   useRuntimeBundle: boolean
+  benchmarkRepairHint: string | null
+  taskCandidateNames: string[]
+  taskSelectionLane: boolean
 }
 
 function parseOptionalInt(value: string | undefined): number | null {
@@ -141,6 +144,9 @@ export function parseArgs(argv: string[]): CliOptions {
     soakIntervalMs: 0,
     officialSubmission: false,
     useRuntimeBundle: true,
+    benchmarkRepairHint: null,
+    taskCandidateNames: [],
+    taskSelectionLane: false,
   }
 
   for (let i = 0; i < argv.length; i++) {
@@ -213,6 +219,14 @@ export function parseArgs(argv: string[]): CliOptions {
     }
     if (arg === '--include-task-name' && argv[i + 1]) {
       options.includeTaskNames.push(argv[++i]!)
+      continue
+    }
+    if (arg === '--task-candidate-name' && argv[i + 1]) {
+      options.taskCandidateNames.push(argv[++i]!)
+      continue
+    }
+    if (arg === '--task-selection-lane') {
+      options.taskSelectionLane = true
       continue
     }
     if (arg === '--exclude-task-name' && argv[i + 1]) {
@@ -323,6 +337,10 @@ export function parseArgs(argv: string[]): CliOptions {
       options.useRuntimeBundle = false
       continue
     }
+    if (arg === '--benchmark-repair-hint' && argv[i + 1]) {
+      options.benchmarkRepairHint = argv[++i]!
+      continue
+    }
     if (arg === '--help' || arg === '-h') {
       printHelpAndExit()
     }
@@ -359,6 +377,8 @@ function printHelpAndExit(): never {
       '  --n-attempts, -k <n>         Harbor attempts per trial (default 1)',
       '  --repeat <n>                 Repeat the Harbor run sequentially and aggregate the receipts (default 1)',
       '  --include-task-name <glob>   Include only matching task names',
+      '  --task-selection-lane        Try task candidates sequentially and stop after first nonzero reward',
+      '  --task-candidate-name <glob> Candidate task for --task-selection-lane (repeatable)',
       '  --exclude-task-name <glob>   Exclude matching task names',
       '  --max-turns <n>              Max OpenJaws turns inside Harbor (default 12)',
       '  --agent-setup-timeout-multiplier <n>  Harbor agent setup timeout multiplier (default 3)',
@@ -374,6 +394,7 @@ function printHelpAndExit(): never {
       '  --official-submission        Force Terminal-Bench 2.0 leaderboard-compliant settings',
       '  --use-runtime-bundle         Use the Harbor runtime CLI bundle (default)',
       '  --source-tree-runtime        Debug the raw source-tree lane instead of the default runtime bundle',
+      '  --benchmark-repair-hint <text>  Inject verifier diagnostics from a prior failed attempt',
       '  --dry-run                    Run only preflight checks and emit the command receipt',
       '  --force                      Run Harbor even if provider preflight fails',
       '  --export-traces              Ask Harbor to export ATIF traces after the job',
@@ -420,6 +441,163 @@ function readTextFileTail(path: string): string | null {
   }
 }
 
+function compactRepairHintText(value: string, maxChars = 6000): string {
+  const normalized = value
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+$/gm, '')
+    .trim()
+  if (normalized.length <= maxChars) {
+    return normalized
+  }
+  return `${normalized.slice(0, maxChars - 120).trimEnd()}\n\n[repair hint truncated to ${maxChars} chars]`
+}
+
+function formatRepairHintSection(label: string, value: string | null | undefined): string[] {
+  const trimmed = value?.trim()
+  if (!trimmed) {
+    return []
+  }
+  return [`${label}:`, tailText(trimmed, 18, 1600)]
+}
+
+function isRepairCandidateTask(task: TerminalBenchTaskReceipt): boolean {
+  return (
+    task.benchmarkStatus === 'failed' ||
+    task.agentResultSelfReportedIncomplete === true ||
+    (task.executionStatus === 'error' && task.benchmarkStatus !== 'passed')
+  )
+}
+
+export function buildTerminalBenchRepairHint(
+  tasks: readonly TerminalBenchTaskReceipt[],
+  maxChars = 6000,
+): string | null {
+  const candidates = tasks.filter(isRepairCandidateTask)
+  if (candidates.length === 0) {
+    return null
+  }
+
+  const taskBlocks = candidates.slice(0, 6).map((task, index) => {
+    const diagnostics = task.verifierDiagnostics ?? null
+    const lines = [
+      `Failed task ${index + 1}: ${task.taskName ?? 'unknown-task'}`,
+      `Trial: ${task.trialName ?? 'unknown-trial'}`,
+      `Status: execution=${task.executionStatus}, benchmark=${task.benchmarkStatus}, reward=${task.rewardTotal ?? 'unknown'}`,
+    ]
+    if (task.exceptionType || task.exceptionMessage) {
+      lines.push(`Exception: ${task.exceptionType ?? 'unknown'} ${task.exceptionMessage ?? ''}`.trim())
+    }
+    lines.push(...formatRepairHintSection('Agent result summary', task.agentResultSummary))
+    lines.push(...formatRepairHintSection('Verifier stdout tail', diagnostics?.testStdoutTail))
+    lines.push(...formatRepairHintSection('Verifier stderr tail', diagnostics?.testStderrTail))
+    return lines.join('\n')
+  })
+
+  return compactRepairHintText(
+    [
+      'Verifier-driven Terminal-Bench repair hint from the previous attempt:',
+      '- Treat the verifier diagnostics below as the failing test signal to repair, not as final-answer text.',
+      '- Inspect /app, edit the concrete requested files or generator, and rerun a verifier-like command before finishing.',
+      '- If an existing artifact is placeholder, replace it with a real implementation rather than explaining the gap.',
+      '',
+      ...taskBlocks,
+    ].join('\n\n'),
+    maxChars,
+  )
+}
+
+export function buildTerminalBenchRepairPlan(
+  tasks: readonly TerminalBenchTaskReceipt[],
+): Record<string, unknown> {
+  const candidates = tasks.filter(isRepairCandidateTask)
+  const hint = buildTerminalBenchRepairHint(candidates)
+  return {
+    enabled: candidates.length > 0,
+    candidateCount: candidates.length,
+    strategy:
+      candidates.length > 0
+        ? 'rerun with --benchmark-repair-hint using verifier stdout/stderr tails, then require concrete artifact edits before final answer'
+        : 'no verifier repair needed',
+    hintPreview: hint ? tailText(hint, 30, 3000) : null,
+    hintCharCount: hint?.length ?? 0,
+    tasks: candidates.map(task => ({
+      taskName: task.taskName,
+      trialName: task.trialName,
+      executionStatus: task.executionStatus,
+      benchmarkStatus: task.benchmarkStatus,
+      rewardTotal: task.rewardTotal,
+      agentResultSelfReportedIncomplete: task.agentResultSelfReportedIncomplete ?? false,
+      hasVerifierStdout: Boolean(task.verifierDiagnostics?.testStdoutTail),
+      hasVerifierStderr: Boolean(task.verifierDiagnostics?.testStderrTail),
+    })),
+  }
+}
+
+function resolveTaskSelectionCandidates(options: CliOptions): string[] {
+  const rawCandidates =
+    options.taskCandidateNames.length > 0
+      ? options.taskCandidateNames
+      : options.includeTaskNames
+  const seen = new Set<string>()
+  const candidates: string[] = []
+  for (const candidate of rawCandidates) {
+    const trimmed = candidate.trim()
+    if (!trimmed || seen.has(trimmed)) {
+      continue
+    }
+    seen.add(trimmed)
+    candidates.push(trimmed)
+  }
+  return candidates
+}
+
+function buildTaskSelectionAttemptOptions(
+  options: CliOptions,
+  candidate: string,
+  candidateIndex: number,
+): CliOptions {
+  const candidateSlug = sanitizeSubmissionSlug(candidate)
+  return {
+    ...options,
+    includeTaskNames: [candidate],
+    jobName: options.jobName
+      ? `${options.jobName}-candidate-${candidateIndex}-${candidateSlug}`
+      : null,
+  }
+}
+
+function taskReceiptsReachedNonzeroScore(tasks: readonly TerminalBenchTaskReceipt[]): boolean {
+  return tasks.some(
+    task =>
+      task.benchmarkStatus === 'passed' ||
+      (typeof task.rewardTotal === 'number' && task.rewardTotal > 0),
+  )
+}
+
+export function buildTerminalBenchTaskSelectionPlan(
+  options: CliOptions,
+): Record<string, unknown> {
+  const candidates = resolveTaskSelectionCandidates(options)
+  return {
+    enabled: options.taskSelectionLane,
+    mode: options.taskSelectionLane ? 'first_nonzero_reward' : 'plan_only',
+    stopRule:
+      'try candidates sequentially and stop after a passing task or rewardTotal > 0',
+    candidateCount: candidates.length,
+    candidates: candidates.map((candidate, index) => {
+      const candidateOptions = buildTaskSelectionAttemptOptions(
+        options,
+        candidate,
+        index + 1,
+      )
+      return {
+        taskName: candidate,
+        harborArgs: redactHarborArgs(buildHarborArgs(candidateOptions, 1, 1)),
+      }
+    }),
+  }
+}
+
 function getFileSize(path: string): number | null {
   if (!existsSync(path)) {
     return null
@@ -440,9 +618,16 @@ function sanitizeSubmissionSlug(value: string): string {
     .replace(/^-+|-+$/g, '') || 'submission'
 }
 
-function buildTerminalBenchSessionScope(options: Pick<CliOptions, 'officialSubmission' | 'soak'>): string {
+function buildTerminalBenchSessionScope(
+  options: Pick<CliOptions, 'officialSubmission' | 'soak'> & {
+    taskSelectionLane?: boolean
+  },
+): string {
   if (options.officialSubmission) {
     return 'terminalbench:official'
+  }
+  if (options.taskSelectionLane) {
+    return 'terminalbench:task_selection'
   }
   return options.soak ? 'terminalbench:soak' : 'terminalbench:bounded'
 }
@@ -463,7 +648,9 @@ async function readGitText(args: {
 export async function resolveTerminalBenchSessionMetadata(args: {
   root: string
   runId: string
-  options: Pick<CliOptions, 'officialSubmission' | 'soak'>
+  options: Pick<CliOptions, 'officialSubmission' | 'soak'> & {
+    taskSelectionLane?: boolean
+  }
 }): Promise<TerminalBenchSessionMetadata> {
   const repoPath = resolve(args.root)
   const [worktreePath, gitBranch, repoSha] = await Promise.all([
@@ -638,6 +825,12 @@ export function buildHarborArgs(options: CliOptions, cycle: number, attempt: num
     if (options.useRuntimeBundle) {
       args.push('--ak', 'use_runtime_bundle=true')
     }
+    if (options.benchmarkRepairHint?.trim()) {
+      args.push(
+        '--ak',
+        `benchmark_repair_hint=${compactRepairHintText(options.benchmarkRepairHint)}`,
+      )
+    }
     if (options.model) {
       args.push('--model', options.model)
     }
@@ -708,6 +901,12 @@ function redactHarborArgs(args: string[]): string[] {
         return `${value.slice(0, splitIndex)}=<redacted>`
       }
       return '<redacted>'
+    }
+    if (index > 0 && args[index - 1] === '--ak') {
+      const splitIndex = value.indexOf('=')
+      if (splitIndex > 0 && value.slice(0, splitIndex) === 'benchmark_repair_hint') {
+        return 'benchmark_repair_hint=<redacted>'
+      }
     }
     return value
   })
@@ -1408,10 +1607,35 @@ export function validateOfficialSubmissionOptions(options: CliOptions): void {
   if (options.soak) {
     violations.push('soak must be disabled for a single official submission job')
   }
+  if (options.taskSelectionLane) {
+    violations.push('task-selection-lane must be disabled for a single official submission job')
+  }
   if (violations.length > 0) {
     throw new Error(
       `Official Terminal-Bench submission mode is misconfigured: ${violations.join('; ')}.`,
     )
+  }
+}
+
+export function validateTaskSelectionOptions(options: CliOptions): void {
+  if (!options.taskSelectionLane) {
+    return
+  }
+  const candidates = resolveTaskSelectionCandidates(options)
+  const violations: string[] = []
+  if (candidates.length === 0) {
+    violations.push(
+      'provide at least one --task-candidate-name or --include-task-name value',
+    )
+  }
+  if (options.soak) {
+    violations.push('task-selection-lane cannot be combined with --soak')
+  }
+  if (options.repeat !== 1) {
+    violations.push('task-selection-lane expects --repeat 1; use candidates for breadth')
+  }
+  if (violations.length > 0) {
+    throw new Error(`Terminal-Bench task selection is misconfigured: ${violations.join('; ')}.`)
   }
 }
 
@@ -1458,7 +1682,6 @@ async function main() {
   const runId = makeRunId(options)
   const outputDir =
     options.outputDir ?? resolve(options.root, 'artifacts', 'terminalbench', runId)
-  const plannedCycleCount = options.soak ? options.soakCycles : 1
   mkdirSync(outputDir, { recursive: true })
   if (!options.jobsDir) {
     options.jobsDir = join(outputDir, 'jobs')
@@ -1471,6 +1694,13 @@ async function main() {
   }
   options.jobName = options.jobName ?? runId
   validateOfficialSubmissionOptions(options)
+  validateTaskSelectionOptions(options)
+  const taskSelectionCandidates = resolveTaskSelectionCandidates(options)
+  const plannedCycleCount = options.soak
+    ? options.soakCycles
+    : options.taskSelectionLane
+      ? taskSelectionCandidates.length
+      : 1
   const sessionMetadata = await resolveTerminalBenchSessionMetadata({
     root: options.root,
     runId,
@@ -1505,12 +1735,20 @@ async function main() {
     queueDepth: options.nTasks,
   })
 
-  const representativeHarborArgs = buildHarborArgs(options, 1, 1)
+  const representativeOptions =
+    options.taskSelectionLane && taskSelectionCandidates[0]
+      ? buildTaskSelectionAttemptOptions(options, taskSelectionCandidates[0], 1)
+      : options
+  const representativeHarborArgs = buildHarborArgs(representativeOptions, 1, 1)
   const report: Record<string, unknown> = {
     runId,
     generatedAt: new Date().toISOString(),
     outputDir,
-    lane: options.soak ? 'soak' : 'bounded',
+    lane: options.soak
+      ? 'soak'
+      : options.taskSelectionLane
+        ? 'task_selection'
+        : 'bounded',
     dataset: options.dataset,
     agent: options.agent,
     model: options.model,
@@ -1540,6 +1778,10 @@ async function main() {
     officialSubmission: options.officialSubmission,
     harborCommand: options.harborCommand,
     harborArgs: redactHarborArgs(representativeHarborArgs),
+    taskSelection: buildTerminalBenchTaskSelectionPlan(options),
+    repairHintInjected: Boolean(options.benchmarkRepairHint?.trim()),
+    repairHintCharCount: options.benchmarkRepairHint?.trim().length ?? 0,
+    repairPlan: null,
     provenance: sessionMetadata,
     agentEnvNames:
       options.agent === 'openjaws'
@@ -1670,6 +1912,9 @@ async function main() {
   let soakStopReason: TerminalBenchSoakStopReason | null = options.soak
     ? 'cycle_limit'
     : 'single_cycle'
+  let taskSelectionStopReason: string | null = options.taskSelectionLane
+    ? 'exhausted_candidates'
+    : null
 
   for (let cycle = 1; cycle <= plannedCycleCount; cycle++) {
     if (soakDeadlineMs !== null && Date.now() >= soakDeadlineMs) {
@@ -1680,13 +1925,21 @@ async function main() {
     const cycleStartedAt = new Date().toISOString()
     const cycleAttempts: TerminalBenchAttemptReceipt[] = []
     const cycleTasks: TerminalBenchTaskReceipt[] = []
+    const cycleOptions =
+      options.taskSelectionLane && taskSelectionCandidates[cycle - 1]
+        ? buildTaskSelectionAttemptOptions(
+            options,
+            taskSelectionCandidates[cycle - 1]!,
+            cycle,
+          )
+        : options
 
-    for (let attempt = 1; attempt <= options.repeat; attempt++) {
+    for (let attempt = 1; attempt <= cycleOptions.repeat; attempt++) {
       const routeId = resolveAttemptJobName(
         {
-          jobName: options.jobName,
-          repeat: options.repeat,
-          soak: options.soak,
+          jobName: cycleOptions.jobName,
+          repeat: cycleOptions.repeat,
+          soak: cycleOptions.soak,
         },
         cycle,
         attempt,
@@ -1703,7 +1956,7 @@ async function main() {
       const attemptResult = await runHarborAttempt({
         cycle,
         attempt,
-        options,
+        options: cycleOptions,
       })
       cycleAttempts.push(attemptResult.attemptReceipt)
       cycleTasks.push(...attemptResult.taskReceipts)
@@ -1739,6 +1992,11 @@ async function main() {
       }),
     )
 
+    if (options.taskSelectionLane && taskReceiptsReachedNonzeroScore(cycleTasks)) {
+      taskSelectionStopReason = 'first_nonzero_reward'
+      break
+    }
+
     if (!options.soak || cycle === plannedCycleCount) {
       continue
     }
@@ -1761,11 +2019,28 @@ async function main() {
 
   const aggregate = buildAggregateSummary(cycles, attempts, tasks)
   const lastCycle = cycles.at(-1) ?? null
+  const repairPlan = buildTerminalBenchRepairPlan(tasks)
 
   report.cycles = cycles
   report.aggregate = aggregate
   report.attempts = attempts
   report.tasks = tasks
+  report.repairPlan = repairPlan
+  if (options.taskSelectionLane) {
+    report.taskSelection = {
+      ...buildTerminalBenchTaskSelectionPlan(options),
+      completedCandidateCount: cycles.length,
+      stopReason: taskSelectionStopReason,
+      firstNonzeroTask:
+        taskSelectionStopReason === 'first_nonzero_reward'
+          ? tasks.find(
+              task =>
+                task.benchmarkStatus === 'passed' ||
+                (typeof task.rewardTotal === 'number' && task.rewardTotal > 0),
+            )?.taskName ?? null
+          : null,
+    }
+  }
   report.jobPathGuess = lastCycle?.jobPathGuess ?? null
   report.jobResultPath = lastCycle?.jobResultPath ?? null
   report.jobResultSummary = lastCycle?.jobResultSummary ?? null

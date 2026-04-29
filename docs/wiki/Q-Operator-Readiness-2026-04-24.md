@@ -170,3 +170,23 @@ This pass keeps Discord/OpenJaws operator power bounded while making artifact de
 - A stale patrol receipt that says `receipt=false live=true` now warns instead of failing; the opposite direction remains a failure because it can hide a live harness outage.
 - Q was restarted onto the patched gateway handling and is healthy on `8788`.
 - No unrestricted shell path was added. Discord commands still flow through deterministic parser and action-switch boundaries.
+
+## April 29, 2026 Live Gate And Delivery Follow-Up
+
+- The live OpenJaws gate no longer hangs at the onboarding walkthrough. The walkthrough now bounds its final exit wait and closes idle HTTP connections after the scripted flow completes.
+- `qline.site` live checks now target the canonical copy from `D:\q-s-unfolding-story`, matching the deployed headline marker and avoiding stale legacy mirror expectations.
+- Discord/OpenJaws artifact requests now parse PPTX, slides, XLSX, spreadsheets, workbooks, CSV, and JSON in plain English. The visible runner uses the tracked TypeScript delivery renderer before falling back to the older PowerShell renderer.
+- Immaculate is running locally at `http://127.0.0.1:8787` with governed fetch, Tavily search, artifacts, and receipts available. Latest preflight search smoke receipt: `search-fnv1a-ccc6f6c2`.
+- Latest `bun run system:check:live` completed as run `system-check-20260429T031120` with `19` passed, `0` failed, and `3` warnings.
+- The warnings are still the voice lane: Viola Discord token HTTP `401`, PersonaPlex/Moshi WebSocket probe error on `127.0.0.1:8998`, and runtime-coherence aggregation of those two degraded lanes.
+- GitHub CI/CD check after the pass found OpenJaws and Immaculate green, and Asgard PR `#75` green on run `25088987255`.
+
+Verification:
+
+- `bun run onboarding:walkthrough`
+- `bun test scripts\system-check.test.ts scripts\discord-agent-auth-preflight.test.ts src\utils\discordGovernedWeb.test.ts src\utils\immaculateHarness.test.ts`
+- `bun test src\utils\discordOperatorWork.test.ts src\utils\discordOperatorExecution.test.ts`
+- `bun run system:check:features`
+- `bun run build`
+- `bun run website:deploy:check`
+- `bun run system:check:live`

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'fs'
+import { resolve } from 'path'
 
-const launcherText = readFileSync('openjaws.bat', 'utf8')
-const authText = readFileSync('src/utils/auth.ts', 'utf8')
+const repoRoot = resolve(import.meta.dir, '..', '..')
+const launcherText = readFileSync(resolve(repoRoot, 'openjaws.bat'), 'utf8')
+const authText = readFileSync(resolve(repoRoot, 'src', 'utils', 'auth.ts'), 'utf8')
 
 describe('owner local login bypass secret guard', () => {
   it('does not enable owner login bypass from the public launcher', () => {

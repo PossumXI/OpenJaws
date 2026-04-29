@@ -132,6 +132,9 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 - `bun run q:soak` adds a 30-minute bounded repeated-probe soak lane for native OpenJaws plus direct OCI Q
 - `q:terminalbench` now supports `--repeat` and writes `attempts[]` plus flattened `tasks[]` receipts, so repeated-run stability and real multi-task concurrency are visible in one JSON artifact
 - `q:terminalbench` now also supports `--soak`, which writes `cycles[]`, a top-level `soak` block, and still keeps flattened `attempts[]` / `tasks[]` receipts for compatibility
+- `q:terminalbench` now supports verifier-driven repair and first-nonzero task selection: failed receipts can emit a `repairPlan`, `--benchmark-repair-hint` feeds prior verifier output back into the Harbor agent, and `--task-selection-lane` can rotate through candidate public tasks before the next official attempt
+- the Windows Harbor wrapper now prefers an isolated `.tools/harbor-venv` plus the repo-patched launcher, avoiding global Python dependency conflicts during TerminalBench preflight
+- Q_agents crew launch orchestration now reuses one Immaculate deck receipt for pacing and handoff, reducing duplicate live probes while keeping launch pressure decisions consistent
 - the direct `q:soak` lane and the Harbor-backed `q:terminalbench` lane now share the same OCI/Q provider probe surface before launch, so the direct and Harbor receipts agree on when the provider path is healthy, failed, or merely forceable
 - the benchmark wrappers now also share one typed `q:preflight` checklist surface, so Harbor, Docker, Python, bundle, provider, and clock checks all come from one source of truth instead of separate script-local logic
 - `q:bridgebench`, `q:soak`, and `q:terminalbench` now all accept `--seed`, default to `42`, and emit that seed into their reports plus signed receipts

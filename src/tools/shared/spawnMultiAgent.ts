@@ -32,6 +32,7 @@ import {
   getImmaculateHarnessDeckReceipt,
   type ImmaculateCrewBurstBudget,
   type ImmaculateCrewWaveState,
+  type ImmaculateHarnessDeckReceipt,
   resolveImmaculateCrewLaunchWindow,
   resolveImmaculateCrewPressureVerdict,
 } from '../../utils/immaculateHarness.js'
@@ -199,6 +200,7 @@ async function announceImmaculateCrewSpawn(
     model,
     prompt,
     backendType,
+    deckReceipt,
   }: {
     teamName: string
     teammateName: string
@@ -206,10 +208,12 @@ async function announceImmaculateCrewSpawn(
     model?: string
     prompt: string
     backendType: BackendType
+    deckReceipt?: ImmaculateHarnessDeckReceipt | null
   },
 ): Promise<void> {
   try {
-    const deckReceipt = await getImmaculateHarnessDeckReceipt().catch(() => null)
+    const resolvedDeckReceipt =
+      deckReceipt ?? (await getImmaculateHarnessDeckReceipt().catch(() => null))
     const result = await actuateImmaculateCrewHandoff({
       teamName,
       teammateName,
@@ -217,19 +221,19 @@ async function announceImmaculateCrewSpawn(
       model,
       prompt,
       backendType,
-      deckReceipt,
+      deckReceipt: resolvedDeckReceipt,
     })
     if (!result || !context.appendSystemMessage) {
       return
     }
     const verdict = resolveImmaculateCrewPressureVerdict({
       crewSize,
-      deckReceipt,
+      deckReceipt: resolvedDeckReceipt,
     })
     const detailParts = [`${teamName} · ${teammateName} · ${crewSize} active`]
     detailParts.push(verdict.detail)
-    if (deckReceipt?.executionCount) {
-      detailParts.push(`${deckReceipt.executionCount} exec`)
+    if (resolvedDeckReceipt?.executionCount) {
+      detailParts.push(`${resolvedDeckReceipt.executionCount} exec`)
     }
     context.appendSystemMessage(
       createSystemMessage(
@@ -266,6 +270,7 @@ async function maybeApplyImmaculateCrewLaunchPacing(
 ): Promise<{
   waveState: ImmaculateCrewWaveState | null
   burstBudget: ImmaculateCrewBurstBudget | null
+  deckReceipt: ImmaculateHarnessDeckReceipt | null
 }> {
   try {
     const deckReceipt = await getImmaculateHarnessDeckReceipt().catch(() => null)
@@ -292,6 +297,7 @@ async function maybeApplyImmaculateCrewLaunchPacing(
       return {
         waveState,
         burstBudget,
+        deckReceipt,
       }
     }
     context.appendSystemMessage?.(
@@ -304,6 +310,7 @@ async function maybeApplyImmaculateCrewLaunchPacing(
     return {
       waveState,
       burstBudget,
+      deckReceipt,
     }
   } catch (error) {
     logForDebugging(
@@ -313,6 +320,7 @@ async function maybeApplyImmaculateCrewLaunchPacing(
     return {
       waveState: null,
       burstBudget: null,
+      deckReceipt: null,
     }
   }
 }
@@ -577,6 +585,7 @@ async function handleSpawnSplitPane(
   const {
     waveState: immaculateCrewWave,
     burstBudget: immaculateCrewBurstBudget,
+    deckReceipt: immaculateCrewDeckReceipt,
   } = await maybeApplyImmaculateCrewLaunchPacing(context, {
     teamName,
     anticipatedCrewSize: existingTeamFile.members.length + 1,
@@ -810,6 +819,7 @@ async function handleSpawnSplitPane(
     model,
     prompt,
     backendType: detectionResult.backend.type,
+    deckReceipt: immaculateCrewDeckReceipt,
   })
 
   return {
@@ -883,6 +893,7 @@ async function handleSpawnSeparateWindow(
   const {
     waveState: immaculateCrewWave,
     burstBudget: immaculateCrewBurstBudget,
+    deckReceipt: immaculateCrewDeckReceipt,
   } = await maybeApplyImmaculateCrewLaunchPacing(context, {
     teamName,
     anticipatedCrewSize: existingTeamFile.members.length + 1,
@@ -1091,6 +1102,7 @@ async function handleSpawnSeparateWindow(
     model,
     prompt,
     backendType: 'tmux',
+    deckReceipt: immaculateCrewDeckReceipt,
   })
 
   return {
@@ -1245,6 +1257,7 @@ async function handleSpawnInProcess(
   const {
     waveState: immaculateCrewWave,
     burstBudget: immaculateCrewBurstBudget,
+    deckReceipt: immaculateCrewDeckReceipt,
   } = await maybeApplyImmaculateCrewLaunchPacing(context, {
     teamName,
     anticipatedCrewSize: existingTeamFile.members.length + 1,
@@ -1480,6 +1493,7 @@ async function handleSpawnInProcess(
     model,
     prompt,
     backendType: 'in-process',
+    deckReceipt: immaculateCrewDeckReceipt,
   })
 
   return {

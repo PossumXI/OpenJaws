@@ -204,6 +204,36 @@ describe('discordOperatorWork', () => {
     expect(parsed?.text).toContain('smallest bounded local harness')
   })
 
+  it('recognizes broader Discord artifact formats in natural requests', () => {
+    const pptx = parseDirectOperatorChatCommand(
+      'create a powerpoint report for openjaws-d about Discord delivery status',
+    )
+    expect(pptx?.action).toBe('ask-openjaws')
+    expect(pptx?.cwd).toBe('openjaws-d')
+    expect(pptx?.text).toContain('Discord-deliverable pptx slide deck artifact')
+
+    const spreadsheet = parseDirectOperatorChatCommand(
+      'generate an xlsx report for apex-apps about tenant usage',
+    )
+    expect(spreadsheet?.action).toBe('ask-openjaws')
+    expect(spreadsheet?.cwd).toBe('apex-apps')
+    expect(spreadsheet?.text).toContain('Discord-deliverable xlsx artifact')
+
+    const csv = parseDirectOperatorChatCommand(
+      'deliver a csv artifact for immaculate about current benchmark receipts',
+    )
+    expect(csv?.action).toBe('ask-openjaws')
+    expect(csv?.cwd).toBe('immaculate')
+    expect(csv?.text).toContain('Discord-deliverable csv artifact')
+
+    const json = parseDirectOperatorChatCommand(
+      'make a json file for openjaws-d about governed search receipts',
+    )
+    expect(json?.action).toBe('ask-openjaws')
+    expect(json?.cwd).toBe('openjaws-d')
+    expect(json?.text).toContain('Discord-deliverable json artifact')
+  })
+
   it('routes explicit OpenJaws delivery aliases through governed artifact delivery', () => {
     const parsed = parseDirectOperatorChatCommand(
       'openjaws deliver immaculate :: release readiness and next operator actions',
@@ -213,7 +243,7 @@ describe('discordOperatorWork', () => {
       action: 'ask-openjaws',
       cwd: 'immaculate',
       text: expect.stringContaining(
-        'Discord-deliverable markdown, docx, and pdf when supported artifact about release readiness and next operator actions.',
+        'Discord-deliverable markdown, docx, pptx, xlsx, csv, json, and pdf when supported artifact about release readiness and next operator actions.',
       ),
     })
     expect(parsed?.text).toContain('delivery.json')

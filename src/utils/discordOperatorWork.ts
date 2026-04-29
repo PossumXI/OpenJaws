@@ -258,7 +258,7 @@ export function parseDirectOperatorChatCommand(
   const trimmed = content.trim()
   const normalized = trimmed.toLowerCase()
   const naturalArtifactMatch = trimmed.match(
-    /^(?:create|make|generate|draft|write|build|deliver|post|send)\s+(?:a|an|the)?\s*(?:(pdf|docx|markdown|md|html|txt|text)\s+)?(?:file|document|doc|report|brief|handoff|artifact)(?:\s+(?:in|inside|on|for(?: project| workspace)?)\s+(.+?))?(?:\s+(?:about|covering|on|for)\s+(.+))$/i,
+    /^(?:create|make|generate|draft|write|build|deliver|post|send)\s+(?:a|an|the)?\s*(?:(pdf|docx|pptx|powerpoint|slides?|slide\s+deck|xlsx|excel|spreadsheet|workbook|csv|json|markdown|md|html|txt|text)\s+)?(?:file|document|doc|report|brief|handoff|artifact)(?:\s+(?:in|inside|on|for(?: project| workspace)?)\s+(.+?))?(?:\s+(?:about|covering|on|for)\s+(.+))$/i,
   )
   if (naturalArtifactMatch) {
     const format = naturalArtifactMatch[1]?.trim().toLowerCase() || null

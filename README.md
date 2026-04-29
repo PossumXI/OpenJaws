@@ -449,6 +449,8 @@ OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
 - benchmark receipt signing now uses canonical JSON plus Ed25519, which removes the old re-serialize-and-break verification footgun
 - `q:terminalbench` now supports `--repeat` and writes `attempts[]` plus flattened `tasks[]` receipts so repeated-run stability and real multi-task concurrency are visible in one artifact
 - `q:terminalbench` now also supports `--soak`, and `bun run q:terminalbench:soak` wraps that into repeated live cycles with `cycles[]`, per-cycle aggregates, and one managed jobs lane per run
+- `q:terminalbench` now has a verifier-driven repair lane: failed task receipts emit a `repairPlan`, `--benchmark-repair-hint` injects prior verifier stdout/stderr into the Harbor agent prompt, and `--task-selection-lane` tries candidate public tasks until the first nonzero reward instead of hammering one known-hard task
+- the Windows Harbor wrapper now prefers an isolated `.tools/harbor-venv` and the repo's patched `scripts/harbor_cli.py`, so TerminalBench preflight no longer depends on the globally conflicted Python package set
 - benchmark artifacts now write `bridgebench-report.json` plus `reward.json` and `reward-details.json` in a Rewardkit-style shape so the results are easy to inspect or reuse
 - training and benchmark receipts also record whether W&B logging was enabled, incomplete, or disabled, including the resolved project URL when that lane is actually configured
 - hybrid Q sessions now keep a rolling 3-failures-in-60s transport hysteresis window for the Immaculate fast path, so one transient network miss no longer knocks the whole hybrid lane off course
@@ -458,6 +460,7 @@ OpenJaws also has a local `Q` evaluation lane for honest in-repo comparison:
 - the tracked `src/utils/discordOperatorWork.ts` plus `src/utils/discordOperatorExecution.ts` modules now own the shared parser, worktree, verification, commit, and approval-push helpers that both the Discord operator lane and the private roundtable lane consume, so those two execution paths stop drifting
 - the tracked `src/utils/discordExecutionQueue.ts` plus `src/utils/discordRoundtableExecution.ts` modules now own the shared lease, dedupe, approval-target, and roundtable-executor semantics too, so direct operator jobs and roundtable jobs stop diverging at the approval boundary
 - the tracked roundtable runtime now also formats queue transition receipts directly, so `roundtable-status` can surface the same branch, receipt, verification, and `confirm-push` path the live operator queue uses
+- Q_agents crew launches now reuse the same Immaculate deck receipt for launch pacing and crew handoff, cutting duplicate live harness probes while keeping both decisions on one health snapshot
 - that shared roundtable execution classifier now fails mixed code-plus-artifact outputs closed, so only verified code-bearing branches without generated audit or artifact spillover reach the approval lane
 - that same operator lane now also supports `github-status` plus `ask-github-openjaws`, which opens a prepared `@openjaws` GitHub issue against the target repo so bounded work can continue remotely when the local machine goes offline
 - the roundtable lane now deduplicates work by canonical project scope and uses a queued lease ledger, so the bots can keep taking bounded 4-hour actions without piling multiple helpers onto the same repo path at once
@@ -480,6 +483,9 @@ Current local benchmark snapshot from this workspace:
   - the dedicated Gemini media lane is restored for that purpose, but the current Gemini project on this machine is still quota-blocked
 - local Harbor / Terminal-Bench lane:
   - the preflight now checks Docker with the exact Harbor process environment before a run, which caught the earlier Windows Docker Desktop context mismatch
+  - latest selector dry-run receipt: `artifacts/q-terminalbench-selector-dryrun-20260429-v2/terminalbench-report.json`
+    - result: `dry_run`
+    - truth: Harbor, Docker, OCI Q, clock-skew, and Harbor-process Docker checks all passed; candidate commands were emitted for `circuit-fibsqrt` and `json-grep`, with repair hints redacted from public receipts
   - single-task live receipt reaches clean Harbor completion under OCI `Q`
   - official public-task five-attempt receipt now exists at `artifacts/q-terminalbench-official-public-20260429-circuit-fibsqrt-rerun/terminalbench-report.json`
     - task: `circuit-fibsqrt`

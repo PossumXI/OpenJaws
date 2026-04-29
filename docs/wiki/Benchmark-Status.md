@@ -87,6 +87,13 @@ These are the current live-check lanes OpenJaws can run honestly against its shi
 
 This is the newest local OpenJaws public-task receipt and website snapshot state from this workspace.
 
+- TerminalBench repair/selection readiness:
+  - artifact: `artifacts/q-terminalbench-selector-dryrun-20260429-v2/terminalbench-report.json`
+  - result: `dry_run`
+  - checks: Harbor, Docker, OCI Q provider, clock skew, and Harbor-process Docker environment all passed
+  - wrapper change: `q:terminalbench` now emits verifier-driven `repairPlan` data from failed task receipts, accepts `--benchmark-repair-hint`, and supports `--task-selection-lane` with repeated `--task-candidate-name` values for first-nonzero public-task search
+  - truth: this is a launch-readiness receipt for the next public TerminalBench attempt, not a new score claim
+
 - BridgeBench:
   - artifact: `artifacts/q-bridgebench-20260429T024506/bridgebench-report.json`
   - result: `dry_run`

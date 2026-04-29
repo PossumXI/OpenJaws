@@ -162,3 +162,28 @@ The public showcase writer now treats bounded roundtable `error` states as `warn
 Aura Genesis public Discord status now includes a public-safe pressure-loop line when showcase telemetry reports subsystem counts. The line can show the 16-subsystem demo, public ledger proof count, public height, and result readiness while explicitly stating that private `00` payloads stay closed.
 
 Critical runtime failures still surface as failed public activity entries.
+
+## April 29, 2026 Live Gate And Artifact Runner Follow-Up
+
+- `scripts/onboarding-setup-walkthrough.tsx` now bounds the final terminal exit wait and force-closes idle HTTP connections after the scripted walkthrough finishes. This resolves the live gate hang that previously left `system:check:live` stuck at `onboarding-walkthrough-live`.
+- `scripts/deploy-qline-site.ts` now checks the current canonical `qline.site` headline marker, `Q // OpenJaws // Q_agents | qline.site`, instead of the stale legacy OpenJaws mirror copy. The canonical public root remains `D:\q-s-unfolding-story`; do not deploy the legacy `website/` mirror for qline.
+- Discord natural artifact requests now recognize PPTX, PowerPoint, slides, XLSX, Excel, spreadsheets, workbooks, CSV, and JSON in addition to PDF, DOCX, Markdown, HTML, and text.
+- `scripts/render-discord-operator-delivery.ts` is the tracked TypeScript CLI for producing Discord delivery bundles from OpenJaws output. The visible local runner tries this renderer first and falls back to the older PowerShell renderer if needed.
+- The live Immaculate listener was left up on `http://127.0.0.1:8787`; the latest listener check showed PID `15296` bound to `127.0.0.1:8787`.
+- Latest live gate run: `system-check-20260429T031120` completed with `19` passed, `0` failed, and `3` warnings.
+- Latest live governed search smoke from the preflight path returned receipt `search-fnv1a-ccc6f6c2` with result count `2`.
+- Remaining live warnings:
+  - Viola Discord auth still fails with HTTP `401`; rotate/update the local Viola bot token before voice production use.
+  - PersonaPlex probe still errors on `ws://127.0.0.1:8998/api/chat?...`; repair or restart the PersonaPlex/Moshi bridge before marking the voice bridge green.
+  - Runtime coherence is warning because it aggregates the Viola and PersonaPlex degradations.
+- CI check: latest visible OpenJaws and Immaculate GitHub workflows were green, and Asgard PR `#75` run `25088987255` completed successfully across frontend, Go, docs hygiene, security, and Docker checks.
+
+Verification for this follow-up:
+
+- `bun run onboarding:walkthrough`
+- `bun test scripts\system-check.test.ts scripts\discord-agent-auth-preflight.test.ts src\utils\discordGovernedWeb.test.ts src\utils\immaculateHarness.test.ts`
+- `bun test src\utils\discordOperatorWork.test.ts src\utils\discordOperatorExecution.test.ts`
+- `bun run system:check:features`
+- `bun run build`
+- `bun run website:deploy:check`
+- `bun run system:check:live`

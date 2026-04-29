@@ -2,13 +2,24 @@ export function buildDiscordOperatorArtifactPrompt(args: {
   topic: string
   format?: string | null
 }): string {
-  const normalizedFormat = args.format?.trim().toLowerCase() ?? null
-  const requestedFormats =
+  const normalizedFormat = args.format?.trim().toLowerCase().replace(/\s+/g, ' ') ?? null
+  const normalizedFormatAlias =
     normalizedFormat === 'md'
       ? 'markdown'
       : normalizedFormat === 'txt'
         ? 'text'
-        : normalizedFormat ?? 'markdown, docx, and pdf when supported'
+        : normalizedFormat === 'powerpoint' ||
+            normalizedFormat === 'slide' ||
+            normalizedFormat === 'slides' ||
+            normalizedFormat === 'slide deck'
+          ? 'pptx slide deck'
+          : normalizedFormat === 'excel' ||
+              normalizedFormat === 'spreadsheet' ||
+              normalizedFormat === 'workbook'
+            ? 'xlsx workbook'
+            : normalizedFormat
+  const requestedFormats =
+    normalizedFormatAlias ?? 'markdown, docx, pptx, xlsx, csv, json, and pdf when supported'
 
   return [
     `Create a Discord-deliverable ${requestedFormats} artifact about ${args.topic.trim()}.`,

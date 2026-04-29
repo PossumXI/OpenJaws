@@ -22,6 +22,25 @@ This handoff is the active benchmark-work truth as of April 29, 2026. `docs/wiki
 - `bun run website:snapshot:check` passed after regeneration.
 - `bun run test` passed: 536 Bun tests plus the script test sweep of 100 tests, with 0 failures.
 
+## 2026-04-29 Verifier Repair And Task Selection Pass
+
+- New wrapper capability:
+  - `--benchmark-repair-hint <text>` passes verifier-derived failure evidence into the Harbor OpenJaws agent as an explicit repair prompt.
+  - failed task receipts now produce a top-level `repairPlan` with failed task names, reward state, verifier stdout/stderr availability, and a bounded hint preview.
+  - `--task-selection-lane` plus repeated `--task-candidate-name` values tries public tasks sequentially and stops after the first passing task or `rewardTotal > 0`.
+- Harbor environment repair:
+  - `scripts/harbor-cli.cmd` now prefers `.tools/harbor-venv\Scripts\python.exe` when present and launches the repo-patched `scripts/harbor_cli.py`.
+  - `.tools/` is gitignored so Harbor can use compatible isolated dependencies without breaking the global Python packages used by security tools and OCI CLI.
+- Dry-run proof:
+  - command: `bun run q:terminalbench -- --dry-run --task-selection-lane --task-candidate-name circuit-fibsqrt --task-candidate-name json-grep --benchmark-repair-hint "Verifier stdout: placeholder output did not satisfy sample." --out-dir artifacts\q-terminalbench-selector-dryrun-20260429-v2`
+  - artifact: `artifacts/q-terminalbench-selector-dryrun-20260429-v2/terminalbench-report.json`
+  - result: `dry_run`
+  - checks: Harbor, Docker, OCI Q provider, clock skew, and Harbor Docker environment all passed.
+  - truth: this is a launch-readiness proof for the repair/selection lane, not a scored public TerminalBench result.
+- Q_agents orchestration:
+  - `src/tools/shared/spawnMultiAgent.ts` now reuses one Immaculate deck receipt across crew launch pacing and crew handoff announcement.
+  - This removes one duplicate live harness probe per teammate spawn while preserving the same health and pressure decision semantics.
+
 ## 2026-04-29 Official Public TerminalBench Rerun
 
 - Command: `bun run q:terminalbench -- --official-submission --include-task-name circuit-fibsqrt --out-dir artifacts\q-terminalbench-official-public-20260429-circuit-fibsqrt-rerun`

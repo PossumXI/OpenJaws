@@ -6,6 +6,9 @@ import { tmpdir } from 'os'
 import {
   applyOfficialSubmissionDefaults,
   buildHarborArgs,
+  buildTerminalBenchRepairHint,
+  buildTerminalBenchRepairPlan,
+  buildTerminalBenchTaskSelectionPlan,
   buildTaskSummary,
   buildVerifierDiagnostics,
   collectAgentEnv,
@@ -15,6 +18,7 @@ import {
   resolveTerminalBenchSessionMetadata,
   readOpenJawsAgentOutcome,
   validateOfficialSubmissionOptions,
+  validateTaskSelectionOptions,
 } from './q-terminalbench.ts'
 import { createBenchmarkTraceWriter } from '../src/immaculate/benchmarkTrace.js'
 import { buildQProviderProbeCheck } from '../src/q/runtime.js'
@@ -165,6 +169,99 @@ describe('q-terminalbench soak options', () => {
     )
     expect(buildHarborArgs(sourceTreeOptions, 1, 1)).not.toEqual(
       expect.arrayContaining(['--ak', 'use_runtime_bundle=true']),
+    )
+  })
+
+  test('injects verifier repair hints into the Harbor OpenJaws agent', () => {
+    const options = parseArgs([
+      '--job-name',
+      'repair-check',
+      '--benchmark-repair-hint',
+      'Verifier stdout: expected 144, got placeholder output.',
+    ])
+    const args = buildHarborArgs(options, 1, 1)
+
+    expect(args).toEqual(
+      expect.arrayContaining([
+        '--ak',
+        'benchmark_repair_hint=Verifier stdout: expected 144, got placeholder output.',
+      ]),
+    )
+  })
+
+  test('builds a verifier-driven repair hint from failed task diagnostics', () => {
+    const hint = buildTerminalBenchRepairHint([
+      {
+        taskName: 'terminal-bench/circuit-fibsqrt',
+        trialName: 'circuit-fibsqrt__trial',
+        executionStatus: 'completed',
+        benchmarkStatus: 'failed',
+        rewardTotal: 0,
+        exceptionType: null,
+        exceptionMessage: null,
+        agentResultSummary: 'Generated a placeholder gates.txt.',
+        agentResultSelfReportedIncomplete: true,
+        verifierDiagnostics: {
+          testStdoutTail: 'expected fib(isqrt(144)) modulo 2^32, got 0',
+          testStderrTail: '',
+        },
+      } as any,
+    ])
+
+    expect(hint).toContain('Verifier-driven Terminal-Bench repair hint')
+    expect(hint).toContain('circuit-fibsqrt')
+    expect(hint).toContain('expected fib(isqrt(144))')
+
+    expect(
+      buildTerminalBenchRepairPlan([
+        {
+          taskName: 'terminal-bench/circuit-fibsqrt',
+          trialName: 'circuit-fibsqrt__trial',
+          executionStatus: 'completed',
+          benchmarkStatus: 'failed',
+          rewardTotal: 0,
+          verifierDiagnostics: {
+            testStdoutTail: 'expected fib(isqrt(144)) modulo 2^32, got 0',
+          },
+        } as any,
+      ]),
+    ).toMatchObject({
+      enabled: true,
+      candidateCount: 1,
+      hintCharCount: expect.any(Number),
+    })
+  })
+
+  test('builds a first-nonzero TerminalBench task selection plan', () => {
+    const options = parseArgs([
+      '--task-selection-lane',
+      '--task-candidate-name',
+      'terminal-bench/circuit-fibsqrt',
+      '--task-candidate-name',
+      'json-grep',
+      '--job-name',
+      'selector',
+    ])
+
+    expect(() => validateTaskSelectionOptions(options)).not.toThrow()
+    const plan = buildTerminalBenchTaskSelectionPlan(options) as {
+      enabled: boolean
+      candidateCount: number
+      candidates: Array<{ taskName: string; harborArgs: string[] }>
+    }
+
+    expect(plan.enabled).toBe(true)
+    expect(plan.candidateCount).toBe(2)
+    expect(plan.candidates[0]?.harborArgs).toEqual(
+      expect.arrayContaining([
+        '--include-task-name',
+        'circuit-fibsqrt',
+        '--job-name',
+        'selector-candidate-1-terminal-bench-circuit-fibsqrt',
+      ]),
+    )
+    expect(plan.candidates[1]?.harborArgs).toEqual(
+      expect.arrayContaining(['--include-task-name', 'json-grep']),
     )
   })
 

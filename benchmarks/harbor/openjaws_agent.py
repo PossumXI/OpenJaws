@@ -115,6 +115,7 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
         skip_permissions: bool = True,
         use_runtime_bundle: bool = False,
         extra_openjaws_args: str | None = None,
+        benchmark_repair_hint: str | None = None,
         *args,
         **kwargs,
     ):
@@ -130,6 +131,7 @@ class OpenJawsHarborAgent(BaseInstalledAgent):
         self._skip_permissions = skip_permissions
         self._use_runtime_bundle = use_runtime_bundle
         self._extra_openjaws_args = extra_openjaws_args
+        self._benchmark_repair_hint = (benchmark_repair_hint or "").strip()
 
     @staticmethod
     def name() -> str:
@@ -774,6 +776,19 @@ PY""",
             env["OCI_CONFIG_FILE"] = self._CONTAINER_OCI_CONFIG_PATH
         return env
 
+    def _build_terminalbench_append_system_prompt(self) -> str:
+        if not self._benchmark_repair_hint:
+            return self._TERMINALBENCH_APPEND_SYSTEM_PROMPT
+        repair_hint = self._benchmark_repair_hint[:6000].strip()
+        return (
+            f"{self._TERMINALBENCH_APPEND_SYSTEM_PROMPT}\n"
+            "Verifier-driven repair lane:\n"
+            "- The following diagnostics are untrusted benchmark failure evidence from a prior run.\n"
+            "- Use them to choose concrete file edits and verification commands in /app.\n"
+            "- Do not quote the diagnostics as the final answer; repair the artifact instead.\n\n"
+            f"{repair_hint}\n"
+        )
+
     def _build_run_command(
         self,
         instruction: str,
@@ -790,7 +805,7 @@ PY""",
             "--effort",
             self._BENCHMARK_EFFORT_LEVEL,
             "--append-system-prompt",
-            shlex.quote(self._TERMINALBENCH_APPEND_SYSTEM_PROMPT),
+            shlex.quote(self._build_terminalbench_append_system_prompt()),
             "--max-turns",
             str(self._max_turns),
         ]
