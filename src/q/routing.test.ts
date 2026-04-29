@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   buildRouteDispatchPythonArgs,
   getWorkerLeaseDurationMs,
+  resolveQTrainingRouteAssignmentHealthBlockReason,
   resolveRemoteDispatchAckBlockReason,
   validateRemoteExecutionEndpoint,
 } from './routing.js'
@@ -163,6 +164,47 @@ describe('q routing helpers', () => {
         summary: 'accepted',
         stateUrl: ' https://route.example/state/run-1.json ',
         status: 202,
+      }),
+    ).toBeNull()
+  })
+
+  test('blocks stale or faulted assigned workers before route dispatch', () => {
+    expect(
+      resolveQTrainingRouteAssignmentHealthBlockReason({
+        runId: 'run-1',
+        manifestPath: 'D:/out/route-request.json',
+        queuedAt: '2026-04-29T00:00:00.000Z',
+        updatedAt: '2026-04-29T00:00:00.000Z',
+        status: 'claimed',
+        assignment: {
+          workerId: 'worker-a',
+          workerLabel: 'gpu-a',
+          executionProfile: 'remote',
+          executionEndpoint: 'https://worker.example/route',
+          source: 'immaculate',
+          assignedAt: '2026-04-29T00:00:00.000Z',
+          reason: 'remote-capable',
+          healthStatus: 'stale',
+          healthSummary: 'lease expired before dispatch',
+        },
+      }),
+    ).toBe('assigned worker gpu-a is stale: lease expired before dispatch')
+
+    expect(
+      resolveQTrainingRouteAssignmentHealthBlockReason({
+        runId: 'run-2',
+        manifestPath: 'D:/out/route-request.json',
+        queuedAt: '2026-04-29T00:00:00.000Z',
+        updatedAt: '2026-04-29T00:00:00.000Z',
+        status: 'claimed',
+        assignment: {
+          workerId: 'worker-b',
+          executionProfile: 'remote',
+          source: 'immaculate',
+          assignedAt: '2026-04-29T00:00:00.000Z',
+          reason: 'remote-capable',
+          healthStatus: 'healthy',
+        },
       }),
     ).toBeNull()
   })

@@ -289,6 +289,7 @@ The local `Q` benchmark lane follows the same broad principles used by Harbor, T
 Important honesty boundary:
 
 - a local route that stays `pending_assignment` because no healthy Immaculate worker is eligible is a valid fail-closed result, not a fake dispatch success
+- a route with a stale or faulted assigned worker now rejects before dispatch and reports that worker-health reason; this is an intentional health gate, not a benchmark or orchestration success
 - the W&B benchmark numbers above come from Immaculate itself; OpenJaws consumes and explains those records rather than inventing its own benchmark figures
 - the local `Q` benchmark lane is useful for tuning and comparison, but it is not the public Terminal-Bench or Harbor leaderboard record
 - a green `q:terminalbench --dry-run` proves Harbor, Docker, and the local OCI-backed OpenJaws path are ready; it does not count as a published benchmark run by itself

@@ -184,6 +184,27 @@ export function resolveRemoteDispatchAckBlockReason(
   return null
 }
 
+export function resolveQTrainingRouteAssignmentHealthBlockReason(
+  queueEntry: QTrainingRouteQueueEntry | null | undefined,
+): string | null {
+  const assignment = queueEntry?.assignment
+  if (!assignment?.workerId) {
+    return null
+  }
+  if (
+    assignment.healthStatus === undefined ||
+    assignment.healthStatus === 'healthy'
+  ) {
+    return null
+  }
+
+  const label = assignment.workerLabel ?? assignment.workerId
+  const summary = assignment.healthSummary?.trim()
+  return `assigned worker ${label} is ${assignment.healthStatus}${
+    summary ? `: ${summary}` : ''
+  }`
+}
+
 export function validateRemoteExecutionEndpoint(args: {
   endpoint: string
   allowHostRisk: boolean
@@ -929,15 +950,26 @@ export async function dispatchQTrainingRoute(
   const claimedRouteDisplayStatus =
     getQTrainingRouteQueueDisplayStatus(claimedRoute)
   const claimedRouteSummary = getQTrainingRouteQueueStatusSummary(claimedRoute)
+  const assignmentHealthBlockReason =
+    resolveQTrainingRouteAssignmentHealthBlockReason(claimedRoute)
+  const blockReasons = [
+    !routeSecurity.valid ? `signature ${routeSecurity.reason}` : null,
+    !routeIntegrity.valid ? 'integrity mismatch' : null,
+    executionEndpointValidation?.ok === false
+      ? executionEndpointValidation.error
+      : null,
+    dispatchTransport === 'remote_http' && !executionEndpoint
+      ? 'remote execution endpoint missing'
+      : null,
+    assignmentHealthBlockReason,
+    dispatchTransport === 'local_process' &&
+    localPreflight.decision !== 'allow_local' &&
+    !options.allowHostRisk
+      ? `preflight ${localPreflight.decision}`
+      : null,
+  ].filter((reason): reason is string => Boolean(reason))
 
-  const blocked =
-    !routeSecurity.valid ||
-    !routeIntegrity.valid ||
-    (rawExecutionEndpoint !== null && executionEndpointValidation?.ok === false) ||
-    (dispatchTransport === 'remote_http' && !executionEndpoint) ||
-    (dispatchTransport === 'local_process' &&
-      localPreflight.decision !== 'allow_local' &&
-      !options.allowHostRisk)
+  const blocked = blockReasons.length > 0
   updateQTrainingRouteQueueClaim({
     runId: manifest.runId,
     workerId: options.workerId,
@@ -947,25 +979,7 @@ export async function dispatchQTrainingRoute(
     integrityVerified: routeIntegrity.valid,
     preflight: localPreflight,
     status: blocked ? 'rejected' : 'claimed',
-    rejectionReason: blocked
-      ? [
-          !routeSecurity.valid ? `signature ${routeSecurity.reason}` : null,
-          !routeIntegrity.valid ? 'integrity mismatch' : null,
-          executionEndpointValidation?.ok === false
-            ? executionEndpointValidation.error
-            : null,
-          dispatchTransport === 'remote_http' && !executionEndpoint
-            ? 'remote execution endpoint missing'
-            : null,
-          dispatchTransport === 'local_process' &&
-          localPreflight.decision !== 'allow_local' &&
-          !options.allowHostRisk
-            ? `preflight ${localPreflight.decision}`
-            : null,
-        ]
-          .filter(Boolean)
-          .join(' · ')
-      : null,
+    rejectionReason: blocked ? blockReasons.join(' · ') : null,
   })
 
   if (options.dryRun || blocked) {
@@ -981,25 +995,7 @@ export async function dispatchQTrainingRoute(
       payload: {
         runId: manifest.runId,
         status: blocked ? 'blocked' : 'verified',
-        blockedReason: blocked
-          ? [
-              !routeSecurity.valid ? `signature ${routeSecurity.reason}` : null,
-              !routeIntegrity.valid ? 'integrity mismatch' : null,
-              executionEndpointValidation?.ok === false
-                ? executionEndpointValidation.error
-                : null,
-              dispatchTransport === 'remote_http' && !executionEndpoint
-                ? 'remote execution endpoint missing'
-                : null,
-              dispatchTransport === 'local_process' &&
-              localPreflight.decision !== 'allow_local' &&
-              !options.allowHostRisk
-                ? `preflight ${localPreflight.decision}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')
-          : null,
+        blockedReason: blocked ? blockReasons.join(' · ') : null,
         manifestPath,
         manifestDir,
         routeSecurity,
