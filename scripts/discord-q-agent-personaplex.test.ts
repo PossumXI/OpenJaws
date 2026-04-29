@@ -1,11 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { existsSync } from 'fs'
 import { join } from 'path'
-import {
-  buildDiscordRuntimeFreshnessPromptLines,
-  resolveDiscordWebSearchQuery,
-  shouldAttemptDiscordWebSearch,
-} from '../src/utils/discordQAgent.ts'
 
 type LocalDiscordQAgent = {
   BLACKBEAK_MEME_RECENT_SIGNATURE_LIMIT: number
@@ -26,12 +21,30 @@ type LocalDiscordQAgent = {
   summarizePersonaPlexRuntimeIssueFromText: (text: string) => string | null
 }
 
+type LocalDiscordQAgentUtils = {
+  buildDiscordRuntimeFreshnessPromptLines: (options?: Record<string, unknown>) => string[]
+  resolveDiscordWebSearchQuery: (content: string) => string | null
+  shouldAttemptDiscordWebSearch: (content: string, personaMode?: string) => boolean
+}
+
 const localDiscordAgentPath = join(import.meta.dir, 'discord-q-agent.ts')
 const localDiscordAgent = existsSync(localDiscordAgentPath)
   ? ((await import('./discord-q-agent.ts')) as LocalDiscordQAgent)
   : null
+const localDiscordUtilsPath = join(
+  import.meta.dir,
+  '..',
+  'src',
+  'utils',
+  'discordQAgent.ts',
+)
+const localDiscordUtils = existsSync(localDiscordUtilsPath)
+  ? ((await import('../src/utils/discordQAgent.ts')) as LocalDiscordQAgentUtils)
+  : null
 const describeLocalDiscordAgent = localDiscordAgent ? describe : describe.skip
-const testLocalDiscordAgent = localDiscordAgent ? test : test.skip
+const describeLocalDiscordUtils = localDiscordUtils ? describe : describe.skip
+const testLocalDiscordPromptFooter =
+  localDiscordAgent && localDiscordUtils ? test : test.skip
 const {
   BLACKBEAK_MEME_RECENT_SIGNATURE_LIMIT,
   buildOperatorPromptFooter,
@@ -43,6 +56,11 @@ const {
   shouldReconnectDiscordGatewayClose,
   summarizePersonaPlexRuntimeIssueFromText,
 } = localDiscordAgent ?? ({} as LocalDiscordQAgent)
+const {
+  buildDiscordRuntimeFreshnessPromptLines,
+  resolveDiscordWebSearchQuery,
+  shouldAttemptDiscordWebSearch,
+} = localDiscordUtils ?? ({} as LocalDiscordQAgentUtils)
 
 describeLocalDiscordAgent('summarizePersonaPlexRuntimeIssueFromText', () => {
   test('classifies the moshi opus bridge mismatch clearly', () => {
@@ -133,7 +151,7 @@ describeLocalDiscordAgent('resolveDiscordVoiceRenderPlan', () => {
   })
 })
 
-describe('discord Q runtime freshness grounding', () => {
+describeLocalDiscordUtils('discord Q runtime freshness grounding', () => {
   test('tells Q the live runtime date and knowledge freshness boundary', () => {
     const prompt = buildDiscordRuntimeFreshnessPromptLines().join('\n')
 
@@ -170,7 +188,7 @@ describe('discord Q runtime freshness grounding', () => {
     ).toBe(true)
   })
 
-  testLocalDiscordAgent('passes current-date and governed-web grounding into scripted OpenJaws jobs', () => {
+  testLocalDiscordPromptFooter('passes current-date and governed-web grounding into scripted OpenJaws jobs', () => {
     const footer = buildOperatorPromptFooter({
       requestedWorkspace: 'apex-apps',
       workspacePath: 'C:\\Users\\Knight\\Desktop\\cheeks\\Asgard\\ignite\\apex-os-project\\apps',
