@@ -1,3 +1,4 @@
+import { copyFileSync, rmSync } from 'node:fs'
 import { getOpenJawsReleaseVersion } from './releaseVersion.ts'
 
 const packageJson = (await Bun.file(
@@ -24,22 +25,52 @@ const macro = {
 
 await Bun.write('dist/.keep', '')
 
-const result = await Bun.build({
-  entrypoints: ['src/entrypoints/cli.tsx'],
-  target: 'bun',
-  define: {
-    MACRO: JSON.stringify(macro),
-  },
-  compile: {
-    outfile,
-  },
-})
+async function buildNativeExecutable(targetOutfile: string) {
+  const result = await Bun.build({
+    entrypoints: ['src/entrypoints/cli.tsx'],
+    target: 'bun',
+    define: {
+      MACRO: JSON.stringify(macro),
+    },
+    compile: {
+      outfile: targetOutfile,
+    },
+  })
 
-if (!result.success) {
-  for (const log of result.logs) {
-    console.error(log)
+  if (!result.success) {
+    for (const log of result.logs) {
+      console.error(log)
+    }
+    process.exit(1)
   }
-  process.exit(1)
+
+  return targetOutfile
 }
 
-console.log(`Built ${outfile} (${version})`)
+function shouldUseWindowsStagingBuild(): boolean {
+  return process.platform === 'win32' && !process.env.OPENJAWS_NATIVE_OUTFILE
+}
+
+const stagingOutfile = shouldUseWindowsStagingBuild()
+  ? `dist/openjaws-${process.pid}.verify.exe`
+  : outfile
+let builtOutfile = await buildNativeExecutable(stagingOutfile)
+
+if (stagingOutfile !== outfile) {
+  try {
+    copyFileSync(stagingOutfile, outfile)
+    rmSync(stagingOutfile, { force: true })
+    builtOutfile = outfile
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn(
+      [
+        `Built ${stagingOutfile}, but could not replace ${outfile}.`,
+        'A running OpenJaws session is likely holding the release binary open.',
+        `Leaving verification binary in place. ${message}`,
+      ].join(' '),
+    )
+  }
+}
+
+console.log(`Built ${builtOutfile} (${version})`)
