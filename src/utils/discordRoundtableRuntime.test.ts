@@ -1325,7 +1325,7 @@ describe('discordRoundtableRuntime', () => {
     expect(existsSync(getDiscordRoundtableSessionStatePath(root))).toBe(true)
     expect(loadDiscordRoundtableSessionState(root)).toMatchObject({
       updatedAt: '2026-04-20T20:05:00.000Z',
-      status: 'awaiting_approval',
+      status: 'running',
       roundtableChannelName: null,
       lastSummary:
         'OpenJaws roundtable action session-b-openjaws-action-b is awaiting approval on discord-viola-openjaws-action-b.',
