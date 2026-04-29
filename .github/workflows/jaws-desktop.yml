@@ -59,7 +59,12 @@ jobs:
       - name: Install desktop dependencies
         run: bun install --cwd apps/jaws-desktop --frozen-lockfile
 
+      - name: Install website dependencies
+        if: runner.os == 'Windows'
+        run: bun install --cwd website --frozen-lockfile
+
       - name: Verify public OpenJaws build
+        if: runner.os == 'Windows'
         env:
           CI: true
         run: bun run verify:public

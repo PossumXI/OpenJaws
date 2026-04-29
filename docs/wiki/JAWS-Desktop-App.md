@@ -47,6 +47,15 @@ bun run jaws:verify
 
 The desktop verification gate now runs Bun UI/helper tests before sidecar prep, TypeScript/Vite build, and Tauri `cargo check`.
 
+Local founder admin session:
+
+```powershell
+bun run jaws:admin:bootstrap
+bun run jaws:local:admin:seed
+```
+
+The bootstrap command creates the ignored local founder-admin receipt in `website/.data`. The seed command copies only a sanitized desktop session into the JAWS app config directory so the native shell can show the enrolled account without exposing the bootstrap password or local receipt path.
+
 Desktop bundle:
 
 ```powershell

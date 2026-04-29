@@ -66,6 +66,16 @@ interface WorkspaceStatus {
   tuiCommand: string;
 }
 
+interface AccountSession {
+  email: string;
+  role: string;
+  plan: string;
+  status: string;
+  savedAt: string;
+  source: string;
+  displayName: string;
+}
+
 const fallbackStatus: BackendStatus = {
   appVersion: "0.1.2",
   sidecarName: "openjaws",
@@ -103,6 +113,14 @@ function terminalPlatform(): TerminalPlatform {
   return navigator.platform.toLowerCase().includes("win") ? "windows" : "posix";
 }
 
+function loadStoredAccountSession(): AccountSession | null {
+  try {
+    return JSON.parse(localStorage.getItem("jaws.accountSession") ?? "null") as AccountSession | null;
+  } catch {
+    return null;
+  }
+}
+
 export function App() {
   const [active, setActive] = useState<SectionId>("control");
   const [collapsed, setCollapsed] = useState(false);
@@ -117,6 +135,7 @@ export function App() {
   const [updateState, setUpdateState] = useState("Not checked");
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
   const [arcadeRunning, setArcadeRunning] = useState(true);
+  const [account, setAccount] = useState<AccountSession | null>(() => loadStoredAccountSession());
 
   useEffect(() => {
     document.documentElement.dataset.appearance = appearance;
@@ -136,6 +155,14 @@ export function App() {
       );
 
     void invoke<EnrollmentLink[]>("enrollment_links").then(setLinks).catch(() => setLinks(fallbackLinks));
+
+    void invoke<AccountSession | null>("account_session")
+      .then((session) => {
+        if (!session) return;
+        setAccount(session);
+        localStorage.setItem("jaws.accountSession", JSON.stringify(session));
+      })
+      .catch(() => undefined);
   }, []);
 
   const activeTitle = useMemo(() => navItems.find((item) => item.id === active)?.label ?? "Control", [active]);
@@ -278,6 +305,7 @@ export function App() {
 
         {!collapsed && (
           <div className="sidebar-footer">
+            {account && <small>{account.displayName || account.email}</small>}
             <span>14 day trial</span>
             <strong>$12.99/mo IDE</strong>
             <small>Q credits billed separately</small>
@@ -594,6 +622,14 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                       </button>
                     )}
                   </div>
+                </section>
+
+                <section className="settings-group">
+                  <span className="settings-kicker">Account</span>
+                  <StatusLine label="Signed in" value={account?.email ?? "No local account"} />
+                  <StatusLine label="Role" value={account?.role ?? "Not enrolled"} />
+                  <StatusLine label="Plan" value={account?.plan ?? "Trial"} />
+                  <StatusLine label="Status" value={account?.status ?? "Local session needed"} />
                 </section>
 
                 <section className="settings-group">

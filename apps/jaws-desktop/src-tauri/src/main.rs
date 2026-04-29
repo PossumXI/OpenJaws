@@ -1,5 +1,9 @@
-use serde::Serialize;
-use std::path::{Path, PathBuf};
+use serde::{Deserialize, Serialize};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
+use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
 
 #[derive(Serialize)]
@@ -39,6 +43,18 @@ struct WorkspaceStatus {
     tui_command: String,
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AccountSession {
+    email: String,
+    role: String,
+    plan: String,
+    status: String,
+    saved_at: String,
+    source: String,
+    display_name: String,
+}
+
 fn clean_workspace_input(input: &str) -> String {
     input
         .trim()
@@ -66,6 +82,121 @@ fn build_tui_command(path: &Path) -> String {
     } else {
         format!("cd {} && openjaws", quote_shell_path(&display))
     }
+}
+
+fn clean_string(value: Option<&serde_json::Value>) -> String {
+    value
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+fn display_name_from_email(email: &str) -> String {
+    email
+        .split('@')
+        .next()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or("Founder")
+        .to_string()
+}
+
+fn session_source_from_path(path: &Path, configured_source: String) -> String {
+    let configured_source = configured_source.trim();
+    if !configured_source.is_empty()
+        && !configured_source.contains('\\')
+        && !configured_source.contains('/')
+        && !configured_source.contains(':')
+    {
+        return configured_source.to_string();
+    }
+
+    match path.file_name().and_then(|name| name.to_str()) {
+        Some("jaws-local-session.json") => "local_app_config".to_string(),
+        Some("jaws-admin.local.json") => "local_founder_admin".to_string(),
+        _ => "local_session".to_string(),
+    }
+}
+
+fn read_account_session(path: &Path) -> Option<AccountSession> {
+    let text = fs::read_to_string(path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let email = clean_string(value.get("email"));
+    if email.is_empty() {
+        return None;
+    }
+
+    let role = clean_string(value.get("role"));
+    let plan = clean_string(value.get("plan"));
+    let display_name = clean_string(value.get("displayName"));
+
+    Some(AccountSession {
+        email,
+        role: if role.is_empty() {
+            "founder_admin".to_string()
+        } else {
+            role
+        },
+        plan: if plan.is_empty() {
+            "admin_free_life".to_string()
+        } else {
+            plan
+        },
+        status: "signed_in".to_string(),
+        saved_at: clean_string(value.get("savedAt").or_else(|| value.get("createdAt"))),
+        source: session_source_from_path(path, clean_string(value.get("source"))),
+        display_name: if display_name.is_empty() {
+            display_name_from_email(clean_string(value.get("email")).as_str())
+        } else {
+            display_name
+        },
+    })
+}
+
+fn push_ancestor_receipts(paths: &mut Vec<PathBuf>, root: PathBuf) {
+    for ancestor in root.ancestors() {
+        paths.push(
+            ancestor
+                .join("website")
+                .join(".data")
+                .join("jaws-admin.local.json"),
+        );
+    }
+}
+
+fn account_session_paths(app: &tauri::AppHandle) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    if let Ok(path) = env::var("JAWS_LOCAL_SESSION_PATH") {
+        paths.push(PathBuf::from(path));
+    }
+
+    if let Ok(config_dir) = app.path().app_config_dir() {
+        paths.push(config_dir.join("jaws-local-session.json"));
+    }
+
+    if let Ok(current_dir) = env::current_dir() {
+        push_ancestor_receipts(&mut paths, current_dir);
+    }
+
+    if let Ok(exe_path) = env::current_exe() {
+        if let Some(parent) = exe_path.parent() {
+            push_ancestor_receipts(&mut paths, parent.to_path_buf());
+        }
+    }
+
+    paths
+}
+
+#[tauri::command]
+fn account_session(app: tauri::AppHandle) -> Option<AccountSession> {
+    for path in account_session_paths(&app) {
+        if let Some(session) = read_account_session(&path) {
+            return Some(session);
+        }
+    }
+
+    None
 }
 
 #[tauri::command]
@@ -220,6 +351,7 @@ fn main() {
         .plugin(updater_builder.build())
         .invoke_handler(tauri::generate_handler![
             backend_status,
+            account_session,
             enrollment_links,
             openjaws_smoke,
             openjaws_workspace_smoke,

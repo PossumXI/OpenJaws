@@ -15,6 +15,7 @@
     "manifest:generate": "node scripts/build-updater-manifest.mjs",
     "manifest:test": "node scripts/build-updater-manifest.mjs --self-test",
     "updater:manifest": "node scripts/build-updater-manifest.mjs",
+    "local:admin:seed": "node scripts/seed-local-admin-session.mjs",
     "test": "bun test src",
     "prepare:sidecar": "node scripts/prepare-sidecar.mjs",
     "verify": "bun run test && bun run prepare:sidecar && bun run build && cargo check --manifest-path src-tauri/Cargo.toml",

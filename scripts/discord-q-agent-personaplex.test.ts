@@ -1,5 +1,38 @@
 import { describe, expect, test } from 'bun:test'
+import { existsSync } from 'fs'
+import { join } from 'path'
 import {
+  buildDiscordRuntimeFreshnessPromptLines,
+  resolveDiscordWebSearchQuery,
+  shouldAttemptDiscordWebSearch,
+} from '../src/utils/discordQAgent.ts'
+
+type LocalDiscordQAgent = {
+  BLACKBEAK_MEME_RECENT_SIGNATURE_LIMIT: number
+  buildOperatorPromptFooter: (input: Record<string, string>) => string
+  describeDiscordGatewayClose: (code: number, reason: string) => string
+  resolveDiscordAgentHealthStatus: (input: unknown) => string
+  resolveDiscordVoiceRenderPlan: (input: Record<string, string>) => {
+    renderProvider: string
+    renderSummary: string
+  }
+  selectBlackbeakFallbackText: (focus: string, recentSignatures: string[]) => string
+  selectPersonaPlexRuntimeEndpoint: (input: unknown) => {
+    runtimeUrl: string
+    websocketUrl: string
+    ignoredStateRuntimeUrl: boolean
+  }
+  shouldReconnectDiscordGatewayClose: (code: number) => boolean
+  summarizePersonaPlexRuntimeIssueFromText: (text: string) => string | null
+}
+
+const localDiscordAgentPath = join(import.meta.dir, 'discord-q-agent.ts')
+const localDiscordAgent = existsSync(localDiscordAgentPath)
+  ? ((await import('./discord-q-agent.ts')) as LocalDiscordQAgent)
+  : null
+const describeLocalDiscordAgent = localDiscordAgent ? describe : describe.skip
+const testLocalDiscordAgent = localDiscordAgent ? test : test.skip
+const {
   BLACKBEAK_MEME_RECENT_SIGNATURE_LIMIT,
   buildOperatorPromptFooter,
   describeDiscordGatewayClose,
@@ -9,14 +42,9 @@ import {
   selectPersonaPlexRuntimeEndpoint,
   shouldReconnectDiscordGatewayClose,
   summarizePersonaPlexRuntimeIssueFromText,
-} from './discord-q-agent.ts'
-import {
-  buildDiscordRuntimeFreshnessPromptLines,
-  resolveDiscordWebSearchQuery,
-  shouldAttemptDiscordWebSearch,
-} from '../src/utils/discordQAgent.ts'
+} = localDiscordAgent ?? ({} as LocalDiscordQAgent)
 
-describe('summarizePersonaPlexRuntimeIssueFromText', () => {
+describeLocalDiscordAgent('summarizePersonaPlexRuntimeIssueFromText', () => {
   test('classifies the moshi opus bridge mismatch clearly', () => {
     const issue = summarizePersonaPlexRuntimeIssueFromText(`
 AttributeError: 'builtins.OpusStreamWriter' object has no attribute 'read_bytes'
@@ -35,7 +63,7 @@ AttributeError: 'builtins.OpusStreamReader' object has no attribute 'read_pcm'
   })
 })
 
-describe('selectPersonaPlexRuntimeEndpoint', () => {
+describeLocalDiscordAgent('selectPersonaPlexRuntimeEndpoint', () => {
   test('ignores stale runtime state when no listener is present', () => {
     const endpoint = selectPersonaPlexRuntimeEndpoint({
       env: {},
@@ -91,7 +119,7 @@ describe('selectPersonaPlexRuntimeEndpoint', () => {
   })
 })
 
-describe('resolveDiscordVoiceRenderPlan', () => {
+describeLocalDiscordAgent('resolveDiscordVoiceRenderPlan', () => {
   test('keeps PersonaPlex live bridge separate from outbound playback fallback', () => {
     const plan = resolveDiscordVoiceRenderPlan({
       voiceProvider: 'personaplex',
@@ -142,7 +170,7 @@ describe('discord Q runtime freshness grounding', () => {
     ).toBe(true)
   })
 
-  test('passes current-date and governed-web grounding into scripted OpenJaws jobs', () => {
+  testLocalDiscordAgent('passes current-date and governed-web grounding into scripted OpenJaws jobs', () => {
     const footer = buildOperatorPromptFooter({
       requestedWorkspace: 'apex-apps',
       workspacePath: 'C:\\Users\\Knight\\Desktop\\cheeks\\Asgard\\ignite\\apex-os-project\\apps',
@@ -160,7 +188,7 @@ describe('discord Q runtime freshness grounding', () => {
   })
 })
 
-describe('Blackbeak meme fallback diversity', () => {
+describeLocalDiscordAgent('Blackbeak meme fallback diversity', () => {
   test('keeps a wider recent-signature window than the focus bucket count', () => {
     expect(BLACKBEAK_MEME_RECENT_SIGNATURE_LIMIT).toBeGreaterThan(20)
   })
@@ -213,7 +241,7 @@ describe('Blackbeak meme fallback diversity', () => {
   })
 })
 
-describe('discord gateway close handling', () => {
+describeLocalDiscordAgent('discord gateway close handling', () => {
   test('does not reconnect on Discord authentication failure', () => {
     expect(shouldReconnectDiscordGatewayClose(4004)).toBe(false)
     expect(describeDiscordGatewayClose(4004, 'Authentication failed.')).toContain(

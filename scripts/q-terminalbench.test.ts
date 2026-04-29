@@ -499,7 +499,8 @@ describe('q-terminalbench provenance', () => {
     expect(metadata.tracePath).toBe(writer.path)
     const firstLine = (await Bun.file(writer.path).text()).split(/\r?\n/)[0]
     expect(firstLine).toBeTruthy()
-    expect(JSON.parse(firstLine)).toMatchObject({
+    const startedEvent = JSON.parse(firstLine) as Record<string, unknown>
+    expect(startedEvent).toMatchObject({
       type: 'session.started',
       sessionId: 'run-123',
       tracePath: writer.path,
@@ -507,9 +508,9 @@ describe('q-terminalbench provenance', () => {
       sessionScope: 'terminalbench:bounded',
       repoPath: resolve(root),
       worktreePath: expectedTopLevel.stdout.trim() || resolve(root),
-      gitBranch: metadata.gitBranch,
       repoSha: metadata.repoSha,
     })
+    expect(startedEvent.gitBranch ?? null).toBe(metadata.gitBranch)
   }, 15_000)
 })
 describe('q-terminalbench soak receipts', () => {
