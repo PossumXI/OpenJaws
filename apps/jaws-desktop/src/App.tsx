@@ -17,6 +17,7 @@ import {
   Play,
   RadioTower,
   RefreshCcw,
+  Settings2,
   ShieldCheck,
   Sparkles,
   TerminalSquare,
@@ -33,6 +34,7 @@ import {
   type ThemeId
 } from "./data";
 import { buildWorkspaceSelection, type TerminalPlatform } from "./workspace";
+import cyberFrog from "./assets/cyber-frog.svg";
 import jawsLogo from "./assets/jaws-logo.svg";
 
 interface BackendStatus {
@@ -65,7 +67,7 @@ interface WorkspaceStatus {
 }
 
 const fallbackStatus: BackendStatus = {
-  appVersion: "0.1.1",
+  appVersion: "0.1.2",
   sidecarName: "openjaws",
   sidecarReady: false,
   sidecarMessage: "Desktop preview running outside Tauri",
@@ -470,13 +472,23 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
         {active === "arcade" && (
           <section className="wide-panel arcade-panel">
             <PanelHeader icon={GamepadIcon} label="Arcade Bar" />
-            <div className="arcade-stage">
-              <div className={arcadeRunning ? "runner running" : "runner"} />
-              <div className="track">
-                <span />
-                <span />
-                <span />
-                <span />
+            <div className="arcade-layout">
+              <div className="arcade-stage">
+                <div className={arcadeRunning ? "runner running" : "runner"} />
+                <div className="track">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </div>
+              <div className="companion-card compact">
+                <img src={cyberFrog} alt="JAWS cyber frog companion" />
+                <div>
+                  <span>Companion</span>
+                  <strong>Cyber Frog</strong>
+                  <small>Ready</small>
+                </div>
               </div>
             </div>
             <button className="text-button" type="button" onClick={() => setArcadeRunning((value) => !value)}>
@@ -557,6 +569,76 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
               <ExternalLink size={16} />
               Download
             </button>
+          </section>
+        )}
+
+        {active === "settings" && (
+          <section className="settings-grid">
+            <div className="wide-panel settings-panel">
+              <PanelHeader icon={Settings2} label="Settings" />
+              <div className="settings-layout">
+                <section className="settings-group">
+                  <span className="settings-kicker">Release</span>
+                  <StatusLine label="Installed" value={status.appVersion} />
+                  <StatusLine label="Channel" value={status.updateChannel} />
+                  <StatusLine label="Update" value={updateState} />
+                  <div className="button-row">
+                    <button className="text-button primary" type="button" onClick={checkForUpdates}>
+                      <RadioTower size={16} />
+                      Check Updates
+                    </button>
+                    {pendingUpdate && (
+                      <button className="text-button" type="button" onClick={installUpdate}>
+                        <CheckCircle2 size={16} />
+                        Install {pendingUpdate.version}
+                      </button>
+                    )}
+                  </div>
+                </section>
+
+                <section className="settings-group">
+                  <span className="settings-kicker">Appearance</span>
+                  <div className="button-row">
+                    <button className="text-button" type="button" onClick={() => setAppearance("dark")}>
+                      <ShieldCheck size={16} />
+                      Dark
+                    </button>
+                    <button className="text-button" type="button" onClick={() => setAppearance("light")}>
+                      <Sparkles size={16} />
+                      Light
+                    </button>
+                  </div>
+                  <div className="theme-grid compact">
+                    {layoutThemes.map((layout) => {
+                      const Icon = layout.icon;
+                      return (
+                        <button
+                          className={theme === layout.id ? "theme-chip active" : "theme-chip"}
+                          key={layout.id}
+                          type="button"
+                          onClick={() => setTheme(layout.id)}
+                        >
+                          <Icon size={16} />
+                          {layout.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              </div>
+            </div>
+
+            <div className="wide-panel companion-panel">
+              <PanelHeader icon={Zap} label="Digital Companion" />
+              <div className="companion-card">
+                <img src={cyberFrog} alt="JAWS cyber frog companion" />
+                <div>
+                  <span>Included Asset</span>
+                  <strong>Cyber Frog</strong>
+                  <small>Unified JAWS blue, teal, and graphite palette</small>
+                </div>
+              </div>
+            </div>
           </section>
         )}
 

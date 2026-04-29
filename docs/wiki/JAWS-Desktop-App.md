@@ -14,10 +14,12 @@ Brand line:
 - Agent Watch timeline for live orchestration events.
 - Image Studio and Video Studio panels for provider-gated creative work.
 - Arcade Bar with a tiny idle-safe retro runner.
+- Bundled Cyber Frog companion asset in the JAWS blue, teal, and graphite palette.
 - Arobi ledger and enrollment links.
 - Shared workspace pairing lane for future exchange-code collaboration.
 - Marketplace cards for skills, tools, workflows, games, and third-party integrations.
 - Billing copy for a 14-day trial and flat `$12.99/mo` IDE subscription, with Q credits separate.
+- Settings page with release status, signed update checks, install action, appearance mode, and theme controls.
 - Layout themes: default, spy, sci-fi, halloween, hacking, and coding.
 
 ## Release Boundary
@@ -85,12 +87,15 @@ Windows bundle smoke, run locally on 2026-04-29:
 - `JAWS_0.1.0_x64-setup.exe`
 - `JAWS_0.1.0_x64-setup.exe.sig`
 
-0.1.1 local release verification, run on 2026-04-29:
+0.1.2 local release verification, run on 2026-04-29:
 
 - `bun run jaws:verify`
 - `bun run jaws:release:check`
 - `bun run build`
 - `bun run test`
+- `bun run showcase:copy:check`
+
+0.1.2 adds the native Settings page, keeps update checks available from Settings, bundles the original Cyber Frog companion SVG, and keeps the desktop release version aligned across `package.json`, `tauri.conf.json`, `Cargo.toml`, and `Cargo.lock`.
 
 Implementation references:
 

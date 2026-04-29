@@ -21,14 +21,15 @@ const plexMono = IBM_Plex_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Q // OpenJaws // Q_agents',
+  title: 'Q // OpenJaws // Q_agents // JAWS',
   description:
-    'OCI-backed Q with OpenJaws, Q_agents, Agent Co-Work, benchmark receipts, and hosted access on one cinematic surface.',
+    'OCI-backed Q with OpenJaws, Q_agents, JAWS Desktop, Agent Co-Work, benchmark receipts, and hosted access on one cinematic surface.',
   metadataBase: new URL(siteUrl),
   keywords: [
     'Q',
     'OpenJaws',
     'Q_agents',
+    'JAWS Desktop',
     'Agent Co-Work',
     'OCI Q',
     'Immaculate',
@@ -50,9 +51,9 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'Q // OpenJaws // Q_agents',
+    title: 'Q // OpenJaws // Q_agents // JAWS',
     description:
-      'OCI-backed Q with OpenJaws, Q_agents, Agent Co-Work, benchmark receipts, and hosted access on one cinematic surface.',
+      'OCI-backed Q with OpenJaws, Q_agents, JAWS Desktop, Agent Co-Work, benchmark receipts, and hosted access on one cinematic surface.',
     url: siteUrl,
     siteName: 'Q',
     type: 'website',
@@ -67,9 +68,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Q // OpenJaws // Q_agents',
+    title: 'Q // OpenJaws // Q_agents // JAWS',
     description:
-      'OCI-backed Q with OpenJaws, Q_agents, Agent Co-Work, benchmark receipts, and hosted access on one cinematic surface.',
+      'OCI-backed Q with OpenJaws, Q_agents, JAWS Desktop, Agent Co-Work, benchmark receipts, and hosted access on one cinematic surface.',
     images: ['/assets/images/q-share-card.png'],
   },
 }

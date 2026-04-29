@@ -284,6 +284,7 @@ p {
 .studio-grid,
 .market-grid,
 .terminal-page,
+.settings-grid,
 .wide-panel {
   min-width: 0;
 }
@@ -571,6 +572,82 @@ p {
   margin-top: 4px;
 }
 
+.settings-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  overflow: auto;
+  padding: 22px 28px 34px;
+}
+
+.settings-layout {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-group {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.settings-kicker,
+.companion-card span,
+.companion-card small {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.settings-kicker {
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.theme-grid.compact {
+  gap: 8px;
+}
+
+.theme-grid.compact .theme-chip {
+  min-height: 38px;
+}
+
+.companion-panel {
+  align-content: start;
+  display: grid;
+}
+
+.companion-card {
+  align-items: center;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 148px minmax(0, 1fr);
+}
+
+.companion-card img {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: block;
+  width: 100%;
+}
+
+.companion-card strong,
+.companion-card small {
+  display: block;
+}
+
+.companion-card strong {
+  font-size: 1.45rem;
+  line-height: 1.1;
+  margin: 4px 0 8px;
+}
+
 .agent-timeline {
   display: grid;
   gap: 12px;
@@ -661,14 +738,30 @@ p {
   margin: 22px 28px;
 }
 
+.arcade-layout {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 280px;
+}
+
 .arcade-stage {
   background: #070808;
   border: 1px solid var(--line);
   border-radius: 8px;
   height: 280px;
-  margin-bottom: 16px;
   overflow: hidden;
   position: relative;
+}
+
+.arcade-layout + .text-button {
+  margin-top: 16px;
+}
+
+.companion-card.compact {
+  align-content: center;
+  grid-template-columns: 96px minmax(0, 1fr);
+  min-height: 280px;
+  padding: 8px 0;
 }
 
 .runner {
@@ -797,7 +890,10 @@ p {
 
   .split-view,
   .studio-grid,
-  .terminal-layout {
+  .terminal-layout,
+  .settings-grid,
+  .settings-layout,
+  .arcade-layout {
     grid-template-columns: 1fr;
   }
 }
@@ -848,7 +944,15 @@ p {
   .status-grid,
   .market-grid,
   .terminal-layout,
+  .settings-grid,
+  .settings-layout,
+  .arcade-layout,
   .input-row {
     grid-template-columns: 1fr;
+  }
+
+  .companion-card,
+  .companion-card.compact {
+    grid-template-columns: 88px minmax(0, 1fr);
   }
 }

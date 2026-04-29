@@ -14,6 +14,7 @@ import {
   Puzzle,
   Radar,
   ReceiptText,
+  Settings2,
   Sparkles,
   Sun,
   TerminalSquare,
@@ -31,6 +32,7 @@ export type SectionId =
   | "cowork"
   | "market"
   | "billing"
+  | "settings"
   | "layouts";
 
 export type ThemeId = "default" | "spy" | "scifi" | "halloween" | "hacking" | "coding";
@@ -72,6 +74,7 @@ export const navItems: NavItem[] = [
   { id: "cowork", label: "Co-work", icon: Users },
   { id: "market", label: "Market", icon: Puzzle },
   { id: "billing", label: "Billing", icon: BadgeDollarSign },
+  { id: "settings", label: "Settings", icon: Settings2 },
   { id: "layouts", label: "Layouts", icon: Brush }
 ];
 

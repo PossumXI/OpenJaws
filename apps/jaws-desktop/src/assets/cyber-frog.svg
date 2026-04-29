@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 420" role="img" aria-labelledby="title desc">
+  <title id="title">JAWS cyber frog companion</title>
+  <desc id="desc">Original cyber frog mascot with blue armor, neon teal circuitry, and a calm desktop companion pose.</desc>
+  <defs>
+    <linearGradient id="skin" x1="98" y1="112" x2="328" y2="354" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#43f1c6"/>
+      <stop offset="0.52" stop-color="#159bd7"/>
+      <stop offset="1" stop-color="#123b8d"/>
+    </linearGradient>
+    <linearGradient id="armor" x1="106" y1="136" x2="321" y2="330" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0c1722"/>
+      <stop offset="0.52" stop-color="#122b44"/>
+      <stop offset="1" stop-color="#061018"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="matrix(142 0 0 72 210 288)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#55f7ff" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#55f7ff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#02070b" flood-opacity="0.42"/>
+    </filter>
+  </defs>
+  <rect width="420" height="420" rx="42" fill="#071015"/>
+  <circle cx="210" cy="286" r="142" fill="url(#glow)"/>
+  <g filter="url(#softShadow)">
+    <path fill="url(#skin)" d="M99 197c0-59 44-112 111-112s111 53 111 112v61c0 54-41 97-111 97S99 312 99 258v-61Z"/>
+    <path fill="#0a1822" d="M121 204c0-43 36-81 89-81s89 38 89 81v47c0 42-31 75-89 75s-89-33-89-75v-47Z" opacity=".36"/>
+    <path fill="url(#armor)" d="M121 240c23 17 52 25 89 25s66-8 89-25v35c0 42-31 78-89 78s-89-36-89-78v-35Z"/>
+    <path fill="#39e7d1" d="M166 277h88c8 0 15 7 15 15v8c0 8-7 15-15 15h-88c-8 0-15-7-15-15v-8c0-8 7-15 15-15Z" opacity=".14"/>
+    <path fill="#061018" stroke="#4cf3ff" stroke-width="8" d="M123 149c-4-29 17-54 48-54 26 0 46 17 50 40-18-5-36-7-54-4-17 3-32 9-44 18Z"/>
+    <path fill="#061018" stroke="#4cf3ff" stroke-width="8" d="M297 149c4-29-17-54-48-54-26 0-46 17-50 40 18-5 36-7 54-4 17 3 32 9 44 18Z"/>
+    <circle cx="168" cy="138" r="30" fill="#dffcff"/>
+    <circle cx="252" cy="138" r="30" fill="#dffcff"/>
+    <circle cx="172" cy="140" r="13" fill="#061018"/>
+    <circle cx="248" cy="140" r="13" fill="#061018"/>
+    <circle cx="177" cy="134" r="5" fill="#69f7ff"/>
+    <circle cx="253" cy="134" r="5" fill="#69f7ff"/>
+    <path fill="none" stroke="#94fff0" stroke-linecap="round" stroke-width="8" d="M168 217c22 16 62 16 84 0"/>
+    <path fill="none" stroke="#33e2ff" stroke-linecap="round" stroke-linejoin="round" stroke-width="5" d="M149 266v-25h31m91 25v-25h-31m-30 30v-47m0 47h-35m35 0h35"/>
+    <path fill="none" stroke="#0b1824" stroke-linecap="round" stroke-width="10" d="M102 219c-27 0-49 21-49 48 0 22 15 41 37 46m228-94c27 0 49 21 49 48 0 22-15 41-37 46"/>
+    <path fill="none" stroke="#4cf3ff" stroke-linecap="round" stroke-width="4" d="M85 264h31m219 0h-31"/>
+    <path fill="#071015" stroke="#43f1c6" stroke-linejoin="round" stroke-width="6" d="M136 332h148l-28 40h-92l-28-40Z"/>
+    <path fill="#45f2d0" d="M177 345h66v8h-66z"/>
+  </g>
+</svg>

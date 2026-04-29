@@ -7,6 +7,7 @@ import { Q_PLAN_DEFINITIONS } from '../lib/pricing'
 const auraGenesisUrl =
   process.env.NEXT_PUBLIC_AURA_GENESIS_URL ?? 'https://aura-genesis.org'
 const githubUrl = 'https://github.com/PossumXI/OpenJaws'
+const releasesUrl = 'https://github.com/PossumXI/OpenJaws/releases'
 
 export default function Page(): React.ReactNode {
   return (
@@ -72,6 +73,9 @@ export default function Page(): React.ReactNode {
             </a>
             <a className="hero-button hero-button-alt" href="#benchmarks">
               Benchmarks
+            </a>
+            <a className="hero-button hero-button-alt" href="#jaws-desktop">
+              JAWS Desktop
             </a>
           </div>
 
@@ -226,6 +230,14 @@ export default function Page(): React.ReactNode {
               scans run before a release is treated as ready.
             </p>
           </article>
+          <article className="feature-card">
+            <span>JAWS Desktop</span>
+            <strong>Bring OpenJaws into a native workspace.</strong>
+            <p>
+              The Tauri app wraps the OpenJaws sidecar with workspace TUI,
+              Settings update checks, studio, arcade, co-work, and ledger lanes.
+            </p>
+          </article>
         </div>
 
         <div className="feature-actions">
@@ -235,6 +247,41 @@ export default function Page(): React.ReactNode {
           <a className="hero-button hero-button-alt" href="#benchmarks">
             See benchmark snapshot
           </a>
+        </div>
+      </section>
+
+      <section className="cowork-band" id="jaws-desktop">
+        <div className="cowork-copy">
+          <span className="eyebrow">JAWS Desktop</span>
+          <h2>The native app lane for OpenJaws.</h2>
+          <p>
+            JAWS gives users a focused desktop shell for project folders, the
+            OpenJaws TUI, signed update checks, Q agent visibility, and quiet
+            workspace controls.
+          </p>
+          <a
+            className="hero-button hero-button-alt"
+            href={releasesUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            GitHub Releases
+          </a>
+        </div>
+
+        <div className="cowork-stack">
+          <article>
+            <strong>Workspace TUI</strong>
+            <p>Set a project folder and launch OpenJaws from that path.</p>
+          </article>
+          <article>
+            <strong>Settings updates</strong>
+            <p>Check for signed desktop updates from the native Settings page.</p>
+          </article>
+          <article>
+            <strong>Cyber Frog</strong>
+            <p>A bundled companion asset keeps the arcade lane visually unified.</p>
+          </article>
         </div>
       </section>
 
@@ -343,6 +390,9 @@ export default function Page(): React.ReactNode {
           </a>
           <a className="topbar-link" href="#plans">
             Plans
+          </a>
+          <a className="topbar-link" href="#jaws-desktop">
+            JAWS
           </a>
           <a className="topbar-link" href="/terms">
             Terms
