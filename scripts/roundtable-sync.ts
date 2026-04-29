@@ -1,6 +1,7 @@
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import {
+  ensureDiscordRoundtableProgressionSession,
   getDiscordRoundtableQueueStatePath,
   getDiscordRoundtableSessionStatePath,
   syncDiscordRoundtableRuntimeState,
@@ -14,6 +15,12 @@ type CliOptions = {
   intervalSeconds: number
   json: boolean
   quiet: boolean
+}
+
+type RoundtableSyncPass = {
+  progression: ReturnType<typeof ensureDiscordRoundtableProgressionSession>
+  result: ReturnType<typeof syncDiscordRoundtableRuntimeState>
+  planner: ReturnType<typeof planDiscordRoundtableFollowThrough>
 }
 
 function resolvePlannerRoots(): string[] {
@@ -65,17 +72,38 @@ function parseArgs(argv: string[]): CliOptions {
   return options
 }
 
-function formatResult(json: boolean) {
+function runSyncPass(): RoundtableSyncPass {
+  const progression = ensureDiscordRoundtableProgressionSession({
+    root: REPO_ROOT,
+    roundtableChannelName:
+      process.env.DISCORD_ROUNDTABLE_CHANNEL_NAME?.trim() ||
+      process.env.DISCORD_ROUNDTABLE_PUBLIC_CHANNEL_NAME?.trim() ||
+      process.env.ROUNDTABLE_PUBLIC_CHANNEL_NAME?.trim() ||
+      null,
+  })
   const result = syncDiscordRoundtableRuntimeState(REPO_ROOT)
   const planner = planDiscordRoundtableFollowThrough({
     root: REPO_ROOT,
     allowedRoots: resolvePlannerRoots(),
   })
+  return {
+    progression,
+    result,
+    planner,
+  }
+}
+
+function formatResult(json: boolean) {
+  const { progression, result, planner } = runSyncPass()
   if (json) {
     return JSON.stringify(
       {
         queueStatePath: getDiscordRoundtableQueueStatePath(REPO_ROOT),
         sessionStatePath: getDiscordRoundtableSessionStatePath(REPO_ROOT),
+        progression: {
+          bootstrapped: progression.bootstrapped,
+          reason: progression.reason,
+        },
         changed: result.changed,
         status: result.sessionState?.status ?? result.state.status,
         channelName:
@@ -95,6 +123,7 @@ function formatResult(json: boolean) {
     `Roundtable sync: ${result.changed ? 'updated' : 'no changes'}`,
     `Queue path: ${getDiscordRoundtableQueueStatePath(REPO_ROOT)}`,
     `Session path: ${getDiscordRoundtableSessionStatePath(REPO_ROOT)}`,
+    `Progression: ${progression.reason}`,
     `Status: ${result.sessionState?.status ?? result.state.status}`,
     `Channel: ${
       result.sessionState?.roundtableChannelName ??
@@ -115,7 +144,7 @@ async function main(argv = process.argv.slice(2)) {
     if (!options.quiet) {
       console.log(formatResult(options.json))
     } else {
-      syncDiscordRoundtableRuntimeState(REPO_ROOT)
+      runSyncPass()
     }
     return
   }
@@ -124,7 +153,7 @@ async function main(argv = process.argv.slice(2)) {
     if (!options.quiet) {
       console.log(formatResult(options.json))
     } else {
-      syncDiscordRoundtableRuntimeState(REPO_ROOT)
+      runSyncPass()
     }
     await Bun.sleep(options.intervalSeconds * 1000)
   }

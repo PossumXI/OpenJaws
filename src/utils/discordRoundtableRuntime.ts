@@ -34,6 +34,7 @@ import {
   findGitRoot,
   normalizeAbsolutePath,
   relativeWithinRoot,
+  resolveAllowedGitCheckoutRoots,
 } from './discordOperatorWork.js'
 import {
   DEFAULT_ROUNDTABLE_WINDOW_HOURS,
@@ -125,6 +126,13 @@ export type DiscordRoundtableBootstrapResult = {
   sessionState: DiscordRoundtableSessionState
   legacyRuntimeDirs: string[]
   clearedLogPaths: string[]
+}
+
+export type DiscordRoundtableProgressionSessionResult = {
+  sessionState: DiscordRoundtableSessionState
+  bootstrapped: boolean
+  reason: string
+  bootstrapResult: DiscordRoundtableBootstrapResult | null
 }
 
 export type DiscordRoundtableSyncResult = {
@@ -843,6 +851,78 @@ export function bootstrapDiscordRoundtableRuntime(args?: {
     legacyRuntimeDirs,
     clearedLogPaths,
   }
+}
+
+export function ensureDiscordRoundtableProgressionSession(args?: {
+  root?: string
+  roundtableChannelName?: string | null
+  durationHours?: number
+  now?: Date
+}): DiscordRoundtableProgressionSessionResult {
+  const runtimeRoot = args?.root ?? OPENJAWS_REPO_ROOT
+  const now = args?.now ?? new Date()
+  const runtimeState = loadDiscordRoundtableRuntimeState(runtimeRoot)
+  const sessionState = readDiscordRoundtableSessionSnapshot(runtimeRoot, now)
+  const shouldBootstrap =
+    !sessionState ||
+    sessionState.status === 'idle' ||
+    sessionState.status === 'completed' ||
+    sessionState.status === 'expired' ||
+    sessionState.status === 'stale'
+
+  if (shouldBootstrap && hasProgressionBlockingRoundtableJobs(runtimeState.jobs)) {
+    return {
+      sessionState:
+        sessionState ??
+        createDiscordRoundtableSessionState({
+          now,
+          roundtableChannelName:
+            args?.roundtableChannelName ?? runtimeState.roundtableChannelName,
+        }),
+      bootstrapped: false,
+      reason: 'roundtable queue already has active governed work',
+      bootstrapResult: null,
+    }
+  }
+
+  if (!shouldBootstrap && sessionState) {
+    return {
+      sessionState,
+      bootstrapped: false,
+      reason: `roundtable session remains ${sessionState.status}`,
+      bootstrapResult: null,
+    }
+  }
+
+  const bootstrapResult = bootstrapDiscordRoundtableRuntime({
+    root: runtimeRoot,
+    roundtableChannelName:
+      args?.roundtableChannelName ??
+      sessionState?.roundtableChannelName ??
+      runtimeState.roundtableChannelName,
+    durationHours: args?.durationHours,
+    now,
+  })
+
+  return {
+    sessionState: bootstrapResult.sessionState,
+    bootstrapped: true,
+    reason: sessionState
+      ? `roundtable session was ${sessionState.status}; bootstrapped a fresh progression window`
+      : 'roundtable session was missing; bootstrapped a fresh progression window',
+    bootstrapResult,
+  }
+}
+
+function hasProgressionBlockingRoundtableJobs(
+  jobs: DiscordRoundtableTrackedJob[],
+): boolean {
+  return jobs.some(
+    job =>
+      job.status === 'queued' ||
+      job.status === 'running' ||
+      (job.status === 'awaiting_approval' && job.approvalState === 'pending'),
+  )
 }
 
 function normalizeDiscordRoundtableRuntimeState(
@@ -1634,6 +1714,9 @@ function normalizeRuntimeStatus(
   ) {
     return 'error'
   }
+  if (!lastError && currentStatus === 'running') {
+    return 'running'
+  }
   return 'idle'
 }
 
@@ -2185,13 +2268,7 @@ export async function processDiscordRoundtableRuntime(
   mkdirSync(getDiscordRoundtableRuntimeDir(runtimeRoot), { recursive: true })
   mkdirSync(options.outputRoot, { recursive: true })
   mkdirSync(options.worktreeRoot, { recursive: true })
-  const allowedRoots = Array.from(
-    new Set(
-      options.allowedRoots
-        .map(root => normalizeAbsolutePath(root))
-        .filter((root): root is string => Boolean(root && existsSync(root))),
-    ),
-  )
+  const allowedRoots = resolveAllowedGitCheckoutRoots(options.allowedRoots)
   const roots =
     options.roots && options.roots.length > 0
       ? options.roots

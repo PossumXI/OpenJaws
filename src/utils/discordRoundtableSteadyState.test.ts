@@ -117,11 +117,66 @@ describe('discordRoundtableSteadyState', () => {
       join(runtimeDir, 'discord-roundtable.session.json'),
     )
     expect(result.status).toBe('running')
+    expect(result.progression.bootstrapped).toBe(false)
     expect(result.channelName).toBe('dev_support')
     expect(result.turnCount).toBe(9)
     expect(result.lastSummary).toBe('Blackbeak passed turn 9')
     expect(result.sync.state.roundtableChannelName).toBe('dev_support')
     expect(result.planner.reason).toContain('staged a scoped follow-through handoff')
+    expect(result.planner.targetPath).toBe(join(repoRoot, 'src', 'utils'))
+  })
+
+  it('reopens an expired dev-channel window before planning follow-through work', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-steady-expired-'))
+    tempDirs.push(root)
+
+    const repoRoot = join(root, 'openjaws')
+    mkdirSync(join(repoRoot, '.git'), { recursive: true })
+    mkdirSync(join(repoRoot, 'src', 'utils'), { recursive: true })
+
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    mkdirSync(runtimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.session.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-22T18:32:15.255Z',
+          startedAt: '2026-04-22T17:32:15.255Z',
+          endsAt: '2026-04-22T21:32:15.255Z',
+          guildId: 'guild',
+          roundtableChannelId: 'channel',
+          roundtableChannelName: 'dev_support',
+          generalChannelId: null,
+          generalChannelName: null,
+          violaVoiceChannelId: null,
+          violaVoiceChannelName: null,
+          turnCount: 14,
+          nextPersona: 'viola',
+          lastSpeaker: 'q',
+          lastSummary: 'Viola passed turn 14',
+          lastError: null,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const result = runDiscordRoundtableSteadyStatePass({
+      root,
+      allowedRoots: [repoRoot],
+      roundtableChannelName: 'dev_support',
+      now: new Date('2026-04-23T00:33:00.000Z'),
+    })
+
+    expect(result.progression.bootstrapped).toBe(true)
+    expect(result.progression.reason).toContain('expired')
+    expect(result.status).toBe('running')
+    expect(result.channelName).toBe('dev_support')
+    expect(result.planner.staged).toBe(true)
     expect(result.planner.targetPath).toBe(join(repoRoot, 'src', 'utils'))
   })
 })

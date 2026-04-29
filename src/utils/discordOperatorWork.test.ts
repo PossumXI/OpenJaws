@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { spawnSync } from 'child_process'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { tmpdir } from 'os'
 import {
+  buildGitWorktreeAddArgs,
   createOperatorRunContext,
   parseDirectOperatorChatCommand,
+  resolveAllowedGitCheckoutRoots,
   resolveOperatorWorkspacePath,
   type DiscordOperatorWorkspace,
 } from './discordOperatorWork.js'
@@ -18,6 +20,38 @@ afterEach(() => {
 })
 
 describe('discordOperatorWork', () => {
+  it('uses Git long-path mode for isolated worktree creation on Windows-heavy repos', () => {
+    expect(
+      buildGitWorktreeAddArgs({
+        gitRoot: 'D:\\openjaws\\OpenJaws',
+        branchName: 'discord-roundtable-q-openjaws-fix',
+        worktreePath:
+          'D:\\openjaws\\OpenJaws\\local-command-station\\openjaws-operator-worktrees\\openjaws\\discord-roundtable-q-openjaws-fix',
+      }),
+    ).toEqual([
+      '-C',
+      'D:\\openjaws\\OpenJaws',
+      '-c',
+      'core.longpaths=true',
+      'worktree',
+      'add',
+      '-b',
+      'discord-roundtable-q-openjaws-fix',
+      'D:\\openjaws\\OpenJaws\\local-command-station\\openjaws-operator-worktrees\\openjaws\\discord-roundtable-q-openjaws-fix',
+      'HEAD',
+    ])
+  })
+
+  it('canonicalizes broad allowed parents to exact git checkout roots', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-operator-roots-'))
+    tempDirs.push(root)
+    const broadParent = join(root, 'repos')
+    const repoRoot = join(broadParent, 'OpenJaws')
+    mkdirSync(join(repoRoot, '.git'), { recursive: true })
+
+    expect(resolveAllowedGitCheckoutRoots([broadParent])).toEqual([repoRoot])
+  })
+
   it('parses natural start commands into an OpenJaws ask action', () => {
     expect(
       parseDirectOperatorChatCommand(
@@ -414,18 +448,11 @@ describe('discordOperatorWork', () => {
     expect(context.branchName).toBe(
       'discord-blackbeak-utils-blackbeak-follow-through-openjaw-2',
     )
-    expect(context.worktreePath).toBe(
-      join(
-        worktreeRoot,
-        'openjaws',
-        'discord-blackbeak-utils-blackbeak-follow-through-openjaw-2',
-      ),
-    )
+    expect(context.worktreePath).not.toBeNull()
+    expect(basename(context.worktreePath!)).toMatch(/^wt-[a-f0-9]{12}$/)
     expect(context.workspacePath).toBe(
       join(
-        worktreeRoot,
-        'openjaws',
-        'discord-blackbeak-utils-blackbeak-follow-through-openjaw-2',
+        context.worktreePath!,
         'src',
         'utils',
       ),

@@ -143,6 +143,75 @@ describe('discordRoundtablePlanner', () => {
     ).toBe(true)
   })
 
+  it('narrows broad allowed parent directories to exact git checkout roots', () => {
+    const root = createRoot('oj-roundtable-planner-parent-')
+    const broadParent = join(root, 'repos')
+    const repoRoot = join(broadParent, 'OpenJaws')
+    mkdirSync(join(repoRoot, '.git'), { recursive: true })
+    mkdirSync(join(repoRoot, 'src', 'utils'), { recursive: true })
+
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    mkdirSync(runtimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-29T20:55:00.000Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'Q passed turn 9',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.session.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-29T20:55:00.000Z',
+          startedAt: '2026-04-29T20:00:00.000Z',
+          endsAt: '2026-04-30T00:00:00.000Z',
+          guildId: 'guild',
+          roundtableChannelId: 'channel',
+          roundtableChannelName: 'dev_support',
+          generalChannelId: null,
+          generalChannelName: null,
+          violaVoiceChannelId: null,
+          violaVoiceChannelName: null,
+          turnCount: 9,
+          nextPersona: 'q',
+          lastSpeaker: 'viola',
+          lastSummary: 'Q passed turn 9',
+          lastError: null,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const result = planDiscordRoundtableFollowThrough({
+      root,
+      allowedRoots: [broadParent],
+      now: new Date('2026-04-29T20:56:00.000Z'),
+    })
+
+    expect(result.staged).toBe(true)
+    expect(result.repoLabel).toBe('OpenJaws')
+    expect(result.targetPath).toBe(join(repoRoot, 'src', 'utils'))
+    expect(result.workKey).toBe('openjaws::src/utils')
+  })
+
   it('does not stage a synthetic handoff while tracked governed work is already active', () => {
     const root = createRoot('oj-roundtable-planner-active-')
     const repoRoot = join(root, 'openjaws')

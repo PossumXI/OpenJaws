@@ -4,7 +4,10 @@ import { buildRuntimeCoherenceReport } from '../src/immaculate/runtimeCoherence.
 import { readLatestImmaculateTraceSummary } from '../src/immaculate/traceSummary.js'
 import { readLatestQTraceSummary } from '../src/q/traceSummary.js'
 import { readDiscordQAgentReceipt } from '../src/utils/discordQAgentRuntime.js'
-import { loadDiscordRoundtableRuntimeState } from '../src/utils/discordRoundtableRuntime.js'
+import {
+  loadDiscordRoundtableRuntimeState,
+  readDiscordRoundtableSessionSnapshot,
+} from '../src/utils/discordRoundtableRuntime.js'
 import { getImmaculateHarnessStatus } from '../src/utils/immaculateHarness.js'
 import { readQTrainingRouteQueue } from '../src/utils/qTraining.js'
 import {
@@ -319,17 +322,33 @@ export function buildDiscordProbeFallback(
   }
 }
 
-function readRoundtableState(root: string) {
+function isLiveRoundtableSessionStatus(status: string | null | undefined): boolean {
+  return status === 'running' || status === 'queued' || status === 'awaiting_approval'
+}
+
+export function readRoundtableState(root: string) {
   const statePath = resolve(root, 'local-command-station', 'roundtable-runtime')
   if (!existsSync(statePath)) {
     return null
   }
   const parsed = loadDiscordRoundtableRuntimeState(root)
+  const session = readDiscordRoundtableSessionSnapshot(root)
+  const queueStatus = parsed.status?.toLowerCase() ?? null
+  const preferSession =
+    session &&
+    isLiveRoundtableSessionStatus(session.status) &&
+    (queueStatus === 'idle' || queueStatus === 'completed')
+  const lastSummary =
+    preferSession && parsed.status !== session.status
+      ? `Conversation session is ${session.status}; governed queue is ${parsed.status}. ${
+          parsed.lastSummary ?? session.lastSummary ?? ''
+        }`.trim()
+      : parsed.lastSummary
   return {
-    status: parsed.status,
-    updatedAt: parsed.updatedAt,
-    channelName: parsed.roundtableChannelName,
-    lastSummary: parsed.lastSummary,
+    status: preferSession ? session.status : parsed.status,
+    updatedAt: preferSession ? session.updatedAt : parsed.updatedAt,
+    channelName: session?.roundtableChannelName ?? parsed.roundtableChannelName,
+    lastSummary,
     lastError: parsed.lastError,
   }
 }

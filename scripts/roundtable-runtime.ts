@@ -1,13 +1,20 @@
 import {
+  ensureDiscordRoundtableProgressionSession,
   formatDiscordRoundtableTransitionReceipt,
   getDiscordRoundtableStatePath,
   processDiscordRoundtableRuntime,
+  type DiscordRoundtableProgressionSessionResult,
 } from '../src/utils/discordRoundtableRuntime.js'
+import {
+  planDiscordRoundtableFollowThrough,
+  type DiscordRoundtablePlannerResult,
+} from '../src/utils/discordRoundtablePlanner.js'
 
 type CliOptions = {
   handoffPaths: string[]
   allowRoots: string[]
   loop: boolean
+  steadyState: boolean | null
   intervalMs: number
   maxActionsPerRun: number
   durationHours: number | undefined
@@ -21,6 +28,7 @@ function parseArgs(argv: string[]): CliOptions {
     handoffPaths: [],
     allowRoots: [],
     loop: false,
+    steadyState: null,
     intervalMs: 60_000,
     maxActionsPerRun: 1,
     durationHours: undefined,
@@ -48,6 +56,12 @@ function parseArgs(argv: string[]): CliOptions {
         break
       case '--loop':
         options.loop = true
+        break
+      case '--steady-state':
+        options.steadyState = true
+        break
+      case '--no-steady-state':
+        options.steadyState = false
         break
       case '--interval-ms':
         if (argv[index + 1]) {
@@ -105,7 +119,55 @@ function resolveAllowedRoots(cliRoots: string[]): string[] {
   return Array.from(new Set([...cliRoots, ...envRoots, process.cwd()]))
 }
 
+function resolveRoundtableWorktreeRoot(): string {
+  const configured =
+    process.env.DISCORD_OPERATOR_WORKTREE_ROOT?.trim() ||
+    process.env.OPENJAWS_OPERATOR_WORKTREE_ROOT?.trim()
+  if (configured) {
+    return configured
+  }
+  if (process.platform === 'win32') {
+    return `${process.cwd().slice(0, 3)}ojwt`
+  }
+  return `${process.cwd()}/local-command-station/openjaws-operator-worktrees`
+}
+
+function summarizePlannerResult(
+  planner: DiscordRoundtablePlannerResult | null,
+): Record<string, unknown> | null {
+  if (!planner) {
+    return null
+  }
+  return {
+    staged: planner.staged,
+    reason: planner.reason,
+    handoffPath: planner.handoffPath,
+    targetPath: planner.targetPath,
+    workKey: planner.workKey,
+    repoLabel: planner.repoLabel,
+    personaName: planner.personaName,
+  }
+}
+
+function summarizeProgressionResult(
+  progression: DiscordRoundtableProgressionSessionResult | null,
+): Record<string, unknown> | null {
+  if (!progression) {
+    return null
+  }
+  return {
+    bootstrapped: progression.bootstrapped,
+    reason: progression.reason,
+    status: progression.sessionState.status,
+    channelName: progression.sessionState.roundtableChannelName,
+    startedAt: progression.sessionState.startedAt,
+    endsAt: progression.sessionState.endsAt,
+  }
+}
+
 async function runIteration(options: CliOptions) {
+  const allowedRoots = resolveAllowedRoots(options.allowRoots)
+  const steadyStateEnabled = options.steadyState ?? options.loop
   const durationHours =
     options.durationHours ??
     (process.env.DISCORD_ROUNDTABLE_DURATION_HOURS
@@ -116,9 +178,22 @@ async function runIteration(options: CliOptions) {
     (process.env.DISCORD_ROUNDTABLE_APPROVAL_TTL_HOURS
       ? Number.parseFloat(process.env.DISCORD_ROUNDTABLE_APPROVAL_TTL_HOURS)
       : undefined)
+  const progression = steadyStateEnabled
+    ? ensureDiscordRoundtableProgressionSession({
+        root: process.cwd(),
+        roundtableChannelName: options.channelName,
+        durationHours,
+      })
+    : null
+  const planner = steadyStateEnabled
+    ? planDiscordRoundtableFollowThrough({
+        root: process.cwd(),
+        allowedRoots,
+      })
+    : null
   const result = await processDiscordRoundtableRuntime({
     root: process.cwd(),
-    allowedRoots: resolveAllowedRoots(options.allowRoots),
+    allowedRoots,
     handoffPaths: options.handoffPaths,
     maxActionsPerRun: options.maxActionsPerRun,
     durationHours,
@@ -127,7 +202,7 @@ async function runIteration(options: CliOptions) {
     // Roundtable execution needs the receipt-producing runner, not the detached
     // visible launcher wrapper.
     runnerScriptPath: `${process.cwd()}\\local-command-station\\run-openjaws-visible.ps1`,
-    worktreeRoot: `${process.cwd()}\\local-command-station\\openjaws-operator-worktrees`,
+    worktreeRoot: resolveRoundtableWorktreeRoot(),
     outputRoot: `${process.cwd()}\\local-command-station\\openjaws-operator-outputs`,
     roundtableChannelName: options.channelName,
   })
@@ -145,6 +220,8 @@ async function runIteration(options: CliOptions) {
           status: result.state.status,
           summary: result.state.lastSummary,
           error: result.state.lastError,
+          progression: summarizeProgressionResult(progression),
+          steadyStatePlanner: summarizePlannerResult(planner),
         },
         null,
         2,
@@ -158,6 +235,17 @@ async function runIteration(options: CliOptions) {
         `Awaiting approval: ${result.awaitingApprovalCount}`,
         `Duration hours: ${result.durationHours}`,
         `Approval TTL hours: ${result.approvalTtlHours}`,
+        ...(progression
+          ? [`Progression: ${progression.reason}`]
+          : ['Progression: disabled']),
+        ...(planner
+          ? [
+              `Planner: ${planner.reason}`,
+              ...(planner.staged && planner.handoffPath
+                ? [`Planner handoff: ${planner.handoffPath}`]
+                : []),
+            ]
+          : ['Planner: disabled']),
         `Summary: ${result.state.lastSummary ?? 'none'}`,
         ...(result.state.lastError ? [`Error: ${result.state.lastError}`] : []),
         ...(result.transitionReceipts.length > 0

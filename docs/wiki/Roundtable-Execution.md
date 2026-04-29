@@ -31,6 +31,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - Start the runtime once: `bun run roundtable:runtime -- --allow-root "D:\openjaws\OpenJaws" --allow-root "C:\Users\Knight\Desktop\Immaculate" --allow-root "C:\Users\Knight\Desktop\cheeks\Asgard"`
 - Start with the historical two-root example only when OpenJaws itself is not an approved target: `bun run roundtable:runtime -- --allow-root "C:\Users\Knight\Desktop\Immaculate" --allow-root "C:\Users\Knight\Desktop\cheeks\Asgard"`
 - Run it continuously: `bun run roundtable:runtime -- --loop --allow-root "C:\Users\Knight\Desktop\Immaculate" --allow-root "C:\Users\Knight\Desktop\cheeks\Asgard"`
+- The continuous runtime includes the steady-state planner by default, so an active Discord roundtable can create the next scoped follow-through handoff when the queue is idle. Use `--no-steady-state` only when you want to drain already-staged work without creating new work. For a one-shot planner pass, add `--steady-state`.
 - Override the 4-hour window or approval TTL when you need a tighter operator pass: `bun run roundtable:runtime -- --duration-hours 2 --approval-ttl-hours 0.5`
 - Inspect state: `bun run roundtable:runtime`
 - Inspect state from Discord: `@Q operator roundtable-status`
@@ -41,7 +42,10 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 
 - `src/utils/discordRoundtableScheduler.ts` is the tracked policy source for fallback root selection, approval TTL, and reply/PASS reduction heuristics.
 - `scripts/roundtable-runtime.ts` is the tracked CLI wrapper around the shared runtime path.
+- Runtime output now includes the progression bootstrap reason and the steady-state planner reason. If the loop does not create a new handoff, the reason will say whether it was blocked by active governed work, pending inbox work, cooldown, or low planner pressure; stale and expired sessions are reopened before planning.
+- On Windows the runtime defaults isolated worktrees to a short root such as `D:\ojwt` so long vendor paths do not break governed checkout. Override with `DISCORD_OPERATOR_WORKTREE_ROOT` only when the replacement path is also short enough for deep repository trees.
 - The live Discord runtime now posts roundtable transition receipts back into the configured `q-roundtable` lane, with a fallback to `openjaws-updates` if the dedicated roundtable channel is not present yet.
+- The live Discord loop records planner outcomes into the operator receipt. Set `DISCORD_ROUNDTABLE_TRACE_PLANNER=1` to keep idle planner reasons in the local receipt without posting extra channel noise.
 - The tracked runtime readers now also reconcile the live `discord-roundtable.log`, and sync passes preserve the authoritative bound session channel, so `@Q operator roundtable-status` and `bun run runtime:coherence` keep reporting the actual active lane such as `#dev_support` instead of a stale preferred-channel alias.
 - Approval-ready transitions include the generated branch, verification summary, and attached `receipt.json` so operators can confirm from Discord without opening the local state file first.
 - `runtime:coherence` reads the roundtable state file directly, so coherence checks can see whether the lane is idle, queued, running, or waiting for approval.

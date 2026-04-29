@@ -25,6 +25,7 @@ import { tmpdir } from 'os'
 import {
   bootstrapDiscordRoundtableRuntime,
   createDiscordRoundtableRuntimeState,
+  ensureDiscordRoundtableProgressionSession,
   loadDiscordRoundtableSessionState,
   formatDiscordRoundtableRuntimeStatus,
   formatDiscordRoundtableTransitionReceipt,
@@ -888,6 +889,134 @@ describe('discordRoundtableRuntime', () => {
       openThreads: [],
     })
     expect(nestedActions).toEqual([])
+  })
+
+  it('auto-bootstraps an expired dev-channel session for progression loops', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-progress-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    mkdirSync(runtimeDir, { recursive: true })
+    writeFileSync(
+      getDiscordRoundtableSessionStatePath(root),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-22T18:32:15.255Z',
+          startedAt: '2026-04-22T17:32:15.255Z',
+          endsAt: '2026-04-22T21:32:15.255Z',
+          guildId: 'guild',
+          roundtableChannelId: 'channel',
+          roundtableChannelName: 'dev_support',
+          generalChannelId: null,
+          generalChannelName: null,
+          violaVoiceChannelId: null,
+          violaVoiceChannelName: null,
+          turnCount: 14,
+          nextPersona: 'viola',
+          lastSpeaker: 'q',
+          lastSummary: 'Viola passed turn 14',
+          lastError: null,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const result = ensureDiscordRoundtableProgressionSession({
+      root,
+      roundtableChannelName: 'dev_support',
+      durationHours: 4,
+      now: new Date('2026-04-23T00:33:00.000Z'),
+    })
+
+    expect(result.bootstrapped).toBe(true)
+    expect(result.reason).toContain('expired')
+    expect(result.sessionState).toMatchObject({
+      status: 'running',
+      roundtableChannelName: 'dev_support',
+      startedAt: '2026-04-23T00:33:00.000Z',
+      endsAt: '2026-04-23T04:33:00.000Z',
+      turnCount: 0,
+    })
+    expect(loadDiscordRoundtableRuntimeState(root)).toMatchObject({
+      status: 'running',
+      roundtableChannelName: 'dev_support',
+      lastSummary: 'Roundtable bootstrapped in #dev_support.',
+    })
+  })
+
+  it('does not bootstrap over queued governed work when a session is expired', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-progress-blocked-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    mkdirSync(runtimeDir, { recursive: true })
+    writeFileSync(
+      getDiscordRoundtableSessionStatePath(root),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-22T18:32:15.255Z',
+          startedAt: '2026-04-22T17:32:15.255Z',
+          endsAt: '2026-04-22T21:32:15.255Z',
+          guildId: 'guild',
+          roundtableChannelId: 'channel',
+          roundtableChannelName: 'dev_support',
+          generalChannelId: null,
+          generalChannelName: null,
+          violaVoiceChannelId: null,
+          violaVoiceChannelName: null,
+          turnCount: 14,
+          nextPersona: 'viola',
+          lastSpeaker: 'q',
+          lastSummary: 'Viola passed turn 14',
+          lastError: null,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      getDiscordRoundtableStatePath(root),
+      JSON.stringify(
+        {
+          ...createDiscordRoundtableRuntimeState({
+            now: new Date('2026-04-22T18:32:15.255Z'),
+            roundtableChannelName: 'dev_support',
+          }),
+          status: 'queued',
+          lastSummary: 'Queued 1 scoped action.',
+          jobs: [
+            {
+              id: 'queued-action',
+              status: 'queued',
+              approvalState: 'pending',
+              repoLabel: 'OpenJaws',
+              role: 'Q',
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const result = ensureDiscordRoundtableProgressionSession({
+      root,
+      roundtableChannelName: 'dev_support',
+      durationHours: 4,
+      now: new Date('2026-04-23T00:33:00.000Z'),
+    })
+
+    expect(result.bootstrapped).toBe(false)
+    expect(result.reason).toBe('roundtable queue already has active governed work')
+    expect(loadDiscordRoundtableRuntimeState(root).jobs).toHaveLength(1)
   })
 
   it('rehydrates the live bundle state from the tracked session file instead of stale nested session data', () => {

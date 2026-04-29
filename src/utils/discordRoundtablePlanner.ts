@@ -8,7 +8,10 @@ import {
 } from 'fs'
 import { basename, join } from 'path'
 
-import { normalizeAbsolutePath } from './discordOperatorWork.js'
+import {
+  normalizeAbsolutePath,
+  resolveAllowedGitCheckoutRoots,
+} from './discordOperatorWork.js'
 import {
   getDiscordRoundtableInboxDir,
   getDiscordRoundtableRuntimeDir,
@@ -237,13 +240,7 @@ function looksPassHeavy(args: {
 }
 
 function normalizePlannerRoots(allowedRoots: string[]): DiscordRoundtableSchedulerRoot[] {
-  return Array.from(
-    new Set(
-      allowedRoots
-        .map(root => normalizeAbsolutePath(root))
-        .filter((root): root is string => Boolean(root && existsSync(root))),
-    ),
-  ).map(root => ({
+  return resolveAllowedGitCheckoutRoots(allowedRoots).map(root => ({
     label: basename(root) || root,
     path: root,
     aliases: [basename(root).toLowerCase(), root.toLowerCase()],

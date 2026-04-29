@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, realpathSync } from 'fs'
+import { createHash } from 'crypto'
+import { existsSync, mkdirSync, readdirSync, realpathSync } from 'fs'
 import { basename, isAbsolute, join, relative, resolve } from 'path'
 import { spawnSync } from 'child_process'
 import { buildDiscordOperatorArtifactPrompt } from './discordOperatorArtifactPrompt.js'
@@ -35,6 +36,42 @@ export function normalizeAbsolutePath(
   }
   const trimmed = value.trim()
   return isAbsolute(trimmed) ? resolve(trimmed) : resolve(process.cwd(), trimmed)
+}
+
+function isFilesystemAnchorPath(path: string): boolean {
+  return resolve(path, '..') === resolve(path)
+}
+
+function isExactGitCheckoutPath(path: string): boolean {
+  return existsSync(join(path, '.git'))
+}
+
+function resolveGitCheckoutRoots(root: string): string[] {
+  if (isExactGitCheckoutPath(root) && !isFilesystemAnchorPath(root)) {
+    return [root]
+  }
+  try {
+    return readdirSync(root, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => join(root, entry.name))
+      .filter(
+        candidate =>
+          isExactGitCheckoutPath(candidate) && !isFilesystemAnchorPath(candidate),
+      )
+  } catch {
+    return []
+  }
+}
+
+export function resolveAllowedGitCheckoutRoots(allowedRoots: string[]): string[] {
+  return Array.from(
+    new Set(
+      allowedRoots
+        .map(root => normalizeAbsolutePath(root))
+        .filter((root): root is string => Boolean(root && existsSync(root)))
+        .flatMap(resolveGitCheckoutRoots),
+    ),
+  ).sort((left, right) => right.length - left.length)
 }
 
 const OPERATOR_APEX_APPS_ALIASES = new Set([
@@ -184,7 +221,11 @@ function allocateUniqueOperatorBranch(args: {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const suffix = attempt === 0 ? '' : `-${(attempt + 1).toString(36)}`
     const branchName = `${args.baseBranchName}${suffix}`.slice(0, 92)
-    const worktreePath = join(args.repoWorktreesDir, branchName)
+    const worktreeId = createHash('sha256')
+      .update(branchName)
+      .digest('hex')
+      .slice(0, 12)
+    const worktreePath = join(args.repoWorktreesDir, `wt-${worktreeId}`)
     if (!existsSync(worktreePath) && !branchExists(args.gitRoot, branchName)) {
       return { branchName, worktreePath }
     }
@@ -192,6 +233,25 @@ function allocateUniqueOperatorBranch(args: {
   throw new Error(
     `Failed to allocate a unique isolated worktree branch for ${args.baseBranchName}.`,
   )
+}
+
+export function buildGitWorktreeAddArgs(args: {
+  gitRoot: string
+  branchName: string
+  worktreePath: string
+}): string[] {
+  return [
+    '-C',
+    args.gitRoot,
+    '-c',
+    'core.longpaths=true',
+    'worktree',
+    'add',
+    '-b',
+    args.branchName,
+    args.worktreePath,
+    'HEAD',
+  ]
 }
 
 export function relativeWithinRoot(
@@ -578,7 +638,7 @@ export function createOperatorRunContext(args: {
   })
   const addResult = spawnSync(
     'git',
-    ['-C', gitRoot, 'worktree', 'add', '-b', branchName, worktreePath, 'HEAD'],
+    buildGitWorktreeAddArgs({ gitRoot, branchName, worktreePath }),
     {
       env: {
         ...process.env,

@@ -1,7 +1,9 @@
 import {
+  ensureDiscordRoundtableProgressionSession,
   getDiscordRoundtableQueueStatePath,
   getDiscordRoundtableSessionStatePath,
   syncDiscordRoundtableRuntimeState,
+  type DiscordRoundtableProgressionSessionResult,
   type DiscordRoundtableSyncResult,
 } from './discordRoundtableRuntime.js'
 import {
@@ -12,6 +14,7 @@ import {
 export type DiscordRoundtableSteadyStateResult = {
   queueStatePath: string
   sessionStatePath: string
+  progression: DiscordRoundtableProgressionSessionResult
   sync: DiscordRoundtableSyncResult
   planner: DiscordRoundtablePlannerResult
   status: string
@@ -23,10 +26,16 @@ export type DiscordRoundtableSteadyStateResult = {
 export function runDiscordRoundtableSteadyStatePass(args: {
   root?: string
   allowedRoots: string[]
+  roundtableChannelName?: string | null
   now?: Date
 }): DiscordRoundtableSteadyStateResult {
   const root = args.root ?? process.cwd()
-  const sync = syncDiscordRoundtableRuntimeState(root)
+  const progression = ensureDiscordRoundtableProgressionSession({
+    root,
+    roundtableChannelName: args.roundtableChannelName,
+    now: args.now,
+  })
+  const sync = syncDiscordRoundtableRuntimeState(root, args.now)
   const planner = planDiscordRoundtableFollowThrough({
     root,
     allowedRoots: args.allowedRoots,
@@ -36,6 +45,7 @@ export function runDiscordRoundtableSteadyStatePass(args: {
   return {
     queueStatePath: getDiscordRoundtableQueueStatePath(root),
     sessionStatePath: getDiscordRoundtableSessionStatePath(root),
+    progression,
     sync,
     planner,
     status: sync.sessionState?.status ?? sync.state.status,

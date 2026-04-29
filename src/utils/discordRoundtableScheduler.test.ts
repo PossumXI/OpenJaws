@@ -95,6 +95,28 @@ describe('discordRoundtableScheduler', () => {
     })
   })
 
+  it('uses the deepest matching root when parent and child roots are both present', () => {
+    expect(
+      resolveRoundtableExecutionScope({
+        targetPath: 'D:\\openjaws\\OpenJaws\\src\\utils',
+        repoId: 'OpenJaws',
+        roots: [
+          {
+            label: 'openjaws-parent',
+            path: 'D:\\openjaws',
+            aliases: ['openjaws'],
+          },
+          roots[0]!,
+        ],
+      }),
+    ).toEqual({
+      targetPath: 'D:\\openjaws\\OpenJaws\\src\\utils',
+      projectKey: 'openjaws',
+      workKey: 'openjaws::src/utils',
+      rootLabel: 'OpenJaws',
+    })
+  })
+
   it('penalizes pending approvals and stale non-mergeable work when choosing a fallback root', () => {
     const selected = chooseFallbackRoundtableRoot({
       roots,

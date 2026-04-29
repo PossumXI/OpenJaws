@@ -112,13 +112,15 @@ function findRoundtableRootDescriptor(
 ): DiscordRoundtableSchedulerRoot | null {
   const normalizedTarget = targetPath.toLowerCase()
   return (
-    roots.find(root => {
-      const normalizedRoot = root.path.toLowerCase()
-      return (
-        normalizedTarget === normalizedRoot ||
-        normalizedTarget.startsWith(`${normalizedRoot}\\`)
-      )
-    }) ?? null
+    roots
+      .filter(root => {
+        const normalizedRoot = root.path.toLowerCase()
+        return (
+          normalizedTarget === normalizedRoot ||
+          normalizedTarget.startsWith(`${normalizedRoot}\\`)
+        )
+      })
+      .sort((left, right) => right.path.length - left.path.length)[0] ?? null
   )
 }
 

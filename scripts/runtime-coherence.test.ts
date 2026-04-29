@@ -5,6 +5,7 @@ import { join } from 'path'
 import {
   buildPersonaPlexCoherenceProbe,
   buildDiscordProbeFallback,
+  readRoundtableState,
   resolveDiscordProbeTarget,
 } from './runtime-coherence.ts'
 
@@ -199,6 +200,65 @@ describe('runtime-coherence discord probe targets', () => {
       reachable: true,
       status: null,
       detail: 'http://127.0.0.1:8998 hello byte 0 in 26ms',
+    })
+  })
+
+  test('prefers a live roundtable session over an idle governed queue', () => {
+    const root = mkdtempSync(join(tmpdir(), 'runtime-coherence-roundtable-'))
+    const runtimeRoot = join(root, 'local-command-station', 'roundtable-runtime')
+    mkdirSync(runtimeRoot, { recursive: true })
+    writeFileSync(
+      join(runtimeRoot, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'idle',
+          updatedAt: '2026-04-29T20:58:00.000Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'OpenJaws roundtable action was held back: no code changes detected.',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(runtimeRoot, 'discord-roundtable.session.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-29T20:59:00.000Z',
+          startedAt: '2026-04-29T20:55:00.000Z',
+          endsAt: '2026-04-30T00:55:00.000Z',
+          guildId: 'guild',
+          roundtableChannelId: 'channel',
+          roundtableChannelName: 'dev_support',
+          generalChannelId: null,
+          generalChannelName: null,
+          violaVoiceChannelId: null,
+          violaVoiceChannelName: null,
+          turnCount: 1,
+          nextPersona: 'viola',
+          lastSpeaker: 'q',
+          lastSummary: 'Q action completed.',
+          lastError: null,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    expect(readRoundtableState(root)).toMatchObject({
+      status: 'running',
+      channelName: 'dev_support',
+      lastSummary: expect.stringContaining('governed queue is idle'),
     })
   })
 })
