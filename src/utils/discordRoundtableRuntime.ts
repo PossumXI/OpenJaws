@@ -729,7 +729,7 @@ function buildBootstrappedRoundtableSessionState(args: {
       status:
         trackedSession.status === 'completed'
           ? 'running'
-          : normalizeDiscordRoundtableSessionStatus(
+          : normalizeLiveDiscordRoundtableSessionStatus(
               args.state.status === 'idle' ? 'running' : args.state.status,
             ),
       roundtableChannelName,
@@ -744,7 +744,7 @@ function buildBootstrappedRoundtableSessionState(args: {
   })
   return {
     ...freshState,
-    status: normalizeDiscordRoundtableSessionStatus(
+    status: normalizeLiveDiscordRoundtableSessionStatus(
       args.state.status === 'idle' ? 'running' : args.state.status,
     ),
     updatedAt: nowIso,
@@ -1132,6 +1132,15 @@ function normalizeDiscordRoundtableSessionStatus(
   }
 }
 
+function normalizeLiveDiscordRoundtableSessionStatus(
+  value: unknown,
+): DiscordRoundtableSessionStatus {
+  const status = normalizeDiscordRoundtableSessionStatus(value)
+  return status === 'queued' || status === 'awaiting_approval'
+    ? 'running'
+    : status
+}
+
 function readLegacyDiscordRoundtableSessionState(
   root = OPENJAWS_REPO_ROOT,
 ): Partial<DiscordRoundtableSessionState> | null {
@@ -1244,7 +1253,7 @@ function deriveDiscordRoundtableSessionSnapshot(args: {
   const updatedAtMs = parseIsoTimestampMs(args.session.updatedAt)
   const endsAtMs = parseIsoTimestampMs(args.session.endsAt)
 
-  let status = args.session.status
+  let status = normalizeLiveDiscordRoundtableSessionStatus(args.session.status)
   if (
     endsAtMs !== null &&
     endsAtMs <= nowMs &&
@@ -1885,6 +1894,7 @@ function createTrackedJob(args: {
   const gitRoot = findGitRoot(scope.targetPath)
   if (
     !gitRoot ||
+    !isAllowedTargetPath(gitRoot, args.allowedRoots) ||
     !args.action.executionReady ||
     args.action.requiresManualCheckout ||
     !args.action.workspaceMaterialized ||
@@ -2426,7 +2436,7 @@ export async function processDiscordRoundtableRuntime(
     status:
       sessionState.status === 'completed' && state.status === 'idle'
         ? 'completed'
-        : state.status,
+        : normalizeLiveDiscordRoundtableSessionStatus(state.status),
     roundtableChannelName:
       finalPreferredRoundtableChannelName ??
       sessionState.roundtableChannelName ??

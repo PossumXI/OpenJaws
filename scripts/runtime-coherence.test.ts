@@ -255,10 +255,11 @@ describe('runtime-coherence discord probe targets', () => {
       'utf8',
     )
 
-    expect(readRoundtableState(root)).toMatchObject({
-      status: 'running',
-      channelName: 'dev_support',
-      lastSummary: expect.stringContaining('governed queue is idle'),
-    })
+    expect(readRoundtableState(root, new Date('2026-04-29T21:00:00.000Z')))
+      .toMatchObject({
+        status: 'running',
+        channelName: 'dev_support',
+        lastSummary: expect.stringContaining('governed queue is idle'),
+      })
   })
 })

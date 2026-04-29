@@ -121,6 +121,54 @@ describe('discordRoundtableRuntime', () => {
     )
   })
 
+  it('rejects handoffs when Git resolves above the approved checkout root', () => {
+    const parentRoot = mkdtempSync(join(tmpdir(), 'oj-roundtable-parent-git-'))
+    tempDirs.push(parentRoot)
+    mkdirSync(join(parentRoot, '.git'), { recursive: true })
+    const staleDesktopRoot = join(parentRoot, 'Desktop', 'cheeks', 'Asgard')
+    mkdirSync(join(staleDesktopRoot, 'scripts'), { recursive: true })
+    const handoffPath = join(staleDesktopRoot, 'handoff-stale-parent.json')
+    writeFileSync(
+      handoffPath,
+      JSON.stringify(
+        {
+          sessionId: 'session-stale-parent',
+          actions: [
+            {
+              id: 'action-stale-parent',
+              repoId: 'asgard',
+              repoLabel: 'Asgard',
+              role: 'Blackbeak',
+              objective: 'Avoid parent checkout drift',
+              rationale: 'The approved root is not itself a checkout.',
+              workspaceScope: {
+                repoPath: staleDesktopRoot,
+              },
+              executionArtifact: {
+                executionReady: true,
+                workspaceMaterialized: true,
+                authorityBound: true,
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const ingested = ingestDiscordRoundtableHandoff({
+      state: createDiscordRoundtableRuntimeState(),
+      handoffPath,
+      allowedRoots: [staleDesktopRoot],
+      now: new Date('2026-04-20T20:00:00.000Z'),
+    })
+
+    expect(ingested.ingestedCount).toBe(0)
+    expect(ingested.state.jobs).toHaveLength(0)
+  })
+
   it('rejects handoffs that are not authority-bound execution lanes', () => {
     const repoRoot = createRepoRoot('oj-roundtable-unsafe-repo-')
     const nestedWorkspace = join(repoRoot, 'packages', 'discord')

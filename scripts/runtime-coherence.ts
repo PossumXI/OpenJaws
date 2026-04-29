@@ -326,13 +326,13 @@ function isLiveRoundtableSessionStatus(status: string | null | undefined): boole
   return status === 'running' || status === 'queued' || status === 'awaiting_approval'
 }
 
-export function readRoundtableState(root: string) {
+export function readRoundtableState(root: string, now = new Date()) {
   const statePath = resolve(root, 'local-command-station', 'roundtable-runtime')
   if (!existsSync(statePath)) {
     return null
   }
   const parsed = loadDiscordRoundtableRuntimeState(root)
-  const session = readDiscordRoundtableSessionSnapshot(root)
+  const session = readDiscordRoundtableSessionSnapshot(root, now)
   const queueStatus = parsed.status?.toLowerCase() ?? null
   const preferSession =
     session &&

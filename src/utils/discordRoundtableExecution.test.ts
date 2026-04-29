@@ -7,6 +7,7 @@ import {
   buildDiscordRoundtableReceipt,
   buildDiscordRoundtableOperatorPromptFooter,
   classifyDiscordRoundtableExecution,
+  executeDiscordRoundtableAction,
   inspectDiscordRoundtableExecution,
 } from './discordRoundtableExecution.js'
 
@@ -113,6 +114,40 @@ describe('discordRoundtableExecution', () => {
         verificationPassed: true,
       }).commitAllowed,
     ).toBe(false)
+  })
+
+  it('refuses execution when Git resolves above the selected target root', async () => {
+    const parentRoot = mkdtempSync(join(tmpdir(), 'oj-roundtable-parent-root-'))
+    mkdirSync(join(parentRoot, '.git'), { recursive: true })
+    const staleTargetRoot = join(parentRoot, 'Desktop', 'cheeks', 'Asgard')
+    mkdirSync(staleTargetRoot, { recursive: true })
+
+    await expect(
+      executeDiscordRoundtableAction({
+        action: {
+          id: 'action-stale-parent',
+          title: 'Avoid stale parent checkout',
+          reason: 'The target root is not the checkout Git resolved.',
+          targetPath: staleTargetRoot,
+          prompt: 'tighten one safe test',
+          gitRoot: parentRoot,
+        },
+        personaId: 'q',
+        personaName: 'Q',
+        roots: [
+          {
+            label: 'Asgard',
+            path: staleTargetRoot,
+            aliases: ['asgard'],
+          },
+        ],
+        runnerScriptPath: join(parentRoot, 'run-openjaws-visible.ps1'),
+        model: 'oci:Q',
+        worktreeRoot: join(parentRoot, 'worktrees'),
+        outputRoot: join(parentRoot, 'outputs'),
+        timeoutMs: 1,
+      }),
+    ).rejects.toThrow(/outside target root/i)
   })
 
   it('builds roundtable operator footers with freshness and scoped-branch constraints', () => {

@@ -3,6 +3,7 @@ import { basename, join } from 'path'
 import {
   createOperatorRunContext,
   findGitRoot,
+  relativeWithinRoot,
   type DiscordOperatorRunContext,
 } from './discordOperatorWork.js'
 import {
@@ -311,6 +312,12 @@ export async function executeDiscordRoundtableAction(args: {
   if (!gitRoot) {
     throw new Error(`No git repository found for ${targetPath}.`)
   }
+  const targetRoot = findRoundtableRootDescriptor(targetPath, args.roots)
+  if (targetRoot && relativeWithinRoot(targetRoot.path, gitRoot) === null) {
+    throw new Error(
+      `Resolved git root ${gitRoot} is outside target root ${targetRoot.path}. Refusing stale parent worktree execution.`,
+    )
+  }
 
   const runContext = createOperatorRunContext({
     workspace: targetPath,
@@ -324,8 +331,7 @@ export async function executeDiscordRoundtableAction(args: {
   )
   const transientConfigDir = join(outputDir, '.openjaws-config')
   mkdirSync(outputDir, { recursive: true })
-  const targetRootLabel =
-    findRoundtableRootDescriptor(targetPath, args.roots)?.label ?? basename(targetPath)
+  const targetRootLabel = targetRoot?.label ?? basename(targetPath)
 
   const job = await runScriptedOpenJawsOperatorJob({
     runContext,
