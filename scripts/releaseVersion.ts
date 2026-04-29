@@ -26,6 +26,13 @@ function sanitizeBuildMetadata(value: string): string {
   return normalized
 }
 
+function shouldUseGitTagForOpenJawsVersion(tagName: string | undefined): tagName is string {
+  if (!tagName) {
+    return false
+  }
+  return !tagName.trim().toLowerCase().startsWith('jaws-v')
+}
+
 export function getOpenJawsReleaseVersion(options: {
   packageVersion: string
   env?: NodeJS.ProcessEnv
@@ -38,7 +45,8 @@ export function getOpenJawsReleaseVersion(options: {
     ? normalizeReleaseVersion(env.OPENJAWS_RELEASE_VERSION)
     : null
   const tagVersion =
-    env.GITHUB_REF_TYPE === 'tag' && env.GITHUB_REF_NAME
+    env.GITHUB_REF_TYPE === 'tag' &&
+    shouldUseGitTagForOpenJawsVersion(env.GITHUB_REF_NAME)
       ? normalizeReleaseVersion(env.GITHUB_REF_NAME)
       : null
 

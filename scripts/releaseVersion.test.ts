@@ -35,6 +35,20 @@ describe('getOpenJawsReleaseVersion', () => {
     ).toBe('2.1.86+sha.abcdef1')
   })
 
+  test('ignores JAWS desktop release tags for the OpenJaws CLI sidecar', () => {
+    expect(
+      getOpenJawsReleaseVersion({
+        packageVersion: '2.1.86',
+        env: {
+          CI: 'true',
+          GITHUB_REF_TYPE: 'tag',
+          GITHUB_REF_NAME: 'jaws-v0.1.2',
+          GITHUB_SHA: 'abcdef1234567890',
+        } as NodeJS.ProcessEnv,
+      }),
+    ).toBe('2.1.86+sha.abcdef1')
+  })
+
   test('throws on tag/package mismatch by default', () => {
     expect(() =>
       getOpenJawsReleaseVersion({
