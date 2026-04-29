@@ -2,9 +2,18 @@ import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'fs'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'path'
 import { fileURLToPath } from 'url'
-import { execa } from 'execa'
+// execa imported dynamically where needed to avoid missing module errors
 import { strToU8, unzipSync, zipSync } from 'fflate'
 import { type DiscordOperatorRunContext } from './discordOperatorWork.js'
+
+type ExecaFunction = typeof import('execa')['execa']
+
+let execaImport: Promise<ExecaFunction> | null = null
+
+function loadExeca(): Promise<ExecaFunction> {
+  execaImport ??= import('execa').then(module => module.execa)
+  return execaImport
+}
 
 export type OperatorDeliveryBundle = {
   markdownPath: string | null
@@ -784,6 +793,7 @@ async function tryRenderPdfFromHtml(args: {
   if (!browserPath) {
     return null
   }
+  const execa = await loadExeca()
   const result = await execa(
     browserPath,
     [
@@ -1202,6 +1212,7 @@ export async function pushApprovalCandidateToOrigin(args: {
       )
     }
   }
+  const execa = await loadExeca()
   const result = await execa(
     'git',
     ['-C', args.worktreePath, 'push', '-u', 'origin', branchName],
@@ -1289,6 +1300,7 @@ export async function runScriptedOpenJawsOperatorJob(args: {
     ...(addDirsJsonBase64 ? ['-AddDirJsonBase64', addDirsJsonBase64] : []),
   ]
 
+  const execa = await loadExeca()
   const launch = await execa(
     'powershell',
     launchArgs,
@@ -1446,6 +1458,7 @@ async function verifyOperatorWorkspace(
       stderr: null,
     }
   }
+  const execa = await loadExeca()
   const result = await execa(command.cmd[0]!, command.cmd.slice(1), {
     cwd: workspacePath,
     reject: false,

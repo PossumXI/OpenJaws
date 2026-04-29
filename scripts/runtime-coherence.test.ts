@@ -5,6 +5,7 @@ import { join } from 'path'
 import {
   buildPersonaPlexCoherenceProbe,
   buildDiscordProbeFallback,
+  probeDiscordBotTokenFallback,
   readRoundtableState,
   resolveDiscordProbeTarget,
 } from './runtime-coherence.ts'
@@ -27,7 +28,34 @@ describe('runtime-coherence discord probe targets', () => {
       label: 'Viola',
       url: 'http://127.0.0.1:9799/health',
       receiptPath: 'D:\\custom\\viola-receipt.json',
+      envFilePath: join(stationRoot, 'discord-viola.env.ps1'),
     })
+  })
+
+  test('falls back to Discord token auth without exposing the token', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'runtime-coherence-auth-'))
+    const stationRoot = join(root, 'local-command-station')
+    mkdirSync(stationRoot, { recursive: true })
+    writeFileSync(
+      join(stationRoot, 'discord-viola.env.ps1'),
+      "$env:DISCORD_BOT_TOKEN = 'secret-token-value'",
+      'utf8',
+    )
+    const target = resolveDiscordProbeTarget(root, 'Viola')
+    const fallback = await probeDiscordBotTokenFallback(target, async () =>
+      new Response('{}', {
+        status: 401,
+      }),
+    )
+
+    expect(fallback).toMatchObject({
+      label: 'Viola',
+      url: target.envFilePath,
+      reachable: true,
+      status: 'blocked',
+    })
+    expect(fallback?.detail).toContain('HTTP 401')
+    expect(fallback?.detail).not.toContain('secret-token-value')
   })
 
   test('falls back to the fresh ready receipt when the HTTP probe is unavailable', () => {

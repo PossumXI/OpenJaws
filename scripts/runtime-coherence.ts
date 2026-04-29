@@ -31,6 +31,7 @@ type DiscordProbeTarget = {
   label: string
   url: string
   receiptPath: string
+  envFilePath: string
 }
 
 type MinimalDiscordReceipt = {
@@ -222,10 +223,15 @@ export function resolveDiscordProbeTarget(
   label: string,
 ): DiscordProbeTarget {
   const port = resolveDiscordProbePort(root, label)
+  const defaults = DISCORD_PROBE_DEFAULTS[label]
+  if (!defaults) {
+    throw new Error(`Unsupported Discord probe label: ${label}`)
+  }
   return {
     label,
     url: `http://127.0.0.1:${port}/health`,
     receiptPath: resolveDiscordProbeReceiptPath(root, label),
+    envFilePath: resolve(root, 'local-command-station', defaults.envFile),
   }
 }
 
@@ -322,6 +328,69 @@ export function buildDiscordProbeFallback(
   }
 }
 
+function isTruthyEnvValue(value: string | null): boolean {
+  if (!value) {
+    return false
+  }
+  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
+}
+
+export async function probeDiscordBotTokenFallback(
+  target: DiscordProbeTarget,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ProbeResult | null> {
+  const gatewayEnabled = readDiscordEnvAssignment(
+    target.envFilePath,
+    'DISCORD_GATEWAY_ENABLED',
+  )
+  if (gatewayEnabled !== null && !isTruthyEnvValue(gatewayEnabled)) {
+    return null
+  }
+
+  const token = readDiscordEnvAssignment(target.envFilePath, 'DISCORD_BOT_TOKEN')
+  if (!token) {
+    return null
+  }
+
+  try {
+    const response = await fetchImpl('https://discord.com/api/v10/users/@me', {
+      headers: {
+        Authorization: `Bot ${token}`,
+      },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (response.status === 200) {
+      return {
+        label: target.label,
+        url: target.envFilePath,
+        reachable: true,
+        status: 'degraded',
+        detail:
+          'Discord accepted the bot token, but the local agent health endpoint is not listening.',
+      }
+    }
+    if (response.status === 401) {
+      return {
+        label: target.label,
+        url: target.envFilePath,
+        reachable: true,
+        status: 'blocked',
+        detail:
+          'Discord rejected the configured bot token with HTTP 401; rotate DISCORD_BOT_TOKEN before starting this agent.',
+      }
+    }
+    return {
+      label: target.label,
+      url: target.envFilePath,
+      reachable: true,
+      status: 'degraded',
+      detail: `Discord token preflight returned HTTP ${response.status}; local agent health endpoint is not listening.`,
+    }
+  } catch {
+    return null
+  }
+}
+
 function isLiveRoundtableSessionStatus(status: string | null | undefined): boolean {
   return status === 'running' || status === 'queued' || status === 'awaiting_approval'
 }
@@ -366,12 +435,19 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     ),
     probePersonaPlexCoherence(),
   ])
-  const probes = rawProbes.map((probe, index) => {
-    if (probe.reachable) {
-      return probe
-    }
-    return buildDiscordProbeFallback(probeTargets[index]!) ?? probe
-  })
+  const probes = await Promise.all(
+    rawProbes.map(async (probe, index) => {
+      if (probe.reachable) {
+        return probe
+      }
+      const target = probeTargets[index]!
+      return (
+        buildDiscordProbeFallback(target) ??
+        (await probeDiscordBotTokenFallback(target)) ??
+        probe
+      )
+    }),
+  )
   const report = buildRuntimeCoherenceReport({
     harnessStatus,
     qAgentReceipt: readDiscordQAgentReceipt(root),
