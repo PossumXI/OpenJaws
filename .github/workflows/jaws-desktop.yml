@@ -47,6 +47,8 @@ jobs:
             librsvg2-dev \
             patchelf \
             file
+          sudo apt-get install -y --no-install-recommends libfuse2 || \
+            sudo apt-get install -y --no-install-recommends libfuse2t64
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
