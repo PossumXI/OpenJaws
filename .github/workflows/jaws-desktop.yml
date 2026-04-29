@@ -69,6 +69,10 @@ jobs:
           CI: true
         run: bun run verify:public
 
+      - name: Build platform OpenJaws sidecar
+        if: runner.os != 'Windows'
+        run: bun run build:native
+
       - name: Verify JAWS desktop build
         env:
           CI: true
