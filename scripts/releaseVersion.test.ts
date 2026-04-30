@@ -23,6 +23,20 @@ describe('getOpenJawsReleaseVersion', () => {
     ).toBe('2.1.86')
   })
 
+  test('ignores JAWS desktop tags for OpenJaws sidecar builds', () => {
+    expect(
+      getOpenJawsReleaseVersion({
+        packageVersion: '2.1.86',
+        env: {
+          GITHUB_REF_TYPE: 'tag',
+          GITHUB_REF_NAME: 'jaws-v2.1.86',
+          CI: 'true',
+          GITHUB_SHA: 'abcdef1234567890',
+        } as NodeJS.ProcessEnv,
+      }),
+    ).toBe('2.1.86+sha.abcdef1')
+  })
+
   test('adds CI sha build metadata for non-tag builds', () => {
     expect(
       getOpenJawsReleaseVersion({

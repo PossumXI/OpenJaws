@@ -10,6 +10,19 @@ function normalizeReleaseVersion(version: string): string {
   return normalized
 }
 
+function getOpenJawsTagVersion(env: NodeJS.ProcessEnv): string | null {
+  if (env.GITHUB_REF_TYPE !== 'tag' || !env.GITHUB_REF_NAME) {
+    return null
+  }
+
+  const refName = env.GITHUB_REF_NAME.trim()
+  if (/^jaws-v/i.test(refName)) {
+    return null
+  }
+
+  return normalizeReleaseVersion(refName)
+}
+
 function stripBuildMetadata(version: string): string {
   return version.split('+', 1)[0]!
 }
@@ -37,10 +50,7 @@ export function getOpenJawsReleaseVersion(options: {
   const explicitVersion = env.OPENJAWS_RELEASE_VERSION
     ? normalizeReleaseVersion(env.OPENJAWS_RELEASE_VERSION)
     : null
-  const tagVersion =
-    env.GITHUB_REF_TYPE === 'tag' && env.GITHUB_REF_NAME
-      ? normalizeReleaseVersion(env.GITHUB_REF_NAME)
-      : null
+  const tagVersion = getOpenJawsTagVersion(env)
 
   if (explicitVersion && tagVersion && explicitVersion !== tagVersion) {
     throw new Error(
