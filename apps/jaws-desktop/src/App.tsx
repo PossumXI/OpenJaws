@@ -1,0 +1,3473 @@
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { check, type Update } from "@tauri-apps/plugin-updater";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import {
+  Activity,
+  BellRing,
+  Bot,
+  BrainCircuit,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  CircleDot,
+  Coffee,
+  Crown,
+  ExternalLink,
+  Film,
+  FolderOpen,
+  Gauge,
+  GitCompare,
+  Heart,
+  Maximize2,
+  MessageSquare,
+  MonitorPlay,
+  PackagePlus,
+  Pause,
+  Play,
+  RadioTower,
+  RefreshCcw,
+  Settings2,
+  ShieldCheck,
+  Send,
+  Sparkles,
+  TerminalSquare,
+  UserRound,
+  XCircle,
+  Zap
+} from "lucide-react";
+import {
+  agentEvents,
+  layoutThemes,
+  marketplaceItems,
+  navItems,
+  systemLanes,
+  type AgentEvent,
+  type SectionId,
+  type ThemeId
+} from "./data";
+import {
+  addHoldemChat,
+  advanceHoldemRound,
+  advanceSlowGuy,
+  createHoldemTable,
+  createSlowGuyState,
+  describeCard,
+  type HoldemTableState,
+  type SlowGuyAction,
+  type SlowGuyState
+} from "./games";
+import {
+  contextConfidenceLabel,
+  contextCoverageTone,
+  contextScanRatio,
+  formatTokenEstimate
+} from "./context";
+import releaseIndex from "./release-index.json";
+import { normalizePreviewFrameUrl } from "./previewUrl";
+import { buildWorkspaceSelection, type TerminalPlatform } from "./workspace";
+
+declare global {
+  interface Window {
+    __TAURI_INTERNALS__?: unknown;
+    webkitAudioContext?: typeof AudioContext;
+  }
+}
+
+interface BackendStatus {
+  appVersion: string;
+  sidecarName: string;
+  sidecarReady: boolean;
+  sidecarMessage: string;
+  updateChannel: string;
+  releaseSites: string[];
+  releaseTag?: string;
+  releaseVersion?: string;
+  releaseRepo?: string;
+  releaseUrl?: string;
+  releaseApiUrl?: string;
+}
+
+interface EnrollmentLink {
+  label: string;
+  url: string;
+}
+
+interface SidecarSmoke {
+  ok: boolean;
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+interface OpenJawsChatResult {
+  ok: boolean;
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  summary: string;
+  permissionMode: string;
+  workspacePath: string;
+}
+
+interface WorkspaceStatus {
+  path: string;
+  name: string;
+  valid: boolean;
+  message: string;
+  tuiCommand: string;
+}
+
+interface AccountSession {
+  email: string;
+  role: string;
+  plan: string;
+  status: string;
+  savedAt: string;
+  source: string;
+  displayName: string;
+}
+
+interface ChatMessage {
+  id: string;
+  speaker: string;
+  role: "user" | "agent" | "system";
+  body: string;
+  time: string;
+  state: "done" | "thinking" | "queued";
+  lane: string;
+}
+
+interface JawsNotification {
+  id: string;
+  title: string;
+  detail: string;
+  tone: "complete" | "input" | "update";
+  time: string;
+}
+
+interface ChangePreview {
+  file: string;
+  status: string;
+  before: string;
+  after: string;
+}
+
+interface CyberPetState {
+  name: string;
+  tokens: number;
+  energy: number;
+  fullness: number;
+  egg: number;
+  gear: string;
+  decor: string;
+  mood: string;
+}
+
+interface UserProfile {
+  name: string;
+  handle: string;
+  focus: string;
+}
+
+interface AgentProfile {
+  name: string;
+  role: string;
+  status: string;
+  load: number;
+}
+
+interface UpdatePipelineEntry {
+  id: string;
+  label: string;
+  status: "ready" | "checking" | "ok" | "error" | "info";
+  detail: string;
+}
+
+interface AgentRuntimeSnapshot {
+  checkedAt: string;
+  source: string;
+  summary: string;
+  queueCount: number;
+  workerCount: number;
+  runtimeCount: number;
+  events: AgentEvent[];
+}
+
+interface BrowserPreviewSessionSummary {
+  id: string;
+  action: string;
+  intent: string;
+  requestedBy: string;
+  startedAt: string;
+  opened: boolean;
+  note: string;
+  url: string;
+}
+
+interface BrowserPreviewSnapshot {
+  checkedAt: string;
+  receiptPath: string;
+  receiptExists: boolean;
+  receiptSummary: string;
+  sessionCount: number;
+  launchConfigPath: string;
+  launchConfigExists: boolean;
+  launchUrl: string;
+  devCommand: string;
+  previewCommand: string;
+  playwrightCodegenCommand: string;
+  playwrightTestCommand: string;
+  sessions: BrowserPreviewSessionSummary[];
+}
+
+interface PreviewLaunchConfigResult {
+  ok: boolean;
+  path: string;
+  message: string;
+  url: string;
+  devCommand: string;
+  previewCommand: string;
+  playwrightCodegenCommand: string;
+  playwrightTestCommand: string;
+}
+
+interface PreviewDemoHarnessResult {
+  ok: boolean;
+  outputDir: string;
+  message: string;
+  name: string;
+  slug: string;
+  url: string;
+  devCommand: string;
+  previewCommand: string;
+  playwrightInstallCommand: string;
+  playwrightCodegenCommand: string;
+  playwrightTestCommand: string;
+  playwrightHeadedCommand: string;
+  readmePath: string;
+  packagePath: string;
+  configPath: string;
+  specPath: string;
+  receiptPath: string;
+  receiptHash: string;
+}
+
+interface QAgentsCoworkControl {
+  id: string;
+  label: string;
+  detail: string;
+  status: string;
+}
+
+interface QAgentsCoworkPlan {
+  mode: string;
+  roomCode: string;
+  sharedPhaseMemory: boolean;
+  pooledCredits: boolean;
+  routePolicy: string;
+  controls: QAgentsCoworkControl[];
+}
+
+interface ContextCategory {
+  id: string;
+  label: string;
+  fileCount: number;
+  includedCount: number;
+  estimatedTokens: number;
+  confidence: number;
+  status: string;
+  detail: string;
+}
+
+interface ContextPriorityFile {
+  path: string;
+  kind: string;
+  reason: string;
+  estimatedTokens: number;
+  status: string;
+}
+
+interface ContextSkippedGroup {
+  reason: string;
+  count: number;
+  examples: string[];
+}
+
+interface ContextBrainLane {
+  label: string;
+  receives: string;
+  status: string;
+  detail: string;
+}
+
+interface ProjectContextSnapshot {
+  checkedAt: string;
+  workspacePath: string;
+  workspaceName: string;
+  valid: boolean;
+  source: string;
+  confidenceScore: number;
+  summary: string;
+  totalFiles: number;
+  scannedFiles: number;
+  skippedFiles: number;
+  estimatedTokens: number;
+  contextBudgetTokens: number;
+  categories: ContextCategory[];
+  priorityFiles: ContextPriorityFile[];
+  skipped: ContextSkippedGroup[];
+  brainLanes: ContextBrainLane[];
+  notes: string[];
+}
+
+type ArcadeView = "slow-guy" | "holdem" | "world";
+
+interface JawsReleaseIndex {
+  version: string;
+  tag: string;
+  repo: string;
+  github: {
+    releaseUrl: string;
+    apiUrl: string;
+    baseAssetUrl: string;
+  };
+  mirrors: Array<{
+    id: string;
+    label: string;
+    pageUrl: string;
+    routeBaseUrl: string;
+  }>;
+}
+
+const jawsReleaseIndex = releaseIndex as JawsReleaseIndex;
+
+const fallbackStatus: BackendStatus = {
+  appVersion: jawsReleaseIndex.version,
+  sidecarName: "openjaws",
+  sidecarReady: false,
+  sidecarMessage: "Desktop preview running outside Tauri",
+  updateChannel: "stable",
+  releaseSites: jawsReleaseIndex.mirrors.map((mirror) => mirror.pageUrl),
+  releaseTag: jawsReleaseIndex.tag,
+  releaseVersion: jawsReleaseIndex.version,
+  releaseRepo: jawsReleaseIndex.repo,
+  releaseUrl: jawsReleaseIndex.github.releaseUrl,
+  releaseApiUrl: jawsReleaseIndex.github.apiUrl
+};
+
+const fallbackLinks: EnrollmentLink[] = [
+  { label: "Qline", url: "https://qline.site" },
+  { label: "Iorch", url: "https://iorch.net" },
+  { label: "GitHub", url: "https://github.com/PossumXI/OpenJaws" }
+];
+
+const fallbackWorkspace: WorkspaceStatus = {
+  path: "",
+  name: "No workspace",
+  valid: false,
+  message: "Set a project folder to route OpenJaws like a local cd command.",
+  tuiCommand: "openjaws"
+};
+
+const fallbackPreviewSnapshot: BrowserPreviewSnapshot = {
+  checkedAt: "preview",
+  receiptPath: "~/.openjaws/browser-preview/receipt.json",
+  receiptExists: false,
+  receiptSummary: "Run inside Tauri to inspect OpenJaws browser-preview receipts.",
+  sessionCount: 0,
+  launchConfigPath: ".openjaws/launch.json",
+  launchConfigExists: false,
+  launchUrl: "http://127.0.0.1:5173/",
+  devCommand: "npm run dev",
+  previewCommand: "/preview http://127.0.0.1:5173/",
+  playwrightCodegenCommand: "bunx playwright codegen http://127.0.0.1:5173/",
+  playwrightTestCommand: "bunx playwright test",
+  sessions: []
+};
+
+const fallbackCoworkPlan: QAgentsCoworkPlan = {
+  mode: "stacked-agents",
+  roomCode: "JWS-QAGENTS",
+  sharedPhaseMemory: true,
+  pooledCredits: false,
+  routePolicy: "health-gated dispatch with explicit user approval for shared credits",
+  controls: [
+    {
+      id: "planner",
+      label: "Q planner",
+      detail: "Decomposes work and assigns bounded agent lanes.",
+      status: "ready"
+    },
+    {
+      id: "implementer",
+      label: "Q_agent implementer",
+      detail: "Owns narrow code-change lanes with scoped workspace access.",
+      status: "health gated"
+    },
+    {
+      id: "verifier",
+      label: "Q_agent verifier",
+      detail: "Runs tests, previews, release checks, and security sweeps.",
+      status: "health gated"
+    }
+  ]
+};
+
+const jawFrames = [
+  String.raw`    __
+ __/  \__
+/  JAWS  \
+\__    __/
+   \__/`,
+  String.raw`  \        /
+   \  JAWS /
+    \    /
+     \  /
+      \/`,
+  String.raw`  /\/\/\/\
+ <  JAWS  >
+  \/\/\/\/`,
+  String.raw`      /\
+  ___/  \___
+ /  JAWS   \
+ \___  ____/
+     \/`
+];
+
+const initialMessages: ChatMessage[] = [
+  {
+    id: "system-ready",
+    speaker: "JAWS",
+    role: "system",
+    body: "Chat lane ready. Commands route through OpenJaws with Q, Q_agents, OpenCheek, and Immaculate visible in the work stream.",
+    time: "now",
+    state: "done",
+    lane: "system"
+  },
+  {
+    id: "agent-watch",
+    speaker: "Q_agents",
+    role: "agent",
+    body: "Workspace watcher armed. Turn on compare mode to inspect file deltas while agents work.",
+    time: "now",
+    state: "queued",
+    lane: "agents"
+  }
+];
+
+const initialNotifications: JawsNotification[] = [
+  {
+    id: "update-coming",
+    title: "Update incoming",
+    detail: "A JAWS update is being prepared for later. Keep notifications armed for the release prompt.",
+    tone: "update",
+    time: "now"
+  }
+];
+
+const changePreview: ChangePreview[] = [
+  {
+    file: "src/orchestrator/dispatch.ts",
+    status: "proposed",
+    before: "dispatch(worker, task)",
+    after: "dispatch(healthGate(worker), task, sharedPhaseMemory)"
+  },
+  {
+    file: "apps/jaws-desktop/session.json",
+    status: "local",
+    before: "permissions: prompt",
+    after: "permissions: review first or fast queue"
+  },
+  {
+    file: "website/api/jaws/latest.json",
+    status: "release",
+    before: "notification: idle",
+    after: "notification: update pipeline armed"
+  }
+];
+
+const chatTools = [
+  { label: "Inspect", prompt: "Inspect this workspace and tell me the safest next fix." },
+  { label: "Code", prompt: "Implement the next high-value production change, then verify it." },
+  { label: "Test", prompt: "Run the focused test suite, explain failures, and repair them." },
+  { label: "Agents", prompt: "Spin up Q_agents for parallel review, implementation, and verification lanes." },
+  { label: "Bench", prompt: "Run the benchmark harness once and capture actionable verifier output." },
+  { label: "Ship", prompt: "Prepare release notes, tag the build, and verify updater metadata." }
+];
+
+const defaultPet: CyberPetState = {
+  name: "Byte Hopper",
+  tokens: 42,
+  energy: 74,
+  fullness: 68,
+  egg: 36,
+  gear: "visor",
+  decor: "neon pad",
+  mood: "curious"
+};
+
+const defaultUserProfile: UserProfile = {
+  name: "Founder",
+  handle: "gaetano",
+  focus: "Ship clean releases"
+};
+
+const agentProfiles: AgentProfile[] = [
+  { name: "Q", role: "Primary planner", status: "Thinking", load: 62 },
+  { name: "Q_agents", role: "Parallel workers", status: "Standing by", load: 41 },
+  { name: "OpenCheek", role: "Co-work loop", status: "Memory attached", load: 54 },
+  { name: "Immaculate", role: "Crew pacing", status: "Ready", load: 28 }
+];
+
+const initialUpdatePipeline: UpdatePipelineEntry[] = [
+  {
+    id: "runtime",
+    label: "Tauri updater",
+    status: "ready",
+    detail: "Waiting for a signed update check from the native runtime."
+  },
+  ...jawsReleaseIndex.mirrors.map((mirror) => ({
+    id: mirror.id,
+    label: `${mirror.label} mirror`,
+    status: "ready",
+    detail: `${mirror.routeBaseUrl}/latest.json`
+  }) satisfies UpdatePipelineEntry),
+  {
+    id: "github",
+    label: "GitHub release",
+    status: "ready",
+    detail: `${jawsReleaseIndex.tag} signed assets`
+  }
+];
+
+const complianceDocuments = [
+  {
+    title: "Terms Of Use",
+    tone: "Legal",
+    summary:
+      "JAWS is provided as a subscription IDE and orchestration shell. Users must keep credentials private, own or have rights to the workspaces they open, and review agent output before relying on it."
+  },
+  {
+    title: "Final Sale Policy",
+    tone: "Billing",
+    summary:
+      "Subscription fees and delivered services are final sale except where a refund, cancellation right, chargeback right, or remedy is required by applicable law or payment-network rules."
+  },
+  {
+    title: "Security And Privacy",
+    tone: "Security",
+    summary:
+      "Workspace access is local by default. Signed updates, HTTPS release routes, explicit account enrollment, review-first permissions, and scoped marketplace packages protect users and company assets."
+  },
+  {
+    title: "Community Content",
+    tone: "Marketplace",
+    summary:
+      "Games, skills, tools, widgets, and community agents must be signed, reviewed, capability-scoped, reversible, and free of secrets or prohibited content before public distribution."
+  },
+  {
+    title: "AI Output Notice",
+    tone: "Compliance",
+    summary:
+      "Q, Q_agents, OpenCheek, and Immaculate can make mistakes. Users remain responsible for testing, licensing checks, security review, and production approval."
+  }
+];
+
+const developerDocuments = [
+  {
+    label: "Desktop Build",
+    command: "bun run jaws:verify",
+    detail: "Runs desktop tests, prepares the OpenJaws sidecar, builds the UI, and runs Tauri cargo check."
+  },
+  {
+    label: "Release Check",
+    command: "bun run jaws:release:check",
+    detail: "Validates signed updater configuration, release index freshness, icons, endpoints, and manifest generation."
+  },
+  {
+    label: "Mirror Health",
+    command: "bun run jaws:mirror:check --json",
+    detail: "Checks qline.site, iorch.net, GitHub release assets, redirects, and signed updater manifest alignment."
+  },
+  {
+    label: "Public Guard",
+    command: "bun run showcase:copy:check",
+    detail: "Scans public-facing copy for local paths, raw receipts, stale lane wording, and token-shaped leaks."
+  }
+];
+
+function hasTauriRuntime() {
+  return "__TAURI_INTERNALS__" in window;
+}
+
+function toneLabel(tone: "good" | "warn" | "neutral") {
+  if (tone === "good") return "Ready";
+  if (tone === "warn") return "Review";
+  return "Queued";
+}
+
+function terminalPlatform(): TerminalPlatform {
+  return navigator.platform.toLowerCase().includes("win") ? "windows" : "posix";
+}
+
+function loadStoredAccountSession(): AccountSession | null {
+  try {
+    return JSON.parse(localStorage.getItem("jaws.accountSession") ?? "null") as AccountSession | null;
+  } catch {
+    return null;
+  }
+}
+
+function loadStoredValue<T>(key: string, fallback: T): T {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? "null") ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function loadSlowGuyState(): SlowGuyState {
+  const bestScore = Number(localStorage.getItem("jaws.slowGuyBest") ?? "0") || 0;
+  const fallback = createSlowGuyState(bestScore);
+  const stored = loadStoredValue<Partial<SlowGuyState> | null>("jaws.slowGuy", null);
+  if (!stored || typeof stored !== "object") return fallback;
+  return {
+    ...fallback,
+    ...stored,
+    bestScore: Math.max(bestScore, stored.bestScore ?? fallback.bestScore),
+    hazards: Array.isArray(stored.hazards) ? stored.hazards : fallback.hazards,
+    coins: Array.isArray(stored.coins) ? stored.coins : fallback.coins
+  };
+}
+
+function loadHoldemTable(playerName: string): HoldemTableState {
+  const fallback = createHoldemTable(playerName);
+  const stored = loadStoredValue<Partial<HoldemTableState> | null>("jaws.holdemTable", null);
+  if (!stored || typeof stored !== "object") return fallback;
+  return {
+    ...fallback,
+    ...stored,
+    deck: Array.isArray(stored.deck) ? stored.deck : fallback.deck,
+    communityCards: Array.isArray(stored.communityCards) ? stored.communityCards : fallback.communityCards,
+    seats: Array.isArray(stored.seats) ? stored.seats : fallback.seats,
+    winners: Array.isArray(stored.winners) ? stored.winners : fallback.winners,
+    chat: Array.isArray(stored.chat) ? stored.chat : fallback.chat,
+    multiplayer: stored.multiplayer ?? fallback.multiplayer,
+    sandbox: stored.sandbox ?? fallback.sandbox
+  };
+}
+
+function formatOpenJawsChatResult(result: OpenJawsChatResult) {
+  const output = result.stdout || result.stderr || "OpenJaws returned no text output.";
+  const code = result.code === null ? "unknown" : String(result.code);
+  return [
+    result.summary,
+    `Mode: ${result.permissionMode} - Exit: ${code}`,
+    `Workspace: ${result.workspacePath || "not attached"}`,
+    "",
+    output
+  ].join("\n");
+}
+
+function fallbackAgentRuntimeSnapshot(): AgentRuntimeSnapshot {
+  return {
+    checkedAt: "preview",
+    source: "static preview",
+    summary: "Native Agent Watch snapshots are available inside the JAWS Tauri desktop runtime.",
+    queueCount: 0,
+    workerCount: 0,
+    runtimeCount: 0,
+    events: agentEvents
+  };
+}
+
+function fallbackProjectContextSnapshot(workspace: WorkspaceStatus = fallbackWorkspace): ProjectContextSnapshot {
+  const valid = workspace.valid || Boolean(workspace.path);
+  return {
+    checkedAt: "preview",
+    workspacePath: workspace.path,
+    workspaceName: workspace.name || "No workspace",
+    valid,
+    source: valid ? "static preview" : "workspace not selected",
+    confidenceScore: valid ? 48 : 0,
+    summary: valid
+      ? "Native context packs are available inside the JAWS Tauri desktop runtime. Preview mode shows the shape of the receipt without scanning files."
+      : "Open a project folder to show the exact context pack JAWS can route to Q and Q_agents.",
+    totalFiles: valid ? 12 : 0,
+    scannedFiles: valid ? 6 : 0,
+    skippedFiles: valid ? 6 : 0,
+    estimatedTokens: valid ? 18_000 : 0,
+    contextBudgetTokens: 200_000,
+    categories: valid
+      ? [
+          {
+            id: "code",
+            label: "Code",
+            fileCount: 4,
+            includedCount: 4,
+            estimatedTokens: 9_500,
+            confidence: 100,
+            status: "included",
+            detail: "Source files that explain behavior and implementation."
+          },
+          {
+            id: "tests",
+            label: "Tests",
+            fileCount: 1,
+            includedCount: 1,
+            estimatedTokens: 2_000,
+            confidence: 100,
+            status: "included",
+            detail: "Verifier files that define expected behavior."
+          },
+          {
+            id: "assets",
+            label: "Assets",
+            fileCount: 7,
+            includedCount: 1,
+            estimatedTokens: 6_500,
+            confidence: 14,
+            status: "partial",
+            detail: "Binary or media assets tracked as metadata only."
+          }
+        ]
+      : [],
+    priorityFiles: valid
+      ? [
+          {
+            path: "README.md",
+            kind: "Docs",
+            reason: "project contract",
+            estimatedTokens: 2_400,
+            status: "included"
+          },
+          {
+            path: "package.json",
+            kind: "Config",
+            reason: "project contract",
+            estimatedTokens: 900,
+            status: "included"
+          }
+        ]
+      : [],
+    skipped: valid
+      ? [
+          {
+            reason: "generated or hidden directory",
+            count: 4,
+            examples: ["node_modules", ".git"]
+          },
+          {
+            reason: "secret-like file",
+            count: 2,
+            examples: [".env.local"]
+          }
+        ]
+      : [],
+    brainLanes: [
+      {
+        label: "Q planner",
+        receives: "workspace map, priority files, test/config/docs coverage",
+        status: valid ? "review" : "blocked",
+        detail: "Uses the visible context receipt before task decomposition."
+      },
+      {
+        label: "Q_agents",
+        receives: "bounded file lists, skipped reasons, verifier targets",
+        status: valid ? "review" : "blocked",
+        detail: "Worker lanes inherit the same visible context receipt."
+      }
+    ],
+    notes: [
+      "No raw file contents are shown in this view.",
+      "Secret-like files and generated directories are summarized as skips."
+    ]
+  };
+}
+
+export function App() {
+  const [active, setActive] = useState<SectionId>("control");
+  const [collapsed, setCollapsed] = useState(false);
+  const [appearance, setAppearance] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<ThemeId>("default");
+  const [status, setStatus] = useState<BackendStatus>(fallbackStatus);
+  const [links, setLinks] = useState<EnrollmentLink[]>(fallbackLinks);
+  const [smoke, setSmoke] = useState<SidecarSmoke | null>(null);
+  const [workspaceInput, setWorkspaceInput] = useState(() => localStorage.getItem("jaws.workspace") ?? "");
+  const [workspaceStatus, setWorkspaceStatus] = useState<WorkspaceStatus>(fallbackWorkspace);
+  const [workspaceSmoke, setWorkspaceSmoke] = useState<SidecarSmoke | null>(null);
+  const [updateState, setUpdateState] = useState("Not checked");
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updatePipeline, setUpdatePipeline] = useState<UpdatePipelineEntry[]>(initialUpdatePipeline);
+  const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
+  const [account, setAccount] = useState<AccountSession | null>(() => loadStoredAccountSession());
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(initialMessages);
+  const [chatBusy, setChatBusy] = useState(false);
+  const [notifications, setNotifications] = useState<JawsNotification[]>(initialNotifications);
+  const [firework, setFirework] = useState<JawsNotification | null>(null);
+  const [compareMode, setCompareMode] = useState(() => localStorage.getItem("jaws.compareMode") === "true");
+  const [fastRunMode, setFastRunMode] = useState(
+    () =>
+      localStorage.getItem("jaws.fastRunMode") === "true" ||
+      localStorage.getItem("jaws.bypassPermissions") === "true"
+  );
+  const [notificationsArmed, setNotificationsArmed] = useState(
+    () => localStorage.getItem("jaws.notificationsArmed") !== "false"
+  );
+  const [pet, setPet] = useState<CyberPetState>(() => loadStoredValue("jaws.cyberPet", defaultPet));
+  const [userProfile, setUserProfile] = useState<UserProfile>(() =>
+    loadStoredValue("jaws.userProfile", defaultUserProfile)
+  );
+  const [arcadeView, setArcadeView] = useState<ArcadeView>("slow-guy");
+  const [slowGuy, setSlowGuy] = useState<SlowGuyState>(() => loadSlowGuyState());
+  const [holdemTable, setHoldemTable] = useState<HoldemTableState>(() => loadHoldemTable("Founder"));
+  const [holdemChatInput, setHoldemChatInput] = useState("");
+  const [jawFrame, setJawFrame] = useState(0);
+  const [agentRuntime, setAgentRuntime] = useState<AgentRuntimeSnapshot>(() => fallbackAgentRuntimeSnapshot());
+  const [agentRuntimeLoading, setAgentRuntimeLoading] = useState(false);
+  const [projectContext, setProjectContext] = useState<ProjectContextSnapshot>(() =>
+    fallbackProjectContextSnapshot()
+  );
+  const [projectContextLoading, setProjectContextLoading] = useState(false);
+  const [previewSnapshot, setPreviewSnapshot] = useState<BrowserPreviewSnapshot>(fallbackPreviewSnapshot);
+  const [previewUrl, setPreviewUrl] = useState(
+    () => localStorage.getItem("jaws.previewUrl") ?? fallbackPreviewSnapshot.launchUrl
+  );
+  const [previewDevCommand, setPreviewDevCommand] = useState(
+    () => localStorage.getItem("jaws.previewDevCommand") ?? fallbackPreviewSnapshot.devCommand
+  );
+  const [previewConfigResult, setPreviewConfigResult] = useState<PreviewLaunchConfigResult | null>(null);
+  const [previewDemoResult, setPreviewDemoResult] = useState<PreviewDemoHarnessResult | null>(null);
+  const [previewRunResult, setPreviewRunResult] = useState<OpenJawsChatResult | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [coworkPlan, setCoworkPlan] = useState<QAgentsCoworkPlan>(fallbackCoworkPlan);
+  const [coworkStackMode, setCoworkStackMode] = useState<"solo" | "pair" | "stacked">("stacked");
+  const [coworkSharedCredits, setCoworkSharedCredits] = useState(fallbackCoworkPlan.pooledCredits);
+  const [coworkLaneEnabled, setCoworkLaneEnabled] = useState<Record<string, boolean>>(() =>
+    fallbackCoworkPlan.controls.reduce<Record<string, boolean>>((lanes, control) => {
+      lanes[control.id] = control.id !== "cowork";
+      return lanes;
+    }, {})
+  );
+
+  useEffect(() => {
+    document.documentElement.dataset.appearance = appearance;
+    document.documentElement.dataset.theme = theme;
+  }, [appearance, theme]);
+
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+
+    void invoke<BackendStatus>("backend_status")
+      .then(setStatus)
+      .catch((error) =>
+        setStatus({
+          ...fallbackStatus,
+          sidecarMessage: String(error)
+        })
+      );
+
+    void invoke<EnrollmentLink[]>("enrollment_links").then(setLinks).catch(() => setLinks(fallbackLinks));
+
+    void invoke<AccountSession | null>("account_session")
+      .then((session) => {
+        if (!session) return;
+        setAccount(session);
+        localStorage.setItem("jaws.accountSession", JSON.stringify(session));
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setJawFrame((frame) => (frame + 1) % jawFrames.length);
+    }, 520);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.compareMode", String(compareMode));
+  }, [compareMode]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.fastRunMode", String(fastRunMode));
+    localStorage.removeItem("jaws.bypassPermissions");
+  }, [fastRunMode]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.notificationsArmed", String(notificationsArmed));
+  }, [notificationsArmed]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.cyberPet", JSON.stringify(pet));
+  }, [pet]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.userProfile", JSON.stringify(userProfile));
+  }, [userProfile]);
+
+  useEffect(() => {
+    if (!slowGuy.running || slowGuy.gameOver) return;
+    const timer = window.setInterval(() => {
+      setSlowGuy((state) => advanceSlowGuy(state, "tick"));
+    }, 560);
+    return () => window.clearInterval(timer);
+  }, [slowGuy.running, slowGuy.gameOver]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.slowGuy", JSON.stringify(slowGuy));
+    localStorage.setItem("jaws.slowGuyBest", String(slowGuy.bestScore));
+  }, [slowGuy]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.holdemTable", JSON.stringify(holdemTable));
+  }, [holdemTable]);
+
+  useEffect(() => {
+    if (active !== "arcade" || arcadeView !== "slow-guy") return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const keyMap: Record<string, SlowGuyAction> = {
+        ArrowLeft: "left",
+        ArrowRight: "right",
+        ArrowUp: "jump",
+        " ": "jump",
+        ArrowDown: "duck",
+        s: "duck",
+        S: "duck",
+        d: "dash",
+        D: "dash",
+        p: "pause",
+        P: "pause",
+        r: "reset",
+        R: "reset"
+      };
+      const action = keyMap[event.key];
+      if (!action) return;
+      event.preventDefault();
+      setSlowGuy((state) => advanceSlowGuy(state, action));
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [active, arcadeView]);
+
+  useEffect(() => {
+    if (active !== "agents") return;
+    void refreshAgentRuntime();
+  }, [active]);
+
+  useEffect(() => {
+    if (active !== "context") return;
+    void refreshProjectContext();
+  }, [active]);
+
+  const activeTitle = useMemo(() => navItems.find((item) => item.id === active)?.label ?? "Control", [active]);
+  const workspaceSelection = useMemo(
+    () => buildWorkspaceSelection(workspaceInput, terminalPlatform()),
+    [workspaceInput]
+  );
+  const previewFrameUrl = useMemo(() => {
+    return normalizePreviewFrameUrl(
+      previewUrl || previewSnapshot.launchUrl,
+      fallbackPreviewSnapshot.launchUrl
+    );
+  }, [previewSnapshot.launchUrl, previewUrl]);
+  const contextLabel = contextConfidenceLabel(projectContext);
+  const contextCoverage = contextScanRatio(projectContext);
+  const contextBudgetPercent = projectContext.contextBudgetTokens
+    ? Math.min(100, Math.round((projectContext.estimatedTokens / projectContext.contextBudgetTokens) * 100))
+    : 0;
+
+  useEffect(() => {
+    localStorage.setItem("jaws.previewUrl", previewUrl);
+  }, [previewUrl]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.previewDevCommand", previewDevCommand);
+  }, [previewDevCommand]);
+
+  useEffect(() => {
+    if (active !== "preview") return;
+    void refreshBrowserPreview();
+  }, [active]);
+
+  useEffect(() => {
+    if (!hasTauriRuntime()) {
+      setCoworkPlan(fallbackCoworkPlan);
+      return;
+    }
+
+    void invoke<QAgentsCoworkPlan>("q_agents_cowork_plan")
+      .then((plan) => {
+        setCoworkPlan(plan);
+        setCoworkSharedCredits(plan.pooledCredits);
+        setCoworkLaneEnabled((current) =>
+          plan.controls.reduce<Record<string, boolean>>((lanes, control) => {
+            lanes[control.id] = current[control.id] ?? control.id !== "cowork";
+            return lanes;
+          }, {})
+        );
+      })
+      .catch(() => setCoworkPlan(fallbackCoworkPlan));
+  }, []);
+
+  async function runSmoke() {
+    if (!hasTauriRuntime()) {
+      setSmoke({
+        ok: false,
+        code: null,
+        stdout: "",
+        stderr: "Run inside Tauri to execute the bundled OpenJaws sidecar."
+      });
+      return;
+    }
+
+    const result = await invoke<SidecarSmoke>("openjaws_smoke", {
+      workspacePath: null
+    });
+    setSmoke(result);
+  }
+
+  async function applyWorkspace() {
+    const selection = workspaceSelection;
+    setWorkspaceSmoke(null);
+    localStorage.setItem("jaws.workspace", selection.cleaned);
+
+    if (!hasTauriRuntime()) {
+      setWorkspaceStatus({
+        path: selection.cleaned,
+        name: selection.name,
+        valid: selection.ready,
+        message: selection.ready
+          ? "Preview mode cannot validate the folder, but the command is ready for Tauri."
+          : "Use an absolute project folder path before opening the TUI view.",
+        tuiCommand: selection.command
+      });
+      void refreshProjectContext(selection.cleaned);
+      return;
+    }
+
+    const result = await invoke<WorkspaceStatus>("validate_workspace", {
+      path: selection.cleaned
+    });
+    setWorkspaceStatus(result);
+    if (result.path) {
+      setWorkspaceInput(result.path);
+    }
+    void refreshProjectContext(result.path || selection.cleaned);
+  }
+
+  async function openWorkspaceFolder() {
+    if (!hasTauriRuntime()) {
+      setWorkspaceStatus({
+        path: workspaceSelection.cleaned,
+        name: workspaceSelection.name,
+        valid: false,
+        message: "Open Folder uses the native Tauri desktop picker.",
+        tuiCommand: workspaceSelection.command
+      });
+      return;
+    }
+
+    const selected = await openDialog({
+      title: "Open JAWS workspace folder",
+      directory: true,
+      multiple: false,
+      defaultPath: workspaceStatus.path || workspaceSelection.cleaned || undefined
+    });
+    if (!selected || Array.isArray(selected)) return;
+
+    setWorkspaceInput(selected);
+    localStorage.setItem("jaws.workspace", selected);
+    const result = await invoke<WorkspaceStatus>("validate_workspace", {
+      path: selected
+    });
+    setWorkspaceStatus(result);
+    void refreshProjectContext(result.path || selected);
+
+    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    setChatMessages((messages) => [
+      ...messages,
+      {
+        id: `workspace-${Date.now()}`,
+        speaker: "JAWS",
+        role: "system",
+        body: result.valid
+          ? `Workspace opened: ${result.path}. Chat and TUI routes now use this project folder.`
+          : result.message,
+        time,
+        state: result.valid ? "done" : "queued",
+        lane: "workspace"
+      }
+    ]);
+  }
+
+  async function runWorkspaceSmoke() {
+    if (!hasTauriRuntime()) {
+      setWorkspaceSmoke({
+        ok: false,
+        code: null,
+        stdout: "",
+        stderr: "Run inside Tauri to execute OpenJaws from the selected project folder."
+      });
+      return;
+    }
+
+    const result = await invoke<SidecarSmoke>("openjaws_smoke", {
+      workspacePath: workspaceStatus.path || workspaceSelection.cleaned
+    });
+    setWorkspaceSmoke(result);
+  }
+
+  async function checkForUpdates() {
+    setUpdateChecking(true);
+    setPendingUpdate(null);
+    if (!hasTauriRuntime()) {
+      setUpdateState("Tauri runtime required");
+      setUpdatePipeline([
+        {
+          id: "runtime",
+          label: "Tauri updater",
+          status: "error",
+          detail: "The signed updater only runs inside the native JAWS desktop shell."
+        },
+        ...jawsReleaseIndex.mirrors.map((mirror) => ({
+          id: mirror.id,
+          label: `${mirror.label} mirror`,
+          status: "info" as const,
+          detail: mirror.pageUrl
+        })),
+        {
+          id: "github",
+          label: "GitHub release",
+          status: "info",
+          detail: jawsReleaseIndex.github.releaseUrl
+        },
+        {
+          id: "manifest",
+          label: "Signed manifest",
+          status: "info",
+          detail: `${jawsReleaseIndex.github.baseAssetUrl}/latest.json`
+        }
+      ]);
+      setUpdateChecking(false);
+      return;
+    }
+
+    setUpdatePipeline((entries) =>
+      entries.map((entry) => ({
+        ...entry,
+        status: "checking",
+        detail:
+          entry.id === "runtime"
+            ? "Calling Tauri updater.check() against signed endpoints."
+            : "Native runtime is probing the live release surface."
+      }))
+    );
+
+    const [updateResult, probeResult] = await Promise.allSettled([
+      check(),
+      invoke<UpdatePipelineEntry[]>("probe_release_update_pipeline")
+    ]);
+    const releaseEntries =
+      probeResult.status === "fulfilled"
+        ? probeResult.value
+        : [
+            {
+              id: "native-probe",
+              label: "Native release probe",
+              status: "error" as const,
+              detail: String(probeResult.reason)
+            }
+          ];
+
+    if (updateResult.status === "fulfilled") {
+      const update = updateResult.value;
+      setPendingUpdate(update);
+      setUpdateState(update ? `Update ${update.version} ready` : "Current release");
+      setUpdatePipeline([
+        {
+          id: "runtime",
+          label: "Tauri updater",
+          status: "ok",
+          detail: update
+            ? `Signed update ${update.version} is ready.`
+            : "No newer signed release was offered by the updater."
+        },
+        ...releaseEntries
+      ]);
+    } else {
+      const detail = String(updateResult.reason);
+      setUpdateState(detail);
+      setUpdatePipeline([
+        {
+          id: "runtime",
+          label: "Tauri updater",
+          status: "error",
+          detail
+        },
+        ...releaseEntries
+      ]);
+    }
+    setUpdateChecking(false);
+  }
+
+  async function installUpdate() {
+    if (!pendingUpdate) {
+      setUpdateState("No update selected");
+      return;
+    }
+    setUpdateState(`Downloading ${pendingUpdate.version}`);
+    try {
+      await pendingUpdate.downloadAndInstall((event) => {
+        if (event.event === "Started") setUpdateState(`Downloading ${pendingUpdate.version}`);
+        if (event.event === "Progress") setUpdateState(`Downloading ${pendingUpdate.version}`);
+        if (event.event === "Finished") setUpdateState("Installing update");
+      });
+      setUpdateState("Update installed. Restart JAWS to finish.");
+      setUpdatePipeline((entries) =>
+        entries.map((entry) =>
+          entry.id === "runtime"
+            ? { ...entry, status: "ok", detail: `Installed ${pendingUpdate.version}; restart required.` }
+            : entry
+        )
+      );
+    } catch (error) {
+      setUpdateState(String(error));
+      setUpdatePipeline((entries) =>
+        entries.map((entry) =>
+          entry.id === "runtime"
+            ? { ...entry, status: "error", detail: `Install failed: ${String(error)}` }
+            : entry
+        )
+      );
+    }
+  }
+
+  async function refreshAgentRuntime() {
+    if (!hasTauriRuntime()) {
+      setAgentRuntime(fallbackAgentRuntimeSnapshot());
+      return;
+    }
+
+    setAgentRuntimeLoading(true);
+    try {
+      const snapshot = await invoke<AgentRuntimeSnapshot>("agent_runtime_snapshot", {
+        workspacePath: workspaceStatus.path || workspaceSelection.cleaned || null
+      });
+      setAgentRuntime(snapshot);
+    } catch (error) {
+      setAgentRuntime({
+        ...fallbackAgentRuntimeSnapshot(),
+        checkedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        source: "native bridge error",
+        summary: `Agent Watch snapshot failed: ${String(error)}`
+      });
+    } finally {
+      setAgentRuntimeLoading(false);
+    }
+  }
+
+  async function refreshProjectContext(workspacePath?: string) {
+    const selectedPath = workspacePath ?? (workspaceStatus.path || workspaceSelection.cleaned);
+    if (!hasTauriRuntime()) {
+      setProjectContext(
+        fallbackProjectContextSnapshot({
+          ...workspaceStatus,
+          path: selectedPath,
+          name: workspaceStatus.name || workspaceSelection.name,
+          valid: workspaceStatus.valid || workspaceSelection.ready
+        })
+      );
+      return;
+    }
+
+    setProjectContextLoading(true);
+    try {
+      const snapshot = await invoke<ProjectContextSnapshot>("project_context_snapshot", {
+        workspacePath: selectedPath || null
+      });
+      setProjectContext(snapshot);
+    } catch (error) {
+      setProjectContext({
+        ...fallbackProjectContextSnapshot(workspaceStatus),
+        checkedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        source: "native bridge error",
+        confidenceScore: 0,
+        summary: `Context pack scan failed: ${String(error)}`
+      });
+    } finally {
+      setProjectContextLoading(false);
+    }
+  }
+
+  async function refreshBrowserPreview() {
+    if (!hasTauriRuntime()) {
+      setPreviewSnapshot({
+        ...fallbackPreviewSnapshot,
+        launchUrl: previewFrameUrl,
+        devCommand: previewDevCommand,
+        previewCommand: `/preview ${previewFrameUrl}`,
+        playwrightCodegenCommand: `bunx playwright codegen ${previewFrameUrl}`
+      });
+      return;
+    }
+
+    try {
+      const snapshot = await invoke<BrowserPreviewSnapshot>("browser_preview_snapshot", {
+        workspacePath: workspaceStatus.path || workspaceSelection.cleaned || null
+      });
+      setPreviewSnapshot(snapshot);
+      setPreviewUrl(snapshot.launchUrl);
+      setPreviewDevCommand(snapshot.devCommand);
+    } catch (error) {
+      setPreviewSnapshot({
+        ...fallbackPreviewSnapshot,
+        checkedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        receiptSummary: `Preview bridge failed: ${String(error)}`,
+        launchUrl: previewFrameUrl,
+        devCommand: previewDevCommand
+      });
+    }
+  }
+
+  async function saveBrowserPreviewLaunchConfig() {
+    const workspacePath = workspaceStatus.path || workspaceSelection.cleaned;
+    if (!hasTauriRuntime()) {
+      setPreviewConfigResult({
+        ok: false,
+        path: ".openjaws/launch.json",
+        message: "Native JAWS runtime is required to write the workspace launch config.",
+        url: previewFrameUrl,
+        devCommand: previewDevCommand,
+        previewCommand: `/preview ${previewFrameUrl}`,
+        playwrightCodegenCommand: `bunx playwright codegen ${previewFrameUrl}`,
+        playwrightTestCommand: fallbackPreviewSnapshot.playwrightTestCommand
+      });
+      return;
+    }
+
+    const result = await invoke<PreviewLaunchConfigResult>("write_browser_preview_launch_config", {
+      workspacePath,
+      url: previewFrameUrl,
+      devCommand: previewDevCommand
+    });
+    setPreviewConfigResult(result);
+    if (result.ok) {
+      setPreviewUrl(result.url);
+      setPreviewDevCommand(result.devCommand);
+      await refreshBrowserPreview();
+    }
+  }
+
+  async function writePlaywrightDemoHarness() {
+    const workspacePath = workspaceStatus.path || workspaceSelection.cleaned;
+    if (!hasTauriRuntime()) {
+      setPreviewDemoResult({
+        ok: false,
+        outputDir: "",
+        message: "Native JAWS runtime is required to write the Playwright demo harness.",
+        name: "OpenJaws web app demo",
+        slug: "",
+        url: previewFrameUrl,
+        devCommand: previewDevCommand,
+        previewCommand: `/preview ${previewFrameUrl}`,
+        playwrightInstallCommand: "bunx playwright install chromium",
+        playwrightCodegenCommand: `bunx playwright codegen ${previewFrameUrl}`,
+        playwrightTestCommand: "bunx playwright test",
+        playwrightHeadedCommand: "bunx playwright test --headed",
+        readmePath: "",
+        packagePath: "",
+        configPath: "",
+        specPath: "",
+        receiptPath: "",
+        receiptHash: ""
+      });
+      return;
+    }
+
+    const result = await invoke<PreviewDemoHarnessResult>("write_browser_preview_demo_harness", {
+      workspacePath,
+      url: previewFrameUrl,
+      devCommand: previewDevCommand,
+      name: workspaceStatus.name ? `${workspaceStatus.name} preview demo` : "OpenJaws web app demo"
+    });
+    setPreviewDemoResult(result);
+  }
+
+  async function runBrowserPreviewCommand() {
+    const prompt = previewSnapshot.previewCommand || `/preview ${previewFrameUrl}`;
+    setPreviewBusy(true);
+    setPreviewRunResult(null);
+
+    if (!hasTauriRuntime()) {
+      setPreviewRunResult({
+        ok: false,
+        code: null,
+        stdout: "",
+        stderr: "Run inside the native JAWS desktop shell to execute OpenJaws preview routes.",
+        summary: "Native runtime required.",
+        permissionMode: fastRunMode ? "bypassPermissions" : "default",
+        workspacePath: workspaceStatus.path || workspaceSelection.cleaned || ""
+      });
+      setPreviewBusy(false);
+      return;
+    }
+
+    try {
+      const result = await invoke<OpenJawsChatResult>("run_openjaws_chat", {
+        prompt,
+        workspacePath: workspaceStatus.path || workspaceSelection.cleaned || null,
+        fastRunMode
+      });
+      setPreviewRunResult(result);
+      if (result.ok) {
+        await refreshBrowserPreview();
+      }
+    } catch (error) {
+      setPreviewRunResult({
+        ok: false,
+        code: null,
+        stdout: "",
+        stderr: String(error),
+        summary: "OpenJaws preview command failed before sidecar output.",
+        permissionMode: fastRunMode ? "bypassPermissions" : "default",
+        workspacePath: workspaceStatus.path || workspaceSelection.cleaned || ""
+      });
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
+  function stagePlaywrightDemoPrompt() {
+    setChatInput(
+      [
+        `Open the workspace web app at ${previewFrameUrl}.`,
+        `Use Playwright to create or update a concise demo/check flow for the product surface.`,
+        `Respect the workspace launch command "${previewDevCommand}" and verify with ${previewSnapshot.playwrightTestCommand}.`
+      ].join("\n")
+    );
+    setActive("chat");
+  }
+
+  function toggleCoworkLane(id: string) {
+    setCoworkLaneEnabled((lanes) => ({
+      ...lanes,
+      [id]: !lanes[id]
+    }));
+  }
+
+  function stageQAgentsCoworkPrompt() {
+    const lanes = coworkPlan.controls
+      .filter((control) => coworkLaneEnabled[control.id])
+      .map((control) => control.label)
+      .join(", ");
+    setChatInput(
+      [
+        `Start a Q_agents co-work run for ${workspaceStatus.path || workspaceSelection.cleaned || "the selected workspace"}.`,
+        `Mode: ${coworkStackMode}. Room: ${coworkPlan.roomCode}. Lanes: ${lanes || "none selected"}.`,
+        `Use shared phase memory: ${coworkPlan.sharedPhaseMemory ? "yes" : "no"}. Shared credits: ${coworkSharedCredits ? "explicitly enabled" : "disabled"}.`,
+        "Plan, implement, verify, and report every handoff with tests and browser/preview evidence."
+      ].join("\n")
+    );
+    setActive("chat");
+  }
+
+  function stageContextAuditPrompt() {
+    setChatInput(
+      [
+        `Use the visible JAWS context pack for ${projectContext.workspacePath || workspaceStatus.path || workspaceSelection.cleaned || "the selected workspace"}.`,
+        `Coverage: ${projectContext.scannedFiles}/${projectContext.totalFiles} files, ${projectContext.confidenceScore}% confidence, ${formatTokenEstimate(projectContext.estimatedTokens)} estimated.`,
+        `Do not claim files are understood unless they are included in the context receipt. Inspect missing priority areas first, then plan the next change.`
+      ].join("\n")
+    );
+    setActive("chat");
+  }
+
+  function playNotificationSound(tone: JawsNotification["tone"]) {
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+      const context = new AudioContextClass();
+      const now = context.currentTime;
+      const gain = context.createGain();
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(tone === "input" ? 0.1 : 0.16, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.58);
+      gain.connect(context.destination);
+      const notes = tone === "complete" ? [523.25, 659.25, 783.99] : tone === "input" ? [392, 349.23] : [440, 554.37, 880];
+      notes.forEach((frequency, index) => {
+        const osc = context.createOscillator();
+        osc.type = index % 2 === 0 ? "triangle" : "sine";
+        osc.frequency.setValueAtTime(frequency, now + index * 0.08);
+        osc.connect(gain);
+        osc.start(now + index * 0.08);
+        osc.stop(now + 0.46 + index * 0.04);
+      });
+      window.setTimeout(() => void context.close(), 900);
+    } catch {
+      // Audio is optional; the visual notification remains authoritative.
+    }
+  }
+
+  function triggerJawsNotification(notification: Omit<JawsNotification, "id" | "time">) {
+    const entry: JawsNotification = {
+      ...notification,
+      id: `notice-${Date.now()}`,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    };
+    setNotifications((items) => [entry, ...items].slice(0, 8));
+    if (notificationsArmed) {
+      setFirework(entry);
+      playNotificationSound(entry.tone);
+      window.setTimeout(() => setFirework((current) => (current?.id === entry.id ? null : current)), 1800);
+    }
+  }
+
+  async function submitChatCommand(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (chatBusy) return;
+    const command = chatInput.trim();
+    if (!command) return;
+
+    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const runMode = fastRunMode ? "fast queue" : "review first";
+    const workspaceName = workspaceStatus.valid ? workspaceStatus.name : workspaceSelection.name;
+    const baseId = Date.now();
+    const qMessageId = `q-${baseId}`;
+    const agentMessageId = `agents-${baseId}`;
+
+    setChatMessages((messages) => [
+      ...messages,
+      {
+        id: `user-${baseId}`,
+        speaker: userProfile.name || account?.displayName || "You",
+        role: "user",
+        body: command,
+        time,
+        state: "done",
+        lane: "user"
+      },
+      {
+        id: qMessageId,
+        speaker: "Q",
+        role: "agent",
+        body: `Thinking through audited ${runMode}. Workspace: ${workspaceName || "not set"}.`,
+        time,
+        state: "thinking",
+        lane: "q"
+      },
+      {
+        id: agentMessageId,
+        speaker: "Q_agents",
+        role: "agent",
+        body: compareMode
+          ? "Standing up compare-aware worker lanes. Proposed edits stay visible beside the transcript."
+          : "Standing up worker lanes. Compare mode is off, so edits can flow in the main workstream.",
+        time,
+        state: "queued",
+        lane: "agents"
+      }
+    ]);
+    setChatInput("");
+    setChatBusy(true);
+    setPet((current) => ({
+      ...current,
+      tokens: Math.min(999, current.tokens + 6),
+      energy: Math.min(100, current.energy + 4),
+      egg: Math.min(100, current.egg + 3),
+      mood: "locked in"
+    }));
+    triggerJawsNotification({
+      title: "Agent route started",
+      detail: `Q and Q_agents started work in ${workspaceName || "the selected workspace"}.`,
+      tone: "update"
+    });
+
+    if (hasTauriRuntime()) {
+      try {
+        const result = await invoke<OpenJawsChatResult>("run_openjaws_chat", {
+          prompt: command,
+          workspacePath: workspaceStatus.path || workspaceSelection.cleaned || null,
+          fastRunMode
+        });
+        setChatMessages((messages) =>
+          messages.map((message) => {
+            if (message.id === qMessageId) {
+              return {
+                ...message,
+                body: formatOpenJawsChatResult(result),
+                state: "done"
+              };
+            }
+            if (message.id === agentMessageId) {
+              return {
+                ...message,
+                body: result.ok
+                  ? "OpenJaws sidecar completed the Chat command. Review the Q lane output and continue from the same workspace."
+                  : "OpenJaws sidecar blocked or failed the Chat command. The Q lane has the exact diagnostic.",
+                state: "done"
+              };
+            }
+            return message;
+          })
+        );
+        setUpdateState(result.ok ? "OpenJaws Chat command completed" : "OpenJaws Chat command needs review");
+        triggerJawsNotification({
+          title: result.ok ? "Agents finished" : "Human input needed",
+          detail: result.ok
+            ? "The OpenJaws sidecar completed the chat command. Review the transcript and next steps."
+            : "The sidecar returned a non-zero result. Review the Q lane diagnostic before continuing.",
+          tone: result.ok ? "complete" : "input"
+        });
+      } catch (error) {
+        setChatMessages((messages) =>
+          messages.map((message) => {
+            if (message.id === qMessageId) {
+              return {
+                ...message,
+                body: `OpenJaws Chat command failed before the sidecar returned output.\n\n${String(error)}`,
+                state: "done"
+              };
+            }
+            if (message.id === agentMessageId) {
+              return {
+                ...message,
+                body: "Desktop command bridge failed. Check the bundled sidecar and workspace settings.",
+                state: "done"
+              };
+            }
+            return message;
+          })
+        );
+        setUpdateState("OpenJaws Chat command failed");
+        triggerJawsNotification({
+          title: "Human input needed",
+          detail: "The desktop command bridge failed before sidecar output. Check workspace and sidecar settings.",
+          tone: "input"
+        });
+      } finally {
+        setChatBusy(false);
+      }
+      return;
+    }
+
+    window.setTimeout(() => {
+      setChatMessages((messages) =>
+        messages.map((message) => {
+          if (message.id === qMessageId) {
+            return {
+              ...message,
+              body: `Routed through ${runMode}. Workspace: ${workspaceName || "not set"}. Next step is visible in the agent lane.`,
+              state: "done"
+            };
+          }
+          if (message.id === agentMessageId) {
+            return {
+              ...message,
+              body: compareMode
+                ? "Compare-aware worker lanes are live. File changes will surface in the delta rail before release."
+                : "Worker lanes are live. JAWS will keep the transcript moving while agents report progress.",
+              state: "thinking"
+            };
+          }
+          return message;
+        })
+      );
+    }, 650);
+    window.setTimeout(() => {
+      setChatMessages((messages) =>
+        messages.map((message) =>
+          message.id === agentMessageId
+            ? {
+                ...message,
+                state: "done"
+              }
+            : message
+        )
+      );
+      setChatBusy(false);
+      triggerJawsNotification({
+        title: "Goals complete",
+        detail: "Preview mode finished the simulated agent lane. Native runs will attach exact sidecar output.",
+        tone: "complete"
+      });
+    }, 1500);
+  }
+
+  function spendPetTokens(cost: number, update: (current: CyberPetState) => CyberPetState) {
+    setPet((current) => {
+      if (current.tokens < cost) return { ...current, mood: "needs more code tokens" };
+      return update({ ...current, tokens: current.tokens - cost });
+    });
+  }
+
+  function feedPet() {
+    spendPetTokens(4, (current) => ({
+      ...current,
+      fullness: Math.min(100, current.fullness + 18),
+      energy: Math.min(100, current.energy + 8),
+      mood: "fed"
+    }));
+  }
+
+  function trainPet() {
+    spendPetTokens(6, (current) => ({
+      ...current,
+      energy: Math.max(12, current.energy - 10),
+      egg: Math.min(100, current.egg + 12),
+      mood: current.egg >= 88 ? "ready to hatch" : "training"
+    }));
+  }
+
+  function equipPet() {
+    const gear = pet.gear === "visor" ? "jet boots" : pet.gear === "jet boots" ? "debug crown" : "visor";
+    spendPetTokens(8, (current) => ({
+      ...current,
+      gear,
+      mood: "geared up"
+    }));
+  }
+
+  function decoratePet() {
+    const decor = pet.decor === "neon pad" ? "reef desk" : pet.decor === "reef desk" ? "holo plants" : "neon pad";
+    spendPetTokens(5, (current) => ({
+      ...current,
+      decor,
+      mood: "settled"
+    }));
+  }
+
+  async function openExternal(url: string) {
+    if (hasTauriRuntime()) {
+      await openUrl(url);
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  function dispatchSlowGuy(action: SlowGuyAction) {
+    setSlowGuy((state) => advanceSlowGuy(state, action));
+  }
+
+  function advanceHoldem() {
+    const next = advanceHoldemRound(holdemTable);
+    setHoldemTable(next);
+    if (next.phase === "showdown" && holdemTable.phase !== "showdown") {
+      setPet((current) => ({
+        ...current,
+        tokens: Math.min(999, current.tokens + 12),
+        mood: "table winner energy"
+      }));
+    }
+  }
+
+  function resetHoldemRoom() {
+    setHoldemTable(createHoldemTable(userProfile.name || account?.displayName || "Founder", `jaws-holdem-${Date.now()}`));
+  }
+
+  function sendHoldemChat(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setHoldemTable((table) => addHoldemChat(table, userProfile.name || "Founder", holdemChatInput));
+    setHoldemChatInput("");
+  }
+
+  return (
+    <main className="shell">
+      <aside className={collapsed ? "sidebar collapsed" : "sidebar"}>
+        <div className="brand-row">
+          <JawsMark className="brand-mark" />
+          {!collapsed && (
+            <div>
+              <p className="eyebrow">JAWS</p>
+              <h1>Jaws IDE</h1>
+            </div>
+          )}
+          <button className="icon-button" type="button" onClick={() => setCollapsed((value) => !value)} aria-label="Toggle menu">
+            {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          </button>
+        </div>
+
+        <nav className="nav-list" aria-label="Primary">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                className={active === item.id ? "nav-item active" : "nav-item"}
+                type="button"
+                onClick={() => setActive(item.id)}
+                title={item.label}
+              >
+                <Icon size={18} />
+                {!collapsed && <span>{item.label}</span>}
+              </button>
+            );
+          })}
+        </nav>
+
+        {!collapsed && (
+          <div className="sidebar-footer">
+            {account && <small>{account.displayName || account.email}</small>}
+            <span>14 day trial</span>
+            <strong>$12.99/mo IDE</strong>
+            <small>Q credits billed separately</small>
+          </div>
+        )}
+      </aside>
+
+      <section className="workspace">
+        <header className="topbar">
+          <div>
+            <p className="eyebrow">{activeTitle}</p>
+            <h2>Jaws IDE. The future wrapped with OpenJaws, with Q and Immaculate built in.</h2>
+          </div>
+          <div className="top-actions">
+            <button
+              className={notificationsArmed ? "text-button notification-button armed" : "text-button notification-button"}
+              type="button"
+              onClick={() => setNotificationsArmed((value) => !value)}
+            >
+              <BellRing size={16} />
+              {notifications.length}
+            </button>
+            <button className="icon-button" type="button" onClick={() => setAppearance(appearance === "dark" ? "light" : "dark")} aria-label="Toggle light and dark mode">
+              {appearance === "dark" ? <Sparkles size={18} /> : <ShieldCheck size={18} />}
+            </button>
+            <button className="text-button" type="button" onClick={() => openExternal("https://github.com/PossumXI/OpenJaws")}>
+              <ExternalLink size={16} />
+              GitHub
+            </button>
+          </div>
+        </header>
+
+        {firework && <FireworkNotice notification={firework} />}
+
+        {active === "control" && (
+          <section className="page-grid">
+            <div className="hero-panel">
+              <div>
+                <p className="eyebrow">Native cockpit</p>
+                <h3>OpenJaws backend, desktop controls, live release path.</h3>
+                <p>
+                  JAWS keeps the terminal engine behind a sidecar boundary while the desktop surface owns workspace
+                  visibility, enrollment, marketplace, co-work, and studio lanes.
+                </p>
+              </div>
+              <div className="status-stack">
+                <JawsMark className="hero-logo" />
+                <button className="text-button primary" type="button" onClick={runSmoke}>
+                  <RefreshCcw size={16} />
+                  Test Sidecar
+                </button>
+                <button className="text-button" type="button" onClick={checkForUpdates}>
+                  <RadioTower size={16} />
+                  Check Update
+                </button>
+                {pendingUpdate && (
+                  <button className="text-button" type="button" onClick={installUpdate}>
+                    <CheckCircle2 size={16} />
+                    Install
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="status-grid">
+              {systemLanes.map((lane) => {
+                const Icon = lane.icon;
+                return (
+                  <article className="metric-card" key={lane.label}>
+                    <div className={`metric-icon ${lane.tone}`}>
+                      <Icon size={18} />
+                    </div>
+                    <span>{lane.label}</span>
+                    <strong>{lane.value}</strong>
+                    <small>{toneLabel(lane.tone)}</small>
+                  </article>
+                );
+              })}
+            </div>
+
+            <div className="wide-panel">
+              <PanelHeader icon={Activity} label="Desktop Runtime" />
+              <div className="runtime-grid">
+                <StatusLine label="App version" value={status.appVersion} />
+                <StatusLine label="Sidecar" value={status.sidecarReady ? "Ready" : "Pending"} />
+                <StatusLine label="Sidecar detail" value={status.sidecarMessage} />
+                <StatusLine label="Update channel" value={`${status.updateChannel}: ${updateState}`} />
+              </div>
+              {smoke && (
+                <pre className="console">{smoke.ok ? smoke.stdout || "OpenJaws responded." : smoke.stderr || "Sidecar check failed."}</pre>
+              )}
+            </div>
+          </section>
+        )}
+
+        {active === "chat" && (
+          <section className="chat-page">
+            <div className="wide-panel chat-panel">
+              <PanelHeader icon={MessageSquare} label="Chat Window" />
+              <div className="chat-layout">
+                <section className="chat-main" aria-label="JAWS command chat">
+                  <div className="chat-status slim">
+                    <MessageActivity active={chatBusy} state={chatBusy ? "thinking" : "done"} frame={jawFrame} />
+                    <div>
+                      <span>Live Workstream</span>
+                      <strong>{chatBusy ? "Q is thinking" : fastRunMode ? "Fast audited queue" : "Review first"}</strong>
+                      <small>{notificationsArmed ? "Updates and notifications armed" : "Notifications muted"}</small>
+                    </div>
+                    <div className="chat-status-tools" aria-label="Chat state">
+                      <span>{compareMode ? "Compare on" : "Compare off"}</span>
+                      <span>{contextConfidenceLabel(projectContext)}</span>
+                      <span>{workspaceStatus.valid ? workspaceStatus.name : "No folder"}</span>
+                    </div>
+                  </div>
+
+                  <div className="chat-transcript" aria-live="polite" aria-relevant="additions text">
+                    {chatMessages.map((message) => (
+                      <article className={`chat-row ${message.role}`} key={message.id}>
+                        <MessageActivity active={message.state === "thinking"} state={message.state} frame={jawFrame} />
+                        <div className="chat-message">
+                          <header>
+                            <div>
+                              <strong>{message.speaker}</strong>
+                              <span>{message.lane}</span>
+                            </div>
+                            <span>{message.time}</span>
+                          </header>
+                          <p>{message.body}</p>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+
+                  <form className="chat-input" onSubmit={submitChatCommand}>
+                    <label className="sr-only" htmlFor="jaws-chat-command">
+                      JAWS chat command
+                    </label>
+                    <div className="chat-tool-strip" aria-label="Command starters">
+                      {chatTools.map((tool) => (
+                        <button
+                          className="tool-chip"
+                          key={tool.label}
+                          type="button"
+                          onClick={() => setChatInput(tool.prompt)}
+                        >
+                          {tool.label}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      id="jaws-chat-command"
+                      value={chatInput}
+                      onChange={(event) => setChatInput(event.target.value)}
+                      placeholder="Ask JAWS to inspect, code, test, run agents, or route work through Q."
+                      rows={3}
+                    />
+                    <button className="text-button primary" type="submit" disabled={chatBusy || chatInput.trim().length === 0}>
+                      <Send size={16} />
+                      {chatBusy ? "Running" : "Send"}
+                    </button>
+                  </form>
+                </section>
+
+                <aside className="chat-side">
+                  <div className="side-module profile-mini">
+                    <div className="profile-avatar">
+                      <UserRound size={20} />
+                    </div>
+                    <div>
+                      <span>User profile</span>
+                      <strong>{userProfile.name}</strong>
+                      <small>{userProfile.focus}</small>
+                    </div>
+                  </div>
+
+                  <div className="side-module tool-grid">
+                    <button className="text-button primary" type="button" onClick={openWorkspaceFolder}>
+                      <FolderOpen size={16} />
+                      Open Folder
+                    </button>
+                    <button className="text-button primary" type="button" onClick={() => setActive("terminal")}>
+                      <TerminalSquare size={16} />
+                      TUI View
+                    </button>
+                    <button className="text-button" type="button" onClick={() => setCompareMode((value) => !value)}>
+                      <GitCompare size={16} />
+                      {compareMode ? "Compare On" : "Compare Off"}
+                    </button>
+                    <button className="text-button" type="button" onClick={() => setFastRunMode((value) => !value)}>
+                      {fastRunMode ? <Send size={16} /> : <ShieldCheck size={16} />}
+                      {fastRunMode ? "Fast Queue" : "Review"}
+                    </button>
+                    <button className="text-button" type="button" onClick={() => setNotificationsArmed((value) => !value)}>
+                      <BellRing size={16} />
+                      {notificationsArmed ? "Notify On" : "Notify Off"}
+                    </button>
+                  </div>
+
+                  <CyberPet pet={pet} compact onFeed={feedPet} onTrain={trainPet} onEquip={equipPet} onDecorate={decoratePet} />
+
+                  <div className="side-module agent-mini-list">
+                    <span>Agent profiles</span>
+                    {agentProfiles.map((agent) => (
+                      <div className="agent-mini" key={agent.name}>
+                        <Bot size={15} />
+                        <div>
+                          <strong>{agent.name}</strong>
+                          <small>{agent.status}</small>
+                        </div>
+                        <meter min="0" max="100" value={agent.load} />
+                      </div>
+                    ))}
+                  </div>
+
+                  <StatusLine label="Workspace" value={workspaceStatus.path || workspaceSelection.cleaned || "Not set"} />
+                  <StatusLine label="Updates" value={updateState} />
+                </aside>
+              </div>
+            </div>
+
+            {compareMode && (
+              <div className="wide-panel compare-panel">
+                <PanelHeader icon={GitCompare} label="Change Compare" />
+                <div className="compare-grid">
+                  {changePreview.map((change) => (
+                    <article className="compare-card" key={change.file}>
+                      <header>
+                        <strong>{change.file}</strong>
+                        <span>{change.status}</span>
+                      </header>
+                      <div className="diff-columns">
+                        <pre>{change.before}</pre>
+                        <pre>{change.after}</pre>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {active === "terminal" && (
+          <section className="terminal-page">
+            <div className="wide-panel terminal-panel">
+              <PanelHeader icon={TerminalSquare} label="Workspace TUI" />
+              <div className="workspace-picker">
+                <label htmlFor="workspace-path">Project folder</label>
+                <div className="input-row">
+                  <input
+                    id="workspace-path"
+                    value={workspaceInput}
+                    onChange={(event) => setWorkspaceInput(event.target.value)}
+                    placeholder="Choose a project folder"
+                    spellCheck={false}
+                  />
+                  <button className="text-button" type="button" onClick={openWorkspaceFolder}>
+                    <FolderOpen size={16} />
+                    Open Folder
+                  </button>
+                  <button className="text-button primary" type="button" onClick={applyWorkspace}>
+                    <FolderOpen size={16} />
+                    Set Folder
+                  </button>
+                </div>
+              </div>
+
+              <div className="terminal-layout">
+                <section className="terminal-screen" aria-label="JAWS terminal preview">
+                  <div className="terminal-titlebar">
+                    <span />
+                    <span />
+                    <span />
+                    <strong>{workspaceStatus.valid ? workspaceStatus.name : workspaceSelection.name}</strong>
+                  </div>
+                  <pre>
+{`$ ${workspaceStatus.tuiCommand || workspaceSelection.command}
+
+Workspace: ${workspaceStatus.path || workspaceSelection.cleaned || "not set"}
+Status: ${workspaceStatus.message}
+
+This native view keeps the selected project folder attached before OpenJaws, Q, Immaculate, and ledger routes run.`}
+                  </pre>
+                </section>
+
+                <aside className="terminal-side">
+                  <div className={workspaceStatus.valid ? "workspace-state ready" : "workspace-state blocked"}>
+                    {workspaceStatus.valid ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
+                    <div>
+                      <strong>{workspaceStatus.valid ? "Workspace ready" : "Workspace needed"}</strong>
+                      <span>{workspaceStatus.message}</span>
+                    </div>
+                  </div>
+                  <StatusLine label="Folder" value={workspaceStatus.path || workspaceSelection.cleaned || "Not set"} />
+                  <StatusLine label="View" value="Embedded TUI" />
+                  <StatusLine label="Command" value={workspaceStatus.tuiCommand || workspaceSelection.command} />
+                  <button className="text-button" type="button" onClick={runWorkspaceSmoke}>
+                    <RefreshCcw size={16} />
+                    Test In Folder
+                  </button>
+                  {workspaceSmoke && (
+                    <pre className="console">
+                      {workspaceSmoke.ok
+                        ? workspaceSmoke.stdout || `OpenJaws responded from ${workspaceStatus.path || workspaceSelection.cleaned}.`
+                        : workspaceSmoke.stderr || "Workspace sidecar check failed."}
+                    </pre>
+                  )}
+                </aside>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {active === "preview" && (
+          <section className="preview-page">
+            <div className="wide-panel preview-panel">
+              <div className="panel-header-row">
+                <PanelHeader icon={MonitorPlay} label="Browser Preview" />
+                <div className="button-row">
+                  <button className="text-button" type="button" onClick={refreshBrowserPreview}>
+                    <RefreshCcw size={16} />
+                    Refresh
+                  </button>
+                  <button className="text-button primary" type="button" onClick={runBrowserPreviewCommand} disabled={previewBusy}>
+                    <Play size={16} />
+                    {previewBusy ? "Running" : "Run Preview"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="preview-workbench">
+                <section className="preview-stage" aria-label="Embedded browser preview">
+                  <div className="browser-chrome">
+                    <span />
+                    <span />
+                    <span />
+                    <strong>{previewFrameUrl}</strong>
+                  </div>
+                  <iframe
+                    title="JAWS browser preview"
+                    src={previewFrameUrl}
+                    sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-scripts"
+                    referrerPolicy="no-referrer"
+                  />
+                </section>
+
+                <aside className="preview-side">
+                  <label>
+                    Preview URL
+                    <input value={previewUrl} onChange={(event) => setPreviewUrl(event.target.value)} spellCheck={false} />
+                  </label>
+                  <label>
+                    Dev command
+                    <input
+                      value={previewDevCommand}
+                      onChange={(event) => setPreviewDevCommand(event.target.value)}
+                      spellCheck={false}
+                    />
+                  </label>
+                  <div className="button-row">
+                    <button className="text-button" type="button" onClick={saveBrowserPreviewLaunchConfig}>
+                      <CheckCircle2 size={16} />
+                      Save Launch
+                    </button>
+                    <button className="text-button" type="button" onClick={writePlaywrightDemoHarness}>
+                      <PackagePlus size={16} />
+                      Write Demo
+                    </button>
+                    <button className="text-button" type="button" onClick={stagePlaywrightDemoPrompt}>
+                      <Bot size={16} />
+                      Playwright Task
+                    </button>
+                  </div>
+                  {previewConfigResult && (
+                    <div className={previewConfigResult.ok ? "workspace-state ready" : "workspace-state blocked"}>
+                      {previewConfigResult.ok ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
+                      <div>
+                        <strong>{previewConfigResult.ok ? "Launch saved" : "Launch blocked"}</strong>
+                        <span>{previewConfigResult.message}</span>
+                      </div>
+                    </div>
+                  )}
+                  {previewDemoResult && (
+                    <div className={previewDemoResult.ok ? "workspace-state ready" : "workspace-state blocked"}>
+                      {previewDemoResult.ok ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
+                      <div>
+                        <strong>{previewDemoResult.ok ? "Demo harness written" : "Demo blocked"}</strong>
+                        <span>{previewDemoResult.ok ? previewDemoResult.outputDir : previewDemoResult.message}</span>
+                      </div>
+                    </div>
+                  )}
+                  <StatusLine label="Launch config" value={previewSnapshot.launchConfigExists ? previewSnapshot.launchConfigPath : "Not saved"} />
+                  <StatusLine label="Receipt" value={previewSnapshot.receiptExists ? previewSnapshot.receiptPath : "No receipt"} />
+                  <StatusLine label="Sessions" value={String(previewSnapshot.sessionCount)} />
+                </aside>
+              </div>
+            </div>
+
+            <div className="preview-bottom-grid">
+              <section className="wide-panel playwright-panel">
+                <PanelHeader icon={TerminalSquare} label="Playwright Demo Lane" />
+                <div className="command-stack">
+                  <code>{previewDemoResult?.previewCommand || previewConfigResult?.previewCommand || previewSnapshot.previewCommand || `/preview ${previewFrameUrl}`}</code>
+                  <code>{previewDemoResult?.playwrightInstallCommand || "bunx playwright install chromium"}</code>
+                  <code>{previewDemoResult?.playwrightTestCommand || previewConfigResult?.playwrightTestCommand || previewSnapshot.playwrightTestCommand}</code>
+                  <code>{previewDemoResult?.playwrightHeadedCommand || "bunx playwright test --headed"}</code>
+                  <code>{previewDemoResult?.playwrightCodegenCommand || previewConfigResult?.playwrightCodegenCommand || previewSnapshot.playwrightCodegenCommand}</code>
+                </div>
+                {previewDemoResult?.ok && (
+                  <div className="demo-artifact-grid">
+                    <StatusLine label="Harness" value={previewDemoResult.outputDir} />
+                    <StatusLine label="Spec" value={previewDemoResult.specPath} />
+                    <StatusLine label="Receipt" value={previewDemoResult.receiptPath} />
+                    <StatusLine label="Hash" value={previewDemoResult.receiptHash} />
+                  </div>
+                )}
+                {previewRunResult && (
+                  <pre className={previewRunResult.ok ? "console success" : "console error"}>
+                    {formatOpenJawsChatResult(previewRunResult)}
+                  </pre>
+                )}
+              </section>
+
+              <section className="wide-panel receipt-panel">
+                <PanelHeader icon={Activity} label="Preview Receipts" />
+                <p className="panel-copy">{previewSnapshot.receiptSummary}</p>
+                <div className="receipt-list">
+                  {previewSnapshot.sessions.length > 0 ? (
+                    previewSnapshot.sessions.map((session) => (
+                      <article className="receipt-card" key={session.id || `${session.startedAt}-${session.url}`}>
+                        <header>
+                          <strong>{session.action || "preview"}</strong>
+                          <span>{session.opened ? "opened" : "recorded"}</span>
+                        </header>
+                        <StatusLine label="By" value={session.requestedBy || "operator"} />
+                        <StatusLine label="URL" value={session.url || previewFrameUrl} />
+                        <small>{session.note || session.intent || session.startedAt}</small>
+                      </article>
+                    ))
+                  ) : (
+                    <article className="receipt-card empty">
+                      <strong>No sessions yet</strong>
+                      <span>{previewSnapshot.receiptSummary}</span>
+                    </article>
+                  )}
+                </div>
+              </section>
+            </div>
+          </section>
+        )}
+
+        {active === "context" && (
+          <section className="context-page">
+            <div className="wide-panel context-hero">
+              <div className="panel-header-row">
+                <PanelHeader icon={BrainCircuit} label="Context Brain" />
+                <div className="button-row">
+                  <button className="text-button" type="button" onClick={() => refreshProjectContext()} disabled={projectContextLoading}>
+                    <RefreshCcw size={16} />
+                    {projectContextLoading ? "Scanning" : "Refresh"}
+                  </button>
+                  <button className="text-button primary" type="button" onClick={stageContextAuditPrompt}>
+                    <MessageSquare size={16} />
+                    Route Audit
+                  </button>
+                </div>
+              </div>
+              <div className="context-score-row">
+                <div className={`context-score ${contextCoverageTone(contextCoverage)}`}>
+                  <strong>{projectContext.confidenceScore}%</strong>
+                  <span>{contextLabel}</span>
+                </div>
+                <div>
+                  <p>{projectContext.summary}</p>
+                  <div className="context-meter">
+                    <span style={{ width: `${Math.min(100, projectContext.confidenceScore)}%` }} />
+                  </div>
+                </div>
+              </div>
+              <div className="runtime-source-card">
+                <StatusLine label="Workspace" value={projectContext.workspacePath || workspaceStatus.path || workspaceSelection.cleaned || "Not set"} />
+                <StatusLine label="Checked" value={projectContext.checkedAt} />
+                <StatusLine label="Files scanned" value={`${projectContext.scannedFiles}/${projectContext.totalFiles}`} />
+                <StatusLine label="Skipped" value={String(projectContext.skippedFiles)} />
+                <StatusLine label="Estimated context" value={formatTokenEstimate(projectContext.estimatedTokens)} />
+                <StatusLine label="Budget used" value={`${contextBudgetPercent}%`} />
+              </div>
+            </div>
+
+            <div className="context-grid">
+              <section className="wide-panel">
+                <PanelHeader icon={Activity} label="Coverage Map" />
+                <div className="context-category-grid">
+                  {projectContext.categories.length > 0 ? (
+                    projectContext.categories.map((category) => (
+                      <article className={`context-category ${category.status}`} key={category.id}>
+                        <header>
+                          <strong>{category.label}</strong>
+                          <span>{category.confidence}%</span>
+                        </header>
+                        <div className="context-meter">
+                          <span style={{ width: `${category.confidence}%` }} />
+                        </div>
+                        <p>{category.detail}</p>
+                        <small>
+                          {category.includedCount}/{category.fileCount} files - {formatTokenEstimate(category.estimatedTokens)}
+                        </small>
+                      </article>
+                    ))
+                  ) : (
+                    <article className="context-empty">
+                      <strong>No context pack yet</strong>
+                      <span>Open a folder and refresh to build the visible receipt.</span>
+                    </article>
+                  )}
+                </div>
+              </section>
+
+              <section className="wide-panel">
+                <PanelHeader icon={FileTextIcon} label="Priority Files" />
+                <div className="context-file-list">
+                  {projectContext.priorityFiles.length > 0 ? (
+                    projectContext.priorityFiles.map((file) => (
+                      <article className="context-file" key={`${file.path}-${file.reason}`}>
+                        <strong>{file.path}</strong>
+                        <span>
+                          {file.kind} - {file.reason} - {formatTokenEstimate(file.estimatedTokens)}
+                        </span>
+                      </article>
+                    ))
+                  ) : (
+                    <article className="context-empty">
+                      <strong>No priority files selected</strong>
+                      <span>JAWS will surface project contracts, configs, tests, and core source here.</span>
+                    </article>
+                  )}
+                </div>
+              </section>
+            </div>
+
+            <div className="context-grid">
+              <section className="wide-panel">
+                <PanelHeader icon={ShieldCheck} label="Privacy Skips" />
+                <div className="context-skip-list">
+                  {projectContext.skipped.length > 0 ? (
+                    projectContext.skipped.map((group) => (
+                      <article className="context-skip" key={group.reason}>
+                        <header>
+                          <strong>{group.reason}</strong>
+                          <span>{group.count}</span>
+                        </header>
+                        <small>{group.examples.join(", ") || "No examples"}</small>
+                      </article>
+                    ))
+                  ) : (
+                    <article className="context-empty">
+                      <strong>No skips recorded</strong>
+                      <span>Secrets, generated folders, binary assets, and oversized files will be listed here as metadata only.</span>
+                    </article>
+                  )}
+                </div>
+              </section>
+
+              <section className="wide-panel">
+                <PanelHeader icon={NetworkIcon} label="Brain Routes" />
+                <div className="agent-timeline compact context-lanes">
+                  {projectContext.brainLanes.map((lane) => (
+                    <article className={`agent-event ${lane.status === "blocked" ? "blocked" : lane.status === "review" ? "waiting" : "active"}`} key={lane.label}>
+                      <span>{lane.status}</span>
+                      <strong>{lane.label}</strong>
+                      <p>{lane.receives}</p>
+                      <small>{lane.detail}</small>
+                    </article>
+                  ))}
+                </div>
+                <div className="context-notes">
+                  {projectContext.notes.map((note) => (
+                    <span key={note}>{note}</span>
+                  ))}
+                </div>
+              </section>
+            </div>
+          </section>
+        )}
+
+        {active === "agents" && (
+          <section className="split-view">
+            <div className="wide-panel">
+              <div className="panel-header-row">
+                <PanelHeader icon={RadarIcon} label="Agent Watch" />
+                <button className="text-button" type="button" onClick={refreshAgentRuntime} disabled={agentRuntimeLoading}>
+                  <RefreshCcw size={16} />
+                  {agentRuntimeLoading ? "Refreshing" : "Refresh"}
+                </button>
+              </div>
+              <div className="runtime-source-card">
+                <StatusLine label="Source" value={agentRuntime.source} />
+                <StatusLine label="Checked" value={agentRuntime.checkedAt} />
+                <StatusLine label="Route queue" value={String(agentRuntime.queueCount)} />
+                <StatusLine label="Workers" value={`${agentRuntime.workerCount} registered / ${agentRuntime.runtimeCount} runtime`} />
+              </div>
+              <p className="panel-copy">{agentRuntime.summary}</p>
+              <div className="agent-timeline">
+                {agentRuntime.events.map((event, index) => (
+                  <article className={`agent-event ${event.state}`} key={`${event.time}-${event.lane}`}>
+                    <span>{event.time}</span>
+                    <strong>{event.lane}</strong>
+                    <p>{event.detail}</p>
+                    {index === 0 && agentRuntimeLoading && <small>Updating runtime snapshot</small>}
+                  </article>
+                ))}
+              </div>
+            </div>
+            <div className="wide-panel">
+              <PanelHeader icon={NetworkIcon} label="Orchestration" />
+              <div className="orchestration-map">
+                <Node label="Q" />
+                <Node label="Q_agents" />
+                <Node label="OpenCheek" />
+                <Node label="Immaculate" />
+              </div>
+            </div>
+          </section>
+        )}
+
+        {active === "profiles" && (
+          <section className="profiles-page">
+            <div className="wide-panel profile-panel">
+              <PanelHeader icon={UserRound} label="User Profile" />
+              <div className="profile-editor">
+                <label>
+                  Display name
+                  <input
+                    value={userProfile.name}
+                    onChange={(event) => setUserProfile((profile) => ({ ...profile, name: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Handle
+                  <input
+                    value={userProfile.handle}
+                    onChange={(event) => setUserProfile((profile) => ({ ...profile, handle: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Focus
+                  <input
+                    value={userProfile.focus}
+                    onChange={(event) => setUserProfile((profile) => ({ ...profile, focus: event.target.value }))}
+                  />
+                </label>
+              </div>
+              <div className="profile-stat-grid">
+                <StatusLine label="Code tokens" value={String(pet.tokens)} />
+                <StatusLine label="Workspace" value={workspaceStatus.name || workspaceSelection.name} />
+                <StatusLine label="Account" value={account?.email ?? "Local trial"} />
+              </div>
+            </div>
+
+            <div className="wide-panel profile-panel">
+              <PanelHeader icon={Bot} label="Agent Profiles" />
+              <div className="agent-profile-grid">
+                {agentProfiles.map((agent) => (
+                  <article className="agent-profile-card" key={agent.name}>
+                    <Bot size={18} />
+                    <div>
+                      <strong>{agent.name}</strong>
+                      <span>{agent.role}</span>
+                      <small>{agent.status}</small>
+                    </div>
+                    <meter min="0" max="100" value={agent.load} />
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <div className="wide-panel profile-panel pet-profile-panel">
+              <PanelHeader icon={Heart} label="Cyber Frog" />
+              <CyberPet pet={pet} onFeed={feedPet} onTrain={trainPet} onEquip={equipPet} onDecorate={decoratePet} />
+              <label className="pet-name-field">
+                Companion name
+                <input
+                  value={pet.name}
+                  onChange={(event) => setPet((current) => ({ ...current, name: event.target.value }))}
+                />
+              </label>
+            </div>
+          </section>
+        )}
+
+        {active === "studio" && (
+          <section className="studio-grid">
+            <div className="wide-panel">
+              <PanelHeader icon={Film} label="Image Studio" />
+              <StudioPreview mode="image" />
+            </div>
+            <div className="wide-panel">
+              <PanelHeader icon={MonitorPlay} label="Video Studio" />
+              <StudioPreview mode="video" />
+            </div>
+          </section>
+        )}
+
+        {active === "arcade" && (
+          <section className="wide-panel arcade-panel">
+            <PanelHeader icon={GamepadIcon} label="Arcade Bar" />
+            <div className="arcade-tabs" role="tablist" aria-label="Arcade games">
+              <button
+                className={arcadeView === "slow-guy" ? "theme-chip active" : "theme-chip"}
+                role="tab"
+                aria-selected={arcadeView === "slow-guy"}
+                aria-controls="slow-guy-panel"
+                type="button"
+                onClick={() => setArcadeView("slow-guy")}
+              >
+                Slow Guy
+              </button>
+              <button
+                className={arcadeView === "holdem" ? "theme-chip active" : "theme-chip"}
+                role="tab"
+                aria-selected={arcadeView === "holdem"}
+                aria-controls="holdem-panel"
+                type="button"
+                onClick={() => setArcadeView("holdem")}
+              >
+                Hold'em Roundtable
+              </button>
+              <button
+                className={arcadeView === "world" ? "theme-chip active" : "theme-chip"}
+                role="tab"
+                aria-selected={arcadeView === "world"}
+                aria-controls="world-panel"
+                type="button"
+                onClick={() => setArcadeView("world")}
+              >
+                3D Sandbox
+              </button>
+            </div>
+
+            {arcadeView === "slow-guy" && (
+              <div id="slow-guy-panel" role="tabpanel">
+                <SlowGuyGame state={slowGuy} pet={pet} onAction={dispatchSlowGuy} onFeed={feedPet} onTrain={trainPet} onEquip={equipPet} onDecorate={decoratePet} />
+              </div>
+            )}
+
+            {arcadeView === "holdem" && (
+              <div id="holdem-panel" role="tabpanel">
+                <HoldemRoundtable
+                  table={holdemTable}
+                  chatInput={holdemChatInput}
+                  onChatInput={setHoldemChatInput}
+                  onSendChat={sendHoldemChat}
+                  onAdvance={advanceHoldem}
+                  onReset={resetHoldemRoom}
+                />
+              </div>
+            )}
+
+            {arcadeView === "world" && (
+              <div id="world-panel" role="tabpanel">
+                <SandboxWorldFoundation pet={pet} />
+              </div>
+            )}
+          </section>
+        )}
+
+        {active === "ledger" && (
+          <section className="split-view">
+            <div className="wide-panel">
+              <PanelHeader icon={ReceiptIcon} label="Arobi Ledger" />
+              <p className="panel-copy">Enrollment and ledger status are kept outside local prompt history and attached by explicit user action.</p>
+              <div className="link-row">
+                {links.map((link) => (
+                  <button className="text-button" type="button" key={link.url} onClick={() => openExternal(link.url)}>
+                    <ExternalLink size={16} />
+                    {link.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="wide-panel">
+              <PanelHeader icon={CircleDot} label="Trial State" />
+              <StatusLine label="Plan" value="JAWS IDE" />
+              <StatusLine label="Trial" value="14 days" />
+              <StatusLine label="Subscription" value="$12.99/mo" />
+              <StatusLine label="Q credits" value="Separate balance" />
+            </div>
+          </section>
+        )}
+
+        {active === "cowork" && (
+          <section className="cowork-page">
+            <div className="wide-panel cowork-command">
+              <div className="panel-header-row">
+                <PanelHeader icon={UsersIcon} label="Q_agents Co-work" />
+                <button className="text-button primary" type="button" onClick={stageQAgentsCoworkPrompt}>
+                  <Zap size={16} />
+                  Stage Run
+                </button>
+              </div>
+
+              <div className="pairing-card">
+                <div>
+                  <span>Exchange Code</span>
+                  <strong>{coworkPlan.roomCode}</strong>
+                </div>
+                <div className="stack-mode-row" role="group" aria-label="Q_agents co-work mode">
+                  {(["solo", "pair", "stacked"] as const).map((mode) => (
+                    <button
+                      className={coworkStackMode === mode ? "theme-chip active" : "theme-chip"}
+                      key={mode}
+                      type="button"
+                      onClick={() => setCoworkStackMode(mode)}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="cowork-grid">
+                <StatusLine label="Route policy" value={coworkPlan.routePolicy} />
+                <StatusLine label="Phase memory" value={coworkPlan.sharedPhaseMemory ? "Shared" : "Local"} />
+                <StatusLine label="Credits" value={coworkSharedCredits ? "Pooled by approval" : "Owner only"} />
+                <StatusLine label="Workspace" value={workspaceStatus.path || workspaceSelection.cleaned || "Not set"} />
+              </div>
+
+              <label className="cowork-credit-toggle">
+                <input
+                  type="checkbox"
+                  checked={coworkSharedCredits}
+                  onChange={(event) => setCoworkSharedCredits(event.target.checked)}
+                />
+                <span>Allow pooled credits for this co-work room</span>
+              </label>
+            </div>
+
+            <div className="wide-panel cowork-lanes">
+              <PanelHeader icon={NetworkIcon} label="Worker Lanes" />
+              <div className="cowork-control-grid">
+                {coworkPlan.controls.map((control) => (
+                  <button
+                    className={coworkLaneEnabled[control.id] ? "cowork-control active" : "cowork-control"}
+                    key={control.id}
+                    type="button"
+                    onClick={() => toggleCoworkLane(control.id)}
+                  >
+                    <span>{coworkLaneEnabled[control.id] ? "On" : "Off"}</span>
+                    <strong>{control.label}</strong>
+                    <small>{control.status}</small>
+                    <p>{control.detail}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="wide-panel cowork-runbook">
+              <PanelHeader icon={Bot} label="Runbook" />
+              <div className="agent-timeline compact">
+                <article className="agent-event active">
+                  <span>01</span>
+                  <strong>Q</strong>
+                  <p>Decompose the request and write scoped lane contracts.</p>
+                </article>
+                <article className="agent-event waiting">
+                  <span>02</span>
+                  <strong>Q_agents</strong>
+                  <p>Workers claim code, preview, security, and verifier lanes.</p>
+                </article>
+                <article className="agent-event active">
+                  <span>03</span>
+                  <strong>OpenCheek</strong>
+                  <p>Shared phase memory records decisions and handoffs.</p>
+                </article>
+                <article className="agent-event active">
+                  <span>04</span>
+                  <strong>Immaculate</strong>
+                  <p>Release pacing and final coherence checks stay attached.</p>
+                </article>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {active === "market" && (
+          <section className="market-grid">
+            {marketplaceItems.map((item) => (
+              <article className="market-card" key={item.title}>
+                <span>{item.kind}</span>
+                <h3>{item.title}</h3>
+                <p>{item.description}</p>
+                <small>{item.trust}</small>
+              </article>
+            ))}
+          </section>
+        )}
+
+        {active === "billing" && (
+          <section className="wide-panel billing-panel">
+            <PanelHeader icon={ShieldCheck} label="Billing" />
+            <div className="price-lockup">
+              <span>$</span>
+              <strong>12.99</strong>
+              <small>/month</small>
+            </div>
+            <p className="panel-copy">The IDE subscription stays flat. Q credits remain separate and visible before spend.</p>
+            <button className="text-button primary" type="button" onClick={() => openExternal("https://qline.site/downloads/jaws")}>
+              <ExternalLink size={16} />
+              Download
+            </button>
+          </section>
+        )}
+
+        {active === "docs" && (
+          <section className="docs-page">
+            <div className="wide-panel docs-hero">
+              <PanelHeader icon={FileTextIcon} label="Docs And Legal" />
+              <div className="docs-brand-lockup">
+                <JawsMark />
+                <div>
+                  <span className="settings-kicker">JAWS Desktop</span>
+                  <h2>Built by AROBI TECHNOLOGY ALLIANCE A OPAL MAR GROUP CORPORATION NJ USA</h2>
+                  <p className="panel-copy">
+                    Legal, compliance, release, and developer operating notes are available in-app so installed users can inspect the boundary before using agents, marketplaces, games, updates, or paid routes.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="docs-grid">
+              {complianceDocuments.map((document) => (
+                <article className="doc-card" key={document.title}>
+                  <span>{document.tone}</span>
+                  <h3>{document.title}</h3>
+                  <p>{document.summary}</p>
+                </article>
+              ))}
+            </div>
+
+            <div className="wide-panel docs-dev-panel">
+              <PanelHeader icon={TerminalSquare} label="Developer Docs" />
+              <div className="dev-doc-grid">
+                {developerDocuments.map((document) => (
+                  <article className="dev-doc-card" key={document.label}>
+                    <span>{document.label}</span>
+                    <code>{document.command}</code>
+                    <p>{document.detail}</p>
+                  </article>
+                ))}
+              </div>
+              <div className="button-row">
+                <button className="text-button" type="button" onClick={() => openExternal("https://github.com/PossumXI/OpenJaws")}>
+                  <ExternalLink size={16} />
+                  GitHub
+                </button>
+                <button className="text-button" type="button" onClick={() => openExternal("https://qline.site/downloads/jaws")}>
+                  <ExternalLink size={16} />
+                  Qline Download
+                </button>
+                <button className="text-button" type="button" onClick={() => openExternal("https://iorch.net/downloads/jaws")}>
+                  <ExternalLink size={16} />
+                  Iorch Download
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {active === "settings" && (
+          <section className="settings-grid">
+            <div className="wide-panel settings-panel">
+              <PanelHeader icon={Settings2} label="Settings" />
+              <div className="settings-layout">
+                <section className="settings-group">
+                  <span className="settings-kicker">Release</span>
+                  <StatusLine label="Installed" value={status.appVersion} />
+                  <StatusLine label="Channel" value={status.updateChannel} />
+                  <StatusLine label="Update" value={updateState} />
+                  <StatusLine label="Notifications" value={notificationsArmed ? "Armed" : "Muted"} />
+                  <div className="button-row">
+                    <button className="text-button primary" type="button" onClick={checkForUpdates}>
+                      <RadioTower size={16} />
+                      {updateChecking ? "Checking" : "Check Updates"}
+                    </button>
+                    {pendingUpdate && (
+                      <button className="text-button" type="button" onClick={installUpdate}>
+                        <CheckCircle2 size={16} />
+                        Install {pendingUpdate.version}
+                      </button>
+                    )}
+                  </div>
+                  <UpdatePipelinePanel entries={updatePipeline} releaseSites={status.releaseSites} />
+                </section>
+
+                <section className="settings-group">
+                  <span className="settings-kicker">Account</span>
+                  <StatusLine label="Signed in" value={account?.email ?? "No local account"} />
+                  <StatusLine label="Role" value={account?.role ?? "Not enrolled"} />
+                  <StatusLine label="Plan" value={account?.plan ?? "Trial"} />
+                  <StatusLine label="Status" value={account?.status ?? "Local session needed"} />
+                  <StatusLine label="Run mode" value={fastRunMode ? "Fast audited queue" : "Review prompts"} />
+                </section>
+
+                <section className="settings-group">
+                  <NotificationList
+                    notifications={notifications}
+                    armed={notificationsArmed}
+                    onTest={() =>
+                      triggerJawsNotification({
+                        title: "Fireworks test",
+                        detail: "JAWS notifications are armed for agent completion, human input, and release updates.",
+                        tone: "complete"
+                      })
+                    }
+                  />
+                </section>
+
+                <section className="settings-group">
+                  <span className="settings-kicker">Appearance</span>
+                  <div className="button-row">
+                    <button className="text-button" type="button" onClick={() => setAppearance("dark")}>
+                      <ShieldCheck size={16} />
+                      Dark
+                    </button>
+                    <button className="text-button" type="button" onClick={() => setAppearance("light")}>
+                      <Sparkles size={16} />
+                      Light
+                    </button>
+                  </div>
+                  <div className="theme-grid compact">
+                    {layoutThemes.map((layout) => {
+                      const Icon = layout.icon;
+                      return (
+                        <button
+                          className={theme === layout.id ? "theme-chip active" : "theme-chip"}
+                          key={layout.id}
+                          type="button"
+                          onClick={() => setTheme(layout.id)}
+                        >
+                          <Icon size={16} />
+                          <span>{layout.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              </div>
+            </div>
+
+            <div className="wide-panel companion-panel">
+              <PanelHeader icon={Zap} label="Digital Companion" />
+              <CyberPet pet={pet} compact onFeed={feedPet} onTrain={trainPet} onEquip={equipPet} onDecorate={decoratePet} />
+            </div>
+          </section>
+        )}
+
+        {active === "layouts" && (
+          <section className="wide-panel">
+            <PanelHeader icon={Maximize2} label="Layouts" />
+            <div className="theme-grid">
+              {layoutThemes.map((layout) => {
+                const Icon = layout.icon;
+                return (
+                  <button
+                    className={theme === layout.id ? "theme-chip active" : "theme-chip"}
+                    key={layout.id}
+                    type="button"
+                    onClick={() => setTheme(layout.id)}
+                  >
+                    <Icon size={16} />
+                    <span>{layout.label}</span>
+                    <small>{layout.description}</small>
+                    <i style={{ background: layout.accent }} />
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function PanelHeader({ icon: Icon, label }: { icon: typeof Activity; label: string }) {
+  return (
+    <div className="panel-header">
+      <Icon size={18} />
+      <h3>{label}</h3>
+    </div>
+  );
+}
+
+function JawsMark({ className = "" }: { className?: string }) {
+  return (
+    <div className={`jaws-mark ${className}`} aria-hidden="true">
+      <span className="jaws-mark-fin" />
+      <span className="jaws-mark-head" />
+      <span className="jaws-mark-mouth">
+        <i />
+        <i />
+        <i />
+        <i />
+        <i />
+        <i />
+      </span>
+      <span className="jaws-mark-water" />
+      <strong>JAWS</strong>
+    </div>
+  );
+}
+
+function MessageActivity({
+  active,
+  state,
+  frame
+}: {
+  active: boolean;
+  state: ChatMessage["state"];
+  frame: number;
+}) {
+  return (
+    <div className={`message-activity ${active ? "active" : ""} ${state}`} aria-label={`Message ${state}`}>
+      <pre>{jawFrames[frame]}</pre>
+    </div>
+  );
+}
+
+function StatusLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="status-line">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function FireworkNotice({ notification }: { notification: JawsNotification }) {
+  return (
+    <div className={`firework-notice ${notification.tone}`} role="status" aria-live="polite">
+      <div className="firework-burst">
+        {Array.from({ length: 12 }, (_, index) => (
+          <span key={index} style={{ rotate: `${index * 30}deg` }} />
+        ))}
+      </div>
+      <div>
+        <strong>{notification.title}</strong>
+        <span>{notification.detail}</span>
+      </div>
+    </div>
+  );
+}
+
+function NotificationList({
+  notifications,
+  armed,
+  onTest
+}: {
+  notifications: JawsNotification[];
+  armed: boolean;
+  onTest: () => void;
+}) {
+  return (
+    <div className="notification-center">
+      <div className="panel-header-row">
+        <PanelHeader icon={BellRing} label="Notifications" />
+        <button className="text-button" type="button" onClick={onTest}>
+          <Sparkles size={16} />
+          Test
+        </button>
+      </div>
+      <StatusLine label="Sound and fireworks" value={armed ? "Armed" : "Muted"} />
+      <div className="notification-list">
+        {notifications.map((notification) => (
+          <article className={`notification-card ${notification.tone}`} key={notification.id}>
+            <header>
+              <strong>{notification.title}</strong>
+              <span>{notification.time}</span>
+            </header>
+            <p>{notification.detail}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CyberPet({
+  pet,
+  compact = false,
+  onFeed,
+  onTrain,
+  onEquip,
+  onDecorate
+}: {
+  pet: CyberPetState;
+  compact?: boolean;
+  onFeed: () => void;
+  onTrain: () => void;
+  onEquip: () => void;
+  onDecorate: () => void;
+}) {
+  return (
+    <div className={compact ? "cyber-pet compact" : "cyber-pet"}>
+      <div className={`pet-stage ${pet.gear.replace(/\s/g, "-")} ${pet.decor.replace(/\s/g, "-")}`}>
+        <div className="pet-decor left" />
+        <div className="pet-decor right" />
+        <div className="frog-body">
+          <div className="frog-eye left">
+            <span />
+          </div>
+          <div className="frog-eye right">
+            <span />
+          </div>
+          <div className="frog-visor" />
+          <div className="frog-mouth" />
+          <div className="frog-chest">
+            <span />
+            <span />
+            <span />
+          </div>
+          <div className="frog-gear" />
+        </div>
+        <div className="pet-egg">
+          <span style={{ height: `${pet.egg}%` }} />
+        </div>
+      </div>
+      <div className="pet-info">
+        <span>Cyber Frog</span>
+        <strong>{pet.name}</strong>
+        <small>
+          {pet.mood} - {pet.gear} - {pet.decor}
+        </small>
+      </div>
+      <div className="pet-bars">
+        <StatusLine label="Tokens" value={String(pet.tokens)} />
+        <StatusLine label="Full" value={`${pet.fullness}%`} />
+        <StatusLine label="Energy" value={`${pet.energy}%`} />
+        <StatusLine label="Egg" value={`${pet.egg}%`} />
+      </div>
+      <div className="pet-actions">
+        <button className="text-button" type="button" onClick={onFeed}>
+          <Coffee size={15} />
+          Feed
+        </button>
+        <button className="text-button" type="button" onClick={onTrain}>
+          <Gauge size={15} />
+          Train
+        </button>
+        <button className="text-button" type="button" onClick={onEquip}>
+          <Crown size={15} />
+          Gear
+        </button>
+        <button className="text-button" type="button" onClick={onDecorate}>
+          <PackagePlus size={15} />
+          Decor
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function UpdatePipelinePanel({
+  entries,
+  releaseSites
+}: {
+  entries: UpdatePipelineEntry[];
+  releaseSites: string[];
+}) {
+  return (
+    <div className="update-pipeline">
+      {entries.map((entry) => (
+        <article className={`pipeline-step ${entry.status}`} key={entry.id}>
+          <div className="pipeline-icon">
+            {entry.status === "ok" ? (
+              <CheckCircle2 size={16} />
+            ) : entry.status === "error" ? (
+              <XCircle size={16} />
+            ) : entry.status === "checking" ? (
+              <RefreshCcw size={16} />
+            ) : (
+              <CircleDot size={16} />
+            )}
+          </div>
+          <div>
+            <strong>{entry.label}</strong>
+            <span>{entry.detail}</span>
+          </div>
+        </article>
+      ))}
+      <div className="release-mirrors">
+        {(releaseSites.length > 0 ? releaseSites : fallbackStatus.releaseSites).map((site) => (
+          <span key={site}>{site}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SlowGuyGame({
+  state,
+  pet,
+  onAction,
+  onFeed,
+  onTrain,
+  onEquip,
+  onDecorate
+}: {
+  state: SlowGuyState;
+  pet: CyberPetState;
+  onAction: (action: SlowGuyAction) => void;
+  onFeed: () => void;
+  onTrain: () => void;
+  onEquip: () => void;
+  onDecorate: () => void;
+}) {
+  const laneNames = ["High lane", "Middle lane", "Low lane"];
+  return (
+    <div className="slow-guy-shell">
+      <section className="slow-guy-main">
+        <div className="slow-guy-scoreboard">
+          <StatusLine label="Score" value={String(state.score)} />
+          <StatusLine label="Best" value={String(state.bestScore)} />
+          <StatusLine label="Level" value={String(state.level)} />
+          <StatusLine label="Lives" value={`${state.lives}/3`} />
+          <StatusLine label="Tokens" value={String(state.tokens)} />
+          <StatusLine label="Combo" value={`x${state.combo}`} />
+          <StatusLine label="Stamina" value={`${state.stamina}%`} />
+        </div>
+
+        <div className="slow-guy-objective">
+          <strong>Slow Guy</strong>
+          <span>{state.objective}</span>
+          <small>{state.lastEvent}</small>
+        </div>
+
+        <div className={`arcade-stage slow-guy-stage ${state.gameOver ? "game-over" : ""}`} tabIndex={0}>
+          <div className="slow-guy-skyline">
+            <span />
+            <span />
+            <span />
+          </div>
+          {laneNames.map((lane, index) => (
+            <div className="slow-lane" key={lane} style={{ top: `${19 + index * 31}%` }}>
+              <span>{lane}</span>
+            </div>
+          ))}
+          <div
+            className={`slow-runner ${state.running ? "running" : ""} ${state.pose} ${state.shieldTicks > 0 ? "shielded" : ""}`}
+            style={{ top: `${14 + state.lane * 31}%` }}
+            aria-label={`Slow Guy in lane ${state.lane + 1}`}
+          >
+            <span />
+          </div>
+          <div className="slow-runner-shadow" style={{ top: `${27 + state.lane * 31}%` }} />
+          {state.hazards.map((hazard) => (
+            <span
+              className={`slow-hazard ${hazard.type}`}
+              key={hazard.id}
+              style={{ left: `${hazard.x}%`, top: `${16 + hazard.lane * 31}%` }}
+              title={hazard.type}
+            />
+          ))}
+          {state.coins.map((coin) => (
+            <span
+              className="slow-coin"
+              key={coin.id}
+              style={{ left: `${coin.x}%`, top: `${17 + coin.lane * 31}%` }}
+            />
+          ))}
+          <div className="slow-goal-line" />
+          <div className="slow-stage-hud">
+            <span>{state.distance}m</span>
+            <span>{state.shieldTicks > 0 ? "shield" : state.running ? "run" : "paused"}</span>
+          </div>
+          {state.gameOver && (
+            <div className="slow-game-over">
+              <strong>Run ended</strong>
+              <span>Reset and chase the 500 point objective.</span>
+            </div>
+          )}
+        </div>
+
+        <div className="slow-controls" aria-label="Slow Guy controls">
+          <button className="text-button" type="button" aria-keyshortcuts="ArrowLeft" onClick={() => onAction("left")}>
+            Left
+          </button>
+          <button className="text-button primary" type="button" aria-keyshortcuts="ArrowUp Space" onClick={() => onAction("jump")}>
+            Jump
+          </button>
+          <button className="text-button" type="button" aria-keyshortcuts="ArrowDown S" onClick={() => onAction("duck")}>
+            Duck
+          </button>
+          <button className="text-button" type="button" aria-keyshortcuts="ArrowRight" onClick={() => onAction("right")}>
+            Right
+          </button>
+          <button className="text-button" type="button" aria-keyshortcuts="D" onClick={() => onAction("dash")}>
+            Dash
+          </button>
+          <button className="text-button" type="button" aria-keyshortcuts="P" onClick={() => onAction("pause")}>
+            {state.running ? <Pause size={15} /> : <Play size={15} />}
+            {state.running ? "Pause" : "Resume"}
+          </button>
+          <button className="text-button" type="button" aria-keyshortcuts="R" onClick={() => onAction("reset")}>
+            <RefreshCcw size={15} />
+            Reset
+          </button>
+        </div>
+      </section>
+
+      <aside className="slow-guy-side">
+        <CyberPet pet={pet} compact onFeed={onFeed} onTrain={onTrain} onEquip={onEquip} onDecorate={onDecorate} />
+        <div className="control-card">
+          <strong>Controls</strong>
+          <span>Arrow keys move lanes. Space jumps. S ducks. D dashes. P pauses. R resets.</span>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function HoldemRoundtable({
+  table,
+  chatInput,
+  onChatInput,
+  onSendChat,
+  onAdvance,
+  onReset
+}: {
+  table: HoldemTableState;
+  chatInput: string;
+  onChatInput: (value: string) => void;
+  onSendChat: (event: FormEvent<HTMLFormElement>) => void;
+  onAdvance: () => void;
+  onReset: () => void;
+}) {
+  const buttonLabel = table.phase === "lobby" ? "Deal Hand" : table.phase === "showdown" ? "Next Hand" : "Next Street";
+  return (
+    <div className="holdem-shell">
+      <section className="holdem-table-panel">
+        <div className="holdem-topline">
+          <div>
+            <span>Texas Hold'em Dealer Roundtable</span>
+            <strong>{table.multiplayer.roomCode}</strong>
+          </div>
+          <div>
+            <span>{table.multiplayer.transport}</span>
+            <strong>{table.phase}</strong>
+          </div>
+          <div>
+            <span>Pot</span>
+            <strong>{table.pot}</strong>
+          </div>
+        </div>
+
+        <div className="community-row" aria-label="Community cards">
+          {table.communityCards.length > 0
+            ? table.communityCards.map((card) => <PlayingCard card={card} key={card} />)
+            : Array.from({ length: 5 }, (_, index) => <PlayingCard card="" hidden key={`slot-${index}`} />)}
+        </div>
+
+        <div className="holdem-seat-grid">
+          {table.seats.map((seat) => (
+            <article className={`holdem-seat ${seat.kind} ${seat.connected ? "connected" : "offline"}`} key={seat.id}>
+              <header>
+                <div>
+                  <strong>{seat.name}</strong>
+                  <span>{seat.kind === "open" ? "Invite ready" : seat.agentName ?? seat.petName ?? "Player"}</span>
+                </div>
+                <small>{seat.connected ? "online" : "open"}</small>
+              </header>
+              <div className="card-row">
+                {seat.holeCards.length > 0 ? (
+                  seat.holeCards.map((card) => (
+                    <PlayingCard card={card} hidden={seat.kind === "agent" && table.phase !== "showdown"} key={card} />
+                  ))
+                ) : (
+                  <>
+                    <PlayingCard card="" hidden />
+                    <PlayingCard card="" hidden />
+                  </>
+                )}
+              </div>
+              <StatusLine label="Chips" value={String(seat.chips)} />
+              <StatusLine label="Bet" value={String(seat.currentBet)} />
+              <div className="scope-row">
+                {seat.secureScopes.slice(0, 3).map((scope) => (
+                  <span key={scope}>{scope}</span>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <aside className="holdem-side">
+        <div className="holdem-actions">
+          <button className="text-button primary" type="button" onClick={onAdvance}>
+            <Play size={15} />
+            {buttonLabel}
+          </button>
+          <button className="text-button" type="button" onClick={onReset}>
+            <RefreshCcw size={15} />
+            New Room
+          </button>
+        </div>
+
+        <div className="holdem-status">
+          <strong>{table.lastEvent}</strong>
+          <span>Presence: {table.multiplayer.presence.join(", ")}</span>
+          <span>Mode: {table.multiplayer.mode}</span>
+        </div>
+
+        {table.winners.length > 0 && (
+          <div className="winner-list">
+            <strong>Showdown</strong>
+            {table.winners.map((winner) => (
+              <span key={winner.seatId}>
+                {winner.name}: {winner.description}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="world-chat">
+          <strong>Table Chat</strong>
+          <div className="world-chat-log">
+            {table.chat.map((message) => (
+              <p className={message.channel} key={message.id}>
+                <span>{message.speaker}</span>
+                {message.body}
+              </p>
+            ))}
+          </div>
+          <form className="holdem-chat-form" onSubmit={onSendChat}>
+            <label className="sr-only" htmlFor="holdem-chat-input">
+              Hold'em table chat
+            </label>
+            <input
+              id="holdem-chat-input"
+              value={chatInput}
+              onChange={(event) => onChatInput(event.target.value)}
+              placeholder="Chat at the table"
+            />
+            <button className="text-button" type="submit" disabled={chatInput.trim().length === 0}>
+              <Send size={15} />
+            </button>
+          </form>
+        </div>
+
+        <div className="sandbox-scope-card">
+          <strong>Secure PvP Foundation</strong>
+          {table.sandbox.pendingReview.map((item) => (
+            <span key={item}>{item}</span>
+          ))}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function PlayingCard({ card, hidden = false }: { card: string; hidden?: boolean }) {
+  const red = card.endsWith("h") || card.endsWith("d");
+  const rank = card[0] ?? "";
+  const suit = card[1] ?? "";
+  const suitMark: Record<string, string> = { s: "S", h: "H", d: "D", c: "C" };
+  return (
+    <span
+      className={`playing-card ${hidden ? "hidden" : ""} ${red ? "red" : ""}`}
+      aria-label={hidden || !card ? "Hidden card" : describeCard(card)}
+    >
+      {hidden || !card ? (
+        "JAWS"
+      ) : (
+        <>
+          <strong>{rank}</strong>
+          <small>{suitMark[suit] ?? suit}</small>
+        </>
+      )}
+    </span>
+  );
+}
+
+function SandboxWorldFoundation({ pet }: { pet: CyberPetState }) {
+  const nodes = [
+    { label: "You", detail: "profile + credits", x: 12, y: 58 },
+    { label: pet.name, detail: "pet presence", x: 32, y: 36 },
+    { label: "Q", detail: "planner", x: 52, y: 54 },
+    { label: "Agent Forge", detail: "capability review", x: 72, y: 28 },
+    { label: "PvP Table", detail: "room auth", x: 78, y: 68 }
+  ];
+  return (
+    <div className="sandbox-world">
+      <section className="world-stage" aria-label="Agent and pet sandbox foundation">
+        <div className="world-floor" />
+        {nodes.map((node) => (
+          <div className="world-node" key={node.label} style={{ left: `${node.x}%`, top: `${node.y}%` }}>
+            <strong>{node.label}</strong>
+            <span>{node.detail}</span>
+          </div>
+        ))}
+        <div className="world-link a" />
+        <div className="world-link b" />
+        <div className="world-link c" />
+      </section>
+      <aside className="agent-builder-panel">
+        <strong>Sandbox Agent Builder</strong>
+        <span>Agents start as signed local profiles before entering shared rooms.</span>
+        <div className="builder-step ready">
+          <CheckCircle2 size={15} />
+          Capability manifest
+        </div>
+        <div className="builder-step ready">
+          <CheckCircle2 size={15} />
+          Workspace scope
+        </div>
+        <div className="builder-step">
+          <CircleDot size={15} />
+          Multiplayer auth lane
+        </div>
+        <div className="builder-step">
+          <CircleDot size={15} />
+          Pet and agent inventory ledger
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function Node({ label }: { label: string }) {
+  return (
+    <div className="node">
+      <span />
+      <strong>{label}</strong>
+    </div>
+  );
+}
+
+function StudioPreview({ mode }: { mode: "image" | "video" }) {
+  return (
+    <div className={`studio-preview ${mode}`}>
+      <div className="media-strip">
+        <span />
+        <span />
+        <span />
+      </div>
+      <div>
+        <strong>{mode === "image" ? "Prompt canvas" : "Render queue"}</strong>
+        <p>{mode === "image" ? "Provider-gated image workbench" : "Storyboard and export lane"}</p>
+      </div>
+    </div>
+  );
+}
+
+const RadarIcon = RadioTower;
+const NetworkIcon = Activity;
+const GamepadIcon = Zap;
+const ReceiptIcon = ShieldCheck;
+const UsersIcon = Activity;
+const FileTextIcon = Settings2;

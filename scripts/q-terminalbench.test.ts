@@ -123,7 +123,8 @@ describe('q-terminalbench provenance', () => {
     expect(metadata.tracePath).toBe(writer.path)
     const firstLine = (await Bun.file(writer.path).text()).split(/\r?\n/)[0]
     expect(firstLine).toBeTruthy()
-    expect(JSON.parse(firstLine)).toMatchObject({
+    const sessionStartedEvent = JSON.parse(firstLine)
+    expect(sessionStartedEvent).toMatchObject({
       type: 'session.started',
       sessionId: 'run-123',
       tracePath: writer.path,
@@ -131,9 +132,13 @@ describe('q-terminalbench provenance', () => {
       sessionScope: 'terminalbench:bounded',
       repoPath: resolve(root),
       worktreePath: expectedTopLevel.stdout.trim() || resolve(root),
-      gitBranch: metadata.gitBranch,
       repoSha: metadata.repoSha,
     })
+    if (metadata.gitBranch) {
+      expect(sessionStartedEvent.gitBranch).toBe(metadata.gitBranch)
+    } else {
+      expect('gitBranch' in sessionStartedEvent).toBe(false)
+    }
   })
 })
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import {
+  buildHostedQServiceUnavailableResponse,
   proxyHostedQServiceRequest,
   resolveHostedQServiceMode,
 } from '../../../lib/hostedQService'
@@ -14,10 +15,17 @@ type KeyRequest = {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
-  if (resolveHostedQServiceMode() === 'proxy') {
+  const mode = resolveHostedQServiceMode()
+  if (mode === 'proxy') {
     return proxyHostedQServiceRequest({
       action: 'keys',
       request,
+    })
+  }
+  if (mode !== 'filesystem') {
+    return buildHostedQServiceUnavailableResponse({
+      action: 'keys',
+      mode,
     })
   }
 

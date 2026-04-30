@@ -15,6 +15,25 @@ This page summarizes the current public OpenJaws surface that is already working
 
 ## TUI and Branding
 
+- JAWS Desktop is now scaffolded as the native Tauri app lane for OpenJaws, with the OpenJaws backend bundled as a sidecar, signed updater artifact wiring, a collapsible workspace shell, Q/Q_agents/OpenCheek/Immaculate surfaces, Arobi enrollment, co-work pairing, marketplace, studio, arcade, billing, layout themes, an original blue shark-jaws logo asset, and the Settings/update page plus bundled Cyber Frog companion asset.
+- JAWS Desktop 0.1.3 is now published on GitHub and mirrored through `qline.site/downloads/jaws` and `iorch.net/downloads/jaws`; both route installer and updater-manifest downloads back to the signed `jaws-v0.1.3` GitHub release assets.
+- The live qline.site and iorch.net updater endpoints now return a signed `0.1.3` update payload for `0.1.2` tester installs and `204 No Content` for current `0.1.3` installs.
+- JAWS Desktop 0.1.3 adds native Playwright demo harness receipt integrity hashes and keeps the generated `release-index.json` aligned with the published `jaws-v0.1.3` asset set.
+- `bun run jaws:mirror:check` now verifies the qline mirror, iorch mirror, GitHub release asset list, and signed updater manifest before a release pass can be called complete.
+- JAWS Desktop arcade now has real gameplay foundations: `Slow Guy` has scored lane controls, jump/duck/dash mechanics, hazards, token pickup, stamina, best-score persistence, and Cyber Frog reward hooks; the new Texas Hold'em Dealer Roundtable uses deterministic local dealing, `pokersolver` showdown scoring, table chat, Q/OpenCheek seats, and secure multiplayer metadata for the future PvP websocket room.
+- JAWS Desktop Settings now exposes update-pipeline diagnostics for the Tauri updater, qline mirror, iorch mirror, and GitHub release lane; layout themes now include richer palette tints, descriptive cards, and accent swatches.
+- JAWS Desktop now generates `src/release-index.json` from the desktop package version and uses it as the shared release contract for Settings, the native Tauri mirror probe, and `bun run jaws:mirror:check`.
+- JAWS Desktop Agent Watch now reads a native bounded snapshot from `artifacts/q-runs` route queue, route workers, and worker runtime files, with static events retained only as non-Tauri fallback.
+- JAWS Desktop now exposes the OpenJaws browser-preview capability as a native Preview tab with embedded web view, `.openjaws/launch.json` authoring, `/preview` sidecar routing, receipt inspection, and Playwright codegen/test workflow staging.
+- JAWS Desktop now exposes Q_agents co-work as real native controls for stacked/paired/solo routing, Q planner, Q_agent implementer, Q_agent verifier, shared phase memory, co-work room status, and explicit pooled-credit consent.
+- JAWS Desktop now includes Context Brain, a privacy-preserving project-context receipt that shows what the app scanned, which priority files shape the agent context, what was skipped for safety or generated/binary reasons, estimated context weight, and the Q/Q_agents/OpenCheek/Immaculate lanes that receive the context pack.
+- JAWS Desktop now includes in-app notification history plus fireworks and generated sound cues for update-prep, agent-complete, and human-input-required events.
+- Slow Guy now has recoverable lives, shield frames, level progression, and in-game token tracking on top of its existing lane, hazard, stamina, and best-score loop.
+- JAWS Desktop now has an in-app Docs and Legal page with Terms, final-sale billing policy qualified by applicable law, security/privacy notes, community content rules, AI output notice, developer verification commands, and public release links.
+- The native installer publisher is pinned to `AROBI TECHNOLOGY ALLIANCE A OPAL MAR GROUP CORPORATION NJ USA`; the release config gate now fails if that attribution drifts.
+- `bun run jaws:soak -- --duration-ms 300000 --users 5000` adds a five-minute durability lane for logo rendering, docs/legal presence, release metadata, updater security, Agent Watch bridge wiring, Slow Guy, Hold'em, and synthetic user-presence scaling.
+- Website checkout and billing coverage now tests Stripe readiness, checkout route fail-closed cases, hosted billing proxy mode, local entitlement activation from `checkout.session.completed`, cancellation from `customer.subscription.deleted`, usage receipts, key blocking before checkout, and webhook signature verification.
+- Stripe webhook verification now uses the SDK async verifier so the Next/Bun route can validate signed Stripe webhooks without failing on the SDK SubtleCrypto provider.
 - FIGlet-style `OPENJAWS` banner now uses a six-row ANSI-shadow treatment with the `OPENCHEEKS // ANSI-SHADOW FLIGHT DECK // IMMACULATE` deck line across the startup TUI
 - ocean-blue flight-deck styling is used across the cockpit, footer, task surfaces, and wiki/repo entry pages
 - shark mascot animation now breaches through the waterline instead of acting as a static icon
@@ -58,21 +77,23 @@ This page summarizes the current public OpenJaws surface that is already working
 - `/apex` now gives OpenJaws a bounded local command-center lane for an external Apex workspace
 - the typed `workspace_api` bridge can surface mail, chat, store, system, and security summaries directly into OpenJaws
 - the new dedicated `chrono-bridge` wraps `apps/chrono/src/lib.rs` into a bounded localhost backup surface instead of pretending the desktop GUI is native TUI UI
-- the `/apex` deck now exposes those bridge-backed surfaces through dedicated `Mail`, `Chat`, `Store`, `System`, `Chrono`, and `Security` tabs
+- the `/apex` deck now exposes those bridge-backed surfaces through dedicated `Mail`, `Chat`, `Store`, `Settings`, `System`, `Chrono`, and `Security` tabs
 - `/status` now also surfaces bounded Apex governance recommendations, so the shared tenant-governance lane can point operators toward `Mail`, `Security`, `System`, or `Store` follow-up work without widening the bridge contract
 - `/apex` can now send Aegis Mail drafts, move/delete/flag selected mail items, create Shadow Chat sessions, post into those sessions, and install Store apps with a structured receipt through the same trusted bridge contract
+- `/apex` can now read Apex system settings and toggle telemetry, privacy mode, firewall, realtime monitoring, and hardware acceleration through the trusted `workspace_api` settings contract, with reset and receipt logging included
 - browser, security center, vault, and related Apex desktop apps stay launcher-backed and out of process instead of being hard-embedded into the TUI
 - the browser now has a dedicated bridge-backed preview lane inside OpenJaws; launcher-only desktop apps remain outside the TUI
 - Apex launches now use a reduced allowlisted environment, and the bridge is only trusted when OpenJaws launched it itself unless the operator explicitly opts into trusting a pre-existing localhost listener
 - the workspace bridge launcher now auto-discovers a local `libclang` runtime on Windows when the upstream Apex workspace needs it to compile
 - the bounded runtime contract is now documented explicitly too: `8797` for `workspace_api`, `8798` for `chrono-bridge`, `8799` for the browser bridge, `%TEMP%\openjaws-apex\*` for the runtime logs/state files, and `x-openjaws-apex-token` as the default trust header for launched bridges
-- the next safe upstream-backed TUI seam is `settings` over `workspace_api`; `vault` remains launcher-backed until it has its own narrower trust contract
+- the settings lane is now bridged over `workspace_api`; `vault` remains launcher-backed until it has its own narrower trust contract
 - `Notifications` and `argus` remain intentionally outside agent control until they have their own narrow localhost bridges plus confirmation and audit ladders
 
 ## Accountable Browser Preview
 
 - `/preview` now opens native in-TUI app previews and supervised browse/watch/music sessions under one explicit receipt
 - each session keeps intent, rationale, requester, and runtime handler visible instead of letting agents browse without an explanation trail
+- the JAWS Desktop Preview tab now writes a workspace-local Playwright demo harness with README, config, test spec, receipt, and deterministic receipt hash, so users can make repeatable demos from the embedded browser lane
 - the preview lane now uses the dedicated Apex browser bridge instead of preferring Chrome-compatible preview for normal session rendering
 - user browsing history stays private by default; only Q or agent-led browsing is persisted for accountability
 - localhost/private-network targets are now reserved for explicit `preview` sessions so the general browse/watch/music lanes stay on public URLs
@@ -131,6 +152,13 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 - `bun run q:soak` adds a 30-minute bounded repeated-probe soak lane for native OpenJaws plus direct OCI Q
 - `q:terminalbench` now supports `--repeat` and writes `attempts[]` plus flattened `tasks[]` receipts, so repeated-run stability and real multi-task concurrency are visible in one JSON artifact
 - `q:terminalbench` now also supports `--soak`, which writes `cycles[]`, a top-level `soak` block, and still keeps flattened `attempts[]` / `tasks[]` receipts for compatibility
+- `q:terminalbench` now supports verifier-driven repair and first-nonzero task selection: failed receipts can emit a `repairPlan`, `--benchmark-repair-hint` feeds prior verifier output back into the Harbor agent, and `--task-selection-lane` can rotate through candidate public tasks before the next official attempt
+- the Windows Harbor wrapper now prefers an isolated `.tools/harbor-venv` plus the repo-patched launcher, avoiding global Python dependency conflicts during TerminalBench preflight
+- Q_agents crew launch orchestration now reuses one Immaculate deck receipt for pacing and handoff, reducing duplicate live probes while keeping launch pressure decisions consistent
+- routed Q dispatch now fails closed when an assigned worker is marked `stale` or `faulted`, and the queue rejection carries that health reason before any local process or remote HTTP dispatch is attempted
+- `verify:release` now uses `system:check:live:strict`, so live warnings from Viola auth, PersonaPlex, or runtime coherence fail the production release gate instead of passing as diagnostic-only output
+- PersonaPlex probe failures now include runtime-state context such as mode, PID, and last healthy age, making stale Moshi bridge receipts faster to diagnose without exposing secrets
+- official Terminal-Bench mode now emits the public-leaderboard-compatible Harbor timeout multiplier (`1`) and fails validation if an official run tries to modify that timeout
 - the direct `q:soak` lane and the Harbor-backed `q:terminalbench` lane now share the same OCI/Q provider probe surface before launch, so the direct and Harbor receipts agree on when the provider path is healthy, failed, or merely forceable
 - the benchmark wrappers now also share one typed `q:preflight` checklist surface, so Harbor, Docker, Python, bundle, provider, and clock checks all come from one source of truth instead of separate script-local logic
 - `q:bridgebench`, `q:soak`, and `q:terminalbench` now all accept `--seed`, default to `42`, and emit that seed into their reports plus signed receipts
@@ -160,18 +188,19 @@ OpenJaws now also has a local `Q` comparison lane for real repo work:
 
 This is useful for tuning and honest before/after comparison. It is not a replacement for the public Immaculate benchmark source or a fake Harbor / Terminal-Bench leaderboard claim.
 
-Current April 16, 2026 local snapshot:
+Current April 29, 2026 local snapshot:
 
-- BridgeBench best pack: `all` at `36.84`
+- BridgeBench latest lane: `q-bridgebench-20260429T024506` dry-run completed; the local scored pack lane is still blocked by host memory pressure, so no new public score is claimed from this pass
+- historical local BridgeBench score retained for comparison: best pack `all` at `36.84`
 - 30-minute soak: `52/52` successful probes, `0` errors
 - local W&B lane: attempted, but no local auth was configured so the run stayed receipt-only
-- April 22 official TerminalBench rerun for `circuit-fibsqrt`: `5` trials with `4` execution-error trials, `1` benchmark-failing trial, and `0` benchmark passes
+- April 29 official TerminalBench rerun for `circuit-fibsqrt`: `5` trials with `0` execution-error trials, `5` benchmark-failing trials, reward `0.0`, and `0` benchmark passes
 - April 18 direct OCI `Q` reasoning validation answered the fallback-hysteresis check correctly with `t = 70s`
 - April 18 direct OCI `Q` media validation returned `404` on the native image endpoint, so image/video stays on a separate explicit media lane instead of silently replacing `Q` as the session mind
 - the dedicated Gemini media lane is restored for explicit image/video work, but the configured Gemini project on this machine is still quota-blocked
 - local Harbor / Terminal-Bench lane:
   - single-task live receipt now reaches clean Harbor completion under OCI `Q`
-  - official public-task five-attempt receipt now exists for `circuit-fibsqrt`, with `0` runtime errors, reward `0.0`, and Harbor raw env bundles scrubbed in place
+  - official public-task five-attempt receipt now exists at `artifacts/q-terminalbench-official-public-20260429-circuit-fibsqrt-rerun/terminalbench-report.json`, with `0` runtime errors, `5` benchmark failures, reward `0.0`, and Harbor raw env bundles scrubbed in place
   - that same receipt is now packaged and submitted through the official leaderboard discussion flow:
     - `https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard/discussions/141`
   - repeated-attempt stability receipt captured `1` benchmark-failing trial plus `1` execution-error trial across `2` attempts
@@ -179,8 +208,8 @@ Current April 16, 2026 local snapshot:
     - result: `completed_with_errors`
     - truth: `2` cycles produced `2` total trials, `0` runtime errors, and `2` benchmark-failing trials
   - real concurrent receipt captured `2` live tasks at concurrency `2`
-  - a fresh bounded April 18 wrapper proof now reaches Harbor execution on the current code path, but the Windows Harbor/Docker environment still throws `NotImplementedError` during trial environment startup, so the official five-attempt public receipt above remains the truthful published TerminalBench record
-  - task outcomes are still variant, so the lane is not ready for strong leaderboard positioning
+  - the earlier Windows Docker context mismatch is now covered by a Harbor-process Docker preflight check before public runs
+  - task outcomes are still reward-0, so the lane is credible for public execution proof but not ready for strong leaderboard positioning
 
 This pass also tightens the public `Q` runtime story:
 

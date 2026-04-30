@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server'
 
-export type HostedQAction = 'signup' | 'checkout' | 'keys' | 'usage'
+export type HostedQAction =
+  | 'signup'
+  | 'checkout'
+  | 'keys'
+  | 'usage'
+  | 'stripe-webhook'
 
 export type HostedQServiceConfig = {
   siteUrl: string
@@ -62,31 +67,42 @@ export function buildHostedQServiceTarget(
   return `${config.baseUrl.replace(/\/$/, '')}/${action}`
 }
 
-export async function proxyHostedQServiceRequest(args: {
+export function buildHostedQServiceUnavailableResponse(args: {
   action: HostedQAction
-  request: Request
+  mode?: HostedQServiceMode
+}): NextResponse {
+  return NextResponse.json(
+    {
+      ok: false,
+      code: 'hosted_q_backend_required',
+      action: args.action,
+      mode: args.mode ?? resolveHostedQServiceMode(),
+      message:
+        'Hosted Q access is not available on this site until the production hosted-Q backend is configured.',
+      requiredEnv: ['Q_HOSTED_SERVICE_BASE_URL'],
+    },
+    {
+      status: 503,
+      headers: {
+        'cache-control': 'no-store',
+      },
+    },
+  )
+}
+
+export async function proxyHostedQServiceJsonPayload(args: {
+  action: HostedQAction
+  payload: unknown
+  headers?: Record<string, string>
 }): Promise<NextResponse> {
   const config = resolveHostedQServiceConfig()
   const target = buildHostedQServiceTarget(config, args.action)
 
   if (!target) {
-    return NextResponse.json(
-      {
-        ok: false,
-        code: 'backend_not_configured',
-        message:
-          'Hosted Q backend is not configured yet. Set Q_HOSTED_SERVICE_BASE_URL before enabling this route.',
-        requiredEnv: ['Q_HOSTED_SERVICE_BASE_URL'],
-      },
-      { status: 503 },
-    )
-  }
-
-  let body: unknown = null
-  try {
-    body = await args.request.json()
-  } catch {
-    body = null
+    return buildHostedQServiceUnavailableResponse({
+      action: args.action,
+      mode: resolveHostedQServiceMode(),
+    })
   }
 
   const upstream = await fetch(target, {
@@ -96,13 +112,14 @@ export async function proxyHostedQServiceRequest(args: {
       'x-q-site-url': config.siteUrl,
       'x-q-aura-genesis-url': config.auraGenesisUrl,
       'x-q-website-action': args.action,
+      ...args.headers,
       ...(config.serviceToken
         ? {
             authorization: `Bearer ${config.serviceToken}`,
           }
         : {}),
     },
-    body: JSON.stringify(body ?? {}),
+    body: JSON.stringify(args.payload ?? {}),
     cache: 'no-store',
   })
 
@@ -128,5 +145,22 @@ export async function proxyHostedQServiceRequest(args: {
   return NextResponse.json(payload, {
     status: upstream.status,
     headers: responseHeaders,
+  })
+}
+
+export async function proxyHostedQServiceRequest(args: {
+  action: HostedQAction
+  request: Request
+}): Promise<NextResponse> {
+  let body: unknown = null
+  try {
+    body = await args.request.json()
+  } catch {
+    body = null
+  }
+
+  return proxyHostedQServiceJsonPayload({
+    action: args.action,
+    payload: body ?? {},
   })
 }

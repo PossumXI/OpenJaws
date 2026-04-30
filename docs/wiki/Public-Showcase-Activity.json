@@ -1,13 +1,94 @@
 {
-  "updatedAt": "2026-04-22T12:25:19.476Z",
+  "updatedAt": "2026-04-29T02:45:07.319Z",
   "entries": [
     {
-      "id": "runtime-audit-2026-04-22T12:25:19.476Z",
-      "timestamp": "2026-04-22T12:25:19.476Z",
+      "id": "apex-governed-spend-current",
+      "timestamp": "2026-04-29T02:45:07.319Z",
+      "title": "Apex governed spend lane",
+      "summary": "Apex governed spend review is active. No spend actions were published in this public snapshot. Protected approval and audit paths remain available through ApexOS and OpenJaws.",
+      "kind": "tenant_governed_spend",
+      "status": "info",
+      "source": "Apex governed spend",
+      "operatorActions": [],
+      "subsystems": [
+        "apex",
+        "openjaws"
+      ],
+      "artifacts": [
+        "apex:tenant-governance",
+        "apex:governed-spend"
+      ],
+      "tags": [
+        "apex",
+        "spend",
+        "supervised",
+        "public",
+        "commercial"
+      ]
+    },
+    {
+      "id": "immaculate-benchmark-current",
+      "timestamp": "2026-04-26T20:08:23.445Z",
+      "title": "Immaculate benchmark board",
+      "summary": "Durability Recovery. all assertions passing. reflex p50 14.09 ms · cognitive p50 50.31 ms · event throughput 51.62 events/s.",
+      "kind": "benchmark",
+      "status": "ok",
+      "source": "Immaculate benchmark board",
+      "operatorActions": [
+        "immaculate_benchmark_publication",
+        "orchestration_benchmark"
+      ],
+      "subsystems": [
+        "immaculate",
+        "openjaws"
+      ],
+      "artifacts": [
+        "immaculate:benchmark-report"
+      ],
+      "tags": [
+        "benchmark",
+        "public",
+        "immaculate",
+        "orchestration"
+      ]
+    },
+    {
+      "id": "q-benchmark-board-current",
+      "timestamp": "2026-04-26T20:08:23.445Z",
+      "title": "Q public benchmark board",
+      "summary": "Q benchmark transparency is live. BridgeBench completed in dry-run mode. Public TerminalBench circuit-fibsqrt completed 5 trials with 0 execution errors, 5 benchmark failures, and reward 0.0. W&B remains local-receipt only on this host.",
+      "kind": "benchmark",
+      "status": "info",
+      "source": "Q public benchmark board",
+      "operatorActions": [
+        "q_benchmark_publication",
+        "bridgebench_publication",
+        "terminalbench_publication",
+        "wandb_publication"
+      ],
+      "subsystems": [
+        "q",
+        "openjaws"
+      ],
+      "artifacts": [
+        "q:benchmark-snapshot"
+      ],
+      "tags": [
+        "benchmark",
+        "public",
+        "q",
+        "bridgebench",
+        "terminalbench",
+        "wandb"
+      ]
+    },
+    {
+      "id": "runtime-audit-current",
+      "timestamp": "2026-04-26T20:08:23.445Z",
       "title": "Supervised runtime activity refreshed",
-      "summary": "Supervised OpenJaws audit surfaces are live but still show bounded warnings or incomplete runtime coverage.",
+      "summary": "OpenJaws, Q, Immaculate, Apex, and Discord are visible as public-safe activity summaries. Follow-ups stay tracked without exposing sensitive details.",
       "kind": "runtime_audit",
-      "status": "warning",
+      "status": "info",
       "source": "OpenJaws public showcase sync",
       "operatorActions": [
         "runtime_audit",
@@ -28,16 +109,16 @@
       "tags": [
         "public",
         "audit",
-        "bounded"
+        "supervised"
       ]
     },
     {
-      "id": "roundtable-completed-2026-04-22T12:25:15.154Z",
-      "timestamp": "2026-04-22T12:25:15.154Z",
+      "id": "roundtable-review-current",
+      "timestamp": "2026-04-26T20:07:54.546Z",
       "title": "Roundtable runtime",
-      "summary": "Roundtable is completed in #dev_support. roundtable completed",
+      "summary": "Roundtable coordination is active and still under review. Viola passed turn 14.",
       "kind": "roundtable_runtime",
-      "status": "ok",
+      "status": "info",
       "source": "OpenJaws roundtable lane",
       "operatorActions": [
         "roundtable_runtime",
@@ -53,96 +134,13 @@
       ],
       "tags": [
         "roundtable",
-        "bounded",
-        "supervised"
+        "supervised",
+        "needs-review"
       ]
     },
     {
-      "id": "discord-q-2026-04-22T12:23:42.756Z",
-      "timestamp": "2026-04-22T12:23:42.756Z",
-      "title": "Supervised Q patrol update",
-      "summary": "3 patrol posts sent",
-      "kind": "patrol",
-      "status": "ok",
-      "source": "OpenJaws Discord lane",
-      "operatorActions": [
-        "q_operator_patrol"
-      ],
-      "subsystems": [
-        "openjaws",
-        "discord",
-        "q"
-      ],
-      "artifacts": [
-        "discord:q-agent-receipt"
-      ],
-      "tags": [
-        "q",
-        "discord",
-        "openjaws",
-        "bounded"
-      ]
-    },
-    {
-      "id": "discord-viola-2026-04-22T12:14:28.715Z",
-      "timestamp": "2026-04-22T12:14:28.715Z",
-      "title": "Supervised Viola patrol update",
-      "summary": "Viola Discord runtime is online through the supervised bounded operator lane.",
-      "kind": "patrol",
-      "status": "ok",
-      "source": "OpenJaws Discord lane",
-      "operatorActions": [
-        "viola_operator_patrol"
-      ],
-      "subsystems": [
-        "openjaws",
-        "discord",
-        "viola"
-      ],
-      "artifacts": [
-        "discord:viola-agent-receipt"
-      ],
-      "tags": [
-        "viola",
-        "discord",
-        "openjaws",
-        "bounded"
-      ]
-    },
-    {
-      "id": "apex-tenant-governance-2026-04-22T12:14:20.125761800+00:00",
-      "timestamp": "2026-04-22T12:14:20.125Z",
-      "title": "Apex tenant governance",
-      "summary": "Governed tenant actions 5 · pending 4 · high risk 3. Confidence 0.74 · avg risk 1.0 · detections 0. Top operator action system tuning · top signal antivirus enabled · review pending review. Ethics passed 2 · failed 3 · telemetry scopes 4. Latest activity 2026-04-22T12:14:20.125761800+00:00",
-      "kind": "tenant_governance",
-      "status": "warning",
-      "source": "Apex tenant governance",
-      "operatorActions": [
-        "system_tuning",
-        "operator_runtime",
-        "security_review"
-      ],
-      "subsystems": [
-        "apex",
-        "openjaws"
-      ],
-      "artifacts": [
-        "apex:tenant-governance"
-      ],
-      "tags": [
-        "apex",
-        "governance",
-        "bounded",
-        "public",
-        "antivirus_enabled",
-        "firewall_enabled",
-        "policy_guard",
-        "privacy_mode"
-      ]
-    },
-    {
-      "id": "discord-blackbeak-2026-04-22T12:14:06.191Z",
-      "timestamp": "2026-04-22T12:14:06.191Z",
+      "id": "discord-blackbeak-current",
+      "timestamp": "2026-04-26T19:54:08.942Z",
       "title": "Supervised Blackbeak patrol update",
       "summary": "Blackbeak Discord runtime is online through the supervised bounded operator lane.",
       "kind": "patrol",
@@ -163,21 +161,102 @@
         "blackbeak",
         "discord",
         "openjaws",
-        "bounded"
+        "supervised"
       ]
     },
     {
-      "id": "apex-operator-create_session-d44aae02-7379-4dec-8f22-8ff98dcd46cd",
+      "id": "immaculate-trace-current",
+      "timestamp": "2026-04-25T03:43:09.232Z",
+      "title": "Immaculate orchestration trace",
+      "summary": "Immaculate session 081d23cb-f56e-4723-b16d-6aeef9219ede is completed with 5 trace events.",
+      "kind": "orchestration_trace",
+      "status": "ok",
+      "source": "Immaculate trace",
+      "operatorActions": [
+        "immaculate_trace",
+        "orchestration_trace"
+      ],
+      "subsystems": [
+        "immaculate",
+        "openjaws"
+      ],
+      "artifacts": [
+        "immaculate:trace-summary"
+      ],
+      "tags": [
+        "immaculate",
+        "trace",
+        "supervised"
+      ]
+    },
+    {
+      "id": "q-trace-current",
+      "timestamp": "2026-04-24T01:39:30.017Z",
+      "title": "Q readiness summary",
+      "summary": "Q session q-terminalbench-20260424T013520 is completed with 5 trace events.",
+      "kind": "q_readiness",
+      "status": "ok",
+      "source": "Q readiness",
+      "operatorActions": [
+        "q_readiness_summary",
+        "model_activity_summary"
+      ],
+      "subsystems": [
+        "q",
+        "openjaws"
+      ],
+      "artifacts": [
+        "q:readiness-summary"
+      ],
+      "tags": [
+        "q",
+        "readiness",
+        "supervised"
+      ]
+    },
+    {
+      "id": "apex-tenant-governance-2026-04-22t12-14-20-125761800-00-00",
+      "timestamp": "2026-04-22T12:14:20.125Z",
+      "title": "Apex tenant governance",
+      "summary": "Apex tenant governance is publishing a public-safe summary for supervised policy and risk review.",
+      "kind": "tenant_governance",
+      "status": "info",
+      "source": "Apex tenant governance",
+      "operatorActions": [
+        "system_tuning",
+        "operator_runtime",
+        "security_review"
+      ],
+      "subsystems": [
+        "apex",
+        "openjaws"
+      ],
+      "artifacts": [
+        "apex:tenant-governance"
+      ],
+      "tags": [
+        "apex",
+        "governance",
+        "supervised",
+        "public",
+        "antivirus_enabled",
+        "firewall_enabled",
+        "policy_guard",
+        "privacy_mode"
+      ]
+    },
+    {
+      "id": "apex-operator-session-start-d44aae02-7379-4dec-8f22-8ff98dcd46cd",
       "timestamp": "2026-04-22T12:06:55.771Z",
       "title": "Apex Shadow Chat operator activity",
-      "summary": "Shadow Chat is create session through the bounded /apex operator lane. Created bounded Shadow Chat session 11e5112d-4aad-48b4-a72a-9ab4b3d104ff through the supervised Apex operator lane.",
+      "summary": "Apex is publishing a public-safe activity summary for supervised app actions. Sensitive records stay private.",
       "kind": "apex_operator_activity",
       "status": "ok",
       "source": "OpenJaws Apex lane",
       "operatorActions": [
         "chat_session_create",
         "supervised_apex_action",
-        "create_session",
+        "session start",
         "chat_operator_activity",
         "apex_operator_activity"
       ],
@@ -187,64 +266,14 @@
       ],
       "artifacts": [
         "apex:chat-session",
-        "apex:chat-session:11e5112d-4aad-48b4-a72a-9ab4b…",
-        "apex:chat-create_session"
+        "apex:chat-",
+        "apex:chat-session start"
       ],
       "tags": [
         "apex",
         "chat",
-        "bounded",
+        "supervised",
         "operator"
-      ]
-    },
-    {
-      "id": "8dc1cc39-e964-44d1-8f4a-686edf6f80e8",
-      "timestamp": "2026-04-22T03:35:37.838Z",
-      "title": "Nysus operator activity: Coordinator Agent",
-      "summary": "Task coordinate completed by Coordinator Agent 24 bounded lifecycle events across 6 governed tasks and 5 agent lanes are mirrored into the public showcase lane. Recent governed task lanes: coordinate, secure, emergency, analyze, autonomous. Public action surfaces: control plane coordination, coordinate, mission execut…",
-      "kind": "nysus_operator_activity",
-      "status": "ok",
-      "source": "nysus-agent-coordinator",
-      "operatorActions": [
-        "control_plane_coordination",
-        "coordinate",
-        "mission_execution",
-        "payment_action",
-        "subsystem_command",
-        "access_action",
-        "secure",
-        "security_response",
-        "browser_action",
-        "emergency",
-        "emergency_response",
-        "analyze",
-        "email_action",
-        "telemetry_analysis",
-        "autonomous",
-        "autonomous_execution",
-        "nysus_agent_summary"
-      ],
-      "subsystems": [
-        "nysus",
-        "control_fabric",
-        "arobi"
-      ],
-      "artifacts": [
-        "nysus:agent-events"
-      ],
-      "tags": [
-        "nysus",
-        "bounded",
-        "public",
-        "audit",
-        "boundary_scoped",
-        "execution_recorded",
-        "high_priority",
-        "human_review_required",
-        "mission_scoped",
-        "policy_guarded",
-        "critical_priority",
-        "execution_active"
       ]
     }
   ]

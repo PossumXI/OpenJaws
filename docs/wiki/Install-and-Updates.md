@@ -64,8 +64,54 @@ Official public update inputs are:
 - tagged GitHub Releases from this repository
 - [`release-policy.json`](../../release-policy.json)
 - the per-platform signed release manifest with SHA-256 checksum data
+- official JAWS desktop mirror pages on `https://qline.site/downloads/jaws` and `https://iorch.net/downloads/jaws`, which redirect back to signed GitHub release assets
 
 OpenJaws does not treat arbitrary `main` pushes, mirrors, or copied installer snippets as an official update source.
+
+## JAWS Desktop Mirrors
+
+JAWS Desktop 0.1.3 is mirrored on the public site surfaces for users who want a native installer instead of a source checkout:
+
+- qline.site: `https://qline.site/downloads/jaws`
+- iorch.net: `https://iorch.net/downloads/jaws`
+- GitHub release: `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.3`
+
+The mirror download routes are Netlify redirects to the GitHub release assets:
+
+- `/downloads/jaws/windows`
+- `/downloads/jaws/windows-msi`
+- `/downloads/jaws/macos`
+- `/downloads/jaws/linux-deb`
+- `/downloads/jaws/linux-rpm`
+- `/downloads/jaws/latest.json`
+
+Use the mirror pages for the branded public install flow. Use the GitHub release page when you want to inspect every artifact and signature directly.
+
+The live updater endpoints are:
+
+- `https://qline.site/api/jaws/{{target}}/{{arch}}/{{current_version}}`
+- `https://iorch.net/api/jaws/{{target}}/{{arch}}/{{current_version}}`
+
+For a Windows x64 tester on `0.1.2`, both endpoints return a signed `0.1.3` update payload. For an already-current `0.1.3` install, both endpoints return `204 No Content`.
+
+Installer publisher:
+
+> Built by AROBI TECHNOLOGY ALLIANCE A OPAL MAR GROUP CORPORATION NJ USA.
+
+The expected tag, mirror URLs, asset filenames, and updater platform entries now come from the generated desktop release index at [`apps/jaws-desktop/src/release-index.json`](../../apps/jaws-desktop/src/release-index.json). Regenerate and check it before cutting a new JAWS desktop tag:
+
+```powershell
+bun run --cwd apps/jaws-desktop release:index
+bun run --cwd apps/jaws-desktop release:index -- --check
+```
+
+Release operators should verify the mirrors before announcing or re-announcing a desktop release:
+
+```powershell
+bun run jaws:mirror:check --json --out .tmp-jaws-release-mirror-health.json
+```
+
+The check fails closed when a public route points at the wrong asset, when a required GitHub release asset or signature is missing, or when the updater manifest loses a required signed platform entry.
 
 ## First-Run Checklist
 

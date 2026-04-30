@@ -1,0 +1,46 @@
+{
+  "name": "@openjaws/jaws-desktop",
+  "version": "0.1.3",
+  "private": true,
+  "type": "module",
+  "description": "JAWS native desktop shell for OpenJaws, Q, Immaculate, and co-work orchestration.",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5177",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4177",
+    "icons:generate": "tauri icon src/assets/jaws-logo.svg",
+    "tauri": "tauri",
+    "tauri:dev": "bun run prepare:sidecar && tauri dev",
+    "tauri:build": "node scripts/verify-release-config.mjs --require-signing-key && bun run prepare:sidecar && tauri build",
+    "release:index": "node scripts/build-release-index.mjs",
+    "manifest:generate": "node scripts/build-updater-manifest.mjs",
+    "manifest:test": "node scripts/build-updater-manifest.mjs --self-test",
+    "updater:manifest": "node scripts/build-updater-manifest.mjs",
+    "local:admin:seed": "node scripts/seed-local-admin-session.mjs",
+    "test": "bun test src",
+    "soak": "bun scripts/jaws-desktop-soak.ts",
+    "prepare:sidecar": "node scripts/prepare-sidecar.mjs",
+    "verify": "bun run release:index -- --check && bun run test && bun run prepare:sidecar && bun run build && cargo check --manifest-path src-tauri/Cargo.toml",
+    "release:check": "bun run release:index -- --check && node scripts/verify-release-config.mjs && node scripts/build-updater-manifest.mjs --self-test"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-dialog": "^2.7.0",
+    "@tauri-apps/plugin-opener": "^2.5.3",
+    "@tauri-apps/plugin-shell": "^2.3.5",
+    "@tauri-apps/plugin-updater": "^2.10.1",
+    "lucide-react": "^1.14.0",
+    "pokersolver": "^2.1.4",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1",
+    "@types/node": "^20.14.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10"
+  }
+}
