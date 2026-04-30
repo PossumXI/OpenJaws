@@ -65,6 +65,7 @@ import {
   formatTokenEstimate
 } from "./context";
 import releaseIndex from "./release-index.json";
+import { normalizePreviewFrameUrl } from "./previewUrl";
 import { buildWorkspaceSelection, type TerminalPlatform } from "./workspace";
 
 declare global {
@@ -385,24 +386,6 @@ const fallbackPreviewSnapshot: BrowserPreviewSnapshot = {
   playwrightTestCommand: "bunx playwright test",
   sessions: []
 };
-
-function normalizePreviewFrameUrl(rawValue: string, fallbackUrl = fallbackPreviewSnapshot.launchUrl): string {
-  const trimmed = rawValue.trim();
-  const candidate = /^https?:\/\//i.test(trimmed)
-    ? trimmed
-    : /^(localhost|127\.0\.0\.1|\[::1\])/i.test(trimmed)
-      ? `http://${trimmed}`
-      : `https://${trimmed}`;
-  try {
-    const url = new URL(candidate);
-    if (url.protocol === "http:" || url.protocol === "https:") {
-      return url.href;
-    }
-  } catch {
-    // Fall back to the local preview instead of mounting a malformed frame URL.
-  }
-  return fallbackUrl;
-}
 
 const fallbackCoworkPlan: QAgentsCoworkPlan = {
   mode: "stacked-agents",
@@ -986,8 +969,10 @@ export function App() {
     [workspaceInput]
   );
   const previewFrameUrl = useMemo(() => {
-    const value = (previewUrl || previewSnapshot.launchUrl || fallbackPreviewSnapshot.launchUrl).trim();
-    return normalizePreviewFrameUrl(value);
+    return normalizePreviewFrameUrl(
+      previewUrl || previewSnapshot.launchUrl,
+      fallbackPreviewSnapshot.launchUrl
+    );
   }, [previewSnapshot.launchUrl, previewUrl]);
   const contextLabel = contextConfidenceLabel(projectContext);
   const contextCoverage = contextScanRatio(projectContext);
@@ -2164,7 +2149,12 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                     <span />
                     <strong>{previewFrameUrl}</strong>
                   </div>
-                  <iframe title="JAWS browser preview" src={previewFrameUrl} sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-same-origin allow-scripts" />
+                  <iframe
+                    title="JAWS browser preview"
+                    src={previewFrameUrl}
+                    sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-scripts"
+                    referrerPolicy="no-referrer"
+                  />
                 </section>
 
                 <aside className="preview-side">
