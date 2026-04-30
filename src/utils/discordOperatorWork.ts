@@ -60,14 +60,25 @@ function branchExists(gitRoot: string, branchName: string): boolean {
   return result.status === 0
 }
 
+function buildOperatorBranchCandidate(baseBranchName: string, attempt: number): string {
+  const suffix = attempt === 0 ? '' : `-${(attempt + 1).toString(36)}`
+  const maxBaseLength = Math.max(1, 92 - suffix.length)
+  return `${baseBranchName.slice(0, maxBaseLength).replace(/[-._]+$/g, '')}${suffix}`
+}
+
+function isGitWorktreeCollisionError(value: string): boolean {
+  return /(?:reference already exists|cannot lock ref|already exists|is already checked out|already registered)/i.test(
+    value,
+  )
+}
+
 function allocateUniqueOperatorBranch(args: {
   gitRoot: string
   repoWorktreesDir: string
   baseBranchName: string
 }): { branchName: string; worktreePath: string } {
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    const suffix = attempt === 0 ? '' : `-${(attempt + 1).toString(36)}`
-    const branchName = `${args.baseBranchName}${suffix}`.slice(0, 92)
+    const branchName = buildOperatorBranchCandidate(args.baseBranchName, attempt)
     const worktreePath = join(args.repoWorktreesDir, branchName)
     if (!existsSync(worktreePath) && !branchExists(args.gitRoot, branchName)) {
       return { branchName, worktreePath }
@@ -363,40 +374,61 @@ export function createOperatorRunContext(args: {
   )}-${sanitizeBranchSegment(args.jobId)}`.slice(0, 92)
   const repoWorktreesDir = join(args.worktreeRoot, repoLabel)
   mkdirSync(repoWorktreesDir, { recursive: true })
-  const { branchName, worktreePath } = allocateUniqueOperatorBranch({
-    gitRoot,
-    repoWorktreesDir,
-    baseBranchName,
-  })
-  const addResult = spawnSync(
-    'git',
-    ['-C', gitRoot, 'worktree', 'add', '-b', branchName, worktreePath, 'HEAD'],
-    {
-      env: {
-        ...process.env,
-        GIT_TERMINAL_PROMPT: '0',
-        GIT_ASKPASS: '',
+  let lastCollisionError: string | null = null
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const { branchName, worktreePath } = allocateUniqueOperatorBranch({
+      gitRoot,
+      repoWorktreesDir,
+      baseBranchName,
+    })
+    const addResult = spawnSync(
+      'git',
+      [
+        '-C',
+        gitRoot,
+        '-c',
+        'core.longpaths=true',
+        'worktree',
+        'add',
+        '-b',
+        branchName,
+        worktreePath,
+        'HEAD',
+      ],
+      {
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: '0',
+          GIT_ASKPASS: '',
+        },
+        encoding: 'utf8',
       },
-      encoding: 'utf8',
-    },
-  )
-  if ((addResult.status ?? 1) !== 0) {
-    throw new Error(
-      addResult.stderr?.trim() ||
-        addResult.stdout?.trim() ||
-        `Failed to create isolated worktree for ${args.workspace}.`,
     )
+    if ((addResult.status ?? 1) === 0) {
+      return {
+        jobId: args.jobId,
+        requestedWorkspace: args.workspace,
+        gitRoot,
+        gitRelativePath,
+        branchName,
+        worktreePath,
+        workspacePath:
+          gitRelativePath === '.' ? worktreePath : join(worktreePath, gitRelativePath),
+        repoLabel,
+      }
+    }
+    const addError =
+      addResult.stderr?.trim() ||
+      addResult.stdout?.trim() ||
+      `Failed to create isolated worktree for ${args.workspace}.`
+    if (!isGitWorktreeCollisionError(addError)) {
+      throw new Error(addError)
+    }
+    lastCollisionError = addError
   }
 
-  return {
-    jobId: args.jobId,
-    requestedWorkspace: args.workspace,
-    gitRoot,
-    gitRelativePath,
-    branchName,
-    worktreePath,
-    workspacePath:
-      gitRelativePath === '.' ? worktreePath : join(worktreePath, gitRelativePath),
-    repoLabel,
-  }
+  throw new Error(
+    lastCollisionError ??
+      `Failed to create an isolated worktree for ${args.workspace} after retrying branch allocation.`,
+  )
 }

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { spawnSync } from 'child_process'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { tmpdir } from 'os'
 import {
   createOperatorRunContext,
@@ -192,5 +192,48 @@ describe('discordOperatorWork', () => {
         'utils',
       ),
     )
+  }, GIT_OPERATOR_WORK_TEST_TIMEOUT_MS)
+
+  it('preserves uniqueness suffixes when the governed branch base reaches the length cap', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-operator-long-git-'))
+    tempDirs.push(root)
+    const repoRoot = join(root, 'openjaws')
+    const worktreeRoot = join(root, 'worktrees')
+    const workspace = join(repoRoot, 'src', 'utils', 'roundtable-allocator')
+    mkdirSync(workspace, { recursive: true })
+    writeFileSync(join(repoRoot, 'README.md'), '# OpenJaws\n', 'utf8')
+    writeFileSync(join(workspace, 'runtime.ts'), 'export const ready = true\n', 'utf8')
+    spawnSync('git', ['-C', repoRoot, 'init'], { encoding: 'utf8' })
+    spawnSync('git', ['-C', repoRoot, 'config', 'user.email', 'roundtable@example.com'], {
+      encoding: 'utf8',
+    })
+    spawnSync('git', ['-C', repoRoot, 'config', 'user.name', 'Roundtable'], {
+      encoding: 'utf8',
+    })
+    spawnSync(
+      'git',
+      ['-C', repoRoot, 'add', 'README.md', 'src/utils/roundtable-allocator/runtime.ts'],
+      { encoding: 'utf8' },
+    )
+    spawnSync('git', ['-C', repoRoot, 'commit', '-m', 'init'], { encoding: 'utf8' })
+
+    const args = {
+      workspace,
+      jobId:
+        'blackbeak-follow-through-openjaws-2026-04-30t23-21-48.493z-with-extra-collision-padding',
+      profileName: 'roundtable-blackbeak',
+      worktreeRoot,
+    }
+
+    const first = createOperatorRunContext(args)
+    const second = createOperatorRunContext(args)
+
+    expect(first.branchName).not.toBeNull()
+    expect(second.branchName).not.toBeNull()
+    expect(second.branchName).not.toBe(first.branchName)
+    expect(second.branchName!.length).toBeLessThanOrEqual(92)
+    expect(second.branchName).toMatch(/-2$/)
+    expect(basename(second.worktreePath!)).toBe(second.branchName)
+    expect(existsSync(second.workspacePath)).toBe(true)
   }, GIT_OPERATOR_WORK_TEST_TIMEOUT_MS)
 })
