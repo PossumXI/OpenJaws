@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url'
 
 export type PersonaPlexProbeOptions = {
   json: boolean
+  allowRemote: boolean
   timeoutMs: number
   runtimeUrl: string | null
   textPrompt: string
@@ -66,10 +67,117 @@ const RUNTIME_STATE_PATH = join(
 )
 const DEFAULT_PERSONAPLEX_RUNTIME_URL = 'http://127.0.0.1:8998'
 const RUNTIME_STATE_STALE_MS = 30 * 60 * 1000
+const REDACTED = '[redacted]'
+const CONFIGURED = '[configured]'
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function coerceString(value: unknown): string | null {
+  return typeof value === 'string' ? value.trim() || null : null
+}
+
+function coerceRuntimeId(value: unknown): string | number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string') {
+    return value.trim() || null
+  }
+  return null
+}
+
+function redactUrlForDiagnostics(value: string): string {
+  try {
+    const parsed = new URL(value)
+    if (parsed.username || parsed.password) {
+      parsed.username = REDACTED
+      parsed.password = REDACTED
+    }
+    for (const [key] of parsed.searchParams) {
+      parsed.searchParams.set(
+        key,
+        key === 'text_prompt' || key === 'voice_prompt' ? CONFIGURED : REDACTED,
+      )
+    }
+    return parsed.toString()
+  } catch {
+    return value
+  }
+}
+
+export function redactSensitiveText(text: string): string {
+  return text
+    .replace(/\bBearer\s+[^\s,;]+/gi, `Bearer ${REDACTED}`)
+    .replace(
+      /\b(credential|key|password|secret|token)(\s*[:=]\s*)([^\s,;]+)/gi,
+      (_match, key: string, separator: string) => `${key}${separator}${REDACTED}`,
+    )
+    .replace(/\b(?:https?|wss?):\/\/[^\s"'<>]+/gi, url =>
+      redactUrlForDiagnostics(url),
+    )
+}
+
+export function sanitizePersonaPlexRuntimeState(
+  value: unknown,
+): PersonaPlexRuntimeState | null {
+  if (!isObjectRecord(value)) {
+    return value === null || value === undefined
+      ? null
+      : { status: 'unreadable', error: 'runtime_state_unreadable' }
+  }
+
+  const sanitized: PersonaPlexRuntimeState = {}
+  const directStringKeys = [
+    'startedAt',
+    'runtimeUrl',
+    'host',
+    'protocol',
+    'healthyAt',
+    'runtimeMode',
+    'failedAt',
+    'status',
+  ] as const
+
+  for (const key of directStringKeys) {
+    const raw = coerceString(value[key])
+    if (raw) {
+      sanitized[key] = redactSensitiveText(raw)
+    }
+  }
+
+  const port = coerceRuntimeId(value.port)
+  if (port !== null) {
+    sanitized.port = port
+  }
+  const processId = coerceRuntimeId(value.processId)
+  if (processId !== null) {
+    sanitized.processId = processId
+  }
+  const wslPid = coerceRuntimeId(value.wslPid)
+  if (wslPid !== null) {
+    sanitized.wslPid = wslPid
+  }
+
+  const error = coerceString(value.error)
+  if (error) {
+    sanitized.error = redactSensitiveText(error)
+  }
+  const lastError = coerceString(value.lastError)
+  if (lastError) {
+    sanitized.lastError = redactSensitiveText(lastError)
+  }
+
+  return sanitized
+}
 
 export function parseArgs(argv: string[]): PersonaPlexProbeOptions {
   const options: PersonaPlexProbeOptions = {
     json: false,
+    allowRemote:
+      process.env.PERSONAPLEX_ALLOW_REMOTE?.trim() === '1' ||
+      process.env.PERSONAPLEX_ALLOW_REMOTE?.trim().toLowerCase() === 'true',
     timeoutMs: 90_000,
     runtimeUrl: process.env.PERSONAPLEX_URL?.trim() || null,
     textPrompt:
@@ -86,6 +194,10 @@ export function parseArgs(argv: string[]): PersonaPlexProbeOptions {
     switch (arg) {
       case '--json':
         options.json = true
+        break
+      case '--allow-remote':
+      case '--allow-remote-personaplex':
+        options.allowRemote = true
         break
       case '--url':
       case '--runtime-url':
@@ -114,13 +226,22 @@ export function parseArgs(argv: string[]): PersonaPlexProbeOptions {
   return options
 }
 
-function readRuntimeState(
+export function readRuntimeState(
   path = RUNTIME_STATE_PATH,
 ): PersonaPlexRuntimeState | null {
   if (!existsSync(path)) {
     return null
   }
-  return JSON.parse(readFileSync(path, 'utf8')) as PersonaPlexRuntimeState
+  try {
+    return sanitizePersonaPlexRuntimeState(JSON.parse(readFileSync(path, 'utf8')))
+  } catch (error) {
+    return {
+      status: 'unreadable',
+      error: `runtime_state_unreadable: ${redactSensitiveText(
+        error instanceof Error ? error.message : String(error),
+      )}`,
+    }
+  }
 }
 
 function runtimeUrlFromState(state: PersonaPlexRuntimeState | null): string {
@@ -296,6 +417,9 @@ export function buildPersonaPlexProbeWebSocketUrl(args: {
   } else if (url.protocol === 'http:') {
     url.protocol = 'ws:'
   }
+  url.username = ''
+  url.password = ''
+  url.search = ''
   if (url.pathname === '/' || !url.pathname) {
     url.pathname = '/api/chat'
   }
@@ -304,18 +428,45 @@ export function buildPersonaPlexProbeWebSocketUrl(args: {
   return url.toString()
 }
 
-export function redactPersonaPlexProbeWebSocketUrl(url: string): string {
+function isLoopbackHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase()
+  return (
+    normalized === 'localhost' ||
+    normalized === '::1' ||
+    normalized === '[::1]' ||
+    normalized === '0.0.0.0' ||
+    normalized === '127.0.0.1' ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(normalized)
+  )
+}
+
+export function validatePersonaPlexRuntimeUrl(args: {
+  runtimeUrl: string
+  allowRemote: boolean
+}): string | null {
+  let parsed: URL
   try {
-    const parsed = new URL(url)
-    for (const key of ['text_prompt', 'voice_prompt']) {
-      if (parsed.searchParams.has(key)) {
-        parsed.searchParams.set(key, '[configured]')
-      }
-    }
-    return parsed.toString()
-  } catch {
-    return url
+    parsed = new URL(args.runtimeUrl)
+  } catch (error) {
+    return `Invalid PersonaPlex runtime URL: ${
+      error instanceof Error ? error.message : String(error)
+    }`
   }
+
+  if (!['http:', 'https:', 'ws:', 'wss:'].includes(parsed.protocol)) {
+    return `Unsupported PersonaPlex runtime URL protocol: ${parsed.protocol}`
+  }
+  if (parsed.username || parsed.password) {
+    return 'PersonaPlex runtime URLs must not include credentials.'
+  }
+  if (!args.allowRemote && !isLoopbackHost(parsed.hostname)) {
+    return 'PersonaPlex runtime URL must be loopback unless --allow-remote-personaplex is set.'
+  }
+  return null
+}
+
+export function redactPersonaPlexProbeWebSocketUrl(url: string): string {
+  return redactUrlForDiagnostics(url)
 }
 
 export function sanitizePersonaPlexProbeResultForOutput(
@@ -323,9 +474,15 @@ export function sanitizePersonaPlexProbeResultForOutput(
 ): PersonaPlexProbeResult {
   return {
     ...result,
+    runtimeUrl: redactUrlForDiagnostics(result.runtimeUrl),
     websocketUrl: redactPersonaPlexProbeWebSocketUrl(result.websocketUrl),
-    textPrompt: result.textPrompt ? '[configured]' : result.textPrompt,
-    voicePrompt: result.voicePrompt ? '[configured]' : result.voicePrompt,
+    textPrompt: result.textPrompt ? CONFIGURED : result.textPrompt,
+    voicePrompt: result.voicePrompt ? CONFIGURED : result.voicePrompt,
+    runtimeState: sanitizePersonaPlexRuntimeState(result.runtimeState ?? null),
+    ignoredStateRuntimeUrl: result.ignoredStateRuntimeUrl
+      ? redactUrlForDiagnostics(result.ignoredStateRuntimeUrl)
+      : result.ignoredStateRuntimeUrl,
+    error: result.error ? redactSensitiveText(result.error) : result.error,
   }
 }
 
@@ -386,6 +543,32 @@ export async function probePersonaPlexRuntime(
   const runtimeUrl = selectedRuntime.runtimeUrl
   const startedAt = Date.now()
   let websocketUrl: string
+  const validationError = validatePersonaPlexRuntimeUrl({
+    runtimeUrl,
+    allowRemote: options.allowRemote,
+  })
+
+  if (validationError) {
+    return {
+      status: 'error',
+      ready: false,
+      runtimeUrl,
+      websocketUrl: runtimeUrl,
+      voicePrompt: options.voicePrompt,
+      textPrompt: options.textPrompt,
+      latencyMs: Date.now() - startedAt,
+      firstByte: null,
+      messageType: null,
+      runtimeState: state,
+      runtimeUrlSource: selectedRuntime.runtimeUrlSource,
+      ignoredStateRuntimeUrl: selectedRuntime.ignoredStateRuntimeUrl,
+      repair: buildPersonaPlexRepairHint({
+        state,
+        ready: false,
+      }),
+      error: withRuntimeStateDiagnostic(validationError, state),
+    }
+  }
 
   try {
     websocketUrl = buildPersonaPlexProbeWebSocketUrl({

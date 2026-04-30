@@ -1,10 +1,5 @@
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 import { checkHasTrustDialogAccepted } from '../../utils/config.js'
-import {
-  hasMalformedTokens,
-  hasShellQuoteSingleQuoteBug,
-  tryParseShellCommand,
-} from '../../utils/bash/shellQuote.js'
 import { logAntError } from '../../utils/debug.js'
 import { errorMessage } from '../../utils/errors.js'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
@@ -18,7 +13,82 @@ import type {
   ScopedMcpServerConfig,
 } from './types.js'
 
-function parseHeadersHelperCommand(command: string): {
+const SHELL_OPERATOR_CHARS = new Set(['|', '&', ';', '<', '>', '(', ')'])
+const WINDOWS_ENV_EXPANSION_PATTERN = /%[A-Za-z_][A-Za-z0-9_]*%/
+const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=/
+
+function hasUnsupportedShellSyntax(command: string): boolean {
+  let inSingleQuote = false
+  let inDoubleQuote = false
+
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index]
+
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote
+      continue
+    }
+    if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote
+      continue
+    }
+    if (char === '\n' || char === '\r' || char === '\0') {
+      return true
+    }
+    if (!inSingleQuote && char === '$') {
+      return true
+    }
+    if (!inSingleQuote && char === '`') {
+      return true
+    }
+    if (!inSingleQuote && !inDoubleQuote && SHELL_OPERATOR_CHARS.has(char)) {
+      return true
+    }
+  }
+
+  return inSingleQuote || inDoubleQuote || WINDOWS_ENV_EXPANSION_PATTERN.test(command)
+}
+
+function parseLiteralArgv(command: string): string[] {
+  const argv: string[] = []
+  let current = ''
+  let inSingleQuote = false
+  let inDoubleQuote = false
+
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index]
+
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote
+      continue
+    }
+    if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote
+      continue
+    }
+    if (/\s/.test(char) && !inSingleQuote && !inDoubleQuote) {
+      if (current) {
+        argv.push(current)
+        current = ''
+      }
+      continue
+    }
+
+    if (char === '\\' && inDoubleQuote && command[index + 1] === '"') {
+      current += '"'
+      index += 1
+      continue
+    }
+    current += char
+  }
+
+  if (current) {
+    argv.push(current)
+  }
+  return argv
+}
+
+export function parseHeadersHelperCommand(command: string): {
   file: string
   args: string[]
 } {
@@ -26,25 +96,20 @@ function parseHeadersHelperCommand(command: string): {
   if (!trimmed) {
     throw new Error('headersHelper command must not be empty')
   }
-  if (hasShellQuoteSingleQuoteBug(trimmed)) {
-    throw new Error('headersHelper command contains ambiguous shell quoting')
-  }
-  const parsed = tryParseShellCommand(trimmed)
-  if (!parsed.success || hasMalformedTokens(trimmed, parsed.tokens)) {
-    throw new Error('headersHelper command could not be parsed safely')
+  if (hasUnsupportedShellSyntax(trimmed)) {
+    throw new Error(
+      'headersHelper must be a literal executable path plus arguments; shell expansion, operators, and env assignments are not supported',
+    )
   }
 
-  const argv: string[] = []
-  for (const token of parsed.tokens) {
-    if (typeof token !== 'string') {
-      throw new Error(
-        'headersHelper must be an executable path plus literal arguments',
-      )
-    }
-    argv.push(token)
-  }
+  const argv = parseLiteralArgv(trimmed)
   if (argv.length === 0 || !argv[0]) {
     throw new Error('headersHelper command must include an executable path')
+  }
+  if (ENV_ASSIGNMENT_PATTERN.test(argv[0])) {
+    throw new Error(
+      'headersHelper must start with an executable path, not an environment assignment',
+    )
   }
   return { file: argv[0], args: argv.slice(1) }
 }

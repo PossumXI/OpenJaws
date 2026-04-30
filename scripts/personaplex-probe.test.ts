@@ -9,9 +9,13 @@ import {
   buildPersonaPlexProbeWebSocketUrl,
   parseArgs,
   probePersonaPlexRuntime,
+  readRuntimeState,
+  redactSensitiveText,
   redactPersonaPlexProbeWebSocketUrl,
+  sanitizePersonaPlexRuntimeState,
   sanitizePersonaPlexProbeResultForOutput,
   selectPersonaPlexProbeRuntimeUrl,
+  validatePersonaPlexRuntimeUrl,
 } from './personaplex-probe.ts'
 
 function createStation(files: string[] = []) {
@@ -89,15 +93,87 @@ describe('personaplex-probe', () => {
       ]),
     ).toMatchObject({
       json: true,
+      allowRemote: false,
       runtimeUrl: 'http://127.0.0.1:8998',
       timeoutMs: 1000,
       voicePrompt: 'NATF2.pt',
     })
   })
 
+  test('only probes loopback PersonaPlex endpoints by default', async () => {
+    expect(
+      validatePersonaPlexRuntimeUrl({
+        runtimeUrl: 'http://127.0.0.1:8998',
+        allowRemote: false,
+      }),
+    ).toBeNull()
+    expect(
+      validatePersonaPlexRuntimeUrl({
+        runtimeUrl: 'https://example.com/personaplex',
+        allowRemote: false,
+      }),
+    ).toContain('loopback')
+    expect(
+      validatePersonaPlexRuntimeUrl({
+        runtimeUrl: 'https://example.com/personaplex',
+        allowRemote: true,
+      }),
+    ).toBeNull()
+  })
+
+  test('rejects runtime URLs with credentials before opening WebSockets', async () => {
+    const result = await probePersonaPlexRuntime({
+      json: true,
+      allowRemote: true,
+      timeoutMs: 1000,
+      runtimeUrl: 'https://user:secret@example.com/personaplex',
+      textPrompt: 'hello',
+      voicePrompt: 'NATF2.pt',
+    })
+
+    expect(result.ready).toBe(false)
+    expect(result.error).toContain('must not include credentials')
+  })
+
+  test('sanitizes runtime state before it reaches artifacts', () => {
+    expect(
+      sanitizePersonaPlexRuntimeState({
+        runtimeMode: 'wsl',
+        wslPid: 407,
+        token: 'should-not-appear',
+        runtimeUrl: 'http://127.0.0.1:8998/api/chat?token=abc',
+        lastError:
+          'failed with Authorization: Bearer super-secret at https://example.com/api?token=abc',
+      }),
+    ).toEqual({
+      runtimeMode: 'wsl',
+      runtimeUrl: 'http://127.0.0.1:8998/api/chat?token=%5Bredacted%5D',
+      wslPid: 407,
+      lastError:
+        'failed with Authorization: Bearer [redacted] at https://example.com/api?token=%5Bredacted%5D',
+    })
+    expect(redactSensitiveText('password=hunter2 token:abc')).toBe(
+      'password=[redacted] token:[redacted]',
+    )
+  })
+
+  test('returns a bounded runtime-state diagnostic for malformed JSON', () => {
+    const root = createStation([])
+    const runtimeDir = join(root, 'local-command-station', 'personaplex-runtime')
+    mkdirSync(runtimeDir, { recursive: true })
+    const runtimePath = join(runtimeDir, 'runtime.json')
+    writeFileSync(runtimePath, '{"token":', 'utf8')
+
+    expect(readRuntimeState(runtimePath)).toMatchObject({
+      status: 'unreadable',
+      error: expect.stringContaining('runtime_state_unreadable'),
+    })
+  })
+
   test('reports invalid runtime URLs as structured probe errors', async () => {
     const result = await probePersonaPlexRuntime({
       json: true,
+      allowRemote: false,
       timeoutMs: 1000,
       runtimeUrl: 'not a url',
       textPrompt: 'hello',
