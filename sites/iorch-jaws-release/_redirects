@@ -1,0 +1,6 @@
+/downloads/jaws/windows https://github.com/PossumXI/OpenJaws/releases/download/jaws-v0.1.2/JAWS_0.1.2_x64-setup.exe 302
+/downloads/jaws/windows-msi https://github.com/PossumXI/OpenJaws/releases/download/jaws-v0.1.2/JAWS_0.1.2_x64_en-US.msi 302
+/downloads/jaws/macos https://github.com/PossumXI/OpenJaws/releases/download/jaws-v0.1.2/JAWS_0.1.2_x64.dmg 302
+/downloads/jaws/linux-deb https://github.com/PossumXI/OpenJaws/releases/download/jaws-v0.1.2/JAWS_0.1.2_amd64.deb 302
+/downloads/jaws/linux-rpm https://github.com/PossumXI/OpenJaws/releases/download/jaws-v0.1.2/JAWS-0.1.2-1.x86_64.rpm 302
+/downloads/jaws/latest.json https://github.com/PossumXI/OpenJaws/releases/download/jaws-v0.1.2/latest.json 302

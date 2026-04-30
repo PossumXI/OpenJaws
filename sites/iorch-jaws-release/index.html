@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>IORCH // JAWS Desktop Release Mirror</title>
+    <meta
+      name="description"
+      content="Official iorch.net mirror for the JAWS Desktop 0.1.2 release, wrapped around OpenJaws, Q, Immaculate, and Q_agents."
+    />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
+    <link rel="canonical" href="https://iorch.net/" />
+    <meta property="og:title" content="IORCH // JAWS Desktop Release Mirror" />
+    <meta
+      property="og:description"
+      content="Download the signed JAWS Desktop 0.1.2 installer from the iorch.net release mirror."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://iorch.net/" />
+    <meta property="og:image" content="https://qline.site/assets/images/q-share-card-20260429.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="IORCH // JAWS Desktop Release Mirror" />
+    <meta
+      name="twitter:description"
+      content="Download JAWS Desktop for Windows, macOS, and Linux from the iorch.net mirror."
+    />
+    <meta name="twitter:image" content="https://qline.site/assets/images/q-share-card-20260429.png" />
+    <style>
+      :root {
+        color-scheme: dark light;
+        --bg: #081018;
+        --panel: rgba(13, 27, 38, 0.84);
+        --ink: #f7fbff;
+        --muted: #aec4d4;
+        --line: rgba(255, 255, 255, 0.14);
+        --blue: #38bdf8;
+        --cyan: #67e8f9;
+        --lime: #b7f36f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 12% 8%, rgba(56, 189, 248, 0.2), transparent 30rem),
+          linear-gradient(135deg, #081018, #0a1621 48%, #12151d);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .shell {
+        width: min(1120px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 28px 0 44px;
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 64px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .mark {
+        display: grid;
+        width: 42px;
+        height: 42px;
+        place-items: center;
+        border: 1px solid rgba(103, 232, 249, 0.45);
+        border-radius: 10px;
+        background: linear-gradient(145deg, rgba(56, 189, 248, 0.26), rgba(183, 243, 111, 0.14));
+        color: var(--cyan);
+        font-weight: 900;
+      }
+
+      .navlinks {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+
+      .navlinks a,
+      .button {
+        display: inline-flex;
+        min-height: 42px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0 16px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .button.primary {
+        border-color: rgba(103, 232, 249, 0.5);
+        background: linear-gradient(135deg, var(--blue), var(--cyan));
+        color: #06111a;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.95fr);
+        gap: 28px;
+        align-items: stretch;
+      }
+
+      .copy,
+      .installer {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--panel);
+        box-shadow: 0 28px 80px rgba(0, 0, 0, 0.28);
+      }
+
+      .copy {
+        padding: clamp(28px, 6vw, 56px);
+      }
+
+      .eyebrow {
+        color: var(--lime);
+        font-size: 0.78rem;
+        font-weight: 900;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 18px 0 18px;
+        max-width: 12ch;
+        font-size: clamp(3.25rem, 9vw, 7rem);
+        line-height: 0.88;
+      }
+
+      .lede {
+        max-width: 62ch;
+        color: var(--muted);
+        font-size: clamp(1rem, 2vw, 1.2rem);
+        line-height: 1.7;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 30px;
+      }
+
+      .installer {
+        display: flex;
+        flex-direction: column;
+        padding: 24px;
+      }
+
+      .installer-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 18px;
+      }
+
+      .version {
+        color: var(--cyan);
+        font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+        font-weight: 800;
+      }
+
+      .packages {
+        display: grid;
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      .package {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px;
+        text-decoration: none;
+      }
+
+      .package strong {
+        display: block;
+      }
+
+      .package span {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .checks {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-top: 28px;
+      }
+
+      .check {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px;
+        color: var(--muted);
+      }
+
+      footer {
+        margin-top: 42px;
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      @media (max-width: 860px) {
+        .hero,
+        .checks {
+          grid-template-columns: 1fr;
+        }
+
+        .nav {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <span class="mark">J</span>
+          <span>IORCH // JAWS</span>
+        </a>
+        <div class="navlinks">
+          <a href="https://qline.site/downloads/jaws">qline mirror</a>
+          <a href="https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.2">GitHub release</a>
+        </div>
+      </nav>
+
+      <section class="hero">
+        <div class="copy">
+          <p class="eyebrow">Release mirror // signed desktop packages</p>
+          <h1>JAWS Desktop</h1>
+          <p class="lede">
+            JAWS wraps OpenJaws into a native desktop IDE with Q, Immaculate,
+            Q_agents, project-folder workflows, chat/TUI views, update checks,
+            and release packages mirrored across qline.site, iorch.net, and GitHub.
+          </p>
+          <div class="actions">
+            <a class="button primary" href="/downloads/jaws/windows">Download Windows installer</a>
+            <a class="button" href="/downloads/jaws">All packages</a>
+          </div>
+        </div>
+
+        <aside class="installer" aria-label="JAWS installer packages">
+          <div class="installer-head">
+            <div>
+              <p class="eyebrow">current release</p>
+              <h2>JAWS 0.1.2</h2>
+            </div>
+            <p class="version">jaws-v0.1.2</p>
+          </div>
+
+          <div class="packages">
+            <a class="package" href="/downloads/jaws/windows">
+              <span><strong>Windows setup</strong>JAWS_0.1.2_x64-setup.exe</span>
+              <span>5.94 MB</span>
+            </a>
+            <a class="package" href="/downloads/jaws/macos">
+              <span><strong>macOS disk image</strong>JAWS_0.1.2_x64.dmg</span>
+              <span>4.95 MB</span>
+            </a>
+            <a class="package" href="/downloads/jaws/linux-deb">
+              <span><strong>Linux Debian</strong>JAWS_0.1.2_amd64.deb</span>
+              <span>5.04 MB</span>
+            </a>
+            <a class="package" href="/downloads/jaws/linux-rpm">
+              <span><strong>Linux RPM</strong>JAWS-0.1.2-1.x86_64.rpm</span>
+              <span>5.02 MB</span>
+            </a>
+          </div>
+        </aside>
+      </section>
+
+      <section class="checks" aria-label="Release checks">
+        <div class="check">Release assets are hosted on the OpenJaws GitHub release.</div>
+        <div class="check">Installer redirects are served through Netlify edge routes.</div>
+        <div class="check">Updater manifest is mirrored at /downloads/jaws/latest.json.</div>
+      </section>
+
+      <footer>
+        OpenJaws GitHub release: jaws-v0.1.2. Public consumers use paid routes;
+        admin/local development access remains separate from checkout flow.
+      </footer>
+    </main>
+  </body>
+</html>
