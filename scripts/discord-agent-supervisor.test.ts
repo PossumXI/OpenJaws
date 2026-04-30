@@ -75,6 +75,20 @@ describe('discord-agent-supervisor', () => {
     expect(plan.missing.some(item => item.endsWith('discord-q-agent.env.ps1'))).toBe(true)
   })
 
+  test('escapes backslashes and quotes in rendered display commands', () => {
+    const root = createStation([
+      'repair-q-agent.ps1',
+      'discord-q-agent.env.ps1',
+    ])
+    const plan = buildDiscordAgentSupervisorPlan(
+      parseArgs(['repair', '--agent', 'Q', '--root', root]),
+    )
+
+    plan.args.push('D:\\agent station\\"quoted"')
+
+    expect(formatSupervisorCommand(plan)).toContain('"D:\\\\agent station\\\\\\"quoted\\""')
+  })
+
   test('rejects unknown agent labels', () => {
     expect(() => parseArgs(['repair', '--agent', 'Skyler'])).toThrow(
       'agent must be one of Q, Viola, or Blackbeak',
