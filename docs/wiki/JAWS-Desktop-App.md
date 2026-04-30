@@ -10,7 +10,7 @@ Brand line:
 
 - Collapsible side menu for focused workspace viewing.
 - Control dashboard for OpenJaws, Q, Q_agents, OpenCheek, Immaculate, Arobi, and security lanes.
-- Chat window for command entry, live agent/work transcript, a shark-jaw ASCII activity spinner, permission review/bypass state, notification state, and optional change comparison.
+- Chat window for command entry, live agent/work transcript, a shark-jaw ASCII activity spinner, review-first or fast audited queue mode, notification state, and optional change comparison.
 - Terminal workspace tab that can open a native folder picker, validates the selected project folder, stores the workspace locally, shows the exact OpenJaws TUI launch command, and can run the bundled OpenJaws sidecar from that folder.
 - Agent Watch timeline for live orchestration events.
 - Image Studio and Video Studio panels for provider-gated creative work.
