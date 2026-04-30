@@ -112,6 +112,9 @@ async function probePersonaPlexCoherence(): Promise<ProbeResult> {
     return buildPersonaPlexCoherenceProbe(
       await probePersonaPlexRuntime({
         json: true,
+        allowRemote:
+          process.env.PERSONAPLEX_ALLOW_REMOTE?.trim() === '1' ||
+          process.env.PERSONAPLEX_ALLOW_REMOTE?.trim().toLowerCase() === 'true',
         timeoutMs: PERSONAPLEX_COHERENCE_TIMEOUT_MS,
         runtimeUrl: process.env.PERSONAPLEX_URL?.trim() || null,
         textPrompt:
