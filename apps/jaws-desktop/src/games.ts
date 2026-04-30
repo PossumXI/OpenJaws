@@ -40,6 +40,7 @@ export interface SlowGuyState {
 
 export type HoldemPhase = "lobby" | "preflop" | "flop" | "turn" | "river" | "showdown";
 export type HoldemSeatKind = "user" | "agent" | "open";
+export type HoldemAction = "hold" | "check" | "pass" | "bet" | "raise";
 
 export interface HoldemSeat {
   id: string;
@@ -75,6 +76,8 @@ export interface HoldemTableState {
   dealerIndex: number;
   smallBlind: number;
   bigBlind: number;
+  currentBet: number;
+  minimumRaise: number;
   pot: number;
   communityCards: string[];
   deck: string[];
@@ -326,6 +329,8 @@ export function createHoldemTable(playerName = "Founder", seed = "jaws-holdem"):
     dealerIndex: 0,
     smallBlind: 10,
     bigBlind: 20,
+    currentBet: 0,
+    minimumRaise: 20,
     pot: 0,
     communityCards: [],
     deck,
@@ -411,6 +416,39 @@ function postBlind(seat: HoldemSeat, amount: number): HoldemSeat {
   };
 }
 
+function appendTableLog(
+  table: HoldemTableState,
+  speaker: string,
+  body: string,
+  channel: HoldemChatMessage["channel"] = "system",
+): HoldemChatMessage[] {
+  return [
+    ...table.chat.slice(-10),
+    {
+      id: `chat-${table.handId}-${table.chat.length + 1}`,
+      speaker,
+      body,
+      channel
+    }
+  ];
+}
+
+function commitSeatChips(seat: HoldemSeat, amount: number): { seat: HoldemSeat; committed: number } {
+  const committed = clamp(Math.round(amount), 0, seat.chips);
+  return {
+    seat: {
+      ...seat,
+      chips: seat.chips - committed,
+      currentBet: seat.currentBet + committed
+    },
+    committed
+  };
+}
+
+function activeHoldemSeats(seats: HoldemSeat[]): HoldemSeat[] {
+  return seats.filter((seat) => seat.connected && seat.kind !== "open" && !seat.folded);
+}
+
 function dealHoleCards(table: HoldemTableState): HoldemTableState {
   const deck = [...table.deck];
   const activeSeats = table.seats.filter((seat) => seat.kind !== "open");
@@ -429,8 +467,11 @@ function dealHoleCards(table: HoldemTableState): HoldemTableState {
     deck,
     seats,
     pot,
+    currentBet: table.bigBlind,
+    minimumRaise: table.bigBlind,
     communityCards: [],
     winners: [],
+    chat: appendTableLog(table, "Q Dealer", "Hole cards dealt. Blinds posted.", "agent"),
     lastEvent: "Hole cards dealt. Blinds posted."
   };
 }
@@ -444,7 +485,10 @@ function dealCommunity(table: HoldemTableState, count: number, phase: HoldemPhas
     phase,
     deck,
     communityCards,
-    pot: table.pot + table.seats.filter((seat) => !seat.folded).length * 10,
+    currentBet: 0,
+    minimumRaise: table.bigBlind,
+    seats: table.seats.map((seat) => ({ ...seat, currentBet: 0 })),
+    chat: appendTableLog(table, "Q Dealer", `${phase[0]!.toUpperCase()}${phase.slice(1)} dealt.`, "agent"),
     lastEvent: `${phase[0]!.toUpperCase()}${phase.slice(1)} dealt.`
   };
 }
@@ -474,21 +518,205 @@ export function advanceHoldemRound(table: HoldemTableState): HoldemTableState {
       ...table,
       handId: table.phase === "showdown" ? table.handId + 1 : table.handId,
       deck: makeDeck(`jaws-holdem-${table.handId + 1}`),
-      dealerIndex: (table.dealerIndex + (table.phase === "showdown" ? 1 : 0)) % 3
+      dealerIndex: (table.dealerIndex + (table.phase === "showdown" ? 1 : 0)) % 3,
+      currentBet: 0,
+      minimumRaise: table.bigBlind,
+      pot: 0
     });
   }
   if (table.phase === "preflop") return dealCommunity(table, 3, "flop");
   if (table.phase === "flop") return dealCommunity(table, 1, "turn");
   if (table.phase === "turn") return dealCommunity(table, 1, "river");
   const winners = evaluateHoldemWinners(table);
+  const splitPot = winners.length ? Math.floor(table.pot / winners.length) : 0;
+  const seats = table.seats.map((seat) =>
+    winners.some((winner) => winner.seatId === seat.id)
+      ? { ...seat, chips: seat.chips + splitPot, currentBet: 0 }
+      : { ...seat, currentBet: 0 }
+  );
   return {
     ...table,
     phase: "showdown",
     winners,
+    currentBet: 0,
+    seats,
+    chat: appendTableLog(
+      table,
+      "Q Dealer",
+      winners.length
+        ? `Showdown settled. ${winners.map((winner) => winner.name).join(", ")} split ${table.pot} table tokens.`
+        : "Showdown reached with no active winner.",
+      "agent"
+    ),
     lastEvent: winners.length
       ? `Showdown: ${winners.map((winner) => `${winner.name} with ${winner.description}`).join(", ")}.`
       : "Showdown reached with no active winner."
   };
+}
+
+function settleFoldWin(table: HoldemTableState, winner: HoldemSeat): HoldemTableState {
+  const winners = [
+    {
+      seatId: winner.id,
+      name: winner.name,
+      hand: "Fold Win",
+      description: "last active player after the table passed"
+    }
+  ];
+  return {
+    ...table,
+    phase: "showdown",
+    currentBet: 0,
+    seats: table.seats.map((seat) =>
+      seat.id === winner.id
+        ? { ...seat, chips: seat.chips + table.pot, currentBet: 0 }
+        : { ...seat, currentBet: 0 }
+    ),
+    winners,
+    chat: appendTableLog(table, "Q Dealer", `${winner.name} wins ${table.pot} table tokens after passes.`, "agent"),
+    lastEvent: `${winner.name} wins the hand after the table passed.`
+  };
+}
+
+function applyAgentResponses(table: HoldemTableState): HoldemTableState {
+  if (table.phase === "lobby" || table.phase === "showdown" || table.currentBet <= 0) return table;
+
+  let pot = table.pot;
+  let event = table.lastEvent;
+  const seats = table.seats.map((seat) => {
+    if (seat.kind !== "agent" || seat.folded || !seat.connected || seat.currentBet >= table.currentBet) {
+      return seat;
+    }
+    const needed = table.currentBet - seat.currentBet;
+    if (needed > seat.chips && seat.chips < table.bigBlind) {
+      event = `${event} ${seat.name} passes.`;
+      return { ...seat, folded: true };
+    }
+    const committed = commitSeatChips(seat, needed);
+    pot += committed.committed;
+    event = `${event} ${seat.name} holds for ${committed.committed}.`;
+    return committed.seat;
+  });
+
+  const activeSeats = activeHoldemSeats(seats);
+  if (activeSeats.length === 1) {
+    return settleFoldWin({ ...table, seats, pot, lastEvent: event }, activeSeats[0]!);
+  }
+
+  return {
+    ...table,
+    seats,
+    pot,
+    lastEvent: event,
+    chat: appendTableLog(table, "Q Dealer", event, "agent")
+  };
+}
+
+export function applyHoldemAction(
+  table: HoldemTableState,
+  seatId: string,
+  action: HoldemAction,
+  amount = table.bigBlind,
+): HoldemTableState {
+  if (table.phase === "lobby" || table.phase === "showdown") {
+    return {
+      ...table,
+      lastEvent: table.phase === "lobby" ? "Deal the hand before acting." : "Start the next hand before acting."
+    };
+  }
+
+  const seatIndex = table.seats.findIndex((seat) => seat.id === seatId);
+  const seat = table.seats[seatIndex];
+  if (!seat || seat.kind === "open" || seat.folded || !seat.connected) {
+    return { ...table, lastEvent: "That seat cannot act right now." };
+  }
+
+  if (action === "pass") {
+    const seats = table.seats.map((candidate) =>
+      candidate.id === seat.id ? { ...candidate, folded: true, currentBet: 0 } : candidate
+    );
+    const activeSeats = activeHoldemSeats(seats);
+    const next = {
+      ...table,
+      seats,
+      lastEvent: `${seat.name} passed and folded.`
+    };
+    return activeSeats.length === 1 ? settleFoldWin(next, activeSeats[0]!) : next;
+  }
+
+  let nextSeats = [...table.seats];
+  let pot = table.pot;
+  let currentBet = table.currentBet;
+  let minimumRaise = table.minimumRaise;
+  let lastEvent = table.lastEvent;
+
+  if (action === "check") {
+    if (seat.currentBet < currentBet) {
+      return {
+        ...table,
+        lastEvent: `${seat.name} cannot check into ${currentBet}. Hold/call, raise, or pass.`
+      };
+    }
+    lastEvent = `${seat.name} checks.`;
+  }
+
+  if (action === "hold") {
+    const needed = Math.max(0, currentBet - seat.currentBet);
+    if (needed > 0) {
+      const committed = commitSeatChips(seat, needed);
+      nextSeats[seatIndex] = committed.seat;
+      pot += committed.committed;
+      lastEvent = `${seat.name} holds and calls ${committed.committed}.`;
+    } else {
+      lastEvent = `${seat.name} holds.`;
+    }
+  }
+
+  if (action === "bet") {
+    if (currentBet > 0) {
+      return {
+        ...table,
+        lastEvent: `${seat.name} cannot open a bet while ${currentBet} is already live. Raise or hold instead.`
+      };
+    }
+    const wager = clamp(Math.round(amount), table.bigBlind, seat.chips);
+    const committed = commitSeatChips(seat, wager);
+    nextSeats[seatIndex] = committed.seat;
+    pot += committed.committed;
+    currentBet = committed.seat.currentBet;
+    minimumRaise = table.bigBlind;
+    lastEvent = `${seat.name} bets ${committed.committed}.`;
+  }
+
+  if (action === "raise") {
+    const raiseBy = clamp(Math.round(amount), minimumRaise, seat.chips);
+    const targetBet = currentBet + raiseBy;
+    const needed = Math.max(0, targetBet - seat.currentBet);
+    const committed = commitSeatChips(seat, needed);
+    nextSeats[seatIndex] = committed.seat;
+    pot += committed.committed;
+    currentBet = Math.max(currentBet, committed.seat.currentBet);
+    minimumRaise = Math.max(table.bigBlind, raiseBy);
+    lastEvent = `${seat.name} raises ${raiseBy}.`;
+  }
+
+  return applyAgentResponses({
+    ...table,
+    seats: nextSeats,
+    pot,
+    currentBet,
+    minimumRaise,
+    lastEvent,
+    chat: appendTableLog(table, seat.name, lastEvent, seat.kind === "agent" ? "agent" : "table")
+  });
+}
+
+export function holdemCodeTokenPrize(table: HoldemTableState, seatId = "seat-founder"): number {
+  if (table.phase !== "showdown") return 0;
+  if (table.winners.some((winner) => winner.seatId === seatId)) {
+    return clamp(18 + Math.floor(table.pot / 100), 18, 60);
+  }
+  return 4;
 }
 
 export function addHoldemChat(table: HoldemTableState, speaker: string, body: string): HoldemTableState {
@@ -496,15 +724,7 @@ export function addHoldemChat(table: HoldemTableState, speaker: string, body: st
   if (!trimmed) return table;
   return {
     ...table,
-    chat: [
-      ...table.chat.slice(-10),
-      {
-        id: `chat-${table.handId}-${table.chat.length + 1}`,
-        speaker,
-        body: trimmed,
-        channel: speaker.includes("Agent") ? "agent" : "table"
-      }
-    ],
+    chat: appendTableLog(table, speaker, trimmed, speaker.includes("Agent") ? "agent" : "table"),
     lastEvent: `${speaker} posted to the room.`
   };
 }

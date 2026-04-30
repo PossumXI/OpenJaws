@@ -50,6 +50,11 @@ type UserRow = {
   updated_at: string
   stripe_customer_id: string | null
   stripe_subscription_id: string | null
+  display_name?: string | null
+  company_name?: string | null
+  use_case?: string | null
+  marketing_opt_in?: number | null
+  profile_json?: string | null
 }
 
 type ApiKeyRow = {
@@ -60,6 +65,39 @@ type ApiKeyRow = {
   created_at: string
   last_used_at: string | null
   revoked_at: string | null
+}
+
+type CodeTokenWalletRow = {
+  email: string
+  balance: number
+  lifetime_earned: number
+  lifetime_spent: number
+  updated_at: string
+}
+
+type CodeTokenLedgerRow = {
+  id: string
+  email: string
+  delta: number
+  balance_after: number
+  kind: string
+  source: string
+  reference_id: string | null
+  metadata_json: string
+  created_at: string
+}
+
+type PromotionCampaignRow = {
+  id: string
+  slug: string
+  name: string
+  status: string
+  starts_at: string | null
+  ends_at: string | null
+  reward_tokens: number
+  metadata_json: string
+  created_at: string
+  updated_at: string
 }
 
 const PLANS: readonly QPlanDefinition[] = [
@@ -112,6 +150,32 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null
+}
+
+function normalizeBoolean(value: unknown): boolean {
+  if (typeof value === 'boolean') {
+    return value
+  }
+  if (typeof value === 'number') {
+    return value !== 0
+  }
+  if (typeof value === 'string') {
+    return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
+  }
+  return false
+}
+
+function normalizeMetadata(value: unknown): string {
+  const record = asRecord(value)
+  return JSON.stringify(record ?? {})
+}
+
+function parseMetadata(value: string | null | undefined): Record<string, unknown> {
+  try {
+    return asRecord(JSON.parse(value || '{}')) ?? {}
+  } catch {
+    return {}
+  }
 }
 
 function findPlan(value: unknown): QPlanDefinition | null {
@@ -227,6 +291,13 @@ function summarizeUser(user: UserRow, keys: ApiKeyRow[] = []): Record<string, un
     email: user.email,
     plan: user.plan,
     subscriptionStatus: user.subscription_status,
+    profile: {
+      displayName: user.display_name ?? null,
+      companyName: user.company_name ?? null,
+      useCase: user.use_case ?? null,
+      marketingOptIn: Boolean(user.marketing_opt_in),
+      profile: parseMetadata(user.profile_json),
+    },
     monthlyCredits: user.monthly_credits,
     creditsRemaining: user.credits_remaining,
     requestsThisMonth: user.requests_this_month,
@@ -298,8 +369,9 @@ async function upsertUser(db: D1Database, user: UserRow): Promise<void> {
       `INSERT INTO hosted_q_users (
         email, plan, subscription_status, monthly_credits, credits_remaining,
         requests_this_month, tokens_this_month, resets_at, created_at, updated_at,
-        stripe_customer_id, stripe_subscription_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        stripe_customer_id, stripe_subscription_id, display_name, company_name,
+        use_case, marketing_opt_in, profile_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(email) DO UPDATE SET
         plan = excluded.plan,
         subscription_status = excluded.subscription_status,
@@ -310,7 +382,12 @@ async function upsertUser(db: D1Database, user: UserRow): Promise<void> {
         resets_at = excluded.resets_at,
         updated_at = excluded.updated_at,
         stripe_customer_id = excluded.stripe_customer_id,
-        stripe_subscription_id = excluded.stripe_subscription_id`,
+        stripe_subscription_id = excluded.stripe_subscription_id,
+        display_name = COALESCE(excluded.display_name, hosted_q_users.display_name),
+        company_name = COALESCE(excluded.company_name, hosted_q_users.company_name),
+        use_case = COALESCE(excluded.use_case, hosted_q_users.use_case),
+        marketing_opt_in = COALESCE(excluded.marketing_opt_in, hosted_q_users.marketing_opt_in),
+        profile_json = COALESCE(excluded.profile_json, hosted_q_users.profile_json)`,
     )
     .bind(
       user.email,
@@ -325,8 +402,72 @@ async function upsertUser(db: D1Database, user: UserRow): Promise<void> {
       user.updated_at,
       user.stripe_customer_id,
       user.stripe_subscription_id,
+      user.display_name ?? null,
+      user.company_name ?? null,
+      user.use_case ?? null,
+      user.marketing_opt_in ?? null,
+      user.profile_json ?? null,
     )
     .run()
+}
+
+async function getWallet(db: D1Database, email: string): Promise<CodeTokenWalletRow | null> {
+  return await db
+    .prepare('SELECT * FROM code_token_wallets WHERE email = ?')
+    .bind(email)
+    .first<CodeTokenWalletRow>()
+}
+
+async function ensureWallet(db: D1Database, email: string): Promise<CodeTokenWalletRow> {
+  const current = await getWallet(db, email)
+  if (current) {
+    return current
+  }
+  const now = new Date().toISOString()
+  const wallet: CodeTokenWalletRow = {
+    email,
+    balance: 0,
+    lifetime_earned: 0,
+    lifetime_spent: 0,
+    updated_at: now,
+  }
+  await db
+    .prepare(
+      `INSERT INTO code_token_wallets (
+        email, balance, lifetime_earned, lifetime_spent, updated_at
+      ) VALUES (?, ?, ?, ?, ?)`,
+    )
+    .bind(email, 0, 0, 0, now)
+    .run()
+  return wallet
+}
+
+async function listCodeTokenLedger(
+  db: D1Database,
+  email: string,
+  limit: number,
+): Promise<CodeTokenLedgerRow[]> {
+  const rows = await db
+    .prepare(
+      `SELECT id, email, delta, balance_after, kind, source, reference_id, metadata_json, created_at
+      FROM code_token_ledger_events
+      WHERE email = ?
+      ORDER BY created_at DESC
+      LIMIT ?`,
+    )
+    .bind(email, limit)
+    .all<CodeTokenLedgerRow>()
+  return rows.results ?? []
+}
+
+async function getCampaignBySlug(
+  db: D1Database,
+  slug: string,
+): Promise<PromotionCampaignRow | null> {
+  return await db
+    .prepare('SELECT * FROM promotion_campaigns WHERE slug = ? LIMIT 1')
+    .bind(slug)
+    .first<PromotionCampaignRow>()
 }
 
 async function handleSignup(request: Request, env: WorkerEnv): Promise<Response> {
@@ -375,6 +516,13 @@ async function handleSignup(request: Request, env: WorkerEnv): Promise<Response>
     updated_at: now,
     stripe_customer_id: current?.stripe_customer_id ?? null,
     stripe_subscription_id: current?.stripe_subscription_id ?? null,
+    display_name: normalizeString(body.displayName) ?? current?.display_name ?? null,
+    company_name: normalizeString(body.companyName) ?? current?.company_name ?? null,
+    use_case: normalizeString(body.useCase) ?? current?.use_case ?? null,
+    marketing_opt_in: body.marketingOptIn === undefined
+      ? current?.marketing_opt_in ?? 0
+      : normalizeBoolean(body.marketingOptIn) ? 1 : 0,
+    profile_json: normalizeMetadata(body.profile ?? parseMetadata(current?.profile_json)),
   }
 
   await upsertUser(db, nextUser)
@@ -469,6 +617,11 @@ async function handleCheckout(request: Request, env: WorkerEnv): Promise<Respons
     updated_at: now,
     stripe_customer_id: current?.stripe_customer_id ?? null,
     stripe_subscription_id: current?.stripe_subscription_id ?? null,
+    display_name: current?.display_name ?? null,
+    company_name: current?.company_name ?? null,
+    use_case: current?.use_case ?? null,
+    marketing_opt_in: current?.marketing_opt_in ?? 0,
+    profile_json: current?.profile_json ?? '{}',
   }
   await upsertUser(db, user)
 
@@ -656,6 +809,165 @@ async function handleUsage(request: Request, env: WorkerEnv): Promise<Response> 
   )
 }
 
+async function handleProfileUpdate(request: Request, env: WorkerEnv): Promise<Response> {
+  const dbOrResponse = requireDb(env)
+  if (dbOrResponse instanceof Response) {
+    return dbOrResponse
+  }
+  const db = dbOrResponse
+  const body = await readJsonBody(request)
+  const email = normalizeEmail(body.email)
+  if (!email) {
+    return json({ ok: false, code: 'email_required' }, { status: 400 })
+  }
+  const user = await getUser(db, email)
+  if (!user) {
+    return json({ ok: false, code: 'signup_required' }, { status: 404 })
+  }
+  const updatedUser: UserRow = {
+    ...user,
+    display_name: normalizeString(body.displayName) ?? user.display_name ?? null,
+    company_name: normalizeString(body.companyName) ?? user.company_name ?? null,
+    use_case: normalizeString(body.useCase) ?? user.use_case ?? null,
+    marketing_opt_in: body.marketingOptIn === undefined
+      ? user.marketing_opt_in ?? 0
+      : normalizeBoolean(body.marketingOptIn) ? 1 : 0,
+    profile_json: normalizeMetadata(body.profile ?? parseMetadata(user.profile_json)),
+    updated_at: new Date().toISOString(),
+  }
+  await upsertUser(db, updatedUser)
+  return json({ ok: true, user: summarizeUser(updatedUser, await listKeys(db, email)) })
+}
+
+async function handleCodeTokenWallet(request: Request, env: WorkerEnv): Promise<Response> {
+  const dbOrResponse = requireDb(env)
+  if (dbOrResponse instanceof Response) {
+    return dbOrResponse
+  }
+  const url = new URL(request.url)
+  const email = normalizeEmail(url.searchParams.get('email'))
+  if (!email) {
+    return json({ ok: false, code: 'email_required' }, { status: 400 })
+  }
+  const user = await getUser(dbOrResponse, email)
+  if (!user) {
+    return json({ ok: false, code: 'signup_required' }, { status: 404 })
+  }
+  const wallet = await ensureWallet(dbOrResponse, email)
+  return json({ ok: true, wallet, user: summarizeUser(user) })
+}
+
+async function handleCodeTokenLedgerList(request: Request, env: WorkerEnv): Promise<Response> {
+  const dbOrResponse = requireDb(env)
+  if (dbOrResponse instanceof Response) {
+    return dbOrResponse
+  }
+  const url = new URL(request.url)
+  const email = normalizeEmail(url.searchParams.get('email'))
+  if (!email) {
+    return json({ ok: false, code: 'email_required' }, { status: 400 })
+  }
+  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') ?? '25') || 25))
+  const wallet = await ensureWallet(dbOrResponse, email)
+  const events = await listCodeTokenLedger(dbOrResponse, email, limit)
+  return json({ ok: true, wallet, events })
+}
+
+async function handleCodeTokenLedgerWrite(request: Request, env: WorkerEnv): Promise<Response> {
+  const auth = requireServiceAuth(request, env)
+  if (auth) {
+    return auth
+  }
+  const dbOrResponse = requireDb(env)
+  if (dbOrResponse instanceof Response) {
+    return dbOrResponse
+  }
+  const db = dbOrResponse
+  const body = await readJsonBody(request)
+  const email = normalizeEmail(body.email)
+  if (!email) {
+    return json({ ok: false, code: 'email_required' }, { status: 400 })
+  }
+  const user = await getUser(db, email)
+  if (!user) {
+    return json({ ok: false, code: 'signup_required' }, { status: 404 })
+  }
+  const delta = Math.trunc(Number(body.delta ?? 0) || 0)
+  if (delta === 0) {
+    return json({ ok: false, code: 'delta_required' }, { status: 400 })
+  }
+  const wallet = await ensureWallet(db, email)
+  if (delta < 0 && wallet.balance + delta < 0) {
+    return json(
+      {
+        ok: false,
+        code: 'insufficient_code_tokens',
+        message: 'The code-token wallet does not have enough balance for this spend.',
+        wallet,
+      },
+      { status: 409 },
+    )
+  }
+  const balanceAfter = Math.max(0, wallet.balance + delta)
+  const now = new Date().toISOString()
+  const nextWallet: CodeTokenWalletRow = {
+    email,
+    balance: balanceAfter,
+    lifetime_earned: wallet.lifetime_earned + Math.max(0, delta),
+    lifetime_spent: wallet.lifetime_spent + Math.max(0, -delta),
+    updated_at: now,
+  }
+  await db
+    .prepare(
+      `INSERT INTO code_token_wallets (
+        email, balance, lifetime_earned, lifetime_spent, updated_at
+      ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(email) DO UPDATE SET
+        balance = excluded.balance,
+        lifetime_earned = excluded.lifetime_earned,
+        lifetime_spent = excluded.lifetime_spent,
+        updated_at = excluded.updated_at`,
+    )
+    .bind(
+      nextWallet.email,
+      nextWallet.balance,
+      nextWallet.lifetime_earned,
+      nextWallet.lifetime_spent,
+      nextWallet.updated_at,
+    )
+    .run()
+  const event: CodeTokenLedgerRow = {
+    id: randomId('code_token'),
+    email,
+    delta,
+    balance_after: balanceAfter,
+    kind: normalizeString(body.kind) ?? (delta > 0 ? 'earn' : 'spend'),
+    source: normalizeString(body.source) ?? 'jaws-desktop',
+    reference_id: normalizeString(body.referenceId),
+    metadata_json: normalizeMetadata(body.metadata),
+    created_at: now,
+  }
+  await db
+    .prepare(
+      `INSERT INTO code_token_ledger_events (
+        id, email, delta, balance_after, kind, source, reference_id, metadata_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      event.id,
+      event.email,
+      event.delta,
+      event.balance_after,
+      event.kind,
+      event.source,
+      event.reference_id,
+      event.metadata_json,
+      event.created_at,
+    )
+    .run()
+  return json({ ok: true, wallet: nextWallet, event })
+}
+
 async function handleRecordUsage(request: Request, env: WorkerEnv): Promise<Response> {
   const auth = requireServiceAuth(request, env)
   if (auth) {
@@ -760,6 +1072,11 @@ async function handleStripeWebhook(request: Request, env: WorkerEnv): Promise<Re
         updated_at: now,
         stripe_customer_id: normalizeString(object.customer),
         stripe_subscription_id: normalizeString(object.subscription),
+        display_name: current?.display_name ?? null,
+        company_name: current?.company_name ?? null,
+        use_case: current?.use_case ?? null,
+        marketing_opt_in: current?.marketing_opt_in ?? 0,
+        profile_json: current?.profile_json ?? '{}',
       }
       await upsertUser(db, touchedUser)
     }
@@ -948,6 +1265,133 @@ async function handleLedgerList(request: Request, env: WorkerEnv): Promise<Respo
   return json({ ok: true, events: rows.results ?? [] }, { status: 200 })
 }
 
+async function handlePromotionCampaignUpsert(request: Request, env: WorkerEnv): Promise<Response> {
+  const auth = requireServiceAuth(request, env)
+  if (auth) {
+    return auth
+  }
+  const dbOrResponse = requireDb(env)
+  if (dbOrResponse instanceof Response) {
+    return dbOrResponse
+  }
+  const body = await readJsonBody(request)
+  const slug = normalizeString(body.slug)?.toLowerCase().replace(/[^a-z0-9._-]/g, '-')
+  const name = normalizeString(body.name)
+  if (!slug || !name) {
+    return json({ ok: false, code: 'invalid_campaign_payload' }, { status: 400 })
+  }
+  const current = await getCampaignBySlug(dbOrResponse, slug)
+  const now = new Date().toISOString()
+  const campaign: PromotionCampaignRow = {
+    id: current?.id ?? randomId('promo'),
+    slug,
+    name,
+    status: normalizeString(body.status) ?? current?.status ?? 'draft',
+    starts_at: normalizeString(body.startsAt) ?? current?.starts_at ?? null,
+    ends_at: normalizeString(body.endsAt) ?? current?.ends_at ?? null,
+    reward_tokens: Math.max(0, Math.trunc(Number(body.rewardTokens ?? current?.reward_tokens ?? 0) || 0)),
+    metadata_json: normalizeMetadata(body.metadata ?? parseMetadata(current?.metadata_json)),
+    created_at: current?.created_at ?? now,
+    updated_at: now,
+  }
+  await dbOrResponse
+    .prepare(
+      `INSERT INTO promotion_campaigns (
+        id, slug, name, status, starts_at, ends_at, reward_tokens, metadata_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(slug) DO UPDATE SET
+        name = excluded.name,
+        status = excluded.status,
+        starts_at = excluded.starts_at,
+        ends_at = excluded.ends_at,
+        reward_tokens = excluded.reward_tokens,
+        metadata_json = excluded.metadata_json,
+        updated_at = excluded.updated_at`,
+    )
+    .bind(
+      campaign.id,
+      campaign.slug,
+      campaign.name,
+      campaign.status,
+      campaign.starts_at,
+      campaign.ends_at,
+      campaign.reward_tokens,
+      campaign.metadata_json,
+      campaign.created_at,
+      campaign.updated_at,
+    )
+    .run()
+  return json({ ok: true, campaign })
+}
+
+async function handlePromotionCampaignGet(request: Request, env: WorkerEnv): Promise<Response> {
+  const dbOrResponse = requireDb(env)
+  if (dbOrResponse instanceof Response) {
+    return dbOrResponse
+  }
+  const url = new URL(request.url)
+  const slug = normalizeString(url.searchParams.get('slug'))?.toLowerCase()
+  if (!slug) {
+    return json({ ok: false, code: 'slug_required' }, { status: 400 })
+  }
+  const campaign = await getCampaignBySlug(dbOrResponse, slug)
+  if (!campaign) {
+    return json({ ok: false, code: 'campaign_not_found' }, { status: 404 })
+  }
+  return json({ ok: true, campaign })
+}
+
+async function handlePromotionContact(request: Request, env: WorkerEnv): Promise<Response> {
+  const dbOrResponse = requireDb(env)
+  if (dbOrResponse instanceof Response) {
+    return dbOrResponse
+  }
+  const body = await readJsonBody(request)
+  const email = normalizeEmail(body.email)
+  const slug = normalizeString(body.slug)?.toLowerCase()
+  if (!email || !slug) {
+    return json({ ok: false, code: 'invalid_contact_payload' }, { status: 400 })
+  }
+  const campaign = await getCampaignBySlug(dbOrResponse, slug)
+  if (!campaign || campaign.status === 'archived') {
+    return json({ ok: false, code: 'campaign_not_available' }, { status: 404 })
+  }
+  const now = new Date().toISOString()
+  const id = randomId('contact')
+  await dbOrResponse
+    .prepare(
+      `INSERT INTO promotion_contacts (
+        id, campaign_id, email, status, source, metadata_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(campaign_id, email) DO UPDATE SET
+        status = excluded.status,
+        source = excluded.source,
+        metadata_json = excluded.metadata_json,
+        updated_at = excluded.updated_at`,
+    )
+    .bind(
+      id,
+      campaign.id,
+      email,
+      normalizeString(body.status) ?? 'subscribed',
+      normalizeString(body.source) ?? 'jaws',
+      normalizeMetadata(body.metadata),
+      now,
+      now,
+    )
+    .run()
+  return json({
+    ok: true,
+    contact: {
+      id,
+      campaignId: campaign.id,
+      email,
+      status: normalizeString(body.status) ?? 'subscribed',
+    },
+    campaign,
+  })
+}
+
 function handleHealth(env: WorkerEnv): Response {
   return json({
     ok: true,
@@ -956,13 +1400,19 @@ function handleHealth(env: WorkerEnv): Response {
     routes: [
       '/health',
       '/signup',
+      '/profile',
       '/checkout',
       '/keys',
       '/usage',
       '/usage/record',
+      '/code-tokens/wallet',
+      '/code-tokens/ledger',
       '/stripe-webhook',
       '/mail/notify',
       '/laas/events',
+      '/promotions/campaign',
+      '/promotions/campaigns',
+      '/promotions/contacts',
     ],
     configured: {
       database: hasDb(env),
@@ -996,6 +1446,9 @@ export async function handleRequest(request: Request, env: WorkerEnv): Promise<R
   if (url.pathname === '/signup' && request.method === 'POST') {
     return handleSignup(request, env)
   }
+  if (url.pathname === '/profile' && request.method === 'POST') {
+    return handleProfileUpdate(request, env)
+  }
   if (url.pathname === '/checkout' && request.method === 'POST') {
     return handleCheckout(request, env)
   }
@@ -1008,6 +1461,15 @@ export async function handleRequest(request: Request, env: WorkerEnv): Promise<R
   if (url.pathname === '/usage/record' && request.method === 'POST') {
     return handleRecordUsage(request, env)
   }
+  if (url.pathname === '/code-tokens/wallet' && request.method === 'GET') {
+    return handleCodeTokenWallet(request, env)
+  }
+  if (url.pathname === '/code-tokens/ledger' && request.method === 'GET') {
+    return handleCodeTokenLedgerList(request, env)
+  }
+  if (url.pathname === '/code-tokens/ledger' && request.method === 'POST') {
+    return handleCodeTokenLedgerWrite(request, env)
+  }
   if (url.pathname === '/stripe-webhook' && request.method === 'POST') {
     return handleStripeWebhook(request, env)
   }
@@ -1019,6 +1481,15 @@ export async function handleRequest(request: Request, env: WorkerEnv): Promise<R
   }
   if (url.pathname === '/laas/events' && request.method === 'GET') {
     return handleLedgerList(request, env)
+  }
+  if (url.pathname === '/promotions/campaigns' && request.method === 'POST') {
+    return handlePromotionCampaignUpsert(request, env)
+  }
+  if (url.pathname === '/promotions/campaign' && request.method === 'GET') {
+    return handlePromotionCampaignGet(request, env)
+  }
+  if (url.pathname === '/promotions/contacts' && request.method === 'POST') {
+    return handlePromotionContact(request, env)
   }
   return json({ ok: false, code: 'not_found' }, { status: 404 })
 }
