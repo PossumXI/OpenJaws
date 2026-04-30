@@ -20,6 +20,7 @@ type PersonaPlexRuntimeState = {
   runtimeMode?: string | null
   processId?: string | number | null
   wslPid?: string | number | null
+  failedAt?: string | null
   error?: string | null
   lastError?: string | null
   status?: string | null
@@ -36,6 +37,8 @@ export type PersonaPlexProbeResult = {
   firstByte: number | null
   messageType: string | null
   runtimeState?: PersonaPlexRuntimeState | null
+  runtimeUrlSource?: 'explicit' | 'state' | 'default'
+  ignoredStateRuntimeUrl?: string | null
   error?: string | null
 }
 
@@ -46,6 +49,7 @@ const RUNTIME_STATE_PATH = join(
   'personaplex-runtime',
   'runtime.json',
 )
+const DEFAULT_PERSONAPLEX_RUNTIME_URL = 'http://127.0.0.1:8998'
 const RUNTIME_STATE_STALE_MS = 30 * 60 * 1000
 
 export function parseArgs(argv: string[]): PersonaPlexProbeOptions {
@@ -104,9 +108,7 @@ function readRuntimeState(
   return JSON.parse(readFileSync(path, 'utf8')) as PersonaPlexRuntimeState
 }
 
-function runtimeUrlFromState(
-  state: PersonaPlexRuntimeState | null,
-): string {
+function runtimeUrlFromState(state: PersonaPlexRuntimeState | null): string {
   const direct = state?.runtimeUrl?.trim()
   if (direct) {
     return direct
@@ -115,6 +117,53 @@ function runtimeUrlFromState(
   const port = String(state?.port ?? '8998').trim() || '8998'
   const protocol = state?.protocol?.trim() || 'http'
   return `${protocol}://${host}:${port}`
+}
+
+function hasFailedWithoutHealthyRuntime(state: PersonaPlexRuntimeState | null): boolean {
+  if (!state?.failedAt) {
+    return false
+  }
+  if (!state.healthyAt) {
+    return true
+  }
+  const failedAt = Date.parse(state.failedAt)
+  const healthyAt = Date.parse(state.healthyAt)
+  return Number.isFinite(failedAt) && Number.isFinite(healthyAt) && failedAt > healthyAt
+}
+
+export function selectPersonaPlexProbeRuntimeUrl(args: {
+  runtimeUrl: string | null
+  state: PersonaPlexRuntimeState | null
+}): {
+  runtimeUrl: string
+  runtimeUrlSource: PersonaPlexProbeResult['runtimeUrlSource']
+  ignoredStateRuntimeUrl: string | null
+} {
+  if (args.runtimeUrl?.trim()) {
+    return {
+      runtimeUrl: args.runtimeUrl.trim(),
+      runtimeUrlSource: 'explicit',
+      ignoredStateRuntimeUrl: null,
+    }
+  }
+
+  const stateRuntimeUrl = runtimeUrlFromState(args.state)
+  if (args.state && !hasFailedWithoutHealthyRuntime(args.state)) {
+    return {
+      runtimeUrl: stateRuntimeUrl,
+      runtimeUrlSource: 'state',
+      ignoredStateRuntimeUrl: null,
+    }
+  }
+
+  return {
+    runtimeUrl: DEFAULT_PERSONAPLEX_RUNTIME_URL,
+    runtimeUrlSource: 'default',
+    ignoredStateRuntimeUrl:
+      args.state && stateRuntimeUrl !== DEFAULT_PERSONAPLEX_RUNTIME_URL
+        ? stateRuntimeUrl
+        : null,
+  }
 }
 
 function formatRuntimeAge(ageMs: number): string {
@@ -160,6 +209,13 @@ export function buildPersonaPlexRuntimeStateDiagnostic(
     )
   } else if (state.startedAt) {
     detailParts.push(`started ${state.startedAt}`)
+  }
+
+  const failedAt = typeof state.failedAt === 'string'
+    ? Date.parse(state.failedAt)
+    : Number.NaN
+  if (Number.isFinite(failedAt)) {
+    detailParts.push(`failed ${formatRuntimeAge(now - failedAt)} ago`)
   }
 
   const lastError = state.lastError ?? state.error
@@ -247,7 +303,11 @@ export async function probePersonaPlexRuntime(
   options: PersonaPlexProbeOptions,
 ): Promise<PersonaPlexProbeResult> {
   const state = readRuntimeState()
-  const runtimeUrl = options.runtimeUrl ?? runtimeUrlFromState(state)
+  const selectedRuntime = selectPersonaPlexProbeRuntimeUrl({
+    runtimeUrl: options.runtimeUrl,
+    state,
+  })
+  const runtimeUrl = selectedRuntime.runtimeUrl
   const websocketUrl = buildPersonaPlexProbeWebSocketUrl({
     runtimeUrl,
     textPrompt: options.textPrompt,
@@ -283,6 +343,8 @@ export async function probePersonaPlexRuntime(
         firstByte: null,
         messageType: null,
         runtimeState: state,
+        runtimeUrlSource: selectedRuntime.runtimeUrlSource,
+        ignoredStateRuntimeUrl: selectedRuntime.ignoredStateRuntimeUrl,
         error: withRuntimeStateDiagnostic(
           `PersonaPlex probe timed out after ${options.timeoutMs}ms`,
           state,
@@ -312,6 +374,8 @@ export async function probePersonaPlexRuntime(
                   ? 'binary'
                   : 'empty',
             runtimeState: state,
+            runtimeUrlSource: selectedRuntime.runtimeUrlSource,
+            ignoredStateRuntimeUrl: selectedRuntime.ignoredStateRuntimeUrl,
             error:
               firstByte === 0
                 ? null
@@ -335,6 +399,8 @@ export async function probePersonaPlexRuntime(
           firstByte: null,
           messageType: null,
           runtimeState: state,
+          runtimeUrlSource: selectedRuntime.runtimeUrlSource,
+          ignoredStateRuntimeUrl: selectedRuntime.ignoredStateRuntimeUrl,
           error: withRuntimeStateDiagnostic('PersonaPlex WebSocket error', state),
         })
       })
@@ -350,6 +416,8 @@ export async function probePersonaPlexRuntime(
             firstByte: null,
             messageType: null,
             runtimeState: state,
+            runtimeUrlSource: selectedRuntime.runtimeUrlSource,
+            ignoredStateRuntimeUrl: selectedRuntime.ignoredStateRuntimeUrl,
             error: withRuntimeStateDiagnostic(
               `PersonaPlex WebSocket closed before hello: ${event.code}`,
               state,
@@ -368,6 +436,8 @@ export async function probePersonaPlexRuntime(
         firstByte: null,
         messageType: null,
         runtimeState: state,
+        runtimeUrlSource: selectedRuntime.runtimeUrlSource,
+        ignoredStateRuntimeUrl: selectedRuntime.ignoredStateRuntimeUrl,
         error: withRuntimeStateDiagnostic(
           error instanceof Error ? error.message : String(error),
           state,
