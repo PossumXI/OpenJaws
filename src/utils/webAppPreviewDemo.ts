@@ -1,5 +1,6 @@
-import { mkdir, readdir, readFile, writeFile } from 'fs/promises'
-import { join } from 'path'
+import { createHash } from 'crypto'
+import { mkdir, readdir, readFile, stat, writeFile } from 'fs/promises'
+import { isAbsolute, join, relative } from 'path'
 import { getOpenJawsConfigHomeDir } from './envUtils.js'
 import { normalizeBrowserPreviewUrl } from './browserPreview.js'
 import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
@@ -68,6 +69,25 @@ export type WebAppPreviewDemoRun = {
   dryRun?: boolean
 }
 
+export type WebAppPreviewDemoPackageFile = WebAppPreviewDemoArtifact & {
+  relativePath: string
+  bytes: number
+  sha256: string
+}
+
+export type WebAppPreviewDemoArtifactPackage = {
+  version: 1
+  generatedAt: string
+  ok: boolean
+  harness: WebAppPreviewDemoHarness
+  packagePath: string
+  manifestPath: string
+  receiptPath: string
+  packageBytes: number
+  packageSha256: string
+  files: WebAppPreviewDemoPackageFile[]
+}
+
 export type CreateWebAppPreviewDemoHarnessArgs = {
   url: string
   name?: string | null
@@ -88,9 +108,21 @@ export type RunWebAppPreviewDemoHarnessArgs = {
   runner?: WebAppPreviewDemoCommandRunner
 }
 
+export type PackageWebAppPreviewDemoArtifactsArgs = {
+  url?: string | null
+  name?: string | null
+  rationale?: string | null
+  outputDir?: string | null
+}
+
 const DEFAULT_DEMO_RUN_TIMEOUT_MS = 3 * 60 * 1000
 const MAX_DEMO_RUN_TIMEOUT_MS = 15 * 60 * 1000
 const OUTPUT_TAIL_CHARS = 16_000
+const DEMO_PACKAGE_FILENAME = 'openjaws-preview-demo-artifacts.zip'
+const DEMO_PACKAGE_MANIFEST_FILENAME =
+  'openjaws-preview-demo-artifacts.manifest.json'
+const DEMO_PACKAGE_RECEIPT_FILENAME =
+  'openjaws-preview-demo-package.receipt.json'
 
 function sanitizeDemoName(value: string | null | undefined): string {
   const trimmed = value?.trim()
@@ -206,6 +238,53 @@ async function collectDemoArtifacts(rootDir: string): Promise<WebAppPreviewDemoA
   return artifacts.sort((a, b) => a.path.localeCompare(b.path))
 }
 
+function toZipPath(rootDir: string, path: string): string {
+  const relativePath = relative(rootDir, path)
+  if (!relativePath || relativePath.startsWith('..') || isAbsolute(relativePath)) {
+    throw new Error(`Demo artifact path escaped the harness directory: ${path}`)
+  }
+  return relativePath.split('\\').join('/')
+}
+
+function sha256(value: Uint8Array): string {
+  return createHash('sha256').update(value).digest('hex')
+}
+
+function shouldSkipPackageGeneratedFile(path: string): boolean {
+  const normalized = path.split('\\').join('/').toLowerCase()
+  return (
+    normalized.endsWith(`/${DEMO_PACKAGE_FILENAME}`) ||
+    normalized.endsWith(`/${DEMO_PACKAGE_MANIFEST_FILENAME}`) ||
+    normalized.endsWith(`/${DEMO_PACKAGE_RECEIPT_FILENAME}`)
+  )
+}
+
+async function collectPackageFiles(
+  rootDir: string,
+): Promise<WebAppPreviewDemoPackageFile[]> {
+  const artifacts = await collectDemoArtifacts(rootDir)
+  const files: WebAppPreviewDemoPackageFile[] = []
+
+  for (const artifact of artifacts) {
+    if (shouldSkipPackageGeneratedFile(artifact.path)) {
+      continue
+    }
+    const metadata = await stat(artifact.path).catch(() => null)
+    if (!metadata?.isFile()) {
+      continue
+    }
+    const bytes = await readFile(artifact.path)
+    files.push({
+      ...artifact,
+      relativePath: toZipPath(rootDir, artifact.path),
+      bytes: bytes.byteLength,
+      sha256: sha256(bytes),
+    })
+  }
+
+  return files.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
+}
+
 function parseHarnessReceipt(raw: string): WebAppPreviewDemoHarness | null {
   try {
     const parsed = JSON.parse(raw) as Partial<WebAppPreviewDemoHarness>
@@ -227,6 +306,27 @@ function parseHarnessReceipt(raw: string): WebAppPreviewDemoHarness | null {
     return null
   }
   return null
+}
+
+async function resolveHarnessForArtifacts(
+  args: PackageWebAppPreviewDemoArtifactsArgs,
+): Promise<WebAppPreviewDemoHarness> {
+  const existingHarness = await readExistingHarness(args.outputDir)
+  const url = args.url?.trim()
+  if (!existingHarness && !url) {
+    throw new Error(
+      'url is required when outputDir does not contain an OpenJaws Playwright demo harness receipt.',
+    )
+  }
+  return (
+    existingHarness ??
+    (await createWebAppPreviewDemoHarness({
+      url: url!,
+      name: args.name,
+      rationale: args.rationale,
+      outputDir: args.outputDir,
+    }))
+  )
 }
 
 async function readExistingHarness(
@@ -462,21 +562,7 @@ export async function createWebAppPreviewDemoHarness(
 export async function runWebAppPreviewDemoHarness(
   args: RunWebAppPreviewDemoHarnessArgs,
 ): Promise<WebAppPreviewDemoRun> {
-  const existingHarness = await readExistingHarness(args.outputDir)
-  const url = args.url?.trim()
-  if (!existingHarness && !url) {
-    throw new Error(
-      'url is required when outputDir does not contain an OpenJaws Playwright demo harness receipt.',
-    )
-  }
-  const harness =
-    existingHarness ??
-    (await createWebAppPreviewDemoHarness({
-      url: url!,
-      name: args.name,
-      rationale: args.rationale,
-      outputDir: args.outputDir,
-    }))
+  const harness = await resolveHarnessForArtifacts(args)
   const timeoutMs = clampTimeoutMs(args.timeoutMs)
   const configPath = getHarnessFile(harness, 'config')
   const runner = args.runner ?? defaultDemoCommandRunner
@@ -540,4 +626,57 @@ export async function runWebAppPreviewDemoHarness(
   run.artifacts = await collectDemoArtifacts(harness.outputDir)
   await writeFile(runReceiptPath, `${JSON.stringify(run, null, 2)}\n`, 'utf8')
   return run
+}
+
+export async function packageWebAppPreviewDemoArtifacts(
+  args: PackageWebAppPreviewDemoArtifactsArgs,
+): Promise<WebAppPreviewDemoArtifactPackage> {
+  const harness = await resolveHarnessForArtifacts(args)
+  const manifestPath = join(harness.outputDir, DEMO_PACKAGE_MANIFEST_FILENAME)
+  const packagePath = join(harness.outputDir, DEMO_PACKAGE_FILENAME)
+  const receiptPath = join(harness.outputDir, DEMO_PACKAGE_RECEIPT_FILENAME)
+  const generatedAt = new Date().toISOString()
+  const files = await collectPackageFiles(harness.outputDir)
+  const manifest = {
+    version: 1,
+    generatedAt,
+    harness: {
+      name: harness.name,
+      slug: harness.slug,
+      url: harness.url,
+    },
+    files: files.map(file => ({
+      kind: file.kind,
+      relativePath: file.relativePath,
+      bytes: file.bytes,
+      sha256: file.sha256,
+    })),
+  }
+  const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
+  await writeFile(manifestPath, manifestBytes)
+
+  const zipEntries: Record<string, Uint8Array> = {}
+  for (const file of files) {
+    zipEntries[file.relativePath] = await readFile(file.path)
+  }
+  zipEntries[DEMO_PACKAGE_MANIFEST_FILENAME] = manifestBytes
+
+  const { zipSync } = await import('fflate')
+  const packageBytes = Buffer.from(zipSync(zipEntries, { level: 6 }))
+  await writeFile(packagePath, packageBytes)
+
+  const packaged: WebAppPreviewDemoArtifactPackage = {
+    version: 1,
+    generatedAt,
+    ok: true,
+    harness,
+    packagePath,
+    manifestPath,
+    receiptPath,
+    packageBytes: packageBytes.byteLength,
+    packageSha256: sha256(packageBytes),
+    files,
+  }
+  await writeFile(receiptPath, `${JSON.stringify(packaged, null, 2)}\n`, 'utf8')
+  return packaged
 }

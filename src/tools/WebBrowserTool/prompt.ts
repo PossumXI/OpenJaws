@@ -11,5 +11,6 @@ The tool is governed and accountable:
 - Use action="navigate" or action="close" only with a known sessionId.
 - Use action="demo_harness" to create a reusable Playwright package that can capture desktop/mobile screenshots, traces, and JSON summary evidence.
 - Use action="demo_run" to create or reuse that package and run Playwright, returning artifact paths and a run receipt.
+- Use action="demo_package" to zip the harness, captured evidence, manifests, and receipts into a hashed delivery bundle.
 - Private-network URLs are only valid for intent="preview".
 - Always include a short rationale for mutating actions so the browser receipt explains why the action happened.`

@@ -43,7 +43,9 @@ const inputSchema = lazySchema(() =>
     outputDir: z
       .string()
       .optional()
-      .describe('Optional output directory for action="demo_harness" or action="demo_run"'),
+      .describe(
+        'Optional output directory for action="demo_harness", action="demo_run", or action="demo_package"',
+      ),
     timeoutMs: z
       .number()
       .int()

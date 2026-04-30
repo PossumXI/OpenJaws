@@ -212,6 +212,7 @@ struct PreviewDemoHarnessResult {
     config_path: String,
     spec_path: String,
     receipt_path: String,
+    receipt_hash: String,
 }
 
 #[derive(Serialize)]
@@ -1044,6 +1045,19 @@ fn playwright_headed_config_command(config_path: &Path) -> String {
     )
 }
 
+fn deterministic_receipt_hash(parts: &[&str]) -> String {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for part in parts {
+        for byte in part.as_bytes() {
+            hash ^= *byte as u64;
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+        hash ^= 0xff;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("fnv1a64:{hash:016x}")
+}
+
 fn sanitize_demo_name(name: &str) -> String {
     let trimmed = name.trim();
     if trimmed.is_empty() {
@@ -1235,6 +1249,7 @@ fn preview_demo_error(
         config_path: String::new(),
         spec_path: String::new(),
         receipt_path: String::new(),
+        receipt_hash: String::new(),
     }
 }
 
@@ -1430,7 +1445,20 @@ fn write_browser_preview_demo_harness(
         );
     }
 
-    let receipt = serde_json::json!({
+    let readme_content = build_demo_readme(
+        &clean_name,
+        &cleaned_url,
+        &cleaned_command,
+        &preview,
+        &install,
+        &test,
+        &headed,
+        &codegen,
+    );
+    let package_content = build_demo_package_json(&slug);
+    let config_content = build_demo_playwright_config();
+    let spec_content = build_demo_spec(&clean_name, &cleaned_url);
+    let mut receipt = serde_json::json!({
         "version": 1,
         "createdBy": "JAWS Desktop",
         "createdAt": now_unix_label(),
@@ -1453,31 +1481,41 @@ fn write_browser_preview_demo_harness(
             "headed": headed
         }
     });
+    let receipt_without_hash = serde_json::to_string_pretty(&receipt).unwrap_or_default() + "\n";
+    let receipt_hash = deterministic_receipt_hash(&[
+        &readme_content,
+        &package_content,
+        &config_content,
+        &spec_content,
+        &receipt_without_hash,
+    ]);
+    if let Some(object) = receipt.as_object_mut() {
+        object.insert(
+            "receiptHash".to_string(),
+            serde_json::Value::String(receipt_hash.clone()),
+        );
+        object.insert(
+            "integrity".to_string(),
+            serde_json::json!({
+                "algorithm": "fnv1a64",
+                "covers": [
+                    "README.md",
+                    "package.json",
+                    "playwright.config.ts",
+                    "tests/demo.spec.ts",
+                    "openjaws-preview-demo.receipt.json without receiptHash"
+                ]
+            }),
+        );
+    }
+    let receipt_content = serde_json::to_string_pretty(&receipt).unwrap_or_default() + "\n";
 
     let writes = [
-        (
-            readme_path.as_path(),
-            build_demo_readme(
-                &clean_name,
-                &cleaned_url,
-                &cleaned_command,
-                &preview,
-                &install,
-                &test,
-                &headed,
-                &codegen,
-            ),
-        ),
-        (package_path.as_path(), build_demo_package_json(&slug)),
-        (config_path.as_path(), build_demo_playwright_config()),
-        (
-            spec_path.as_path(),
-            build_demo_spec(&clean_name, &cleaned_url),
-        ),
-        (
-            receipt_path.as_path(),
-            serde_json::to_string_pretty(&receipt).unwrap_or_default() + "\n",
-        ),
+        (readme_path.as_path(), readme_content),
+        (package_path.as_path(), package_content),
+        (config_path.as_path(), config_content),
+        (spec_path.as_path(), spec_content),
+        (receipt_path.as_path(), receipt_content),
     ];
 
     for (path, content) in writes {
@@ -1512,6 +1550,7 @@ fn write_browser_preview_demo_harness(
         config_path: config_path.display().to_string(),
         spec_path: spec_path.display().to_string(),
         receipt_path: receipt_path.display().to_string(),
+        receipt_hash,
     }
 }
 

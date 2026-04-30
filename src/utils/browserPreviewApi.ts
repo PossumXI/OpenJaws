@@ -13,6 +13,7 @@ import {
 } from './browserPreview.js'
 import {
   createWebAppPreviewDemoHarness,
+  packageWebAppPreviewDemoArtifacts,
   runWebAppPreviewDemoHarness,
   type WebAppPreviewDemoCommandRunner,
 } from './webAppPreviewDemo.js'
@@ -28,6 +29,7 @@ export const BROWSER_PREVIEW_API_ACTIONS = [
   'handoff',
   'demo_harness',
   'demo_run',
+  'demo_package',
 ] as const
 
 export const BROWSER_PREVIEW_API_INTENTS = [
@@ -78,6 +80,7 @@ const MUTATING_ACTIONS = new Set<BrowserPreviewApiAction>([
   'handoff',
   'demo_harness',
   'demo_run',
+  'demo_package',
 ])
 
 export type BrowserPreviewApiDependencies = {
@@ -136,6 +139,8 @@ function defaultRationale(action: BrowserPreviewApiAction): string {
       return 'Create reusable Playwright demo evidence for this web surface.'
     case 'demo_run':
       return 'Run Playwright demo evidence capture for this web surface.'
+    case 'demo_package':
+      return 'Package Playwright demo evidence into a hashed delivery bundle.'
     case 'launch':
     case 'close':
     case 'capabilities':
@@ -182,6 +187,7 @@ export async function runBrowserPreviewApiAction(
             handoff: 'POST /browser/handoff',
             demoHarness: 'POST /browser/demo-harness',
             demoRun: 'POST /browser/demo-run',
+            demoPackage: 'POST /browser/demo-package',
           },
         },
       }
@@ -329,6 +335,25 @@ export async function runBrowserPreviewApiAction(
           `${run.command.cwd}. Receipt: ${run.receiptPath}`,
         data: {
           run,
+        },
+      }
+    }
+    case 'demo_package': {
+      const packaged = await packageWebAppPreviewDemoArtifacts({
+        url: input.url,
+        name: input.name,
+        rationale: input.rationale?.trim() || defaultRationale(input.action),
+        outputDir: input.outputDir,
+      })
+      return {
+        ok: packaged.ok,
+        action: input.action,
+        summary: `Packaged Playwright demo evidence at ${packaged.packagePath}`,
+        message:
+          `Wrote ${packaged.packageBytes} bytes with sha256 ` +
+          `${packaged.packageSha256}. Receipt: ${packaged.receiptPath}`,
+        data: {
+          package: packaged,
         },
       }
     }

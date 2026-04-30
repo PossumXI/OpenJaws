@@ -5,6 +5,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import {
   createWebAppPreviewDemoHarness,
+  packageWebAppPreviewDemoArtifacts,
   runWebAppPreviewDemoHarness,
   type WebAppPreviewDemoCommandRunner,
 } from './webAppPreviewDemo.js'
@@ -117,5 +118,39 @@ describe('webAppPreviewDemo', () => {
     expect(run.dryRun).toBe(true)
     expect(run.harness.url).toBe('https://example.com/product')
     expect(run.stdoutTail).toContain('Dry run:')
+  })
+
+  test('packages generated demo evidence with hashes for delivery', async () => {
+    const outputDir = join(configDir, 'package-demo')
+    await runWebAppPreviewDemoHarness({
+      url: 'localhost:5173',
+      name: 'Package Demo',
+      outputDir,
+      runner: async () => ({
+        stdout: 'demo passed',
+        stderr: '',
+        code: 0,
+      }),
+    })
+
+    const packaged = await packageWebAppPreviewDemoArtifacts({
+      outputDir,
+    })
+
+    expect(packaged.ok).toBe(true)
+    expect(packaged.packageSha256).toHaveLength(64)
+    expect(packaged.packageBytes).toBeGreaterThan(0)
+    expect(existsSync(packaged.packagePath)).toBe(true)
+    expect(existsSync(packaged.manifestPath)).toBe(true)
+    expect(existsSync(packaged.receiptPath)).toBe(true)
+    expect(readFileSync(packaged.manifestPath, 'utf8')).not.toContain(configDir)
+    expect(
+      packaged.files.some(file => file.relativePath === 'tests/demo.spec.ts'),
+    ).toBe(true)
+    expect(
+      packaged.files.some(
+        file => file.relativePath === 'openjaws-preview-demo-run.receipt.json',
+      ),
+    ).toBe(true)
   })
 })

@@ -228,6 +228,7 @@ interface PreviewDemoHarnessResult {
   configPath: string;
   specPath: string;
   receiptPath: string;
+  receiptHash: string;
 }
 
 interface QAgentsCoworkControl {
@@ -1140,7 +1141,8 @@ export function App() {
         packagePath: "",
         configPath: "",
         specPath: "",
-        receiptPath: ""
+        receiptPath: "",
+        receiptHash: ""
       });
       return;
     }
@@ -1891,6 +1893,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                     <StatusLine label="Harness" value={previewDemoResult.outputDir} />
                     <StatusLine label="Spec" value={previewDemoResult.specPath} />
                     <StatusLine label="Receipt" value={previewDemoResult.receiptPath} />
+                    <StatusLine label="Hash" value={previewDemoResult.receiptHash} />
                   </div>
                 )}
                 {previewRunResult && (

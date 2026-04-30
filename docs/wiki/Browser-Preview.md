@@ -77,6 +77,14 @@ Typical flow:
 
 Then choose `Write Playwright demo harness`, or `Run Playwright demo` to capture evidence directly through OpenJaws. The backend writes `openjaws-preview-demo-run.receipt.json` beside the generated harness so agents, Discord bridges, and operators can audit which command ran and where the evidence landed.
 
+Use `demo_package` when the evidence needs to move through Discord, Direct Connect, or a delivery pipeline. It writes:
+
+- `openjaws-preview-demo-artifacts.zip`
+- `openjaws-preview-demo-artifacts.manifest.json`
+- `openjaws-preview-demo-package.receipt.json`
+
+The manifest records each packaged file path, byte count, and SHA-256 hash. The package receipt records the zip byte count and zip SHA-256 so an operator can verify that a delivered demo bundle matches the local evidence.
+
 ## Direct Connect and agent tool surface
 
 The same browser preview lane is now exposed as a structured backend contract for agents, Discord/OpenJaws bridges, and Direct Connect clients.
@@ -93,7 +101,10 @@ Authenticated Direct Connect routes:
 - `POST /browser/handoff`
 - `POST /browser/demo-harness`
 - `POST /browser/demo-run`
+- `POST /browser/demo-package`
 
 The existing `WEB_BROWSER_TOOL` feature gate now resolves to the `BrowserPreview` tool instead of a missing module. The tool uses the same shared API runner as Direct Connect, so TUI commands, backend calls, and agent tool use all enforce the same URL policy, accountable requester model, receipt behavior, Playwright harness writer, and Playwright demo runner.
 
 `demo_run` accepts either a `url` to create a new harness or an `outputDir` pointing at an existing harness receipt. It returns the command, exit code, stdout/stderr tails, artifact paths, and a run receipt path. Set `installBrowsers=true` when Chromium has not been installed yet; set `headed=true` for supervised visual runs.
+
+`demo_package` accepts either a `url` to create a new harness or an `outputDir` pointing at an existing harness receipt. It returns the zip path, manifest path, receipt path, packaged file list, and package hash.

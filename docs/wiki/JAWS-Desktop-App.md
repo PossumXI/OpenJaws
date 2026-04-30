@@ -175,6 +175,13 @@ Native capability integration pass, run on 2026-04-30:
 - The Co-work tab exposes Q planner, Q_agent implementer, Q_agent verifier, and co-work room controls with explicit pooled-credit consent.
 - Slow Guy now has lives, shield frames, level progression, and token tracking so the game loop has recoverability and objectives instead of one-hit failure.
 
+0.1.3 release-candidate prep, run on 2026-04-30:
+
+- Desktop package, Tauri app config, Cargo metadata, Cargo lockfile package entry, and generated release index now align on `0.1.3`.
+- The generated release index points at the future `jaws-v0.1.3` GitHub release and expected asset names; mirror health for that train should be run only after signed assets are published.
+- Native Playwright demo harness receipts now include a deterministic `fnv1a64` receipt hash covering the generated README, package, config, spec, and pre-hash receipt body.
+- The Preview tab surfaces that receipt hash beside the generated harness/spec/receipt paths for release evidence.
+
 Implementation references:
 
 - Tauri updater plugin: `https://v2.tauri.app/plugin/updater/`
@@ -188,5 +195,5 @@ Implementation references:
 3. Replace Q_agents co-work plan stubs with real route runtime controls, signed exchange-code invites, revocation, and explicit pooled-credit consent.
 4. Connect Arobi enrollment to the real account and ledger APIs.
 5. Add marketplace package signing, review states, sandbox scopes, and rollback metadata.
-6. Sign desktop-generated Playwright demo receipts and surface the latest screenshot/video artifact set in the Preview tab.
-7. Replace remaining prose-only `jaws-v0.1.2` references in user docs when the next generated release train is cut.
+6. Promote the `0.1.3` candidate through signed CI builds, attach the Windows/macOS/Linux artifacts, then run mirror health against the published `jaws-v0.1.3` assets.
+7. Surface the latest Playwright screenshot/video artifact set in the Preview tab after test execution.

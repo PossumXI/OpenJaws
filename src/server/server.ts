@@ -114,6 +114,9 @@ function readBrowserAction(pathname: string): BrowserPreviewApiAction | null {
     case '/browser/demo-run':
     case '/browser/demo_run':
       return 'demo_run'
+    case '/browser/demo-package':
+    case '/browser/demo_package':
+      return 'demo_package'
     default:
       return null
   }

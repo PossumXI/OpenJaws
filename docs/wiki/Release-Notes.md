@@ -15,8 +15,9 @@ This page summarizes the current public OpenJaws surface that is already working
 
 ## TUI and Branding
 
-- JAWS Desktop is now scaffolded as the native Tauri app lane for OpenJaws, with the OpenJaws backend bundled as a sidecar, signed updater artifact wiring, a collapsible workspace shell, Q/Q_agents/OpenCheek/Immaculate surfaces, Arobi enrollment, co-work pairing, marketplace, studio, arcade, billing, layout themes, an original blue shark-jaws logo asset, and the 0.1.2 Settings/update page plus bundled Cyber Frog companion asset.
+- JAWS Desktop is now scaffolded as the native Tauri app lane for OpenJaws, with the OpenJaws backend bundled as a sidecar, signed updater artifact wiring, a collapsible workspace shell, Q/Q_agents/OpenCheek/Immaculate surfaces, Arobi enrollment, co-work pairing, marketplace, studio, arcade, billing, layout themes, an original blue shark-jaws logo asset, and the Settings/update page plus bundled Cyber Frog companion asset.
 - JAWS Desktop 0.1.2 now has public download mirrors on `qline.site/downloads/jaws` and `iorch.net/downloads/jaws`; both route installer and updater-manifest downloads back to the signed `jaws-v0.1.2` GitHub release assets.
+- JAWS Desktop 0.1.3 is the next release candidate. It adds native Playwright demo harness receipt integrity hashes and keeps the generated `release-index.json` pointed at `jaws-v0.1.3` until signed assets are published.
 - `bun run jaws:mirror:check` now verifies the qline mirror, iorch mirror, GitHub release asset list, and signed updater manifest before a release pass can be called complete.
 - JAWS Desktop arcade now has real gameplay foundations: `Slow Guy` has scored lane controls, jump/duck/dash mechanics, hazards, token pickup, stamina, best-score persistence, and Cyber Frog reward hooks; the new Texas Hold'em Dealer Roundtable uses deterministic local dealing, `pokersolver` showdown scoring, table chat, Q/OpenCheek seats, and secure multiplayer metadata for the future PvP websocket room.
 - JAWS Desktop Settings now exposes update-pipeline diagnostics for the Tauri updater, qline mirror, iorch mirror, and GitHub release lane; layout themes now include richer palette tints, descriptive cards, and accent swatches.
@@ -89,7 +90,7 @@ This page summarizes the current public OpenJaws surface that is already working
 
 - `/preview` now opens native in-TUI app previews and supervised browse/watch/music sessions under one explicit receipt
 - each session keeps intent, rationale, requester, and runtime handler visible instead of letting agents browse without an explanation trail
-- the JAWS Desktop Preview tab now writes a workspace-local Playwright demo harness with README, config, test spec, and receipt, so users can make repeatable demos from the embedded browser lane
+- the JAWS Desktop Preview tab now writes a workspace-local Playwright demo harness with README, config, test spec, receipt, and deterministic receipt hash, so users can make repeatable demos from the embedded browser lane
 - the preview lane now uses the dedicated Apex browser bridge instead of preferring Chrome-compatible preview for normal session rendering
 - user browsing history stays private by default; only Q or agent-led browsing is persisted for accountability
 - localhost/private-network targets are now reserved for explicit `preview` sessions so the general browse/watch/music lanes stay on public URLs

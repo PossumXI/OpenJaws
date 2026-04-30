@@ -19,6 +19,7 @@ describe('WebBrowserTool', () => {
     expect(result.data.action).toBe('capabilities')
     expect(JSON.stringify(result.data.data)).toContain('/browser/open')
     expect(JSON.stringify(result.data.data)).toContain('/browser/demo-run')
+    expect(JSON.stringify(result.data.data)).toContain('/browser/demo-package')
   })
 
   test('accepts demo run controls in the tool schema', () => {
@@ -29,6 +30,15 @@ describe('WebBrowserTool', () => {
       installBrowsers: false,
       headed: false,
       dryRun: true,
+    })
+
+    expect(parsed.success).toBe(true)
+  })
+
+  test('accepts demo package controls in the tool schema', () => {
+    const parsed = WebBrowserTool.inputSchema.safeParse({
+      action: 'demo_package',
+      outputDir: 'D:/tmp/openjaws-demo',
     })
 
     expect(parsed.success).toBe(true)

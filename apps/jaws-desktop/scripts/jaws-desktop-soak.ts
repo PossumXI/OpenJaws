@@ -66,6 +66,7 @@ function verifyStaticSurface() {
   };
   const appSource = readFileSync(join(appRoot, "src", "App.tsx"), "utf8");
   const styleSource = readFileSync(join(appRoot, "src", "styles.css"), "utf8");
+  const nativeSource = readFileSync(join(appRoot, "src-tauri", "src", "main.rs"), "utf8");
 
   assert(tauriConfig.productName === "JAWS", "Tauri productName drifted from JAWS.");
   assert(tauriConfig.bundle?.publisher === requiredPublisher, "Installer publisher attribution is missing.");
@@ -80,6 +81,12 @@ function verifyStaticSurface() {
   assert(appSource.includes("function JawsMark"), "React/CSS JAWS logo surface is missing.");
   assert(appSource.includes("Docs And Legal"), "In-app docs/legal page is missing.");
   assert(appSource.includes("agent_runtime_snapshot"), "Agent Watch native runtime snapshot bridge is missing.");
+  assert(appSource.includes("receiptHash"), "Preview demo receipt hash is not surfaced in the UI.");
+  assert(
+    nativeSource.includes("deterministic_receipt_hash") &&
+      nativeSource.includes("write_browser_preview_demo_harness"),
+    "Native Playwright demo receipt integrity bridge is missing."
+  );
   assert(styleSource.includes(".jaws-mark"), "JAWS logo CSS is missing.");
   assert(styleSource.includes(".docs-page"), "Docs/legal layout CSS is missing.");
   assert(!blockedBrandingPattern.test(appSource), "Desktop app source contains blocked legacy provider branding.");
@@ -143,6 +150,7 @@ function main() {
           docsLegalSurface: true,
           agentRuntimeBridge: true,
           securityBrandingScan: true,
+          previewDemoReceiptIntegrity: true,
           slowGuySimulation: true,
           holdemSimulation: true,
           userPresenceScaleSimulation: options.simulatedUsers

@@ -45,6 +45,7 @@ describe('browserPreviewApi', () => {
     expect(result.summary).toContain('browser preview capabilities')
     expect(JSON.stringify(result.data)).toContain('POST /browser/demo-harness')
     expect(JSON.stringify(result.data)).toContain('POST /browser/demo-run')
+    expect(JSON.stringify(result.data)).toContain('POST /browser/demo-package')
   })
 
   test('writes a Playwright demo harness through the API facade', async () => {
@@ -107,6 +108,39 @@ describe('browserPreviewApi', () => {
     expect(result.summary).toContain('Captured Playwright demo evidence')
     expect(JSON.stringify(result.data)).toContain(
       'openjaws-preview-demo-run.receipt.json',
+    )
+  })
+
+  test('packages Playwright demo evidence through the API facade', async () => {
+    const outputDir = join(configDir, 'demo-package')
+    await runBrowserPreviewApiAction(
+      {
+        action: 'demo_run',
+        url: 'localhost:5173',
+        name: 'Browser Preview Demo Package',
+        outputDir,
+      },
+      {
+        demoRunner: async () => ({
+          stdout: 'demo passed',
+          stderr: '',
+          code: 0,
+        }),
+      },
+    )
+
+    const result = await runBrowserPreviewApiAction({
+      action: 'demo_package',
+      outputDir,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.summary).toContain('Packaged Playwright demo evidence')
+    expect(JSON.stringify(result.data)).toContain(
+      'openjaws-preview-demo-artifacts.zip',
+    )
+    expect(existsSync(join(outputDir, 'openjaws-preview-demo-package.receipt.json'))).toBe(
+      true,
     )
   })
 })

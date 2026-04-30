@@ -88,6 +88,7 @@ describe('Direct Connect browser preview API', () => {
     expect(body.ok).toBe(true)
     expect(body.data.endpoints.demoHarness).toBe('POST /browser/demo-harness')
     expect(body.data.endpoints.demoRun).toBe('POST /browser/demo-run')
+    expect(body.data.endpoints.demoPackage).toBe('POST /browser/demo-package')
   })
 
   test('rejects wrong methods and invalid browser action values', async () => {
@@ -152,5 +153,27 @@ describe('Direct Connect browser preview API', () => {
     expect(body.ok).toBe(true)
     expect(body.data.run.dryRun).toBe(true)
     expect(existsSync(join(outputDir, 'openjaws-preview-demo-run.receipt.json'))).toBe(true)
+  })
+
+  test('packages Playwright demo evidence from the backend API', async () => {
+    const outputDir = join(configDir, 'api-demo-package')
+    const response = await fetch(`${baseUrl}/browser/demo-package`, {
+      method: 'POST',
+      headers: authHeaders({ 'content-type': 'application/json' }),
+      body: JSON.stringify({
+        url: 'localhost:5173',
+        name: 'Backend Browser Preview Package',
+        outputDir,
+      }),
+    })
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(body.data.package.packageSha256).toHaveLength(64)
+    expect(existsSync(join(outputDir, 'openjaws-preview-demo-artifacts.zip'))).toBe(true)
+    expect(
+      existsSync(join(outputDir, 'openjaws-preview-demo-package.receipt.json')),
+    ).toBe(true)
   })
 })
