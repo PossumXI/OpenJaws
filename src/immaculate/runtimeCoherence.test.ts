@@ -733,4 +733,31 @@ describe('runtimeCoherence', () => {
       'warning',
     )
   })
+
+  test('keeps actionable probe detail ahead of generic probe status', () => {
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: null,
+      immaculateTrace: null,
+      qTrace: null,
+      probes: [
+        {
+          label: 'PersonaPlex',
+          url: 'ws://127.0.0.1:8998/api/chat',
+          reachable: false,
+          status: 'error',
+          detail:
+            'PersonaPlex WebSocket error | start it with the local voice launcher',
+        },
+      ],
+    })
+
+    expect(report.checks.find(check => check.id === 'probe-PersonaPlex')?.detail).toBe(
+      'PersonaPlex WebSocket error | start it with the local voice launcher',
+    )
+  })
 })

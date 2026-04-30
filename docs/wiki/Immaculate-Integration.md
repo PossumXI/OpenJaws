@@ -60,17 +60,20 @@ OpenJaws now has a read-only runtime coherence check that compares the current l
 - latest Immaculate and Q trace summaries
 - roundtable runtime state
 - loopback health for `Q`, `Viola`, and `Blackbeak`
+- PersonaPlex/Moshi WebSocket readiness plus a non-secret local repair hint
 
 Current fail-closed posture:
 
 - harness down plus no active trace is a warning, not a fake green
 - active-trace/live-harness disagreement is a failure
 - Discord patrol and queue-depth drift are surfaced as mismatches instead of being silently ignored
+- PersonaPlex failures stay warnings in the audit command, but the output now tells the operator which local launcher is missing or should be run before voice can be called production-ready
 
 Use:
 
 ```powershell
 bun run runtime:coherence
+bun run personaplex:probe
 ```
 
 That command is an audit surface, not a repair action.
