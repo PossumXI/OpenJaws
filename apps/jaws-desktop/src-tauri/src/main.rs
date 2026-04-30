@@ -148,6 +148,92 @@ struct AgentRuntimeEvent {
     state: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserPreviewSessionSummary {
+    id: String,
+    action: String,
+    intent: String,
+    requested_by: String,
+    started_at: String,
+    opened: bool,
+    note: String,
+    url: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserPreviewSnapshot {
+    checked_at: String,
+    receipt_path: String,
+    receipt_exists: bool,
+    receipt_summary: String,
+    session_count: usize,
+    launch_config_path: String,
+    launch_config_exists: bool,
+    launch_url: String,
+    dev_command: String,
+    preview_command: String,
+    playwright_codegen_command: String,
+    playwright_test_command: String,
+    sessions: Vec<BrowserPreviewSessionSummary>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewLaunchConfigResult {
+    ok: bool,
+    path: String,
+    message: String,
+    url: String,
+    dev_command: String,
+    preview_command: String,
+    playwright_codegen_command: String,
+    playwright_test_command: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewDemoHarnessResult {
+    ok: bool,
+    output_dir: String,
+    message: String,
+    name: String,
+    slug: String,
+    url: String,
+    dev_command: String,
+    preview_command: String,
+    playwright_install_command: String,
+    playwright_codegen_command: String,
+    playwright_test_command: String,
+    playwright_headed_command: String,
+    readme_path: String,
+    package_path: String,
+    config_path: String,
+    spec_path: String,
+    receipt_path: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QAgentsCoworkPlan {
+    mode: String,
+    room_code: String,
+    shared_phase_memory: bool,
+    pooled_credits: bool,
+    route_policy: String,
+    controls: Vec<QAgentsCoworkControl>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QAgentsCoworkControl {
+    id: String,
+    label: String,
+    detail: String,
+    status: String,
+}
+
 fn clean_workspace_input(input: &str) -> String {
     input
         .trim()
@@ -589,7 +675,11 @@ fn shorten(value: &str, max_chars: usize) -> String {
 }
 
 fn best_event_time(value: &serde_json::Value, keys: &[&str]) -> String {
-    first_non_empty(keys.iter().map(|key| json_field_string(value, key)).collect())
+    first_non_empty(
+        keys.iter()
+            .map(|key| json_field_string(value, key))
+            .collect(),
+    )
 }
 
 fn queue_event_state(status: &str) -> String {
@@ -642,7 +732,11 @@ fn route_queue_event(entry: &serde_json::Value) -> AgentRuntimeEvent {
 
     let mut parts = vec![format!(
         "Route {} is {}.",
-        if run_id.is_empty() { "pending" } else { run_id.as_str() },
+        if run_id.is_empty() {
+            "pending"
+        } else {
+            run_id.as_str()
+        },
         status_label
     )];
     if !base_model.is_empty() {
@@ -685,7 +779,11 @@ fn route_worker_event(worker: &serde_json::Value) -> AgentRuntimeEvent {
     let watch = json_bool_field(worker, "watch");
     let mut parts = vec![format!(
         "{} worker {} is registered.",
-        if profile.is_empty() { "route" } else { profile.as_str() },
+        if profile.is_empty() {
+            "route"
+        } else {
+            profile.as_str()
+        },
         label
     )];
     if !heartbeat.is_empty() {
@@ -721,9 +819,17 @@ fn worker_runtime_event(runtime: &serde_json::Value) -> AgentRuntimeEvent {
     let harness = json_field_string(runtime, "harnessUrl");
     let mut parts = vec![format!(
         "{} runtime {} is {}.",
-        if profile.is_empty() { "worker" } else { profile.as_str() },
+        if profile.is_empty() {
+            "worker"
+        } else {
+            profile.as_str()
+        },
         label,
-        if status.is_empty() { "waiting" } else { status.as_str() }
+        if status.is_empty() {
+            "waiting"
+        } else {
+            status.as_str()
+        }
     )];
     if !summary.is_empty() {
         parts.push(summary);
@@ -799,6 +905,654 @@ fn agent_runtime_snapshot(workspace_path: Option<String>) -> AgentRuntimeSnapsho
         worker_count: workers.len(),
         runtime_count: runtime.len(),
         events,
+    }
+}
+
+fn openjaws_config_home_dir() -> PathBuf {
+    if let Ok(path) = env::var("OPENJAWS_CONFIG_DIR") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+
+    if let Ok(path) = env::var("USERPROFILE") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed).join(".openjaws");
+        }
+    }
+
+    if let Ok(path) = env::var("HOME") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed).join(".openjaws");
+        }
+    }
+
+    PathBuf::from(".openjaws")
+}
+
+fn browser_preview_receipt_path() -> PathBuf {
+    openjaws_config_home_dir()
+        .join("browser-preview")
+        .join("receipt.json")
+}
+
+fn launch_config_path(workspace: &WorkspaceStatus) -> PathBuf {
+    if workspace.valid {
+        PathBuf::from(&workspace.path)
+            .join(".openjaws")
+            .join("launch.json")
+    } else {
+        PathBuf::from(".openjaws").join("launch.json")
+    }
+}
+
+fn read_json_object(path: &Path) -> Option<serde_json::Map<String, serde_json::Value>> {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|value| value.as_object().cloned())
+}
+
+fn browser_preview_sessions(path: &Path) -> Vec<BrowserPreviewSessionSummary> {
+    let Some(receipt) = read_json_object(path) else {
+        return Vec::new();
+    };
+
+    receipt
+        .get("sessions")
+        .and_then(|value| value.as_array())
+        .map(|sessions| {
+            sessions
+                .iter()
+                .take(6)
+                .map(|session| BrowserPreviewSessionSummary {
+                    id: json_field_string(session, "id"),
+                    action: json_field_string(session, "action"),
+                    intent: json_field_string(session, "intent"),
+                    requested_by: json_field_string(session, "requestedBy"),
+                    started_at: json_field_string(session, "startedAt"),
+                    opened: json_bool_field(session, "opened"),
+                    note: json_field_string(session, "note"),
+                    url: json_field_string(session, "url"),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn clean_preview_url(url: &str) -> Result<String, String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return Err("Enter a preview URL before saving the launch config.".to_string());
+    }
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return Ok(trimmed.to_string());
+    }
+    if trimmed.starts_with("localhost") || trimmed.starts_with("127.0.0.1") {
+        return Ok(format!("http://{trimmed}"));
+    }
+    Ok(format!("https://{trimmed}"))
+}
+
+fn clean_dev_command(command: &str) -> String {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        "npm run dev".to_string()
+    } else {
+        trimmed.chars().take(240).collect()
+    }
+}
+
+fn preview_command(url: &str) -> String {
+    format!("/preview {url}")
+}
+
+fn playwright_codegen_command(url: &str) -> String {
+    format!("bunx playwright codegen {url}")
+}
+
+fn playwright_test_command() -> String {
+    "bunx playwright test".to_string()
+}
+
+fn playwright_install_command() -> String {
+    "bunx playwright install chromium".to_string()
+}
+
+fn quote_powershell(value: &str) -> String {
+    format!("\"{}\"", value.replace('`', "``").replace('"', "`\""))
+}
+
+fn playwright_codegen_command_quoted(url: &str) -> String {
+    format!("bunx playwright codegen {}", quote_powershell(url))
+}
+
+fn playwright_test_config_command(config_path: &Path) -> String {
+    format!(
+        "bunx playwright test -c {}",
+        quote_powershell(&config_path.display().to_string())
+    )
+}
+
+fn playwright_headed_config_command(config_path: &Path) -> String {
+    format!(
+        "bunx playwright test -c {} --headed",
+        quote_powershell(&config_path.display().to_string())
+    )
+}
+
+fn sanitize_demo_name(name: &str) -> String {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        "OpenJaws web app demo".to_string()
+    } else {
+        trimmed.chars().take(80).collect()
+    }
+}
+
+fn sanitize_demo_slug(name: &str) -> String {
+    let mut slug = String::new();
+    let mut last_dash = false;
+
+    for character in name.to_ascii_lowercase().chars() {
+        if character.is_ascii_alphanumeric() {
+            slug.push(character);
+            last_dash = false;
+        } else if !last_dash && !slug.is_empty() {
+            slug.push('-');
+            last_dash = true;
+        }
+
+        if slug.len() >= 64 {
+            break;
+        }
+    }
+
+    while slug.ends_with('-') {
+        slug.pop();
+    }
+
+    if slug.is_empty() {
+        "openjaws-web-app-demo".to_string()
+    } else {
+        slug
+    }
+}
+
+fn build_demo_package_json(slug: &str) -> String {
+    let payload = serde_json::json!({
+        "name": slug,
+        "private": true,
+        "type": "module",
+        "scripts": {
+            "install:browsers": "playwright install chromium",
+            "test": "playwright test",
+            "test:headed": "playwright test --headed",
+            "codegen": "playwright codegen"
+        },
+        "devDependencies": {
+            "@playwright/test": "^1.59.1"
+        }
+    });
+
+    serde_json::to_string_pretty(&payload).unwrap_or_default() + "\n"
+}
+
+fn build_demo_playwright_config() -> String {
+    r#"import { defineConfig, devices } from '@playwright/test'
+
+export default defineConfig({
+  testDir: './tests',
+  outputDir: './artifacts',
+  reporter: [
+    ['list'],
+    ['html', { outputFolder: './playwright-report', open: 'never' }],
+  ],
+  timeout: 45_000,
+  expect: {
+    timeout: 10_000,
+  },
+  use: {
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
+  },
+  projects: [
+    {
+      name: 'desktop-chromium',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 960 } },
+    },
+    {
+      name: 'mobile-chromium',
+      use: { ...devices['Pixel 7'] },
+    },
+  ],
+})
+"#
+    .to_string()
+}
+
+fn build_demo_spec(name: &str, url: &str) -> String {
+    let name_json =
+        serde_json::to_string(name).unwrap_or_else(|_| "\"OpenJaws web app demo\"".to_string());
+    let url_json =
+        serde_json::to_string(url).unwrap_or_else(|_| "\"http://127.0.0.1:5173\"".to_string());
+
+    r#"import { expect, test } from '@playwright/test'
+import { writeFile } from 'node:fs/promises'
+
+const DEMO_NAME = __DEMO_NAME__
+const DEMO_URL = __DEMO_URL__
+
+test.describe(DEMO_NAME, () => {
+  test('loads, renders meaningful content, and captures demo evidence', async ({ page }, testInfo) => {
+    const pageErrors: string[] = []
+    const consoleErrors: string[] = []
+
+    page.on('pageerror', error => {
+      pageErrors.push(error.message)
+    })
+    page.on('console', message => {
+      if (message.type() === 'error') {
+        consoleErrors.push(message.text())
+      }
+    })
+
+    await page.goto(DEMO_URL, { waitUntil: 'domcontentloaded' })
+    await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {})
+    await expect(page.locator('body')).toBeVisible()
+
+    const bodyText = (await page.locator('body').innerText()).replace(/\s+/g, ' ').trim()
+    expect(bodyText.length, 'page should render inspectable copy').toBeGreaterThan(20)
+
+    const title = await page.title()
+    const finalUrl = page.url()
+    const screenshotPath = testInfo.outputPath('demo-full-page.png')
+    await page.screenshot({ path: screenshotPath, fullPage: true })
+
+    await writeFile(
+      testInfo.outputPath('demo-summary.json'),
+      JSON.stringify({
+        demoName: DEMO_NAME,
+        requestedUrl: DEMO_URL,
+        finalUrl,
+        title,
+        capturedAt: new Date().toISOString(),
+        textPreview: bodyText.slice(0, 500),
+        consoleErrors: consoleErrors.slice(0, 20),
+        pageErrors: pageErrors.slice(0, 20),
+      }, null, 2) + '\n',
+      'utf8',
+    )
+
+    expect(pageErrors, 'page runtime errors').toEqual([])
+  })
+})
+"#
+    .replace("__DEMO_NAME__", &name_json)
+    .replace("__DEMO_URL__", &url_json)
+}
+
+fn build_demo_readme(
+    name: &str,
+    url: &str,
+    dev_command: &str,
+    preview: &str,
+    install: &str,
+    test: &str,
+    headed: &str,
+    codegen: &str,
+) -> String {
+    format!(
+        "# {name}\n\nThis OpenJaws preview harness turns a web app, product page, service, or game URL into reusable Playwright demo evidence.\n\n- URL: {url}\n- Dev command: {dev_command}\n\n## Commands\n\n```powershell\n{install}\n{test}\n{headed}\n{codegen}\n```\n\n## What It Captures\n\n- desktop and mobile Chromium runs\n- full-page screenshot artifacts\n- Playwright trace/video on failure\n- a JSON summary with title, final URL, text preview, console errors, and page errors\n\nUse the OpenJaws preview lane while building:\n\n```text\n{preview}\n```\n"
+    )
+}
+
+fn preview_demo_error(
+    message: String,
+    url: String,
+    dev_command: String,
+    name: String,
+) -> PreviewDemoHarnessResult {
+    PreviewDemoHarnessResult {
+        ok: false,
+        output_dir: String::new(),
+        message,
+        name,
+        slug: String::new(),
+        url,
+        dev_command,
+        preview_command: String::new(),
+        playwright_install_command: playwright_install_command(),
+        playwright_codegen_command: String::new(),
+        playwright_test_command: playwright_test_command(),
+        playwright_headed_command: "bunx playwright test --headed".to_string(),
+        readme_path: String::new(),
+        package_path: String::new(),
+        config_path: String::new(),
+        spec_path: String::new(),
+        receipt_path: String::new(),
+    }
+}
+
+#[tauri::command]
+fn browser_preview_snapshot(workspace_path: Option<String>) -> BrowserPreviewSnapshot {
+    let workspace = workspace_path
+        .as_deref()
+        .map(|path| validate_workspace(path.to_string()))
+        .unwrap_or_else(|| validate_workspace(String::new()));
+    let receipt_path = browser_preview_receipt_path();
+    let launch_path = launch_config_path(&workspace);
+    let launch_config = read_json_object(&launch_path);
+    let launch_url = launch_config
+        .as_ref()
+        .and_then(|value| value.get("url"))
+        .and_then(|value| value.as_str())
+        .unwrap_or("http://127.0.0.1:5173/")
+        .to_string();
+    let dev_command = launch_config
+        .as_ref()
+        .and_then(|value| value.get("command"))
+        .and_then(|value| value.as_str())
+        .unwrap_or("npm run dev")
+        .to_string();
+    let sessions = browser_preview_sessions(&receipt_path);
+    let receipt_exists = receipt_path.exists();
+    let receipt_summary = if sessions.is_empty() {
+        if receipt_exists {
+            "Browser preview receipts exist but no accountable agent/operator sessions were recorded."
+                .to_string()
+        } else {
+            "No browser preview receipt exists yet. OpenJaws will create one when Q, an agent, or an operator records a preview handoff."
+                .to_string()
+        }
+    } else {
+        format!(
+            "Loaded {} accountable browser preview session{}.",
+            sessions.len(),
+            if sessions.len() == 1 { "" } else { "s" }
+        )
+    };
+
+    BrowserPreviewSnapshot {
+        checked_at: now_unix_label(),
+        receipt_path: receipt_path.display().to_string(),
+        receipt_exists,
+        receipt_summary,
+        session_count: sessions.len(),
+        launch_config_path: launch_path.display().to_string(),
+        launch_config_exists: launch_path.exists(),
+        preview_command: preview_command(&launch_url),
+        playwright_codegen_command: playwright_codegen_command(&launch_url),
+        playwright_test_command: playwright_test_command(),
+        launch_url,
+        dev_command,
+        sessions,
+    }
+}
+
+#[tauri::command]
+fn write_browser_preview_launch_config(
+    workspace_path: String,
+    url: String,
+    dev_command: String,
+) -> PreviewLaunchConfigResult {
+    let workspace = validate_workspace(workspace_path);
+    if !workspace.valid {
+        return PreviewLaunchConfigResult {
+            ok: false,
+            path: String::new(),
+            message: workspace.message,
+            url,
+            dev_command,
+            preview_command: String::new(),
+            playwright_codegen_command: String::new(),
+            playwright_test_command: playwright_test_command(),
+        };
+    }
+
+    let cleaned_url = match clean_preview_url(&url) {
+        Ok(value) => value,
+        Err(message) => {
+            return PreviewLaunchConfigResult {
+                ok: false,
+                path: String::new(),
+                message,
+                url,
+                dev_command,
+                preview_command: String::new(),
+                playwright_codegen_command: String::new(),
+                playwright_test_command: playwright_test_command(),
+            }
+        }
+    };
+    let cleaned_command = clean_dev_command(&dev_command);
+    let path = launch_config_path(&workspace);
+    if let Some(parent) = path.parent() {
+        if let Err(error) = fs::create_dir_all(parent) {
+            return PreviewLaunchConfigResult {
+                ok: false,
+                path: path.display().to_string(),
+                message: format!("Could not create .openjaws preview directory: {error}"),
+                url: cleaned_url.clone(),
+                dev_command: cleaned_command.clone(),
+                preview_command: preview_command(&cleaned_url),
+                playwright_codegen_command: playwright_codegen_command(&cleaned_url),
+                playwright_test_command: playwright_test_command(),
+            };
+        }
+    }
+
+    let payload = serde_json::json!({
+        "version": 1,
+        "createdBy": "JAWS Desktop",
+        "createdAt": now_unix_label(),
+        "url": cleaned_url.clone(),
+        "command": cleaned_command.clone(),
+        "intent": "preview",
+        "playwright": {
+            "codegen": playwright_codegen_command(&cleaned_url),
+            "test": playwright_test_command()
+        }
+    });
+    match fs::write(
+        &path,
+        serde_json::to_string_pretty(&payload).unwrap_or_default() + "\n",
+    ) {
+        Ok(_) => PreviewLaunchConfigResult {
+            ok: true,
+            path: path.display().to_string(),
+            message: "Preview launch config saved for this workspace.".to_string(),
+            url: cleaned_url.clone(),
+            dev_command: cleaned_command,
+            preview_command: preview_command(&cleaned_url),
+            playwright_codegen_command: playwright_codegen_command(&cleaned_url),
+            playwright_test_command: playwright_test_command(),
+        },
+        Err(error) => PreviewLaunchConfigResult {
+            ok: false,
+            path: path.display().to_string(),
+            message: format!("Could not write preview launch config: {error}"),
+            url: cleaned_url.clone(),
+            dev_command: cleaned_command,
+            preview_command: preview_command(&cleaned_url),
+            playwright_codegen_command: playwright_codegen_command(&cleaned_url),
+            playwright_test_command: playwright_test_command(),
+        },
+    }
+}
+
+#[tauri::command]
+fn write_browser_preview_demo_harness(
+    workspace_path: String,
+    url: String,
+    dev_command: String,
+    name: String,
+) -> PreviewDemoHarnessResult {
+    let clean_name = sanitize_demo_name(&name);
+    let workspace = validate_workspace(workspace_path);
+    if !workspace.valid {
+        return preview_demo_error(workspace.message, url, dev_command, clean_name);
+    }
+
+    let cleaned_url = match clean_preview_url(&url) {
+        Ok(value) => value,
+        Err(message) => return preview_demo_error(message, url, dev_command, clean_name),
+    };
+    let cleaned_command = clean_dev_command(&dev_command);
+    let slug = sanitize_demo_slug(&clean_name);
+    let output_dir = PathBuf::from(&workspace.path)
+        .join(".openjaws")
+        .join("browser-preview")
+        .join("demos")
+        .join(&slug);
+    let tests_dir = output_dir.join("tests");
+    let readme_path = output_dir.join("README.md");
+    let package_path = output_dir.join("package.json");
+    let config_path = output_dir.join("playwright.config.ts");
+    let spec_path = tests_dir.join("demo.spec.ts");
+    let receipt_path = output_dir.join("openjaws-preview-demo.receipt.json");
+    let preview = preview_command(&cleaned_url);
+    let install = playwright_install_command();
+    let codegen = playwright_codegen_command_quoted(&cleaned_url);
+    let test = playwright_test_config_command(&config_path);
+    let headed = playwright_headed_config_command(&config_path);
+
+    if let Err(error) = fs::create_dir_all(&tests_dir) {
+        return preview_demo_error(
+            format!("Could not create Playwright demo harness directory: {error}"),
+            cleaned_url,
+            cleaned_command,
+            clean_name,
+        );
+    }
+
+    let receipt = serde_json::json!({
+        "version": 1,
+        "createdBy": "JAWS Desktop",
+        "createdAt": now_unix_label(),
+        "name": clean_name,
+        "slug": slug,
+        "url": cleaned_url,
+        "devCommand": cleaned_command,
+        "outputDir": output_dir.display().to_string(),
+        "files": {
+            "readme": readme_path.display().to_string(),
+            "package": package_path.display().to_string(),
+            "config": config_path.display().to_string(),
+            "spec": spec_path.display().to_string()
+        },
+        "commands": {
+            "preview": preview,
+            "installBrowsers": install,
+            "codegen": codegen,
+            "test": test,
+            "headed": headed
+        }
+    });
+
+    let writes = [
+        (
+            readme_path.as_path(),
+            build_demo_readme(
+                &clean_name,
+                &cleaned_url,
+                &cleaned_command,
+                &preview,
+                &install,
+                &test,
+                &headed,
+                &codegen,
+            ),
+        ),
+        (package_path.as_path(), build_demo_package_json(&slug)),
+        (config_path.as_path(), build_demo_playwright_config()),
+        (
+            spec_path.as_path(),
+            build_demo_spec(&clean_name, &cleaned_url),
+        ),
+        (
+            receipt_path.as_path(),
+            serde_json::to_string_pretty(&receipt).unwrap_or_default() + "\n",
+        ),
+    ];
+
+    for (path, content) in writes {
+        if let Err(error) = fs::write(path, content) {
+            return preview_demo_error(
+                format!(
+                    "Could not write Playwright demo harness file {}: {error}",
+                    path.display()
+                ),
+                cleaned_url,
+                cleaned_command,
+                clean_name,
+            );
+        }
+    }
+
+    PreviewDemoHarnessResult {
+        ok: true,
+        output_dir: output_dir.display().to_string(),
+        message: "Playwright demo harness written for this workspace.".to_string(),
+        name: clean_name,
+        slug,
+        url: cleaned_url,
+        dev_command: cleaned_command,
+        preview_command: preview,
+        playwright_install_command: install,
+        playwright_codegen_command: codegen,
+        playwright_test_command: test,
+        playwright_headed_command: headed,
+        readme_path: readme_path.display().to_string(),
+        package_path: package_path.display().to_string(),
+        config_path: config_path.display().to_string(),
+        spec_path: spec_path.display().to_string(),
+        receipt_path: receipt_path.display().to_string(),
+    }
+}
+
+#[tauri::command]
+fn q_agents_cowork_plan() -> QAgentsCoworkPlan {
+    QAgentsCoworkPlan {
+        mode: "stacked-agents".to_string(),
+        room_code: "JWS-QAGENTS".to_string(),
+        shared_phase_memory: true,
+        pooled_credits: false,
+        route_policy: "health-gated dispatch with explicit user approval for shared credits"
+            .to_string(),
+        controls: vec![
+            QAgentsCoworkControl {
+                id: "planner".to_string(),
+                label: "Q planner".to_string(),
+                detail: "Owns task decomposition, route policy, and final synthesis.".to_string(),
+                status: "ready".to_string(),
+            },
+            QAgentsCoworkControl {
+                id: "implementer".to_string(),
+                label: "Q_agent implementer".to_string(),
+                detail: "Takes bounded code-change lanes with workspace-scoped permissions."
+                    .to_string(),
+                status: "health gated".to_string(),
+            },
+            QAgentsCoworkControl {
+                id: "verifier".to_string(),
+                label: "Q_agent verifier".to_string(),
+                detail: "Runs tests, browser checks, and release gates before handoff.".to_string(),
+                status: "health gated".to_string(),
+            },
+            QAgentsCoworkControl {
+                id: "cowork".to_string(),
+                label: "Co-work room".to_string(),
+                detail:
+                    "Pairs another JAWS user into the same workspace with explicit code exchange."
+                        .to_string(),
+                status: "local foundation".to_string(),
+            },
+        ],
     }
 }
 
@@ -1263,13 +2017,17 @@ fn main() {
             agent_runtime_snapshot,
             backend_status,
             account_session,
+            browser_preview_snapshot,
             enrollment_links,
             openjaws_smoke,
             openjaws_workspace_smoke,
             probe_release_update_pipeline,
+            q_agents_cowork_plan,
             resolve_workspace,
             run_openjaws_chat,
-            validate_workspace
+            validate_workspace,
+            write_browser_preview_demo_harness,
+            write_browser_preview_launch_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running JAWS Desktop");

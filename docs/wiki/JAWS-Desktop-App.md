@@ -12,15 +12,16 @@ Brand line:
 - Control dashboard for OpenJaws, Q, Q_agents, OpenCheek, Immaculate, Arobi, and security lanes.
 - Chat window for command entry, live agent/work transcript, per-message shark-jaw activity markers, Q thinking animation, command starter tools, a real Tauri-to-OpenJaws sidecar command bridge, review-first or fast audited queue mode, notification state, and optional change comparison.
 - Terminal workspace tab that can open a native folder picker, validates the selected project folder, stores the workspace locally, shows the exact OpenJaws TUI launch command, and can run the bundled OpenJaws sidecar from that folder.
+- Browser Preview tab for embedded local/web preview, `.openjaws/launch.json` authoring, accountable `/preview` receipt inspection, and native Playwright demo harness generation.
 - Agent Watch timeline for live orchestration events.
 - Image Studio and Video Studio panels for provider-gated creative work.
-- Arcade Bar with `Slow Guy`, a scored runner with lane controls, jump/duck/dash mechanics, stamina, code-token collection, objective state, best-score persistence, and Cyber Frog rewards.
+- Arcade Bar with `Slow Guy`, a scored runner with lane controls, jump/duck/dash mechanics, lives, shield recovery, level speed, stamina, code-token collection, objective state, best-score persistence, and Cyber Frog rewards.
 - Texas Hold'em Dealer Roundtable foundation with deterministic local dealing, table chat, Q/OpenCheek seats, showdown evaluation, secure scope chips, and multiplayer room metadata ready for a signed websocket transport.
 - 3D Sandbox foundation tab for user, pet, Q, agent forge, and PvP-table presence, with capability-manifest and workspace-scope review gates for future community agent release.
 - Animated Cyber Frog companion with code-token rewards, feeding, training, gear, decorations, egg progress, naming, and profile persistence.
 - User profile and agent profile surfaces for workspace identity, agent lane status, and pet/code-token state.
 - Arobi ledger and enrollment links.
-- Shared workspace pairing lane for future exchange-code collaboration.
+- Q_agents Co-work controls for stacked/paired/solo modes, worker-lane toggles, shared phase memory, explicit pooled-credit consent, OpenCheek handoff state, and Immaculate pacing.
 - Marketplace cards for skills, tools, workflows, games, and third-party integrations.
 - Billing copy for a 14-day trial and flat `$12.99/mo` IDE subscription, with Q credits separate.
 - Docs page with in-app Terms, final-sale billing policy qualified by applicable law, security/privacy notes, community content rules, AI output notice, developer verification commands, and release links.
@@ -165,6 +166,15 @@ Runtime visibility and compliance pass, run on 2026-04-30:
 - The desktop bundle publisher is pinned to `AROBI TECHNOLOGY ALLIANCE A OPAL MAR GROUP CORPORATION NJ USA`.
 - `bun run jaws:soak -- --duration-ms 300000 --users 5000` is the five-minute desktop durability lane for logo, docs/legal, release metadata, updater security, Agent Watch bridge, Slow Guy, Hold'em, and synthetic user-presence scaling.
 
+Native capability integration pass, run on 2026-04-30:
+
+- Preview is now a first-class desktop section, not a hidden TUI-only capability.
+- The native bridge exposes `browser_preview_snapshot`, `write_browser_preview_launch_config`, `write_browser_preview_demo_harness`, and `q_agents_cowork_plan`.
+- JAWS reads OpenJaws browser-preview receipts from the local OpenJaws config home and writes workspace launch config to `.openjaws/launch.json`.
+- The Preview tab stages `/preview`, `bunx playwright codegen`, and `bunx playwright test` workflows, and `Write Demo` creates `<workspace>/.openjaws/browser-preview/demos/<demo-slug>` with Playwright config, spec, README, and a receipt.
+- The Co-work tab exposes Q planner, Q_agent implementer, Q_agent verifier, and co-work room controls with explicit pooled-credit consent.
+- Slow Guy now has lives, shield frames, level progression, and token tracking so the game loop has recoverability and objectives instead of one-hit failure.
+
 Implementation references:
 
 - Tauri updater plugin: `https://v2.tauri.app/plugin/updater/`
@@ -173,10 +183,10 @@ Implementation references:
 
 ## Next Production Tasks
 
-1. Implement the dynamic `/api/jaws/{target}/{arch}/{current_version}` updater endpoint on `iorch.net`; `qline.site` already has the release mirror and updater manifest redirect live.
-2. Upgrade the Agent Watch snapshot into continuous event streaming from the OpenJaws route/runtime log bus.
-3. Add the secure websocket room service for Hold'em PvP, world chat, pet presence, and signed agent sandbox presence.
+1. Upgrade Agent Watch and Preview receipts into one continuous OpenJaws event stream with cursor replay and worker-heartbeat deltas.
+2. Add the secure websocket room service for Hold'em PvP, world chat, pet presence, and signed agent sandbox presence.
+3. Replace Q_agents co-work plan stubs with real route runtime controls, signed exchange-code invites, revocation, and explicit pooled-credit consent.
 4. Connect Arobi enrollment to the real account and ledger APIs.
-5. Implement exchange-code collaboration with signed workspace invites, revocation, and explicit pooled-credit consent.
-6. Add marketplace package signing, review states, sandbox scopes, and rollback metadata.
+5. Add marketplace package signing, review states, sandbox scopes, and rollback metadata.
+6. Sign desktop-generated Playwright demo receipts and surface the latest screenshot/video artifact set in the Preview tab.
 7. Replace remaining prose-only `jaws-v0.1.2` references in user docs when the next generated release train is cut.

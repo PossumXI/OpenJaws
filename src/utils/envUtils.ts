@@ -2,15 +2,17 @@ import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import { join } from 'path'
 
-// Memoized: 150+ callers, many on hot paths. Keyed off CLAUDE_CONFIG_DIR so
+// Memoized: 150+ callers, many on hot paths. Keyed off config env vars so
 // tests that change the env var get a fresh value without explicit cache.clear.
 export const getOpenJawsConfigHomeDir = memoize(
   (): string => {
     return (
-      process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.openjaws')
+      process.env.OPENJAWS_CONFIG_DIR ??
+      process.env.CLAUDE_CONFIG_DIR ??
+      join(homedir(), '.openjaws')
     ).normalize('NFC')
   },
-  () => process.env.CLAUDE_CONFIG_DIR,
+  () => `${process.env.OPENJAWS_CONFIG_DIR ?? ''}\0${process.env.CLAUDE_CONFIG_DIR ?? ''}`,
 )
 
 export function getTeamsDir(): string {

@@ -28,6 +28,7 @@ import {
   summarizeBrowserPreviewReceipt,
   summarizeBrowserPreviewRuntime,
 } from '../../utils/browserPreview.js'
+import { createWebAppPreviewDemoHarness } from '../../utils/webAppPreviewDemo.js'
 
 const REFRESH_INTERVAL_MS = 15_000
 
@@ -42,6 +43,7 @@ type PreviewAction =
   | 'open-preview'
   | 'navigate-preview'
   | 'close-preview'
+  | 'write-demo-harness'
   | 'refresh'
 
 function getIntentFromAction(action: PreviewAction): BrowserPreviewIntent | null {
@@ -283,6 +285,12 @@ function PreviewLaunch({
         description: 'Clear the current in-TUI browser session.',
       },
       {
+        label: 'Write Playwright demo harness',
+        value: 'write-demo-harness',
+        description:
+          'Generate a reusable Playwright demo package with screenshots, responsive checks, and a receipt.',
+      },
+      {
         label: 'Refresh browser state',
         value: 'refresh',
         description: 'Reload the live browser bridge state and accountable receipts.',
@@ -460,6 +468,22 @@ function PreviewCommand({
         setReceipt(result.receipt)
         setRuntime(result.runtime)
         setRuntimeStatus(result.runtime.message)
+        return
+      }
+
+      if (action === 'write-demo-harness') {
+        const activeSession =
+          runtime?.summary?.sessions.find(
+            session => session.id === runtime.summary?.activeSessionId,
+          ) ?? runtime?.summary?.sessions[0] ?? null
+        const result = await createWebAppPreviewDemoHarness({
+          url,
+          name: activeSession?.title ?? 'OpenJaws web app demo',
+          rationale,
+        })
+        setActionMessage(
+          `Wrote Playwright demo harness to ${result.outputDir}. Run: ${result.commands.test}`,
+        )
         return
       }
     },

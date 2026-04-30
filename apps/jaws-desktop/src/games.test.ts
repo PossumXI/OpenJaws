@@ -26,17 +26,33 @@ describe("Slow Guy mechanics", () => {
       hazards: [{ id: "h", lane: 1, x: 20, type: "blocker" as const }],
       coins: []
     };
-    expect(advanceSlowGuy(base, "tick").gameOver).toBe(true);
+    const clipped = advanceSlowGuy(base, "tick");
+    expect(clipped.gameOver).toBe(false);
+    expect(clipped.lives).toBe(2);
+    expect(clipped.shieldTicks).toBeGreaterThan(0);
+    expect(advanceSlowGuy({ ...base, lives: 1 }, "tick").gameOver).toBe(true);
     const jumping = advanceSlowGuy(base, "jump");
     expect(advanceSlowGuy(jumping, "tick").gameOver).toBe(false);
   });
 
-  test("dash spends stamina and reset preserves best score", () => {
+  test("collects code tokens, levels up, and reset preserves best score", () => {
     let state = createSlowGuyState(80);
     state = advanceSlowGuy(state, "dash");
     expect(state.stamina).toBeLessThan(100);
-    state = advanceSlowGuy({ ...state, bestScore: 120 }, "reset");
-    expect(state.bestScore).toBe(120);
+    state = advanceSlowGuy(
+      {
+        ...state,
+        lane: 1,
+        score: 158,
+        hazards: [],
+        coins: [{ id: "coin-test", lane: 1, x: 20 }]
+      },
+      "tick"
+    );
+    expect(state.tokens).toBe(1);
+    expect(state.level).toBeGreaterThan(1);
+    state = advanceSlowGuy({ ...state, bestScore: 220 }, "reset");
+    expect(state.bestScore).toBe(220);
   });
 });
 

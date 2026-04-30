@@ -172,6 +172,80 @@ interface AgentRuntimeSnapshot {
   events: AgentEvent[];
 }
 
+interface BrowserPreviewSessionSummary {
+  id: string;
+  action: string;
+  intent: string;
+  requestedBy: string;
+  startedAt: string;
+  opened: boolean;
+  note: string;
+  url: string;
+}
+
+interface BrowserPreviewSnapshot {
+  checkedAt: string;
+  receiptPath: string;
+  receiptExists: boolean;
+  receiptSummary: string;
+  sessionCount: number;
+  launchConfigPath: string;
+  launchConfigExists: boolean;
+  launchUrl: string;
+  devCommand: string;
+  previewCommand: string;
+  playwrightCodegenCommand: string;
+  playwrightTestCommand: string;
+  sessions: BrowserPreviewSessionSummary[];
+}
+
+interface PreviewLaunchConfigResult {
+  ok: boolean;
+  path: string;
+  message: string;
+  url: string;
+  devCommand: string;
+  previewCommand: string;
+  playwrightCodegenCommand: string;
+  playwrightTestCommand: string;
+}
+
+interface PreviewDemoHarnessResult {
+  ok: boolean;
+  outputDir: string;
+  message: string;
+  name: string;
+  slug: string;
+  url: string;
+  devCommand: string;
+  previewCommand: string;
+  playwrightInstallCommand: string;
+  playwrightCodegenCommand: string;
+  playwrightTestCommand: string;
+  playwrightHeadedCommand: string;
+  readmePath: string;
+  packagePath: string;
+  configPath: string;
+  specPath: string;
+  receiptPath: string;
+}
+
+interface QAgentsCoworkControl {
+  id: string;
+  label: string;
+  detail: string;
+  status: string;
+}
+
+interface QAgentsCoworkPlan {
+  mode: string;
+  roomCode: string;
+  sharedPhaseMemory: boolean;
+  pooledCredits: boolean;
+  routePolicy: string;
+  controls: QAgentsCoworkControl[];
+}
+
 type ArcadeView = "slow-guy" | "holdem" | "world";
 
 interface JawsReleaseIndex {
@@ -219,6 +293,50 @@ const fallbackWorkspace: WorkspaceStatus = {
   valid: false,
   message: "Set a project folder to route OpenJaws like a local cd command.",
   tuiCommand: "openjaws"
+};
+
+const fallbackPreviewSnapshot: BrowserPreviewSnapshot = {
+  checkedAt: "preview",
+  receiptPath: "~/.openjaws/browser-preview/receipt.json",
+  receiptExists: false,
+  receiptSummary: "Run inside Tauri to inspect OpenJaws browser-preview receipts.",
+  sessionCount: 0,
+  launchConfigPath: ".openjaws/launch.json",
+  launchConfigExists: false,
+  launchUrl: "http://127.0.0.1:5173/",
+  devCommand: "npm run dev",
+  previewCommand: "/preview http://127.0.0.1:5173/",
+  playwrightCodegenCommand: "bunx playwright codegen http://127.0.0.1:5173/",
+  playwrightTestCommand: "bunx playwright test",
+  sessions: []
+};
+
+const fallbackCoworkPlan: QAgentsCoworkPlan = {
+  mode: "stacked-agents",
+  roomCode: "JWS-QAGENTS",
+  sharedPhaseMemory: true,
+  pooledCredits: false,
+  routePolicy: "health-gated dispatch with explicit user approval for shared credits",
+  controls: [
+    {
+      id: "planner",
+      label: "Q planner",
+      detail: "Decomposes work and assigns bounded agent lanes.",
+      status: "ready"
+    },
+    {
+      id: "implementer",
+      label: "Q_agent implementer",
+      detail: "Owns narrow code-change lanes with scoped workspace access.",
+      status: "health gated"
+    },
+    {
+      id: "verifier",
+      label: "Q_agent verifier",
+      detail: "Runs tests, previews, release checks, and security sweeps.",
+      status: "health gated"
+    }
+  ]
 };
 
 const jawFrames = [
@@ -518,6 +636,26 @@ export function App() {
   const [jawFrame, setJawFrame] = useState(0);
   const [agentRuntime, setAgentRuntime] = useState<AgentRuntimeSnapshot>(() => fallbackAgentRuntimeSnapshot());
   const [agentRuntimeLoading, setAgentRuntimeLoading] = useState(false);
+  const [previewSnapshot, setPreviewSnapshot] = useState<BrowserPreviewSnapshot>(fallbackPreviewSnapshot);
+  const [previewUrl, setPreviewUrl] = useState(
+    () => localStorage.getItem("jaws.previewUrl") ?? fallbackPreviewSnapshot.launchUrl
+  );
+  const [previewDevCommand, setPreviewDevCommand] = useState(
+    () => localStorage.getItem("jaws.previewDevCommand") ?? fallbackPreviewSnapshot.devCommand
+  );
+  const [previewConfigResult, setPreviewConfigResult] = useState<PreviewLaunchConfigResult | null>(null);
+  const [previewDemoResult, setPreviewDemoResult] = useState<PreviewDemoHarnessResult | null>(null);
+  const [previewRunResult, setPreviewRunResult] = useState<OpenJawsChatResult | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [coworkPlan, setCoworkPlan] = useState<QAgentsCoworkPlan>(fallbackCoworkPlan);
+  const [coworkStackMode, setCoworkStackMode] = useState<"solo" | "pair" | "stacked">("stacked");
+  const [coworkSharedCredits, setCoworkSharedCredits] = useState(fallbackCoworkPlan.pooledCredits);
+  const [coworkLaneEnabled, setCoworkLaneEnabled] = useState<Record<string, boolean>>(() =>
+    fallbackCoworkPlan.controls.reduce<Record<string, boolean>>((lanes, control) => {
+      lanes[control.id] = control.id !== "cowork";
+      return lanes;
+    }, {})
+  );
 
   useEffect(() => {
     document.documentElement.dataset.appearance = appearance;
@@ -629,6 +767,45 @@ export function App() {
     () => buildWorkspaceSelection(workspaceInput, terminalPlatform()),
     [workspaceInput]
   );
+  const previewFrameUrl = useMemo(() => {
+    const value = (previewUrl || previewSnapshot.launchUrl || fallbackPreviewSnapshot.launchUrl).trim();
+    if (/^https?:\/\//i.test(value)) return value;
+    if (/^(localhost|127\.0\.0\.1)/i.test(value)) return `http://${value}`;
+    return `https://${value}`;
+  }, [previewSnapshot.launchUrl, previewUrl]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.previewUrl", previewUrl);
+  }, [previewUrl]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.previewDevCommand", previewDevCommand);
+  }, [previewDevCommand]);
+
+  useEffect(() => {
+    if (active !== "preview") return;
+    void refreshBrowserPreview();
+  }, [active]);
+
+  useEffect(() => {
+    if (!hasTauriRuntime()) {
+      setCoworkPlan(fallbackCoworkPlan);
+      return;
+    }
+
+    void invoke<QAgentsCoworkPlan>("q_agents_cowork_plan")
+      .then((plan) => {
+        setCoworkPlan(plan);
+        setCoworkSharedCredits(plan.pooledCredits);
+        setCoworkLaneEnabled((current) =>
+          plan.controls.reduce<Record<string, boolean>>((lanes, control) => {
+            lanes[control.id] = current[control.id] ?? control.id !== "cowork";
+            return lanes;
+          }, {})
+        );
+      })
+      .catch(() => setCoworkPlan(fallbackCoworkPlan));
+  }, []);
 
   async function runSmoke() {
     if (!hasTauriRuntime()) {
@@ -882,6 +1059,177 @@ export function App() {
     } finally {
       setAgentRuntimeLoading(false);
     }
+  }
+
+  async function refreshBrowserPreview() {
+    if (!hasTauriRuntime()) {
+      setPreviewSnapshot({
+        ...fallbackPreviewSnapshot,
+        launchUrl: previewFrameUrl,
+        devCommand: previewDevCommand,
+        previewCommand: `/preview ${previewFrameUrl}`,
+        playwrightCodegenCommand: `bunx playwright codegen ${previewFrameUrl}`
+      });
+      return;
+    }
+
+    try {
+      const snapshot = await invoke<BrowserPreviewSnapshot>("browser_preview_snapshot", {
+        workspacePath: workspaceStatus.path || workspaceSelection.cleaned || null
+      });
+      setPreviewSnapshot(snapshot);
+      setPreviewUrl(snapshot.launchUrl);
+      setPreviewDevCommand(snapshot.devCommand);
+    } catch (error) {
+      setPreviewSnapshot({
+        ...fallbackPreviewSnapshot,
+        checkedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        receiptSummary: `Preview bridge failed: ${String(error)}`,
+        launchUrl: previewFrameUrl,
+        devCommand: previewDevCommand
+      });
+    }
+  }
+
+  async function saveBrowserPreviewLaunchConfig() {
+    const workspacePath = workspaceStatus.path || workspaceSelection.cleaned;
+    if (!hasTauriRuntime()) {
+      setPreviewConfigResult({
+        ok: false,
+        path: ".openjaws/launch.json",
+        message: "Native JAWS runtime is required to write the workspace launch config.",
+        url: previewFrameUrl,
+        devCommand: previewDevCommand,
+        previewCommand: `/preview ${previewFrameUrl}`,
+        playwrightCodegenCommand: `bunx playwright codegen ${previewFrameUrl}`,
+        playwrightTestCommand: fallbackPreviewSnapshot.playwrightTestCommand
+      });
+      return;
+    }
+
+    const result = await invoke<PreviewLaunchConfigResult>("write_browser_preview_launch_config", {
+      workspacePath,
+      url: previewFrameUrl,
+      devCommand: previewDevCommand
+    });
+    setPreviewConfigResult(result);
+    if (result.ok) {
+      setPreviewUrl(result.url);
+      setPreviewDevCommand(result.devCommand);
+      await refreshBrowserPreview();
+    }
+  }
+
+  async function writePlaywrightDemoHarness() {
+    const workspacePath = workspaceStatus.path || workspaceSelection.cleaned;
+    if (!hasTauriRuntime()) {
+      setPreviewDemoResult({
+        ok: false,
+        outputDir: "",
+        message: "Native JAWS runtime is required to write the Playwright demo harness.",
+        name: "OpenJaws web app demo",
+        slug: "",
+        url: previewFrameUrl,
+        devCommand: previewDevCommand,
+        previewCommand: `/preview ${previewFrameUrl}`,
+        playwrightInstallCommand: "bunx playwright install chromium",
+        playwrightCodegenCommand: `bunx playwright codegen ${previewFrameUrl}`,
+        playwrightTestCommand: "bunx playwright test",
+        playwrightHeadedCommand: "bunx playwright test --headed",
+        readmePath: "",
+        packagePath: "",
+        configPath: "",
+        specPath: "",
+        receiptPath: ""
+      });
+      return;
+    }
+
+    const result = await invoke<PreviewDemoHarnessResult>("write_browser_preview_demo_harness", {
+      workspacePath,
+      url: previewFrameUrl,
+      devCommand: previewDevCommand,
+      name: workspaceStatus.name ? `${workspaceStatus.name} preview demo` : "OpenJaws web app demo"
+    });
+    setPreviewDemoResult(result);
+  }
+
+  async function runBrowserPreviewCommand() {
+    const prompt = previewSnapshot.previewCommand || `/preview ${previewFrameUrl}`;
+    setPreviewBusy(true);
+    setPreviewRunResult(null);
+
+    if (!hasTauriRuntime()) {
+      setPreviewRunResult({
+        ok: false,
+        code: null,
+        stdout: "",
+        stderr: "Run inside the native JAWS desktop shell to execute OpenJaws preview routes.",
+        summary: "Native runtime required.",
+        permissionMode: fastRunMode ? "bypassPermissions" : "default",
+        workspacePath: workspaceStatus.path || workspaceSelection.cleaned || ""
+      });
+      setPreviewBusy(false);
+      return;
+    }
+
+    try {
+      const result = await invoke<OpenJawsChatResult>("run_openjaws_chat", {
+        prompt,
+        workspacePath: workspaceStatus.path || workspaceSelection.cleaned || null,
+        fastRunMode
+      });
+      setPreviewRunResult(result);
+      if (result.ok) {
+        await refreshBrowserPreview();
+      }
+    } catch (error) {
+      setPreviewRunResult({
+        ok: false,
+        code: null,
+        stdout: "",
+        stderr: String(error),
+        summary: "OpenJaws preview command failed before sidecar output.",
+        permissionMode: fastRunMode ? "bypassPermissions" : "default",
+        workspacePath: workspaceStatus.path || workspaceSelection.cleaned || ""
+      });
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
+  function stagePlaywrightDemoPrompt() {
+    setChatInput(
+      [
+        `Open the workspace web app at ${previewFrameUrl}.`,
+        `Use Playwright to create or update a concise demo/check flow for the product surface.`,
+        `Respect the workspace launch command "${previewDevCommand}" and verify with ${previewSnapshot.playwrightTestCommand}.`
+      ].join("\n")
+    );
+    setActive("chat");
+  }
+
+  function toggleCoworkLane(id: string) {
+    setCoworkLaneEnabled((lanes) => ({
+      ...lanes,
+      [id]: !lanes[id]
+    }));
+  }
+
+  function stageQAgentsCoworkPrompt() {
+    const lanes = coworkPlan.controls
+      .filter((control) => coworkLaneEnabled[control.id])
+      .map((control) => control.label)
+      .join(", ");
+    setChatInput(
+      [
+        `Start a Q_agents co-work run for ${workspaceStatus.path || workspaceSelection.cleaned || "the selected workspace"}.`,
+        `Mode: ${coworkStackMode}. Room: ${coworkPlan.roomCode}. Lanes: ${lanes || "none selected"}.`,
+        `Use shared phase memory: ${coworkPlan.sharedPhaseMemory ? "yes" : "no"}. Shared credits: ${coworkSharedCredits ? "explicitly enabled" : "disabled"}.`,
+        "Plan, implement, verify, and report every handoff with tests and browser/preview evidence."
+      ].join("\n")
+    );
+    setActive("chat");
   }
 
   async function submitChatCommand(event: FormEvent<HTMLFormElement>) {
@@ -1448,6 +1796,138 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
           </section>
         )}
 
+        {active === "preview" && (
+          <section className="preview-page">
+            <div className="wide-panel preview-panel">
+              <div className="panel-header-row">
+                <PanelHeader icon={MonitorPlay} label="Browser Preview" />
+                <div className="button-row">
+                  <button className="text-button" type="button" onClick={refreshBrowserPreview}>
+                    <RefreshCcw size={16} />
+                    Refresh
+                  </button>
+                  <button className="text-button primary" type="button" onClick={runBrowserPreviewCommand} disabled={previewBusy}>
+                    <Play size={16} />
+                    {previewBusy ? "Running" : "Run Preview"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="preview-workbench">
+                <section className="preview-stage" aria-label="Embedded browser preview">
+                  <div className="browser-chrome">
+                    <span />
+                    <span />
+                    <span />
+                    <strong>{previewFrameUrl}</strong>
+                  </div>
+                  <iframe title="JAWS browser preview" src={previewFrameUrl} sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-same-origin allow-scripts" />
+                </section>
+
+                <aside className="preview-side">
+                  <label>
+                    Preview URL
+                    <input value={previewUrl} onChange={(event) => setPreviewUrl(event.target.value)} spellCheck={false} />
+                  </label>
+                  <label>
+                    Dev command
+                    <input
+                      value={previewDevCommand}
+                      onChange={(event) => setPreviewDevCommand(event.target.value)}
+                      spellCheck={false}
+                    />
+                  </label>
+                  <div className="button-row">
+                    <button className="text-button" type="button" onClick={saveBrowserPreviewLaunchConfig}>
+                      <CheckCircle2 size={16} />
+                      Save Launch
+                    </button>
+                    <button className="text-button" type="button" onClick={writePlaywrightDemoHarness}>
+                      <PackagePlus size={16} />
+                      Write Demo
+                    </button>
+                    <button className="text-button" type="button" onClick={stagePlaywrightDemoPrompt}>
+                      <Bot size={16} />
+                      Playwright Task
+                    </button>
+                  </div>
+                  {previewConfigResult && (
+                    <div className={previewConfigResult.ok ? "workspace-state ready" : "workspace-state blocked"}>
+                      {previewConfigResult.ok ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
+                      <div>
+                        <strong>{previewConfigResult.ok ? "Launch saved" : "Launch blocked"}</strong>
+                        <span>{previewConfigResult.message}</span>
+                      </div>
+                    </div>
+                  )}
+                  {previewDemoResult && (
+                    <div className={previewDemoResult.ok ? "workspace-state ready" : "workspace-state blocked"}>
+                      {previewDemoResult.ok ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
+                      <div>
+                        <strong>{previewDemoResult.ok ? "Demo harness written" : "Demo blocked"}</strong>
+                        <span>{previewDemoResult.ok ? previewDemoResult.outputDir : previewDemoResult.message}</span>
+                      </div>
+                    </div>
+                  )}
+                  <StatusLine label="Launch config" value={previewSnapshot.launchConfigExists ? previewSnapshot.launchConfigPath : "Not saved"} />
+                  <StatusLine label="Receipt" value={previewSnapshot.receiptExists ? previewSnapshot.receiptPath : "No receipt"} />
+                  <StatusLine label="Sessions" value={String(previewSnapshot.sessionCount)} />
+                </aside>
+              </div>
+            </div>
+
+            <div className="preview-bottom-grid">
+              <section className="wide-panel playwright-panel">
+                <PanelHeader icon={TerminalSquare} label="Playwright Demo Lane" />
+                <div className="command-stack">
+                  <code>{previewDemoResult?.previewCommand || previewConfigResult?.previewCommand || previewSnapshot.previewCommand || `/preview ${previewFrameUrl}`}</code>
+                  <code>{previewDemoResult?.playwrightInstallCommand || "bunx playwright install chromium"}</code>
+                  <code>{previewDemoResult?.playwrightTestCommand || previewConfigResult?.playwrightTestCommand || previewSnapshot.playwrightTestCommand}</code>
+                  <code>{previewDemoResult?.playwrightHeadedCommand || "bunx playwright test --headed"}</code>
+                  <code>{previewDemoResult?.playwrightCodegenCommand || previewConfigResult?.playwrightCodegenCommand || previewSnapshot.playwrightCodegenCommand}</code>
+                </div>
+                {previewDemoResult?.ok && (
+                  <div className="demo-artifact-grid">
+                    <StatusLine label="Harness" value={previewDemoResult.outputDir} />
+                    <StatusLine label="Spec" value={previewDemoResult.specPath} />
+                    <StatusLine label="Receipt" value={previewDemoResult.receiptPath} />
+                  </div>
+                )}
+                {previewRunResult && (
+                  <pre className={previewRunResult.ok ? "console success" : "console error"}>
+                    {formatOpenJawsChatResult(previewRunResult)}
+                  </pre>
+                )}
+              </section>
+
+              <section className="wide-panel receipt-panel">
+                <PanelHeader icon={Activity} label="Preview Receipts" />
+                <p className="panel-copy">{previewSnapshot.receiptSummary}</p>
+                <div className="receipt-list">
+                  {previewSnapshot.sessions.length > 0 ? (
+                    previewSnapshot.sessions.map((session) => (
+                      <article className="receipt-card" key={session.id || `${session.startedAt}-${session.url}`}>
+                        <header>
+                          <strong>{session.action || "preview"}</strong>
+                          <span>{session.opened ? "opened" : "recorded"}</span>
+                        </header>
+                        <StatusLine label="By" value={session.requestedBy || "operator"} />
+                        <StatusLine label="URL" value={session.url || previewFrameUrl} />
+                        <small>{session.note || session.intent || session.startedAt}</small>
+                      </article>
+                    ))
+                  ) : (
+                    <article className="receipt-card empty">
+                      <strong>No sessions yet</strong>
+                      <span>{previewSnapshot.receiptSummary}</span>
+                    </article>
+                  )}
+                </div>
+              </section>
+            </div>
+          </section>
+        )}
+
         {active === "agents" && (
           <section className="split-view">
             <div className="wide-panel">
@@ -1637,22 +2117,95 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
         )}
 
         {active === "cowork" && (
-          <section className="wide-panel">
-            <PanelHeader icon={UsersIcon} label="Shared Workspace" />
-            <div className="pairing-card">
-              <div>
-                <span>Exchange Code</span>
-                <strong>JWS-PAIR-READY</strong>
+          <section className="cowork-page">
+            <div className="wide-panel cowork-command">
+              <div className="panel-header-row">
+                <PanelHeader icon={UsersIcon} label="Q_agents Co-work" />
+                <button className="text-button primary" type="button" onClick={stageQAgentsCoworkPrompt}>
+                  <Zap size={16} />
+                  Stage Run
+                </button>
               </div>
-              <button className="text-button primary" type="button">
-                <Zap size={16} />
-                Start Pairing
-              </button>
+
+              <div className="pairing-card">
+                <div>
+                  <span>Exchange Code</span>
+                  <strong>{coworkPlan.roomCode}</strong>
+                </div>
+                <div className="stack-mode-row" role="group" aria-label="Q_agents co-work mode">
+                  {(["solo", "pair", "stacked"] as const).map((mode) => (
+                    <button
+                      className={coworkStackMode === mode ? "theme-chip active" : "theme-chip"}
+                      key={mode}
+                      type="button"
+                      onClick={() => setCoworkStackMode(mode)}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="cowork-grid">
+                <StatusLine label="Route policy" value={coworkPlan.routePolicy} />
+                <StatusLine label="Phase memory" value={coworkPlan.sharedPhaseMemory ? "Shared" : "Local"} />
+                <StatusLine label="Credits" value={coworkSharedCredits ? "Pooled by approval" : "Owner only"} />
+                <StatusLine label="Workspace" value={workspaceStatus.path || workspaceSelection.cleaned || "Not set"} />
+              </div>
+
+              <label className="cowork-credit-toggle">
+                <input
+                  type="checkbox"
+                  checked={coworkSharedCredits}
+                  onChange={(event) => setCoworkSharedCredits(event.target.checked)}
+                />
+                <span>Allow pooled credits for this co-work room</span>
+              </label>
             </div>
-            <div className="cowork-grid">
-              <StatusLine label="Shared agents" value="Stacked by workspace policy" />
-              <StatusLine label="Credits" value="Explicit pooled session" />
-              <StatusLine label="Immaculate" value="Co-worker route lane" />
+
+            <div className="wide-panel cowork-lanes">
+              <PanelHeader icon={NetworkIcon} label="Worker Lanes" />
+              <div className="cowork-control-grid">
+                {coworkPlan.controls.map((control) => (
+                  <button
+                    className={coworkLaneEnabled[control.id] ? "cowork-control active" : "cowork-control"}
+                    key={control.id}
+                    type="button"
+                    onClick={() => toggleCoworkLane(control.id)}
+                  >
+                    <span>{coworkLaneEnabled[control.id] ? "On" : "Off"}</span>
+                    <strong>{control.label}</strong>
+                    <small>{control.status}</small>
+                    <p>{control.detail}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="wide-panel cowork-runbook">
+              <PanelHeader icon={Bot} label="Runbook" />
+              <div className="agent-timeline compact">
+                <article className="agent-event active">
+                  <span>01</span>
+                  <strong>Q</strong>
+                  <p>Decompose the request and write scoped lane contracts.</p>
+                </article>
+                <article className="agent-event waiting">
+                  <span>02</span>
+                  <strong>Q_agents</strong>
+                  <p>Workers claim code, preview, security, and verifier lanes.</p>
+                </article>
+                <article className="agent-event active">
+                  <span>03</span>
+                  <strong>OpenCheek</strong>
+                  <p>Shared phase memory records decisions and handoffs.</p>
+                </article>
+                <article className="agent-event active">
+                  <span>04</span>
+                  <strong>Immaculate</strong>
+                  <p>Release pacing and final coherence checks stay attached.</p>
+                </article>
+              </div>
             </div>
           </section>
         )}
@@ -2032,7 +2585,9 @@ function SlowGuyGame({
         <div className="slow-guy-scoreboard">
           <StatusLine label="Score" value={String(state.score)} />
           <StatusLine label="Best" value={String(state.bestScore)} />
-          <StatusLine label="Distance" value={`${state.distance}m`} />
+          <StatusLine label="Level" value={String(state.level)} />
+          <StatusLine label="Lives" value={`${state.lives}/3`} />
+          <StatusLine label="Tokens" value={String(state.tokens)} />
           <StatusLine label="Combo" value={`x${state.combo}`} />
           <StatusLine label="Stamina" value={`${state.stamina}%`} />
         </div>
@@ -2055,12 +2610,13 @@ function SlowGuyGame({
             </div>
           ))}
           <div
-            className={`slow-runner ${state.running ? "running" : ""} ${state.pose}`}
+            className={`slow-runner ${state.running ? "running" : ""} ${state.pose} ${state.shieldTicks > 0 ? "shielded" : ""}`}
             style={{ top: `${14 + state.lane * 31}%` }}
             aria-label={`Slow Guy in lane ${state.lane + 1}`}
           >
             <span />
           </div>
+          <div className="slow-runner-shadow" style={{ top: `${27 + state.lane * 31}%` }} />
           {state.hazards.map((hazard) => (
             <span
               className={`slow-hazard ${hazard.type}`}
@@ -2077,6 +2633,10 @@ function SlowGuyGame({
             />
           ))}
           <div className="slow-goal-line" />
+          <div className="slow-stage-hud">
+            <span>{state.distance}m</span>
+            <span>{state.shieldTicks > 0 ? "shield" : state.running ? "run" : "paused"}</span>
+          </div>
           {state.gameOver && (
             <div className="slow-game-over">
               <strong>Run ended</strong>

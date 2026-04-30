@@ -22,6 +22,9 @@ This page summarizes the current public OpenJaws surface that is already working
 - JAWS Desktop Settings now exposes update-pipeline diagnostics for the Tauri updater, qline mirror, iorch mirror, and GitHub release lane; layout themes now include richer palette tints, descriptive cards, and accent swatches.
 - JAWS Desktop now generates `src/release-index.json` from the desktop package version and uses it as the shared release contract for Settings, the native Tauri mirror probe, and `bun run jaws:mirror:check`.
 - JAWS Desktop Agent Watch now reads a native bounded snapshot from `artifacts/q-runs` route queue, route workers, and worker runtime files, with static events retained only as non-Tauri fallback.
+- JAWS Desktop now exposes the OpenJaws browser-preview capability as a native Preview tab with embedded web view, `.openjaws/launch.json` authoring, `/preview` sidecar routing, receipt inspection, and Playwright codegen/test workflow staging.
+- JAWS Desktop now exposes Q_agents co-work as real native controls for stacked/paired/solo routing, Q planner, Q_agent implementer, Q_agent verifier, shared phase memory, co-work room status, and explicit pooled-credit consent.
+- Slow Guy now has recoverable lives, shield frames, level progression, and in-game token tracking on top of its existing lane, hazard, stamina, and best-score loop.
 - JAWS Desktop now has an in-app Docs and Legal page with Terms, final-sale billing policy qualified by applicable law, security/privacy notes, community content rules, AI output notice, developer verification commands, and public release links.
 - The native installer publisher is pinned to `AROBI TECHNOLOGY ALLIANCE A OPAL MAR GROUP CORPORATION NJ USA`; the release config gate now fails if that attribution drifts.
 - `bun run jaws:soak -- --duration-ms 300000 --users 5000` adds a five-minute durability lane for logo rendering, docs/legal presence, release metadata, updater security, Agent Watch bridge wiring, Slow Guy, Hold'em, and synthetic user-presence scaling.
@@ -86,6 +89,7 @@ This page summarizes the current public OpenJaws surface that is already working
 
 - `/preview` now opens native in-TUI app previews and supervised browse/watch/music sessions under one explicit receipt
 - each session keeps intent, rationale, requester, and runtime handler visible instead of letting agents browse without an explanation trail
+- the JAWS Desktop Preview tab now writes a workspace-local Playwright demo harness with README, config, test spec, and receipt, so users can make repeatable demos from the embedded browser lane
 - the preview lane now uses the dedicated Apex browser bridge instead of preferring Chrome-compatible preview for normal session rendering
 - user browsing history stays private by default; only Q or agent-led browsing is persisted for accountability
 - localhost/private-network targets are now reserved for explicit `preview` sessions so the general browse/watch/music lanes stay on public URLs

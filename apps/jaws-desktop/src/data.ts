@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LockKeyhole,
   MessageSquare,
+  MonitorPlay,
   Moon,
   Network,
   Puzzle,
@@ -29,6 +30,7 @@ export type SectionId =
   | "control"
   | "chat"
   | "terminal"
+  | "preview"
   | "agents"
   | "profiles"
   | "studio"
@@ -82,6 +84,7 @@ export const navItems: NavItem[] = [
   { id: "control", label: "Control", icon: LayoutDashboard },
   { id: "chat", label: "Chat", icon: MessageSquare },
   { id: "terminal", label: "Terminal", icon: TerminalSquare },
+  { id: "preview", label: "Preview", icon: MonitorPlay },
   { id: "agents", label: "Agents", icon: Radar },
   { id: "profiles", label: "Profiles", icon: UserRound },
   { id: "studio", label: "Studio", icon: Clapperboard },

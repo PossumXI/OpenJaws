@@ -17,6 +17,7 @@ This is the current contract:
 
 - opens `http://` or `https://` URLs through the native OpenJaws browser lane
 - keeps local app previews on the `preview` intent and blocks private-network browsing for the non-preview leisure lanes
+- can write a reusable Playwright demo harness for the current URL so users can capture desktop/mobile screenshots, traces, video-on-failure, and a JSON demo summary without hand-building Playwright setup
 - records:
   - intent (`preview`, `research`, `browse`, `watch`, `music`)
   - rationale (`why this session exists`)
@@ -45,3 +46,33 @@ Each accountable `/preview` launch keeps a receipt under the OpenJaws config hom
 - what page was rendered
 
 That keeps supervised preview and accountable agent browsing on the same visible contract without storing private user browsing history.
+
+## Web app demo harness
+
+The `/preview` Controls tab now has `Write Playwright demo harness`.
+
+It generates a bounded package under the OpenJaws config home:
+
+- `README.md`
+- `package.json`
+- `playwright.config.ts`
+- `tests/demo.spec.ts`
+- `openjaws-preview-demo.receipt.json`
+
+The generated spec opens the target URL in desktop and mobile Chromium, waits for visible body content, captures a full-page screenshot, records a JSON summary, keeps Playwright traces/videos on failure, and fails on page runtime errors. This gives builders a repeatable way to make product, service, website, and game demos from OpenJaws instead of relying on one-off manual screenshots.
+
+The JAWS Desktop Preview tab exposes the same lane through `Write Demo`. The native backend writes a workspace-local package under:
+
+```text
+<workspace>/.openjaws/browser-preview/demos/<demo-slug>
+```
+
+That keeps desktop-generated demo artifacts beside the project they verify, while the TUI command can still create config-home demo harnesses for command-only sessions.
+
+Typical flow:
+
+```text
+/preview http://127.0.0.1:5173/
+```
+
+Then choose `Write Playwright demo harness` and run the generated `bunx playwright test -c <playwright.config.ts>` command.

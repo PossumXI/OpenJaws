@@ -26,8 +26,12 @@ export interface SlowGuyState {
   score: number;
   bestScore: number;
   distance: number;
+  lives: number;
+  level: number;
   combo: number;
   stamina: number;
+  tokens: number;
+  shieldTicks: number;
   objective: string;
   hazards: SlowGuyHazard[];
   coins: SlowGuyCoin[];
@@ -149,8 +153,12 @@ export function createSlowGuyState(bestScore = 0): SlowGuyState {
     score: 0,
     bestScore,
     distance: 0,
+    lives: 3,
+    level: 1,
     combo: 0,
     stamina: 100,
+    tokens: 0,
+    shieldTicks: 0,
     objective: "Reach 500 points, collect tokens, and dodge blockers, drones, and gate lanes.",
     hazards: [spawnHazard(5)],
     coins: [spawnCoin(3)],
@@ -211,11 +219,13 @@ export function advanceSlowGuy(state: SlowGuyState, action: SlowGuyAction): Slow
   }
 
   const tick = state.tick + 1;
-  const speed = 8 + Math.floor(tick / 42);
+  const speed = 7 + state.level + Math.floor(tick / 54);
   const poseTicks = Math.max(0, state.poseTicks - 1);
   const pose = poseTicks > 0 ? state.pose : "run";
   let score = state.score + 2 + state.combo;
   let combo = state.combo;
+  let tokens = state.tokens;
+  let shieldTicks = Math.max(0, state.shieldTicks - 1);
   let lastEvent = "Keep moving.";
   const stamina = clamp(state.stamina + 2, 0, 100);
 
@@ -226,8 +236,34 @@ export function advanceSlowGuy(state: SlowGuyState, action: SlowGuyAction): Slow
     .map((coin) => ({ ...coin, x: coin.x - speed }))
     .filter((coin) => coin.x > -10);
 
-  const collision = hazards.find((hazard) => hazard.x <= 18 && hazard.x >= 4 && !canClearHazard({ ...state, pose }, hazard));
+  const collision =
+    shieldTicks === 0
+      ? hazards.find((hazard) => hazard.x <= 18 && hazard.x >= 4 && !canClearHazard({ ...state, pose }, hazard))
+      : undefined;
   if (collision) {
+    const lives = state.lives - 1;
+    const escapedHazards = hazards.filter((hazard) => hazard.id !== collision.id);
+    if (lives > 0) {
+      return {
+        ...state,
+        running: true,
+        gameOver: false,
+        tick,
+        pose,
+        poseTicks,
+        score: Math.max(0, score - 15),
+        bestScore: Math.max(state.bestScore, score),
+        distance: state.distance + speed,
+        lives,
+        combo: 0,
+        stamina,
+        shieldTicks: 8,
+        hazards: escapedHazards,
+        coins,
+        lastEvent: `Clipped a ${collision.type}. Shield is up; ${lives} ${lives === 1 ? "life" : "lives"} left.`
+      };
+    }
+
     return {
       ...state,
       running: false,
@@ -235,9 +271,11 @@ export function advanceSlowGuy(state: SlowGuyState, action: SlowGuyAction): Slow
       tick,
       pose,
       poseTicks,
-      hazards,
+      hazards: escapedHazards,
       coins,
-      bestScore: Math.max(state.bestScore, state.score),
+      lives: 0,
+      shieldTicks,
+      bestScore: Math.max(state.bestScore, score),
       lastEvent: `Hit a ${collision.type}. Reset to try again.`
     };
   }
@@ -245,6 +283,7 @@ export function advanceSlowGuy(state: SlowGuyState, action: SlowGuyAction): Slow
   const collected = coins.filter((coin) => coin.x <= 18 && coin.x >= 4 && coin.lane === state.lane);
   if (collected.length > 0) {
     combo += collected.length;
+    tokens += collected.length;
     score += 25 * collected.length + combo * 4;
     lastEvent = `Collected ${collected.length} code token${collected.length === 1 ? "" : "s"}.`;
   }
@@ -253,6 +292,11 @@ export function advanceSlowGuy(state: SlowGuyState, action: SlowGuyAction): Slow
   const nextCoins = coins.filter((coin) => !collected.some((hit) => hit.id === coin.id));
   if (tick % 8 === 0) nextHazards.push(spawnHazard(tick));
   if (tick % 5 === 0) nextCoins.push(spawnCoin(tick));
+  const level = clamp(1 + Math.floor(score / 160), 1, 9);
+  const objective =
+    score >= 500
+      ? "Objective cleared. Keep banking code tokens and raise the best score."
+      : `Reach 500 points. Level ${level} speed is active.`;
 
   return {
     ...state,
@@ -262,8 +306,12 @@ export function advanceSlowGuy(state: SlowGuyState, action: SlowGuyAction): Slow
     score,
     bestScore: Math.max(state.bestScore, score),
     distance: state.distance + speed,
+    level,
     combo,
     stamina,
+    tokens,
+    shieldTicks,
+    objective,
     hazards: nextHazards,
     coins: nextCoins,
     lastEvent
