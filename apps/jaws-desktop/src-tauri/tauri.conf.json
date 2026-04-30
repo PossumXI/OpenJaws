@@ -38,6 +38,7 @@
     ],
     "externalBin": ["binaries/openjaws"],
     "createUpdaterArtifacts": true,
+    "publisher": "AROBI TECHNOLOGY ALLIANCE A OPAL MAR GROUP CORPORATION NJ USA",
     "windows": {
       "nsis": {
         "installMode": "both"

@@ -23,12 +23,19 @@ Brand line:
 - Shared workspace pairing lane for future exchange-code collaboration.
 - Marketplace cards for skills, tools, workflows, games, and third-party integrations.
 - Billing copy for a 14-day trial and flat `$12.99/mo` IDE subscription, with Q credits separate.
+- Docs page with in-app Terms, final-sale billing policy qualified by applicable law, security/privacy notes, community content rules, AI output notice, developer verification commands, and release links.
 - Settings page with release status, signed update checks, install action, native mirror/update-pipeline diagnostics, appearance mode, and theme controls.
 - Layout themes: default, spy, sci-fi, halloween, hacking, and coding, now with stronger palettes, descriptions, and visible accent swatches.
 
 ## Release Boundary
 
 The desktop app lives in `apps/jaws-desktop`. Its Tauri bundle includes `dist/openjaws` or `dist/openjaws.exe` as `src-tauri/binaries/openjaws-$TARGET_TRIPLE`.
+
+Installer attribution:
+
+> Built by AROBI TECHNOLOGY ALLIANCE A OPAL MAR GROUP CORPORATION NJ USA.
+
+The Tauri bundle publisher is pinned to that string, and `bun run jaws:release:check` fails if the installer metadata drifts.
 
 Build prep:
 
@@ -149,6 +156,15 @@ Native release-probe pass, run on 2026-04-30:
 - moved the mirror-health gate to the generated release index
 - verified `bun run release:index -- --check`, `bun test scripts/jaws-release-mirror-health.test.ts`, desktop tests, desktop build, and Tauri `cargo check`
 
+Runtime visibility and compliance pass, run on 2026-04-30:
+
+- Agent Watch now calls the native `agent_runtime_snapshot` command inside Tauri instead of relying only on fixture events.
+- The snapshot reads bounded fixed files from `artifacts/q-runs`: `route-queue.json`, `route-workers.json`, and `route-worker-runtime.json`.
+- Workspace selection is honored first, then current/executable repo ancestors are checked, so a selected OpenJaws workspace can surface real Q route and worker state.
+- The desktop app now includes an in-app Docs and Legal surface plus the wiki page `JAWS-Legal-Compliance.md`.
+- The desktop bundle publisher is pinned to `AROBI TECHNOLOGY ALLIANCE A OPAL MAR GROUP CORPORATION NJ USA`.
+- `bun run jaws:soak -- --duration-ms 300000 --users 5000` is the five-minute desktop durability lane for logo, docs/legal, release metadata, updater security, Agent Watch bridge, Slow Guy, Hold'em, and synthetic user-presence scaling.
+
 Implementation references:
 
 - Tauri updater plugin: `https://v2.tauri.app/plugin/updater/`
@@ -158,7 +174,7 @@ Implementation references:
 ## Next Production Tasks
 
 1. Implement the dynamic `/api/jaws/{target}/{arch}/{current_version}` updater endpoint on `iorch.net`; `qline.site` already has the release mirror and updater manifest redirect live.
-2. Replace the desktop timeline fixture with live event streaming from the OpenJaws route/runtime log bus.
+2. Upgrade the Agent Watch snapshot into continuous event streaming from the OpenJaws route/runtime log bus.
 3. Add the secure websocket room service for Hold'em PvP, world chat, pet presence, and signed agent sandbox presence.
 4. Connect Arobi enrollment to the real account and ledger APIs.
 5. Implement exchange-code collaboration with signed workspace invites, revocation, and explicit pooled-credit consent.

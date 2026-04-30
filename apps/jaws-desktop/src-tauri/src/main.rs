@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     env, fs,
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
@@ -125,6 +125,27 @@ struct UpdatePipelineEntry {
     label: String,
     status: String,
     detail: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentRuntimeSnapshot {
+    checked_at: String,
+    source: String,
+    summary: String,
+    queue_count: usize,
+    worker_count: usize,
+    runtime_count: usize,
+    events: Vec<AgentRuntimeEvent>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentRuntimeEvent {
+    time: String,
+    lane: String,
+    detail: String,
+    state: String,
 }
 
 fn clean_workspace_input(input: &str) -> String {
@@ -407,6 +428,377 @@ async fn probe_updater_manifest(
             "error",
             format!("Updater manifest probe failed: {error}"),
         ),
+    }
+}
+
+fn now_unix_label() -> String {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => format!("unix:{}", duration.as_secs()),
+        Err(_) => "unix:0".to_string(),
+    }
+}
+
+fn push_unique_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if !paths.iter().any(|existing| existing == &path) {
+        paths.push(path);
+    }
+}
+
+fn push_runtime_root_candidates(paths: &mut Vec<PathBuf>, start: PathBuf) {
+    let root = if start.is_file() {
+        start
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| start.clone())
+    } else {
+        start
+    };
+
+    for ancestor in root.ancestors() {
+        push_unique_path(paths, ancestor.to_path_buf());
+    }
+}
+
+fn candidate_runtime_roots(workspace_path: Option<String>) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+
+    if let Some(path) = workspace_path {
+        let cleaned = clean_workspace_input(&path);
+        if !cleaned.is_empty() {
+            let candidate = PathBuf::from(cleaned);
+            if candidate.is_absolute() {
+                if let Ok(canonical) = candidate.canonicalize() {
+                    if canonical.is_dir() {
+                        push_runtime_root_candidates(&mut roots, canonical);
+                    }
+                }
+            }
+        }
+    }
+
+    if let Ok(current_dir) = env::current_dir() {
+        push_runtime_root_candidates(&mut roots, current_dir);
+    }
+
+    if let Ok(exe_path) = env::current_exe() {
+        if let Some(parent) = exe_path.parent() {
+            push_runtime_root_candidates(&mut roots, parent.to_path_buf());
+        }
+    }
+
+    if roots.is_empty() {
+        roots.push(PathBuf::from("."));
+    }
+
+    roots
+}
+
+fn q_runtime_paths_exist(q_runs_dir: &Path) -> bool {
+    q_runs_dir.join("route-queue.json").exists()
+        || q_runs_dir.join("route-workers.json").exists()
+        || q_runs_dir.join("route-worker-runtime.json").exists()
+}
+
+fn select_q_runs_dir(workspace_path: Option<String>) -> (PathBuf, bool) {
+    let roots = candidate_runtime_roots(workspace_path);
+    for root in &roots {
+        let q_runs_dir = root.join("artifacts").join("q-runs");
+        if q_runtime_paths_exist(&q_runs_dir) {
+            return (q_runs_dir, true);
+        }
+    }
+
+    let fallback = roots
+        .first()
+        .cloned()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("artifacts")
+        .join("q-runs");
+    (fallback, false)
+}
+
+fn read_json_array(path: &Path) -> Vec<serde_json::Value> {
+    match fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+    {
+        Some(serde_json::Value::Array(entries)) => entries,
+        _ => Vec::new(),
+    }
+}
+
+fn json_field_string(value: &serde_json::Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+fn json_nested_string(value: &serde_json::Value, key: &str, nested_key: &str) -> String {
+    value
+        .get(key)
+        .and_then(|nested| nested.get(nested_key))
+        .and_then(|nested| nested.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+fn json_bool_field(value: &serde_json::Value, key: &str) -> bool {
+    value
+        .get(key)
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+}
+
+fn json_string_array_summary(value: &serde_json::Value, key: &str, limit: usize) -> String {
+    let entries = value
+        .get(key)
+        .and_then(|value| value.as_array())
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|entry| entry.as_str())
+                .filter(|entry| !entry.trim().is_empty())
+                .take(limit)
+                .map(str::to_string)
+                .collect::<Vec<String>>()
+        })
+        .unwrap_or_default();
+
+    entries.join(", ")
+}
+
+fn first_non_empty(values: Vec<String>) -> String {
+    values
+        .into_iter()
+        .find(|value| !value.trim().is_empty())
+        .unwrap_or_default()
+}
+
+fn shorten(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+
+    let mut output: String = value.chars().take(max_chars).collect();
+    output.push_str("...");
+    output
+}
+
+fn best_event_time(value: &serde_json::Value, keys: &[&str]) -> String {
+    first_non_empty(keys.iter().map(|key| json_field_string(value, key)).collect())
+}
+
+fn queue_event_state(status: &str) -> String {
+    match status {
+        "failed" | "rejected" => "blocked",
+        "queued" | "claimed" => "waiting",
+        "dispatched" | "completed" => "active",
+        _ => "waiting",
+    }
+    .to_string()
+}
+
+fn runtime_event_state(status: &str) -> String {
+    match status {
+        "ready" | "local_only" => "active",
+        "register_failed" | "heartbeat_failed" => "blocked",
+        _ => "waiting",
+    }
+    .to_string()
+}
+
+fn route_queue_event(entry: &serde_json::Value) -> AgentRuntimeEvent {
+    let status = json_field_string(entry, "status");
+    let status_label = if status.is_empty() {
+        "queued".to_string()
+    } else {
+        status.clone()
+    };
+    let run_id = shorten(&json_field_string(entry, "runId"), 14);
+    let base_model = json_field_string(entry, "baseModel");
+    let layer = first_non_empty(vec![
+        json_field_string(entry, "recommendedLayerId"),
+        json_field_string(entry, "phaseId"),
+        json_field_string(entry, "lineageId"),
+    ]);
+    let worker = first_non_empty(vec![
+        json_nested_string(entry, "assignment", "workerLabel"),
+        json_nested_string(entry, "assignment", "workerId"),
+        json_nested_string(entry, "claim", "workerId"),
+    ]);
+    let transport = first_non_empty(vec![
+        json_nested_string(entry, "dispatch", "transport"),
+        json_nested_string(entry, "dispatch", "executionMode"),
+    ]);
+    let remote_summary = first_non_empty(vec![
+        json_nested_string(entry, "dispatch", "remoteCompletionSummary"),
+        json_nested_string(entry, "dispatch", "remoteSummary"),
+        json_field_string(entry, "rejectionReason"),
+    ]);
+
+    let mut parts = vec![format!(
+        "Route {} is {}.",
+        if run_id.is_empty() { "pending" } else { run_id.as_str() },
+        status_label
+    )];
+    if !base_model.is_empty() {
+        parts.push(format!("Base {base_model}."));
+    }
+    if !layer.is_empty() {
+        parts.push(format!("Layer {layer}."));
+    }
+    if !worker.is_empty() {
+        parts.push(format!("Worker {worker}."));
+    }
+    if !transport.is_empty() {
+        parts.push(format!("Transport {transport}."));
+    }
+    if !remote_summary.is_empty() {
+        parts.push(remote_summary);
+    }
+
+    AgentRuntimeEvent {
+        time: first_non_empty(vec![
+            best_event_time(entry, &["updatedAt", "queuedAt"]),
+            now_unix_label(),
+        ]),
+        lane: "Q route".to_string(),
+        detail: shorten(&parts.join(" "), 240),
+        state: queue_event_state(&status_label),
+    }
+}
+
+fn route_worker_event(worker: &serde_json::Value) -> AgentRuntimeEvent {
+    let label = first_non_empty(vec![
+        json_field_string(worker, "workerLabel"),
+        json_field_string(worker, "workerId"),
+        "worker".to_string(),
+    ]);
+    let profile = json_field_string(worker, "executionProfile");
+    let heartbeat = json_field_string(worker, "heartbeatAt");
+    let lease = json_field_string(worker, "leaseExpiresAt");
+    let models = json_string_array_summary(worker, "supportedBaseModels", 3);
+    let watch = json_bool_field(worker, "watch");
+    let mut parts = vec![format!(
+        "{} worker {} is registered.",
+        if profile.is_empty() { "route" } else { profile.as_str() },
+        label
+    )];
+    if !heartbeat.is_empty() {
+        parts.push(format!("Heartbeat {heartbeat}."));
+    }
+    if !lease.is_empty() {
+        parts.push(format!("Lease {lease}."));
+    }
+    if !models.is_empty() {
+        parts.push(format!("Models {models}."));
+    }
+
+    AgentRuntimeEvent {
+        time: first_non_empty(vec![heartbeat, now_unix_label()]),
+        lane: "Q_agents".to_string(),
+        detail: shorten(&parts.join(" "), 240),
+        state: if watch { "active" } else { "waiting" }.to_string(),
+    }
+}
+
+fn worker_runtime_event(runtime: &serde_json::Value) -> AgentRuntimeEvent {
+    let status = json_field_string(runtime, "status");
+    let label = first_non_empty(vec![
+        json_field_string(runtime, "workerLabel"),
+        json_field_string(runtime, "workerId"),
+        "worker runtime".to_string(),
+    ]);
+    let profile = json_field_string(runtime, "executionProfile");
+    let summary = first_non_empty(vec![
+        json_field_string(runtime, "summary"),
+        json_field_string(runtime, "detail"),
+    ]);
+    let harness = json_field_string(runtime, "harnessUrl");
+    let mut parts = vec![format!(
+        "{} runtime {} is {}.",
+        if profile.is_empty() { "worker" } else { profile.as_str() },
+        label,
+        if status.is_empty() { "waiting" } else { status.as_str() }
+    )];
+    if !summary.is_empty() {
+        parts.push(summary);
+    }
+    if !harness.is_empty() {
+        parts.push(format!("Harness {harness}."));
+    }
+
+    AgentRuntimeEvent {
+        time: first_non_empty(vec![
+            best_event_time(runtime, &["updatedAt", "heartbeatAt", "registeredAt"]),
+            now_unix_label(),
+        ]),
+        lane: "Immaculate".to_string(),
+        detail: shorten(&parts.join(" "), 240),
+        state: runtime_event_state(&status),
+    }
+}
+
+fn build_agent_runtime_events(
+    queue: &[serde_json::Value],
+    workers: &[serde_json::Value],
+    runtime: &[serde_json::Value],
+    source_exists: bool,
+) -> Vec<AgentRuntimeEvent> {
+    let mut events = Vec::new();
+    events.extend(runtime.iter().rev().take(5).map(worker_runtime_event));
+    events.extend(queue.iter().rev().take(7).map(route_queue_event));
+    events.extend(workers.iter().rev().take(4).map(route_worker_event));
+
+    if events.is_empty() {
+        let now = now_unix_label();
+        events.push(AgentRuntimeEvent {
+            time: now,
+            lane: "Q route".to_string(),
+            detail: if source_exists {
+                "OpenJaws route runtime files are present and currently idle.".to_string()
+            } else {
+                "No OpenJaws route runtime files were found for this workspace yet.".to_string()
+            },
+            state: "waiting".to_string(),
+        });
+    }
+
+    events.truncate(12);
+    events
+}
+
+#[tauri::command]
+fn agent_runtime_snapshot(workspace_path: Option<String>) -> AgentRuntimeSnapshot {
+    let (q_runs_dir, source_exists) = select_q_runs_dir(workspace_path);
+    let queue = read_json_array(&q_runs_dir.join("route-queue.json"));
+    let workers = read_json_array(&q_runs_dir.join("route-workers.json"));
+    let runtime = read_json_array(&q_runs_dir.join("route-worker-runtime.json"));
+    let events = build_agent_runtime_events(&queue, &workers, &runtime, source_exists);
+    let summary = if source_exists {
+        format!(
+            "Loaded {} route entries, {} worker registrations, and {} runtime statuses.",
+            queue.len(),
+            workers.len(),
+            runtime.len()
+        )
+    } else {
+        "No artifacts/q-runs runtime files were found from the selected workspace or repo ancestors."
+            .to_string()
+    };
+
+    AgentRuntimeSnapshot {
+        checked_at: now_unix_label(),
+        source: q_runs_dir.display().to_string(),
+        summary,
+        queue_count: queue.len(),
+        worker_count: workers.len(),
+        runtime_count: runtime.len(),
+        events,
     }
 }
 
@@ -868,6 +1260,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(updater_builder.build())
         .invoke_handler(tauri::generate_handler![
+            agent_runtime_snapshot,
             backend_status,
             account_session,
             enrollment_links,

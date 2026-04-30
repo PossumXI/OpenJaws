@@ -38,7 +38,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   const rawBody = await request.text()
 
   try {
-    const event = createStripeClient(config).webhooks.constructEvent(
+    const event = await createStripeClient(config).webhooks.constructEventAsync(
       rawBody,
       signature,
       config.webhookSecret,

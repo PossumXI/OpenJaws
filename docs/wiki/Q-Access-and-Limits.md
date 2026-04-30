@@ -70,6 +70,7 @@ Recommended website/backend contract:
 - the website forwards those requests to `Q_HOSTED_SERVICE_BASE_URL`
 - the backend owns billing, entitlement lookup, key issuance, and usage metering
 - Stripe webhook target is `https://qline.site/api/webhooks/stripe`
+- Stripe webhook verification must use the SDK async verifier in the Next/Bun route; the local payment test lane covers signed webhook sync before public deploys
 - useful response headers include:
   - `x-ratelimit-limit`
   - `x-ratelimit-remaining`

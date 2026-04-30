@@ -5,6 +5,7 @@ import {
   CircuitBoard,
   Clapperboard,
   Code2,
+  FileText,
   Gamepad2,
   Handshake,
   LayoutDashboard,
@@ -36,6 +37,7 @@ export type SectionId =
   | "cowork"
   | "market"
   | "billing"
+  | "docs"
   | "settings"
   | "layouts";
 
@@ -88,6 +90,7 @@ export const navItems: NavItem[] = [
   { id: "cowork", label: "Co-work", icon: Users },
   { id: "market", label: "Market", icon: Puzzle },
   { id: "billing", label: "Billing", icon: BadgeDollarSign },
+  { id: "docs", label: "Docs", icon: FileText },
   { id: "settings", label: "Settings", icon: Settings2 },
   { id: "layouts", label: "Layouts", icon: Brush }
 ];

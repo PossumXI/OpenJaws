@@ -25,6 +25,7 @@
     "jaws:mirror:check": "bun scripts/jaws-release-mirror-health.ts",
     "jaws:ui:build": "bun run --cwd apps/jaws-desktop build",
     "jaws:verify": "bun run --cwd apps/jaws-desktop verify",
+    "jaws:soak": "bun run --cwd apps/jaws-desktop soak",
     "jaws:admin:bootstrap": "bun scripts/bootstrap-jaws-admin.ts",
     "jaws:local:admin:seed": "bun run --cwd apps/jaws-desktop local:admin:seed",
     "website:dev": "bun run --cwd website dev",

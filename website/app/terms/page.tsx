@@ -6,7 +6,7 @@ export const metadata: Metadata = {
 }
 
 const companyName =
-  'Arobi Technology Alliance A Opal Mar Group Corporation Company'
+  'AROBI TECHNOLOGY ALLIANCE A OPAL MAR GROUP CORPORATION NJ USA'
 
 export default function TermsPage(): React.ReactNode {
   return (
@@ -39,11 +39,13 @@ export default function TermsPage(): React.ReactNode {
         </section>
 
         <section>
-          <h2>3. Fees and No Refunds</h2>
+          <h2>3. Fees and Final Sale</h2>
           <p>
-            All fees are final. To the fullest extent permitted by applicable
-            law, payments, subscription charges, credit purchases, usage
-            charges, and setup fees are non-refundable.
+            All fees are final sale to the fullest extent permitted by
+            applicable law. Payments, subscription charges, credit purchases,
+            usage charges, and setup fees are non-refundable except where a
+            refund, cancellation right, chargeback right, or other remedy is
+            required by applicable law or payment-network rules.
           </p>
           <p>
             That includes cases involving delivery format, timing, partial use,

@@ -19,6 +19,7 @@ const config = readJson(configPath);
 const pkg = readJson(packagePath);
 const updater = config.plugins?.updater ?? {};
 const errors = [];
+const requiredPublisher = "AROBI TECHNOLOGY ALLIANCE A OPAL MAR GROUP CORPORATION NJ USA";
 
 function require(condition, message) {
   if (!condition) errors.push(message);
@@ -43,6 +44,7 @@ const endpoints = Array.isArray(updater.endpoints) ? updater.endpoints : [];
 require(config.productName === "JAWS", "Tauri productName must remain JAWS.");
 require(pkg.version === config.version, "Desktop package version and Tauri app version must match.");
 require(config.bundle?.createUpdaterArtifacts === true, "bundle.createUpdaterArtifacts must be true for live updates.");
+require(config.bundle?.publisher === requiredPublisher, `bundle.publisher must be ${requiredPublisher}.`);
 require(config.bundle?.externalBin?.includes("binaries/openjaws"), "OpenJaws sidecar must be listed in bundle.externalBin.");
 require(publicKey.length >= 40, "Set JAWS_TAURI_UPDATER_PUBLIC_KEY or tauri.conf updater.pubkey before release.");
 require(endpoints.length >= 2, "Updater must keep both qline.site and iorch.net endpoints.");

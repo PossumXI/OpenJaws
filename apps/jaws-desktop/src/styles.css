@@ -507,6 +507,18 @@ p {
   margin-bottom: 18px;
 }
 
+.panel-header-row {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.panel-header-row .panel-header {
+  margin-bottom: 0;
+}
+
 .panel-header svg {
   color: var(--accent);
 }
@@ -1448,6 +1460,16 @@ p {
   gap: 12px;
 }
 
+.runtime-source-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
 .agent-event {
   border-left: 3px solid var(--accent-3);
   display: grid;
@@ -1465,6 +1487,12 @@ p {
 
 .agent-event p {
   margin-bottom: 0;
+}
+
+.agent-event small {
+  color: var(--accent-3);
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .orchestration-map {
@@ -2171,6 +2199,83 @@ p {
   line-height: 1;
 }
 
+.docs-page {
+  display: grid;
+  gap: 18px;
+  overflow: auto;
+  padding: 22px 28px 34px;
+}
+
+.docs-hero {
+  display: grid;
+  gap: 18px;
+}
+
+.docs-brand-lockup {
+  align-items: center;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 128px minmax(0, 1fr);
+}
+
+.docs-brand-lockup .jaws-mark {
+  height: 116px;
+  width: 116px;
+}
+
+.docs-brand-lockup h2 {
+  font-size: 1.55rem;
+  line-height: 1.16;
+  max-width: 820px;
+}
+
+.docs-grid,
+.dev-doc-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.doc-card,
+.dev-doc-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.doc-card span,
+.dev-doc-card span {
+  color: var(--accent-3);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.doc-card p,
+.dev-doc-card p {
+  margin: 0;
+}
+
+.dev-doc-card code {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--accent);
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 9px 10px;
+}
+
+.docs-dev-panel {
+  display: grid;
+  gap: 14px;
+}
+
 .theme-grid {
   align-items: stretch;
   display: grid;
@@ -2298,6 +2403,8 @@ p {
 @media (max-width: 1180px) {
   .status-grid,
   .market-grid,
+  .docs-grid,
+  .dev-doc-grid,
   .holdem-seat-grid,
   .theme-grid {
     grid-template-columns: repeat(3, minmax(150px, 1fr));
@@ -2360,8 +2467,11 @@ p {
 
   .runtime-grid,
   .cowork-grid,
+  .runtime-source-card,
   .status-grid,
   .market-grid,
+  .docs-grid,
+  .dev-doc-grid,
   .chat-layout,
   .chat-status.slim,
   .chat-input,
@@ -2410,5 +2520,9 @@ p {
   .companion-card,
   .companion-card.compact {
     grid-template-columns: 88px minmax(0, 1fr);
+  }
+
+  .docs-brand-lockup {
+    grid-template-columns: 1fr;
   }
 }

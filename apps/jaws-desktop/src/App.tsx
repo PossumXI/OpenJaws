@@ -42,6 +42,7 @@ import {
   marketplaceItems,
   navItems,
   systemLanes,
+  type AgentEvent,
   type SectionId,
   type ThemeId
 } from "./data";
@@ -159,6 +160,16 @@ interface UpdatePipelineEntry {
   label: string;
   status: "ready" | "checking" | "ok" | "error" | "info";
   detail: string;
+}
+
+interface AgentRuntimeSnapshot {
+  checkedAt: string;
+  source: string;
+  summary: string;
+  queueCount: number;
+  workerCount: number;
+  runtimeCount: number;
+  events: AgentEvent[];
 }
 
 type ArcadeView = "slow-guy" | "holdem" | "world";
@@ -327,6 +338,62 @@ const initialUpdatePipeline: UpdatePipelineEntry[] = [
   }
 ];
 
+const complianceDocuments = [
+  {
+    title: "Terms Of Use",
+    tone: "Legal",
+    summary:
+      "JAWS is provided as a subscription IDE and orchestration shell. Users must keep credentials private, own or have rights to the workspaces they open, and review agent output before relying on it."
+  },
+  {
+    title: "Final Sale Policy",
+    tone: "Billing",
+    summary:
+      "Subscription fees and delivered services are final sale except where a refund, cancellation right, chargeback right, or remedy is required by applicable law or payment-network rules."
+  },
+  {
+    title: "Security And Privacy",
+    tone: "Security",
+    summary:
+      "Workspace access is local by default. Signed updates, HTTPS release routes, explicit account enrollment, review-first permissions, and scoped marketplace packages protect users and company assets."
+  },
+  {
+    title: "Community Content",
+    tone: "Marketplace",
+    summary:
+      "Games, skills, tools, widgets, and community agents must be signed, reviewed, capability-scoped, reversible, and free of secrets or prohibited content before public distribution."
+  },
+  {
+    title: "AI Output Notice",
+    tone: "Compliance",
+    summary:
+      "Q, Q_agents, OpenCheek, and Immaculate can make mistakes. Users remain responsible for testing, licensing checks, security review, and production approval."
+  }
+];
+
+const developerDocuments = [
+  {
+    label: "Desktop Build",
+    command: "bun run jaws:verify",
+    detail: "Runs desktop tests, prepares the OpenJaws sidecar, builds the UI, and runs Tauri cargo check."
+  },
+  {
+    label: "Release Check",
+    command: "bun run jaws:release:check",
+    detail: "Validates signed updater configuration, release index freshness, icons, endpoints, and manifest generation."
+  },
+  {
+    label: "Mirror Health",
+    command: "bun run jaws:mirror:check --json",
+    detail: "Checks qline.site, iorch.net, GitHub release assets, redirects, and signed updater manifest alignment."
+  },
+  {
+    label: "Public Guard",
+    command: "bun run showcase:copy:check",
+    detail: "Scans public-facing copy for local paths, raw receipts, stale lane wording, and token-shaped leaks."
+  }
+];
+
 function hasTauriRuntime() {
   return "__TAURI_INTERNALS__" in window;
 }
@@ -400,6 +467,18 @@ function formatOpenJawsChatResult(result: OpenJawsChatResult) {
   ].join("\n");
 }
 
+function fallbackAgentRuntimeSnapshot(): AgentRuntimeSnapshot {
+  return {
+    checkedAt: "preview",
+    source: "static preview",
+    summary: "Native Agent Watch snapshots are available inside the JAWS Tauri desktop runtime.",
+    queueCount: 0,
+    workerCount: 0,
+    runtimeCount: 0,
+    events: agentEvents
+  };
+}
+
 export function App() {
   const [active, setActive] = useState<SectionId>("control");
   const [collapsed, setCollapsed] = useState(false);
@@ -437,6 +516,8 @@ export function App() {
   const [holdemTable, setHoldemTable] = useState<HoldemTableState>(() => loadHoldemTable("Founder"));
   const [holdemChatInput, setHoldemChatInput] = useState("");
   const [jawFrame, setJawFrame] = useState(0);
+  const [agentRuntime, setAgentRuntime] = useState<AgentRuntimeSnapshot>(() => fallbackAgentRuntimeSnapshot());
+  const [agentRuntimeLoading, setAgentRuntimeLoading] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.appearance = appearance;
@@ -537,6 +618,11 @@ export function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [active, arcadeView]);
+
+  useEffect(() => {
+    if (active !== "agents") return;
+    void refreshAgentRuntime();
+  }, [active]);
 
   const activeTitle = useMemo(() => navItems.find((item) => item.id === active)?.label ?? "Control", [active]);
   const workspaceSelection = useMemo(
@@ -771,6 +857,30 @@ export function App() {
             : entry
         )
       );
+    }
+  }
+
+  async function refreshAgentRuntime() {
+    if (!hasTauriRuntime()) {
+      setAgentRuntime(fallbackAgentRuntimeSnapshot());
+      return;
+    }
+
+    setAgentRuntimeLoading(true);
+    try {
+      const snapshot = await invoke<AgentRuntimeSnapshot>("agent_runtime_snapshot", {
+        workspacePath: workspaceStatus.path || workspaceSelection.cleaned || null
+      });
+      setAgentRuntime(snapshot);
+    } catch (error) {
+      setAgentRuntime({
+        ...fallbackAgentRuntimeSnapshot(),
+        checkedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        source: "native bridge error",
+        summary: `Agent Watch snapshot failed: ${String(error)}`
+      });
+    } finally {
+      setAgentRuntimeLoading(false);
     }
   }
 
@@ -1341,13 +1451,27 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
         {active === "agents" && (
           <section className="split-view">
             <div className="wide-panel">
-              <PanelHeader icon={RadarIcon} label="Agent Watch" />
+              <div className="panel-header-row">
+                <PanelHeader icon={RadarIcon} label="Agent Watch" />
+                <button className="text-button" type="button" onClick={refreshAgentRuntime} disabled={agentRuntimeLoading}>
+                  <RefreshCcw size={16} />
+                  {agentRuntimeLoading ? "Refreshing" : "Refresh"}
+                </button>
+              </div>
+              <div className="runtime-source-card">
+                <StatusLine label="Source" value={agentRuntime.source} />
+                <StatusLine label="Checked" value={agentRuntime.checkedAt} />
+                <StatusLine label="Route queue" value={String(agentRuntime.queueCount)} />
+                <StatusLine label="Workers" value={`${agentRuntime.workerCount} registered / ${agentRuntime.runtimeCount} runtime`} />
+              </div>
+              <p className="panel-copy">{agentRuntime.summary}</p>
               <div className="agent-timeline">
-                {agentEvents.map((event) => (
+                {agentRuntime.events.map((event, index) => (
                   <article className={`agent-event ${event.state}`} key={`${event.time}-${event.lane}`}>
                     <span>{event.time}</span>
                     <strong>{event.lane}</strong>
                     <p>{event.detail}</p>
+                    {index === 0 && agentRuntimeLoading && <small>Updating runtime snapshot</small>}
                   </article>
                 ))}
               </div>
@@ -1559,6 +1683,61 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
               <ExternalLink size={16} />
               Download
             </button>
+          </section>
+        )}
+
+        {active === "docs" && (
+          <section className="docs-page">
+            <div className="wide-panel docs-hero">
+              <PanelHeader icon={FileTextIcon} label="Docs And Legal" />
+              <div className="docs-brand-lockup">
+                <JawsMark />
+                <div>
+                  <span className="settings-kicker">JAWS Desktop</span>
+                  <h2>Built by AROBI TECHNOLOGY ALLIANCE A OPAL MAR GROUP CORPORATION NJ USA</h2>
+                  <p className="panel-copy">
+                    Legal, compliance, release, and developer operating notes are available in-app so installed users can inspect the boundary before using agents, marketplaces, games, updates, or paid routes.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="docs-grid">
+              {complianceDocuments.map((document) => (
+                <article className="doc-card" key={document.title}>
+                  <span>{document.tone}</span>
+                  <h3>{document.title}</h3>
+                  <p>{document.summary}</p>
+                </article>
+              ))}
+            </div>
+
+            <div className="wide-panel docs-dev-panel">
+              <PanelHeader icon={TerminalSquare} label="Developer Docs" />
+              <div className="dev-doc-grid">
+                {developerDocuments.map((document) => (
+                  <article className="dev-doc-card" key={document.label}>
+                    <span>{document.label}</span>
+                    <code>{document.command}</code>
+                    <p>{document.detail}</p>
+                  </article>
+                ))}
+              </div>
+              <div className="button-row">
+                <button className="text-button" type="button" onClick={() => openExternal("https://github.com/PossumXI/OpenJaws")}>
+                  <ExternalLink size={16} />
+                  GitHub
+                </button>
+                <button className="text-button" type="button" onClick={() => openExternal("https://qline.site/downloads/jaws")}>
+                  <ExternalLink size={16} />
+                  Qline Download
+                </button>
+                <button className="text-button" type="button" onClick={() => openExternal("https://iorch.net/downloads/jaws")}>
+                  <ExternalLink size={16} />
+                  Iorch Download
+                </button>
+              </div>
+            </div>
           </section>
         )}
 
@@ -2178,3 +2357,4 @@ const NetworkIcon = Activity;
 const GamepadIcon = Zap;
 const ReceiptIcon = ShieldCheck;
 const UsersIcon = Activity;
+const FileTextIcon = Settings2;

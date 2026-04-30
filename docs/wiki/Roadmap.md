@@ -7,6 +7,8 @@
 - tighter public-release help and recovery clarity across remaining operator surfaces
 - Harbor / Terminal-Bench agent adapter work for running OpenJaws or `Q` against external benchmark suites with real provenance
 - JAWS live update pipeline hardening: deeper native updater telemetry, signed manifest receipts, and release-index-driven release promotion
+- JAWS Agent Watch streaming: promote the current native `artifacts/q-runs` snapshot into a live event stream with backpressure, cursor replay, and worker heartbeat deltas
+- JAWS compliance launch surface: keep in-app Terms, final-sale policy wording, security notes, and developer verification commands aligned with counsel-reviewed public pages
 - JAWS multiplayer foundation: signed websocket rooms for Hold'em PvP, world chat, pet presence, and sandboxed community agents
 - broader contribution templates and issue triage
 - public wiki synchronization from repo docs

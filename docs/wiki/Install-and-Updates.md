@@ -87,6 +87,10 @@ The mirror download routes are Netlify redirects to the GitHub release assets:
 
 Use the mirror pages for the branded public install flow. Use the GitHub release page when you want to inspect every artifact and signature directly.
 
+Installer publisher:
+
+> Built by AROBI TECHNOLOGY ALLIANCE A OPAL MAR GROUP CORPORATION NJ USA.
+
 The expected tag, mirror URLs, asset filenames, and updater platform entries now come from the generated desktop release index at [`apps/jaws-desktop/src/release-index.json`](../../apps/jaws-desktop/src/release-index.json). Regenerate and check it before cutting a new JAWS desktop tag:
 
 ```powershell

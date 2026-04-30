@@ -67,7 +67,7 @@ Copy `.env.example` and set:
 ## Stripe
 
 - `POST /api/checkout` creates a Stripe Checkout subscription session when Stripe env vars are present
-- `POST /api/webhooks/stripe` verifies incoming Stripe webhook signatures
+- `POST /api/webhooks/stripe` verifies incoming Stripe webhook signatures with Stripe's async verifier, which is required in the Next/Bun runtime
 - in local filesystem mode, the webhook can also activate or cancel demo entitlements in the local store
 - once the site is hosted, point Stripe webhooks at `https://qline.site/api/webhooks/stripe`
 
@@ -81,6 +81,15 @@ filesystem ledger instead:
 - `POST /api/webhooks/stripe` can sync completed checkout events back into the local ledger
 - `POST /api/keys` issues a hosted-Q key and returns the plaintext token once
 - `POST /api/usage` returns plan, credits, and rate-limit receipts
+
+Payment and entitlement tests:
+
+```powershell
+bun test website/lib/stripeBilling.test.ts
+bun run website:api:test
+```
+
+Those tests cover Stripe readiness, checkout fail-closed cases, hosted billing proxy mode, signed webhook verification, local entitlement activation, cancellation, usage receipts, and key blocking before checkout.
 
 That local mode is useful for development and demos. It is not the production
 operator backend.

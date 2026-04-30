@@ -18,6 +18,7 @@
     "updater:manifest": "node scripts/build-updater-manifest.mjs",
     "local:admin:seed": "node scripts/seed-local-admin-session.mjs",
     "test": "bun test src",
+    "soak": "bun scripts/jaws-desktop-soak.ts",
     "prepare:sidecar": "node scripts/prepare-sidecar.mjs",
     "verify": "bun run release:index -- --check && bun run test && bun run prepare:sidecar && bun run build && cargo check --manifest-path src-tauri/Cargo.toml",
     "release:check": "bun run release:index -- --check && node scripts/verify-release-config.mjs && node scripts/build-updater-manifest.mjs --self-test"

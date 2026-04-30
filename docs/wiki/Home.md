@@ -48,6 +48,7 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 - [Immaculate Integration](Immaculate-Integration.md)
 - [Roundtable Execution](Roundtable-Execution.md)
 - [Benchmark Status](Benchmark-Status.md)
+- [JAWS Legal and Compliance](JAWS-Legal-Compliance.md)
 - [Release Notes](Release-Notes.md)
 - [Roadmap](Roadmap.md)
 - [Breakthrough Log](Breakthrough-Log.md)
