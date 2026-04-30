@@ -6,17 +6,23 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   Activity,
   BellRing,
+  Bot,
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
   CircleDot,
+  Coffee,
+  Crown,
   ExternalLink,
   Film,
   FolderOpen,
+  Gauge,
   GitCompare,
+  Heart,
   Maximize2,
   MessageSquare,
   MonitorPlay,
+  PackagePlus,
   Pause,
   Play,
   RadioTower,
@@ -26,6 +32,7 @@ import {
   Send,
   Sparkles,
   TerminalSquare,
+  UserRound,
   XCircle,
   Zap
 } from "lucide-react";
@@ -39,7 +46,6 @@ import {
   type ThemeId
 } from "./data";
 import { buildWorkspaceSelection, type TerminalPlatform } from "./workspace";
-import cyberFrog from "./assets/cyber-frog.svg";
 import jawsLogo from "./assets/jaws-logo.svg";
 
 interface BackendStatus {
@@ -61,6 +67,16 @@ interface SidecarSmoke {
   code: number | null;
   stdout: string;
   stderr: string;
+}
+
+interface OpenJawsChatResult {
+  ok: boolean;
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  summary: string;
+  permissionMode: string;
+  workspacePath: string;
 }
 
 interface WorkspaceStatus {
@@ -87,6 +103,8 @@ interface ChatMessage {
   role: "user" | "agent" | "system";
   body: string;
   time: string;
+  state: "done" | "thinking" | "queued";
+  lane: string;
 }
 
 interface ChangePreview {
@@ -94,6 +112,30 @@ interface ChangePreview {
   status: string;
   before: string;
   after: string;
+}
+
+interface CyberPetState {
+  name: string;
+  tokens: number;
+  energy: number;
+  fullness: number;
+  egg: number;
+  gear: string;
+  decor: string;
+  mood: string;
+}
+
+interface UserProfile {
+  name: string;
+  handle: string;
+  focus: string;
+}
+
+interface AgentProfile {
+  name: string;
+  role: string;
+  status: string;
+  load: number;
 }
 
 const fallbackStatus: BackendStatus = {
@@ -146,14 +188,18 @@ const initialMessages: ChatMessage[] = [
     speaker: "JAWS",
     role: "system",
     body: "Chat lane ready. Commands route through OpenJaws with Q, Q_agents, OpenCheek, and Immaculate visible in the work stream.",
-    time: "now"
+    time: "now",
+    state: "done",
+    lane: "system"
   },
   {
     id: "agent-watch",
     speaker: "Q_agents",
     role: "agent",
     body: "Workspace watcher armed. Turn on compare mode to inspect file deltas while agents work.",
-    time: "now"
+    time: "now",
+    state: "queued",
+    lane: "agents"
   }
 ];
 
@@ -178,6 +224,39 @@ const changePreview: ChangePreview[] = [
   }
 ];
 
+const chatTools = [
+  { label: "Inspect", prompt: "Inspect this workspace and tell me the safest next fix." },
+  { label: "Code", prompt: "Implement the next high-value production change, then verify it." },
+  { label: "Test", prompt: "Run the focused test suite, explain failures, and repair them." },
+  { label: "Agents", prompt: "Spin up Q_agents for parallel review, implementation, and verification lanes." },
+  { label: "Bench", prompt: "Run the benchmark harness once and capture actionable verifier output." },
+  { label: "Ship", prompt: "Prepare release notes, tag the build, and verify updater metadata." }
+];
+
+const defaultPet: CyberPetState = {
+  name: "Byte Hopper",
+  tokens: 42,
+  energy: 74,
+  fullness: 68,
+  egg: 36,
+  gear: "visor",
+  decor: "neon pad",
+  mood: "curious"
+};
+
+const defaultUserProfile: UserProfile = {
+  name: "Founder",
+  handle: "gaetano",
+  focus: "Ship clean releases"
+};
+
+const agentProfiles: AgentProfile[] = [
+  { name: "Q", role: "Primary planner", status: "Thinking", load: 62 },
+  { name: "Q_agents", role: "Parallel workers", status: "Standing by", load: 41 },
+  { name: "OpenCheek", role: "Co-work loop", status: "Memory attached", load: 54 },
+  { name: "Immaculate", role: "Crew pacing", status: "Ready", load: 28 }
+];
+
 function hasTauriRuntime() {
   return "__TAURI_INTERNALS__" in window;
 }
@@ -200,6 +279,26 @@ function loadStoredAccountSession(): AccountSession | null {
   }
 }
 
+function loadStoredValue<T>(key: string, fallback: T): T {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? "null") ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function formatOpenJawsChatResult(result: OpenJawsChatResult) {
+  const output = result.stdout || result.stderr || "OpenJaws returned no text output.";
+  const code = result.code === null ? "unknown" : String(result.code);
+  return [
+    result.summary,
+    `Mode: ${result.permissionMode} - Exit: ${code}`,
+    `Workspace: ${result.workspacePath || "not attached"}`,
+    "",
+    output
+  ].join("\n");
+}
+
 export function App() {
   const [active, setActive] = useState<SectionId>("control");
   const [collapsed, setCollapsed] = useState(false);
@@ -218,6 +317,7 @@ export function App() {
   const [account, setAccount] = useState<AccountSession | null>(() => loadStoredAccountSession());
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(initialMessages);
+  const [chatBusy, setChatBusy] = useState(false);
   const [compareMode, setCompareMode] = useState(() => localStorage.getItem("jaws.compareMode") === "true");
   const [fastRunMode, setFastRunMode] = useState(
     () =>
@@ -226,6 +326,10 @@ export function App() {
   );
   const [notificationsArmed, setNotificationsArmed] = useState(
     () => localStorage.getItem("jaws.notificationsArmed") !== "false"
+  );
+  const [pet, setPet] = useState<CyberPetState>(() => loadStoredValue("jaws.cyberPet", defaultPet));
+  const [userProfile, setUserProfile] = useState<UserProfile>(() =>
+    loadStoredValue("jaws.userProfile", defaultUserProfile)
   );
   const [jawFrame, setJawFrame] = useState(0);
 
@@ -276,6 +380,14 @@ export function App() {
   useEffect(() => {
     localStorage.setItem("jaws.notificationsArmed", String(notificationsArmed));
   }, [notificationsArmed]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.cyberPet", JSON.stringify(pet));
+  }, [pet]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.userProfile", JSON.stringify(userProfile));
+  }, [userProfile]);
 
   useEffect(() => {
     if (!arcadeRunning) return;
@@ -372,7 +484,9 @@ export function App() {
         body: result.valid
           ? `Workspace opened: ${result.path}. Chat and TUI routes now use this project folder.`
           : result.message,
-        time
+        time,
+        state: result.valid ? "done" : "queued",
+        lane: "workspace"
       }
     ]);
   }
@@ -423,45 +537,199 @@ export function App() {
     setUpdateState("Update installed. Restart JAWS to finish.");
   }
 
-  function submitChatCommand(event: FormEvent<HTMLFormElement>) {
+  async function submitChatCommand(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (chatBusy) return;
     const command = chatInput.trim();
     if (!command) return;
 
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const runMode = fastRunMode ? "fast queue" : "review first";
     const workspaceName = workspaceStatus.valid ? workspaceStatus.name : workspaceSelection.name;
+    const baseId = Date.now();
+    const qMessageId = `q-${baseId}`;
+    const agentMessageId = `agents-${baseId}`;
 
     setChatMessages((messages) => [
       ...messages,
       {
-        id: `user-${Date.now()}`,
-        speaker: account?.displayName || "You",
+        id: `user-${baseId}`,
+        speaker: userProfile.name || account?.displayName || "You",
         role: "user",
         body: command,
-        time
+        time,
+        state: "done",
+        lane: "user"
       },
       {
-        id: `q-${Date.now()}`,
+        id: qMessageId,
         speaker: "Q",
         role: "agent",
-        body: `Queued through audited ${runMode}. Workspace: ${workspaceName || "not set"}.`,
-        time
+        body: `Thinking through audited ${runMode}. Workspace: ${workspaceName || "not set"}.`,
+        time,
+        state: "thinking",
+        lane: "q"
       },
       {
-        id: `agents-${Date.now()}`,
+        id: agentMessageId,
         speaker: "Q_agents",
         role: "agent",
         body: compareMode
-          ? "Change compare mode is active. Proposed edits will stay visible beside the transcript."
-          : "Work stream active. Compare mode is off, so edits can flow without the side-by-side review pane.",
-        time
+          ? "Standing up compare-aware worker lanes. Proposed edits stay visible beside the transcript."
+          : "Standing up worker lanes. Compare mode is off, so edits can flow in the main workstream.",
+        time,
+        state: "queued",
+        lane: "agents"
       }
     ]);
     setChatInput("");
+    setChatBusy(true);
+    setPet((current) => ({
+      ...current,
+      tokens: Math.min(999, current.tokens + 6),
+      energy: Math.min(100, current.energy + 4),
+      egg: Math.min(100, current.egg + 3),
+      mood: "locked in"
+    }));
     if (notificationsArmed) {
       setUpdateState("Notification queued: chat command routed");
     }
+
+    if (hasTauriRuntime()) {
+      try {
+        const result = await invoke<OpenJawsChatResult>("run_openjaws_chat", {
+          prompt: command,
+          workspacePath: workspaceStatus.path || workspaceSelection.cleaned || null,
+          fastRunMode
+        });
+        setChatMessages((messages) =>
+          messages.map((message) => {
+            if (message.id === qMessageId) {
+              return {
+                ...message,
+                body: formatOpenJawsChatResult(result),
+                state: "done"
+              };
+            }
+            if (message.id === agentMessageId) {
+              return {
+                ...message,
+                body: result.ok
+                  ? "OpenJaws sidecar completed the Chat command. Review the Q lane output and continue from the same workspace."
+                  : "OpenJaws sidecar blocked or failed the Chat command. The Q lane has the exact diagnostic.",
+                state: "done"
+              };
+            }
+            return message;
+          })
+        );
+        setUpdateState(result.ok ? "OpenJaws Chat command completed" : "OpenJaws Chat command needs review");
+      } catch (error) {
+        setChatMessages((messages) =>
+          messages.map((message) => {
+            if (message.id === qMessageId) {
+              return {
+                ...message,
+                body: `OpenJaws Chat command failed before the sidecar returned output.\n\n${String(error)}`,
+                state: "done"
+              };
+            }
+            if (message.id === agentMessageId) {
+              return {
+                ...message,
+                body: "Desktop command bridge failed. Check the bundled sidecar and workspace settings.",
+                state: "done"
+              };
+            }
+            return message;
+          })
+        );
+        setUpdateState("OpenJaws Chat command failed");
+      } finally {
+        setChatBusy(false);
+      }
+      return;
+    }
+
+    window.setTimeout(() => {
+      setChatMessages((messages) =>
+        messages.map((message) => {
+          if (message.id === qMessageId) {
+            return {
+              ...message,
+              body: `Routed through ${runMode}. Workspace: ${workspaceName || "not set"}. Next step is visible in the agent lane.`,
+              state: "done"
+            };
+          }
+          if (message.id === agentMessageId) {
+            return {
+              ...message,
+              body: compareMode
+                ? "Compare-aware worker lanes are live. File changes will surface in the delta rail before release."
+                : "Worker lanes are live. JAWS will keep the transcript moving while agents report progress.",
+              state: "thinking"
+            };
+          }
+          return message;
+        })
+      );
+    }, 650);
+    window.setTimeout(() => {
+      setChatMessages((messages) =>
+        messages.map((message) =>
+          message.id === agentMessageId
+            ? {
+                ...message,
+                state: "done"
+              }
+            : message
+        )
+      );
+      setChatBusy(false);
+    }, 1500);
+  }
+
+  function spendPetTokens(cost: number, update: (current: CyberPetState) => CyberPetState) {
+    setPet((current) => {
+      if (current.tokens < cost) return { ...current, mood: "needs more code tokens" };
+      return update({ ...current, tokens: current.tokens - cost });
+    });
+  }
+
+  function feedPet() {
+    spendPetTokens(4, (current) => ({
+      ...current,
+      fullness: Math.min(100, current.fullness + 18),
+      energy: Math.min(100, current.energy + 8),
+      mood: "fed"
+    }));
+  }
+
+  function trainPet() {
+    spendPetTokens(6, (current) => ({
+      ...current,
+      energy: Math.max(12, current.energy - 10),
+      egg: Math.min(100, current.egg + 12),
+      mood: current.egg >= 88 ? "ready to hatch" : "training"
+    }));
+  }
+
+  function equipPet() {
+    const gear = pet.gear === "visor" ? "jet boots" : pet.gear === "jet boots" ? "debug crown" : "visor";
+    spendPetTokens(8, (current) => ({
+      ...current,
+      gear,
+      mood: "geared up"
+    }));
+  }
+
+  function decoratePet() {
+    const decor = pet.decor === "neon pad" ? "reef desk" : pet.decor === "reef desk" ? "holo plants" : "neon pad";
+    spendPetTokens(5, (current) => ({
+      ...current,
+      decor,
+      mood: "settled"
+    }));
   }
 
   async function openExternal(url: string) {
@@ -600,66 +868,115 @@ export function App() {
               <PanelHeader icon={MessageSquare} label="Chat Window" />
               <div className="chat-layout">
                 <section className="chat-main" aria-label="JAWS command chat">
-                  <div className="chat-status">
-                    <pre className="jaw-spinner" aria-label="JAWS spinner">
-                      {jawFrames[jawFrame]}
-                    </pre>
+                  <div className="chat-status slim">
+                    <MessageActivity active={chatBusy} state={chatBusy ? "thinking" : "done"} frame={jawFrame} />
                     <div>
                       <span>Live Workstream</span>
-                      <strong>{fastRunMode ? "Fast queue" : "Review first"}</strong>
+                      <strong>{chatBusy ? "Q is thinking" : fastRunMode ? "Fast audited queue" : "Review first"}</strong>
                       <small>{notificationsArmed ? "Updates and notifications armed" : "Notifications muted"}</small>
+                    </div>
+                    <div className="chat-status-tools" aria-label="Chat state">
+                      <span>{compareMode ? "Compare on" : "Compare off"}</span>
+                      <span>{workspaceStatus.valid ? workspaceStatus.name : "No folder"}</span>
                     </div>
                   </div>
 
                   <div className="chat-transcript">
                     {chatMessages.map((message) => (
-                      <article className={`chat-message ${message.role}`} key={message.id}>
-                        <header>
-                          <strong>{message.speaker}</strong>
-                          <span>{message.time}</span>
-                        </header>
-                        <p>{message.body}</p>
+                      <article className={`chat-row ${message.role}`} key={message.id}>
+                        <MessageActivity active={message.state === "thinking"} state={message.state} frame={jawFrame} />
+                        <div className="chat-message">
+                          <header>
+                            <div>
+                              <strong>{message.speaker}</strong>
+                              <span>{message.lane}</span>
+                            </div>
+                            <span>{message.time}</span>
+                          </header>
+                          <p>{message.body}</p>
+                        </div>
                       </article>
                     ))}
                   </div>
 
                   <form className="chat-input" onSubmit={submitChatCommand}>
+                    <div className="chat-tool-strip" aria-label="Command starters">
+                      {chatTools.map((tool) => (
+                        <button
+                          className="tool-chip"
+                          key={tool.label}
+                          type="button"
+                          onClick={() => setChatInput(tool.prompt)}
+                        >
+                          {tool.label}
+                        </button>
+                      ))}
+                    </div>
                     <textarea
                       value={chatInput}
                       onChange={(event) => setChatInput(event.target.value)}
                       placeholder="Ask JAWS to inspect, code, test, run agents, or route work through Q."
                       rows={3}
                     />
-                    <button className="text-button primary" type="submit">
+                    <button className="text-button primary" type="submit" disabled={chatBusy}>
                       <Send size={16} />
-                      Send
+                      {chatBusy ? "Running" : "Send"}
                     </button>
                   </form>
                 </section>
 
                 <aside className="chat-side">
-                  <button className="text-button primary" type="button" onClick={openWorkspaceFolder}>
-                    <FolderOpen size={16} />
-                    Open Folder
-                  </button>
-                  <button className="text-button primary" type="button" onClick={() => setActive("terminal")}>
-                    <TerminalSquare size={16} />
-                    Switch To TUI
-                  </button>
-                  <button className="text-button" type="button" onClick={() => setCompareMode((value) => !value)}>
-                    <GitCompare size={16} />
-                    {compareMode ? "Hide Compare" : "Show Compare"}
-                  </button>
-                  <button className="text-button" type="button" onClick={() => setFastRunMode((value) => !value)}>
-                    {fastRunMode ? <Send size={16} /> : <ShieldCheck size={16} />}
-                    {fastRunMode ? "Fast Queue" : "Review First"}
-                  </button>
-                  <button className="text-button" type="button" onClick={() => setNotificationsArmed((value) => !value)}>
-                    <BellRing size={16} />
-                    {notificationsArmed ? "Notify On" : "Notify Off"}
-                  </button>
+                  <div className="side-module profile-mini">
+                    <div className="profile-avatar">
+                      <UserRound size={20} />
+                    </div>
+                    <div>
+                      <span>User profile</span>
+                      <strong>{userProfile.name}</strong>
+                      <small>{userProfile.focus}</small>
+                    </div>
+                  </div>
+
+                  <div className="side-module tool-grid">
+                    <button className="text-button primary" type="button" onClick={openWorkspaceFolder}>
+                      <FolderOpen size={16} />
+                      Open Folder
+                    </button>
+                    <button className="text-button primary" type="button" onClick={() => setActive("terminal")}>
+                      <TerminalSquare size={16} />
+                      TUI View
+                    </button>
+                    <button className="text-button" type="button" onClick={() => setCompareMode((value) => !value)}>
+                      <GitCompare size={16} />
+                      {compareMode ? "Compare On" : "Compare Off"}
+                    </button>
+                    <button className="text-button" type="button" onClick={() => setFastRunMode((value) => !value)}>
+                      {fastRunMode ? <Send size={16} /> : <ShieldCheck size={16} />}
+                      {fastRunMode ? "Fast Queue" : "Review"}
+                    </button>
+                    <button className="text-button" type="button" onClick={() => setNotificationsArmed((value) => !value)}>
+                      <BellRing size={16} />
+                      {notificationsArmed ? "Notify On" : "Notify Off"}
+                    </button>
+                  </div>
+
+                  <CyberPet pet={pet} compact onFeed={feedPet} onTrain={trainPet} onEquip={equipPet} onDecorate={decoratePet} />
+
+                  <div className="side-module agent-mini-list">
+                    <span>Agent profiles</span>
+                    {agentProfiles.map((agent) => (
+                      <div className="agent-mini" key={agent.name}>
+                        <Bot size={15} />
+                        <div>
+                          <strong>{agent.name}</strong>
+                          <small>{agent.status}</small>
+                        </div>
+                        <meter min="0" max="100" value={agent.load} />
+                      </div>
+                    ))}
+                  </div>
+
                   <StatusLine label="Workspace" value={workspaceStatus.path || workspaceSelection.cleaned || "Not set"} />
-                  <StatusLine label="Agents" value="Q, Q_agents, OpenCheek" />
                   <StatusLine label="Updates" value={updateState} />
                 </aside>
               </div>
@@ -784,6 +1101,71 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
           </section>
         )}
 
+        {active === "profiles" && (
+          <section className="profiles-page">
+            <div className="wide-panel profile-panel">
+              <PanelHeader icon={UserRound} label="User Profile" />
+              <div className="profile-editor">
+                <label>
+                  Display name
+                  <input
+                    value={userProfile.name}
+                    onChange={(event) => setUserProfile((profile) => ({ ...profile, name: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Handle
+                  <input
+                    value={userProfile.handle}
+                    onChange={(event) => setUserProfile((profile) => ({ ...profile, handle: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Focus
+                  <input
+                    value={userProfile.focus}
+                    onChange={(event) => setUserProfile((profile) => ({ ...profile, focus: event.target.value }))}
+                  />
+                </label>
+              </div>
+              <div className="profile-stat-grid">
+                <StatusLine label="Code tokens" value={String(pet.tokens)} />
+                <StatusLine label="Workspace" value={workspaceStatus.name || workspaceSelection.name} />
+                <StatusLine label="Account" value={account?.email ?? "Local trial"} />
+              </div>
+            </div>
+
+            <div className="wide-panel profile-panel">
+              <PanelHeader icon={Bot} label="Agent Profiles" />
+              <div className="agent-profile-grid">
+                {agentProfiles.map((agent) => (
+                  <article className="agent-profile-card" key={agent.name}>
+                    <Bot size={18} />
+                    <div>
+                      <strong>{agent.name}</strong>
+                      <span>{agent.role}</span>
+                      <small>{agent.status}</small>
+                    </div>
+                    <meter min="0" max="100" value={agent.load} />
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <div className="wide-panel profile-panel pet-profile-panel">
+              <PanelHeader icon={Heart} label="Cyber Frog" />
+              <CyberPet pet={pet} onFeed={feedPet} onTrain={trainPet} onEquip={equipPet} onDecorate={decoratePet} />
+              <label className="pet-name-field">
+                Companion name
+                <input
+                  value={pet.name}
+                  onChange={(event) => setPet((current) => ({ ...current, name: event.target.value }))}
+                />
+              </label>
+            </div>
+          </section>
+        )}
+
         {active === "studio" && (
           <section className="studio-grid">
             <div className="wide-panel">
@@ -826,14 +1208,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                   <span />
                 </div>
               </div>
-              <div className="companion-card compact">
-                <img src={cyberFrog} alt="JAWS cyber frog companion" />
-                <div>
-                  <span>Companion</span>
-                  <strong>Cyber Frog</strong>
-                  <small>Ready</small>
-                </div>
-              </div>
+              <CyberPet pet={pet} compact onFeed={feedPet} onTrain={trainPet} onEquip={equipPet} onDecorate={decoratePet} />
             </div>
             <button className="text-button" type="button" onClick={() => setArcadeRunning((value) => !value)}>
               {arcadeRunning ? <Pause size={16} /> : <Play size={16} />}
@@ -984,14 +1359,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
 
             <div className="wide-panel companion-panel">
               <PanelHeader icon={Zap} label="Digital Companion" />
-              <div className="companion-card">
-                <img src={cyberFrog} alt="JAWS cyber frog companion" />
-                <div>
-                  <span>Included Asset</span>
-                  <strong>Cyber Frog</strong>
-                  <small>Unified JAWS blue, teal, and graphite palette</small>
-                </div>
-              </div>
+              <CyberPet pet={pet} compact onFeed={feedPet} onTrain={trainPet} onEquip={equipPet} onDecorate={decoratePet} />
             </div>
           </section>
         )}
@@ -1031,11 +1399,102 @@ function PanelHeader({ icon: Icon, label }: { icon: typeof Activity; label: stri
   );
 }
 
+function MessageActivity({
+  active,
+  state,
+  frame
+}: {
+  active: boolean;
+  state: ChatMessage["state"];
+  frame: number;
+}) {
+  return (
+    <div className={`message-activity ${active ? "active" : ""} ${state}`} aria-label={`Message ${state}`}>
+      <pre>{jawFrames[frame]}</pre>
+    </div>
+  );
+}
+
 function StatusLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="status-line">
       <span>{label}</span>
       <strong>{value}</strong>
+    </div>
+  );
+}
+
+function CyberPet({
+  pet,
+  compact = false,
+  onFeed,
+  onTrain,
+  onEquip,
+  onDecorate
+}: {
+  pet: CyberPetState;
+  compact?: boolean;
+  onFeed: () => void;
+  onTrain: () => void;
+  onEquip: () => void;
+  onDecorate: () => void;
+}) {
+  return (
+    <div className={compact ? "cyber-pet compact" : "cyber-pet"}>
+      <div className={`pet-stage ${pet.gear.replace(/\s/g, "-")} ${pet.decor.replace(/\s/g, "-")}`}>
+        <div className="pet-decor left" />
+        <div className="pet-decor right" />
+        <div className="frog-body">
+          <div className="frog-eye left">
+            <span />
+          </div>
+          <div className="frog-eye right">
+            <span />
+          </div>
+          <div className="frog-visor" />
+          <div className="frog-mouth" />
+          <div className="frog-chest">
+            <span />
+            <span />
+            <span />
+          </div>
+          <div className="frog-gear" />
+        </div>
+        <div className="pet-egg">
+          <span style={{ height: `${pet.egg}%` }} />
+        </div>
+      </div>
+      <div className="pet-info">
+        <span>Cyber Frog</span>
+        <strong>{pet.name}</strong>
+        <small>
+          {pet.mood} - {pet.gear} - {pet.decor}
+        </small>
+      </div>
+      <div className="pet-bars">
+        <StatusLine label="Tokens" value={String(pet.tokens)} />
+        <StatusLine label="Full" value={`${pet.fullness}%`} />
+        <StatusLine label="Energy" value={`${pet.energy}%`} />
+        <StatusLine label="Egg" value={`${pet.egg}%`} />
+      </div>
+      <div className="pet-actions">
+        <button className="text-button" type="button" onClick={onFeed}>
+          <Coffee size={15} />
+          Feed
+        </button>
+        <button className="text-button" type="button" onClick={onTrain}>
+          <Gauge size={15} />
+          Train
+        </button>
+        <button className="text-button" type="button" onClick={onEquip}>
+          <Crown size={15} />
+          Gear
+        </button>
+        <button className="text-button" type="button" onClick={onDecorate}>
+          <PackagePlus size={15} />
+          Decor
+        </button>
+      </div>
     </div>
   );
 }

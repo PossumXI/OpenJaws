@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     env, fs,
     path::{Path, PathBuf},
+    time::Duration,
 };
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
@@ -31,6 +32,18 @@ struct SidecarSmoke {
     code: Option<i32>,
     stdout: String,
     stderr: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatCommandResult {
+    ok: bool,
+    code: Option<i32>,
+    stdout: String,
+    stderr: String,
+    summary: String,
+    permission_mode: String,
+    workspace_path: String,
 }
 
 #[derive(Serialize)]
@@ -218,7 +231,8 @@ fn validate_workspace(path: String) -> WorkspaceStatus {
             path: cleaned,
             name: "Relative path".to_string(),
             valid: false,
-            message: "Use an absolute project folder path so JAWS can route work safely.".to_string(),
+            message: "Use an absolute project folder path so JAWS can route work safely."
+                .to_string(),
             tui_command: "openjaws".to_string(),
         };
     }
@@ -336,6 +350,140 @@ async fn openjaws_workspace_smoke(app: tauri::AppHandle, path: String) -> Sideca
     openjaws_smoke(app, Some(path)).await
 }
 
+fn truncate_text(value: &str, max_chars: usize) -> String {
+    let mut output = String::new();
+    for character in value.chars().take(max_chars) {
+        output.push(character);
+    }
+
+    if value.chars().count() > max_chars {
+        output.push_str("\n...[truncated]");
+    }
+
+    output.trim().to_string()
+}
+
+#[tauri::command]
+async fn run_openjaws_chat(
+    app: tauri::AppHandle,
+    prompt: String,
+    workspace_path: Option<String>,
+    fast_run_mode: bool,
+) -> ChatCommandResult {
+    let prompt = prompt.trim();
+    let permission_mode = if fast_run_mode {
+        "acceptEdits"
+    } else {
+        "default"
+    };
+
+    if prompt.is_empty() {
+        return ChatCommandResult {
+            ok: false,
+            code: None,
+            stdout: String::new(),
+            stderr: "Enter a command before routing work through OpenJaws.".to_string(),
+            summary: "Command was empty.".to_string(),
+            permission_mode: permission_mode.to_string(),
+            workspace_path: String::new(),
+        };
+    }
+
+    if prompt.chars().count() > 4_000 {
+        return ChatCommandResult {
+            ok: false,
+            code: None,
+            stdout: String::new(),
+            stderr: "Chat commands are capped at 4,000 characters in the desktop shell."
+                .to_string(),
+            summary: "Command was too long.".to_string(),
+            permission_mode: permission_mode.to_string(),
+            workspace_path: String::new(),
+        };
+    }
+
+    let workspace = workspace_path
+        .as_deref()
+        .map(|path| validate_workspace(path.to_string()))
+        .filter(|workspace| workspace.valid);
+    let Some(workspace) = workspace else {
+        return ChatCommandResult {
+            ok: false,
+            code: None,
+            stdout: String::new(),
+            stderr: "Select a valid project folder before running Chat commands.".to_string(),
+            summary: "Workspace validation failed.".to_string(),
+            permission_mode: permission_mode.to_string(),
+            workspace_path: String::new(),
+        };
+    };
+
+    let command = match app.shell().sidecar("openjaws") {
+        Ok(command) => command
+            .arg("--print")
+            .arg("--output-format")
+            .arg("text")
+            .arg("--max-turns")
+            .arg("1")
+            .arg("--permission-mode")
+            .arg(permission_mode)
+            .arg("--workload")
+            .arg("jaws-desktop")
+            .arg(prompt)
+            .current_dir(workspace.path.clone()),
+        Err(error) => {
+            return ChatCommandResult {
+                ok: false,
+                code: None,
+                stdout: String::new(),
+                stderr: format!("OpenJaws sidecar unavailable: {error}"),
+                summary: "Sidecar unavailable.".to_string(),
+                permission_mode: permission_mode.to_string(),
+                workspace_path: workspace.path,
+            };
+        }
+    };
+
+    match tokio::time::timeout(Duration::from_secs(120), command.output()).await {
+        Ok(Ok(output)) => {
+            let stdout = truncate_text(&String::from_utf8_lossy(&output.stdout), 4_000);
+            let stderr = truncate_text(&String::from_utf8_lossy(&output.stderr), 2_000);
+            let ok = output.status.success();
+            ChatCommandResult {
+                ok,
+                code: output.status.code(),
+                summary: if ok {
+                    "OpenJaws completed the desktop Chat command.".to_string()
+                } else {
+                    "OpenJaws returned a non-zero exit code.".to_string()
+                },
+                stdout,
+                stderr,
+                permission_mode: permission_mode.to_string(),
+                workspace_path: workspace.path,
+            }
+        }
+        Ok(Err(error)) => ChatCommandResult {
+            ok: false,
+            code: None,
+            stdout: String::new(),
+            stderr: format!("OpenJaws Chat command failed: {error}"),
+            summary: "Sidecar execution failed.".to_string(),
+            permission_mode: permission_mode.to_string(),
+            workspace_path: workspace.path,
+        },
+        Err(_) => ChatCommandResult {
+            ok: false,
+            code: None,
+            stdout: String::new(),
+            stderr: "OpenJaws Chat command timed out after 120 seconds.".to_string(),
+            summary: "Sidecar command timed out.".to_string(),
+            permission_mode: permission_mode.to_string(),
+            workspace_path: workspace.path,
+        },
+    }
+}
+
 fn main() {
     let updater_builder = tauri_plugin_updater::Builder::new();
     let updater_builder = match option_env!("JAWS_TAURI_UPDATER_PUBLIC_KEY") {
@@ -357,6 +505,7 @@ fn main() {
             openjaws_smoke,
             openjaws_workspace_smoke,
             resolve_workspace,
+            run_openjaws_chat,
             validate_workspace
         ])
         .run(tauri::generate_context!())

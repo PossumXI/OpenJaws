@@ -10,12 +10,13 @@ Brand line:
 
 - Collapsible side menu for focused workspace viewing.
 - Control dashboard for OpenJaws, Q, Q_agents, OpenCheek, Immaculate, Arobi, and security lanes.
-- Chat window for command entry, live agent/work transcript, a shark-jaw ASCII activity spinner, review-first or fast audited queue mode, notification state, and optional change comparison.
+- Chat window for command entry, live agent/work transcript, per-message shark-jaw activity markers, Q thinking animation, command starter tools, a real Tauri-to-OpenJaws sidecar command bridge, review-first or fast audited queue mode, notification state, and optional change comparison.
 - Terminal workspace tab that can open a native folder picker, validates the selected project folder, stores the workspace locally, shows the exact OpenJaws TUI launch command, and can run the bundled OpenJaws sidecar from that folder.
 - Agent Watch timeline for live orchestration events.
 - Image Studio and Video Studio panels for provider-gated creative work.
 - Arcade Bar with the idle-safe retro runner game `Slow Guy`.
-- Bundled Cyber Frog companion asset in the JAWS blue, teal, and graphite palette.
+- Animated Cyber Frog companion with code-token rewards, feeding, training, gear, decorations, egg progress, naming, and profile persistence.
+- User profile and agent profile surfaces for workspace identity, agent lane status, and pet/code-token state.
 - Arobi ledger and enrollment links.
 - Shared workspace pairing lane for future exchange-code collaboration.
 - Marketplace cards for skills, tools, workflows, games, and third-party integrations.
@@ -109,7 +110,7 @@ Windows bundle smoke, run locally on 2026-04-29:
 - `bun run test`
 - `bun run showcase:copy:check`
 
-0.1.2 adds the native Settings page, keeps update checks available from Settings, bundles the original Cyber Frog companion SVG, adds the Chat/work transcript lane, adds native Open Folder workspace selection, renames the arcade runner to Slow Guy, and keeps the desktop release version aligned across `package.json`, `tauri.conf.json`, `Cargo.toml`, and `Cargo.lock`.
+0.1.2 adds the native Settings page, keeps update checks available from Settings, repairs the JAWS logo and regenerated native icons, upgrades Chat into a slimmer animated workstream with per-message activity markers and a bounded `openjaws --print` sidecar bridge, adds the animated Cyber Frog pet loop, adds user and agent profile areas, adds native Open Folder workspace selection, renames the arcade runner to Slow Guy, and keeps the desktop release version aligned across `package.json`, `tauri.conf.json`, `Cargo.toml`, and `Cargo.lock`.
 
 Implementation references:
 

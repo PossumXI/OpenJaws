@@ -19,6 +19,7 @@ import {
   Sparkles,
   Sun,
   TerminalSquare,
+  UserRound,
   Users
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -28,6 +29,7 @@ export type SectionId =
   | "chat"
   | "terminal"
   | "agents"
+  | "profiles"
   | "studio"
   | "arcade"
   | "ledger"
@@ -71,6 +73,7 @@ export const navItems: NavItem[] = [
   { id: "chat", label: "Chat", icon: MessageSquare },
   { id: "terminal", label: "Terminal", icon: TerminalSquare },
   { id: "agents", label: "Agents", icon: Radar },
+  { id: "profiles", label: "Profiles", icon: UserRound },
   { id: "studio", label: "Studio", icon: Clapperboard },
   { id: "arcade", label: "Arcade", icon: Gamepad2 },
   { id: "ledger", label: "Ledger", icon: ReceiptText },
