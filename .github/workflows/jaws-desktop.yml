@@ -162,18 +162,37 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          gh release view "$TAG_NAME" >/dev/null 2>&1 || gh release create "$TAG_NAME" --draft --title "JAWS ${TAG_NAME}" --notes "Signed JAWS Desktop installer and updater artifacts."
-          mapfile -t files < <(find jaws-desktop-artifacts -type f | sort)
+          release_is_draft="$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
+          if [[ -z "$release_is_draft" ]]; then
+            gh release create "$TAG_NAME" --draft --title "JAWS ${TAG_NAME}" --notes "Signed JAWS Desktop installer and updater artifacts."
+            release_is_draft="true"
+          fi
+          mapfile -t files < <(
+            find jaws-desktop-artifacts -type f \( \
+              -name 'latest.json' -o \
+              -name '*.app.tar.gz' -o \
+              -name '*.dmg' -o \
+              -name '*.deb' -o \
+              -name '*.rpm' -o \
+              -name '*.msi' -o \
+              -name '*.exe' -o \
+              -name '*.sig' \
+            \) | sort
+          )
           if [[ "${#files[@]}" -eq 0 ]]; then
             echo "No JAWS Desktop artifacts found."
             exit 1
           fi
-          mapfile -t existing < <(gh release view "$TAG_NAME" --json assets --jq '.assets[].name' 2>/dev/null || true)
-          for file in "${files[@]}"; do
-            name="$(basename "$file")"
-            if printf '%s\n' "${existing[@]}" | grep -Fxq "$name"; then
-              echo "Refusing to overwrite published asset $name on $TAG_NAME."
-              exit 1
-            fi
-          done
-          gh release upload "$TAG_NAME" "${files[@]}"
+          if [[ "$release_is_draft" != "true" ]]; then
+            mapfile -t existing < <(gh release view "$TAG_NAME" --json assets --jq '.assets[].name' 2>/dev/null || true)
+            for file in "${files[@]}"; do
+              name="$(basename "$file")"
+              if printf '%s\n' "${existing[@]}" | grep -Fxq "$name"; then
+                echo "Refusing to overwrite published asset $name on $TAG_NAME."
+                exit 1
+              fi
+            done
+            gh release upload "$TAG_NAME" "${files[@]}"
+          else
+            gh release upload "$TAG_NAME" --clobber "${files[@]}"
+          fi
