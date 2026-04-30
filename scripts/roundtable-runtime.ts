@@ -16,19 +16,21 @@ type CliOptions = {
   loop: boolean
   intervalMs: number
   maxActionsPerRun: number
+  timeoutMs: number | undefined
   durationHours: number | undefined
   approvalTtlHours: number | undefined
   channelName: string | null
   json: boolean
 }
 
-function parseArgs(argv: string[]): CliOptions {
+export function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     handoffPaths: [],
     allowRoots: [],
     loop: false,
     intervalMs: 60_000,
     maxActionsPerRun: 1,
+    timeoutMs: undefined,
     durationHours: undefined,
     approvalTtlHours: undefined,
     channelName: process.env.DISCORD_ROUNDTABLE_CHANNEL_NAME?.trim() || 'q-roundtable',
@@ -55,6 +57,9 @@ function parseArgs(argv: string[]): CliOptions {
       case '--loop':
         options.loop = true
         break
+      case '--status-only':
+        options.maxActionsPerRun = 0
+        break
       case '--interval-ms':
         if (argv[index + 1]) {
           const parsed = Number.parseInt(argv[index + 1]!, 10)
@@ -67,8 +72,17 @@ function parseArgs(argv: string[]): CliOptions {
       case '--max-actions':
         if (argv[index + 1]) {
           const parsed = Number.parseInt(argv[index + 1]!, 10)
-          if (Number.isFinite(parsed) && parsed > 0) {
+          if (Number.isFinite(parsed) && parsed >= 0) {
             options.maxActionsPerRun = parsed
+          }
+          index += 1
+        }
+        break
+      case '--timeout-ms':
+        if (argv[index + 1]) {
+          const parsed = Number.parseInt(argv[index + 1]!, 10)
+          if (Number.isFinite(parsed) && parsed > 0) {
+            options.timeoutMs = parsed
           }
           index += 1
         }
@@ -141,6 +155,7 @@ async function runIteration(options: CliOptions) {
     maxActionsPerRun: options.maxActionsPerRun,
     durationHours,
     approvalTtlHours,
+    timeoutMs: options.timeoutMs,
     model: resolveRoundtableModel(),
     runnerScriptPath: resolve(stationRoot, 'run-openjaws-visible.ps1'),
     worktreeRoot: resolve(stationRoot, 'openjaws-operator-worktrees'),
@@ -158,6 +173,7 @@ async function runIteration(options: CliOptions) {
           awaitingApprovalCount: result.awaitingApprovalCount,
           durationHours: result.durationHours,
           approvalTtlHours: result.approvalTtlHours,
+          timeoutMs: options.timeoutMs ?? null,
           transitionReceipts: result.transitionReceipts,
           status: result.state.status,
           summary: result.state.lastSummary,
@@ -176,6 +192,7 @@ async function runIteration(options: CliOptions) {
         `Awaiting approval: ${result.awaitingApprovalCount}`,
         `Duration hours: ${result.durationHours}`,
         `Approval TTL hours: ${result.approvalTtlHours}`,
+        `Timeout ms: ${options.timeoutMs ?? 'default'}`,
         `Summary: ${result.state.lastSummary ?? 'none'}`,
         ...(result.state.lastError ? [`Error: ${result.state.lastError}`] : []),
         ...(result.transitionReceipts.length > 0
@@ -190,7 +207,7 @@ async function runIteration(options: CliOptions) {
   console.log(output)
 }
 
-async function main(argv = process.argv.slice(2)) {
+export async function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv)
   if (!options.loop) {
     await runIteration(options)
@@ -202,4 +219,6 @@ async function main(argv = process.argv.slice(2)) {
   }
 }
 
-await main()
+if (import.meta.main) {
+  await main()
+}
