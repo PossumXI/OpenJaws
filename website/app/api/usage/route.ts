@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import {
+  buildHostedQServiceUnavailableResponse,
   proxyHostedQServiceRequest,
   resolveHostedQServiceMode,
 } from '../../../lib/hostedQService'
@@ -13,10 +14,17 @@ type UsageRequest = {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
-  if (resolveHostedQServiceMode() === 'proxy') {
+  const mode = resolveHostedQServiceMode()
+  if (mode === 'proxy') {
     return proxyHostedQServiceRequest({
       action: 'usage',
       request,
+    })
+  }
+  if (mode !== 'filesystem') {
+    return buildHostedQServiceUnavailableResponse({
+      action: 'usage',
+      mode,
     })
   }
 

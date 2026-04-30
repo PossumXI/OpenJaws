@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">JAWS Desktop Logo</title>
+  <desc id="desc">Blue shark jaws rising through water with bright teeth and a clean app-icon silhouette.</desc>
+  <defs>
+    <linearGradient id="jaws-bg" x1="118" x2="906" y1="84" y2="944" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#08263f"/>
+      <stop offset=".52" stop-color="#07131f"/>
+      <stop offset="1" stop-color="#03080d"/>
+    </linearGradient>
+    <linearGradient id="jaws-blue" x1="228" x2="804" y1="182" y2="858" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67cdf4"/>
+      <stop offset=".45" stop-color="#1572ad"/>
+      <stop offset="1" stop-color="#062946"/>
+    </linearGradient>
+    <linearGradient id="jaws-water" x1="132" x2="906" y1="640" y2="858" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#55d6ef"/>
+      <stop offset=".5" stop-color="#147cae"/>
+      <stop offset="1" stop-color="#083c63"/>
+    </linearGradient>
+    <filter id="jaws-shadow" x="-18%" y="-18%" width="136%" height="136%">
+      <feDropShadow dx="0" dy="26" stdDeviation="24" flood-color="#02070b" flood-opacity=".45"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" rx="184" fill="url(#jaws-bg)"/>
+  <path d="M96 738c88-48 171-56 250-25 76 30 154 22 235-24 82-47 162-48 241-3 48 28 86 33 114 17v223H96Z" fill="url(#jaws-water)"/>
+  <path d="M116 708c66-26 127-24 182 6 78 42 164 36 258-17 91-52 176-52 254 0 43 28 81 31 114 8" fill="none" stroke="#9be8fb" stroke-linecap="round" stroke-width="24"/>
+  <g filter="url(#jaws-shadow)">
+    <path d="M214 674c24-130 76-247 156-351 50-66 98-106 142-121 44 15 92 55 142 121 80 104 132 221 156 351-60 83-157 128-298 128S274 757 214 674Z" fill="url(#jaws-blue)"/>
+    <path d="M512 202c-70 83-119 174-146 272-20 73-26 136-18 188-48-2-91-12-130-31 30-118 81-222 152-308 50-66 98-106 142-121Z" fill="#b6efff" opacity=".2"/>
+    <path d="M328 626c16-112 63-211 142-296 24-26 60-26 84 0 79 85 126 184 142 296-44 70-105 108-184 108S372 696 328 626Z" fill="#05070b"/>
+    <path d="M388 585c31-49 72-79 124-91 52 12 93 42 124 91-25 35-66 56-124 56s-99-21-124-56Z" fill="#7c111c"/>
+    <path d="M350 548 387 430l34 122 37-148 36 154 18-88 18 88 36-154 37 148 34-122 37 118" fill="#f7fbf8" stroke="#dcefed" stroke-linejoin="round" stroke-width="6"/>
+    <path d="M368 648 402 738l32-104 38 118 40-111 40 111 38-118 32 104 34-90" fill="#f7fbf8" stroke="#dcefed" stroke-linejoin="round" stroke-width="6"/>
+    <path d="M296 526c-62-45-120-58-174-38 32-58 93-82 183-70Z" fill="#2394ce"/>
+    <path d="M728 526c62-45 120-58 174-38-32-58-93-82-183-70Z" fill="#2394ce"/>
+    <path d="M418 224c26-53 58-88 96-105 37 17 68 52 94 105-31-12-62-18-94-18-33 0-65 6-96 18Z" fill="#8be5ff"/>
+  </g>
+  <path d="M250 360c34-21 72-37 114-48M660 312c42 11 80 27 114 48M180 612c-34-16-68-19-102-8M844 612c34-16 68-19 102-8" fill="none" stroke="#cff7ff" stroke-linecap="round" stroke-width="17"/>
+</svg>

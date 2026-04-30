@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createStripeClient, resolveStripeRuntimeConfig } from '../../../../lib/stripe'
-import { resolveHostedQServiceMode } from '../../../../lib/hostedQService'
+import {
+  buildHostedQServiceUnavailableResponse,
+  proxyHostedQServiceJsonPayload,
+  resolveHostedQServiceMode,
+} from '../../../../lib/hostedQService'
 import { applyHostedQStripeEvent } from '../../../../lib/qHostedAccess'
 
 export const runtime = 'nodejs'
@@ -34,13 +38,14 @@ export async function POST(request: Request): Promise<NextResponse> {
   const rawBody = await request.text()
 
   try {
-    const event = createStripeClient(config).webhooks.constructEvent(
+    const event = await createStripeClient(config).webhooks.constructEventAsync(
       rawBody,
       signature,
       config.webhookSecret,
     )
 
-    if (resolveHostedQServiceMode() === 'filesystem') {
+    const mode = resolveHostedQServiceMode()
+    if (mode === 'filesystem') {
       const result = await applyHostedQStripeEvent({ event })
       return NextResponse.json(result.body, {
         status: result.status,
@@ -48,12 +53,23 @@ export async function POST(request: Request): Promise<NextResponse> {
       })
     }
 
-    return NextResponse.json({
-      ok: true,
-      received: true,
-      type: event.type,
-      message:
-        'Stripe webhook verified. Attach entitlement persistence and credit updates next.',
+    if (mode === 'proxy') {
+      return proxyHostedQServiceJsonPayload({
+        action: 'stripe-webhook',
+        payload: {
+          verified: true,
+          type: event.type,
+          event,
+        },
+        headers: {
+          'x-q-stripe-event-type': event.type,
+        },
+      })
+    }
+
+    return buildHostedQServiceUnavailableResponse({
+      action: 'stripe-webhook',
+      mode,
     })
   } catch (error) {
     return NextResponse.json(
