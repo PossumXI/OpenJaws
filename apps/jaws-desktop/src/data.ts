@@ -68,6 +68,14 @@ export interface MarketplaceItem {
   description: string;
 }
 
+export interface LayoutTheme {
+  id: ThemeId;
+  label: string;
+  icon: LucideIcon;
+  description: string;
+  accent: string;
+}
+
 export const navItems: NavItem[] = [
   { id: "control", label: "Control", icon: LayoutDashboard },
   { id: "chat", label: "Chat", icon: MessageSquare },
@@ -147,11 +155,47 @@ export const marketplaceItems: MarketplaceItem[] = [
   }
 ];
 
-export const layoutThemes: Array<{ id: ThemeId; label: string; icon: LucideIcon }> = [
-  { id: "default", label: "Default", icon: Sun },
-  { id: "spy", label: "Spy", icon: LockKeyhole },
-  { id: "scifi", label: "Sci-Fi", icon: Boxes },
-  { id: "halloween", label: "Halloween", icon: Moon },
-  { id: "hacking", label: "Hacking", icon: TerminalSquare },
-  { id: "coding", label: "Coding", icon: Code2 }
+export const layoutThemes: LayoutTheme[] = [
+  {
+    id: "default",
+    label: "Default",
+    icon: Sun,
+    description: "Quiet command cockpit with balanced release, chat, and agent contrast.",
+    accent: "#78d6a3"
+  },
+  {
+    id: "spy",
+    label: "Spy",
+    icon: LockKeyhole,
+    description: "Low-light operations board with brass alerts and calm surveillance greens.",
+    accent: "#9fd174"
+  },
+  {
+    id: "scifi",
+    label: "Sci-Fi",
+    icon: Boxes,
+    description: "Cool station glass, cyan telemetry, and violet route accents.",
+    accent: "#67e8f9"
+  },
+  {
+    id: "halloween",
+    label: "Halloween",
+    icon: Moon,
+    description: "Midnight panels with hot pumpkin controls and spectral violet markers.",
+    accent: "#ff8a3d"
+  },
+  {
+    id: "hacking",
+    label: "Hacking",
+    icon: TerminalSquare,
+    description: "Dense terminal energy with bright green actions and amber warnings.",
+    accent: "#3df278"
+  },
+  {
+    id: "coding",
+    label: "Coding",
+    icon: Code2,
+    description: "Readable editor-inspired work mode with blue focus and soft green success.",
+    accent: "#7aa7ff"
+  }
 ];

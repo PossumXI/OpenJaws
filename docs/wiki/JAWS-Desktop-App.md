@@ -14,15 +14,17 @@ Brand line:
 - Terminal workspace tab that can open a native folder picker, validates the selected project folder, stores the workspace locally, shows the exact OpenJaws TUI launch command, and can run the bundled OpenJaws sidecar from that folder.
 - Agent Watch timeline for live orchestration events.
 - Image Studio and Video Studio panels for provider-gated creative work.
-- Arcade Bar with the idle-safe retro runner game `Slow Guy`.
+- Arcade Bar with `Slow Guy`, a scored runner with lane controls, jump/duck/dash mechanics, stamina, code-token collection, objective state, best-score persistence, and Cyber Frog rewards.
+- Texas Hold'em Dealer Roundtable foundation with deterministic local dealing, table chat, Q/OpenCheek seats, showdown evaluation, secure scope chips, and multiplayer room metadata ready for a signed websocket transport.
+- 3D Sandbox foundation tab for user, pet, Q, agent forge, and PvP-table presence, with capability-manifest and workspace-scope review gates for future community agent release.
 - Animated Cyber Frog companion with code-token rewards, feeding, training, gear, decorations, egg progress, naming, and profile persistence.
 - User profile and agent profile surfaces for workspace identity, agent lane status, and pet/code-token state.
 - Arobi ledger and enrollment links.
 - Shared workspace pairing lane for future exchange-code collaboration.
 - Marketplace cards for skills, tools, workflows, games, and third-party integrations.
 - Billing copy for a 14-day trial and flat `$12.99/mo` IDE subscription, with Q credits separate.
-- Settings page with release status, signed update checks, install action, appearance mode, and theme controls.
-- Layout themes: default, spy, sci-fi, halloween, hacking, and coding.
+- Settings page with release status, signed update checks, install action, mirror/update-pipeline diagnostics, appearance mode, and theme controls.
+- Layout themes: default, spy, sci-fi, halloween, hacking, and coding, now with stronger palettes, descriptions, and visible accent swatches.
 
 ## Release Boundary
 
@@ -128,6 +130,15 @@ bun run jaws:mirror:check --json --out .tmp-jaws-release-mirror-health.json
 
 The gate checks both public mirror pages, every public mirror redirect, the GitHub `jaws-v0.1.2` release asset list, and the signed updater manifest entries for Windows and macOS. When `OPENJAWS_RELEASE_HEALTH_PRIVATE_KEY` or `OPENJAWS_RELEASE_MANIFEST_PRIVATE_KEY` is present, the receipt is signed with the existing Ed25519 release-manifest signature format.
 
+Arcade and update-pipeline local verification, run on 2026-04-30:
+
+- `bun test src/games.test.ts`
+- `bun run test`
+- `bun run build`
+- `bun run verify`
+
+This pass adds the verifier-backed `Slow Guy` mechanics, Hold'em roundtable game state, `pokersolver` showdown scoring, Settings update-pipeline diagnostics, stronger layout themes, and the first secure multiplayer/sandbox UI foundation for chat rooms, PvP tables, pets, and community agent profiles.
+
 Implementation references:
 
 - Tauri updater plugin: `https://v2.tauri.app/plugin/updater/`
@@ -136,9 +147,11 @@ Implementation references:
 
 ## Next Production Tasks
 
-1. Implement the dynamic `/api/jaws/{target}/{arch}/{current_version}` updater endpoint on `iorch.net`; `qline.site` already has the release mirror and updater manifest redirect live.
-2. Replace the desktop timeline fixture with live event streaming from the OpenJaws route/runtime log bus.
-3. Connect Arobi enrollment to the real account and ledger APIs.
-4. Implement exchange-code collaboration with signed workspace invites, revocation, and explicit pooled-credit consent.
-5. Add marketplace package signing, review states, sandbox scopes, and rollback metadata.
-6. Remove the remaining hardcoded `jaws-v0.1.2` mirror metadata once the next JAWS release train has a generated release-index source of truth.
+1. Wire the Settings update-pipeline panel to live mirror probes and signed updater telemetry inside the Tauri runtime.
+2. Implement the dynamic `/api/jaws/{target}/{arch}/{current_version}` updater endpoint on `iorch.net`; `qline.site` already has the release mirror and updater manifest redirect live.
+3. Replace the desktop timeline fixture with live event streaming from the OpenJaws route/runtime log bus.
+4. Add the secure websocket room service for Hold'em PvP, world chat, pet presence, and signed agent sandbox presence.
+5. Connect Arobi enrollment to the real account and ledger APIs.
+6. Implement exchange-code collaboration with signed workspace invites, revocation, and explicit pooled-credit consent.
+7. Add marketplace package signing, review states, sandbox scopes, and rollback metadata.
+8. Remove the remaining hardcoded `jaws-v0.1.2` mirror metadata once the next JAWS release train has a generated release-index source of truth.

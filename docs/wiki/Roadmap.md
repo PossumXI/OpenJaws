@@ -6,6 +6,8 @@
 - remote result streaming or continuous reconciliation in the worker loop
 - tighter public-release help and recovery clarity across remaining operator surfaces
 - Harbor / Terminal-Bench agent adapter work for running OpenJaws or `Q` against external benchmark suites with real provenance
+- JAWS live update pipeline hardening: native updater telemetry, mirror probes, signed manifest receipts, and release-index source of truth
+- JAWS multiplayer foundation: signed websocket rooms for Hold'em PvP, world chat, pet presence, and sandboxed community agents
 - broader contribution templates and issue triage
 - public wiki synchronization from repo docs
 

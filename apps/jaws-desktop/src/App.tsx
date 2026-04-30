@@ -45,6 +45,17 @@ import {
   type SectionId,
   type ThemeId
 } from "./data";
+import {
+  addHoldemChat,
+  advanceHoldemRound,
+  advanceSlowGuy,
+  createHoldemTable,
+  createSlowGuyState,
+  describeCard,
+  type HoldemTableState,
+  type SlowGuyAction,
+  type SlowGuyState
+} from "./games";
 import { buildWorkspaceSelection, type TerminalPlatform } from "./workspace";
 
 interface BackendStatus {
@@ -136,6 +147,15 @@ interface AgentProfile {
   status: string;
   load: number;
 }
+
+interface UpdatePipelineEntry {
+  id: string;
+  label: string;
+  status: "ready" | "checking" | "ok" | "error" | "info";
+  detail: string;
+}
+
+type ArcadeView = "slow-guy" | "holdem" | "world";
 
 const fallbackStatus: BackendStatus = {
   appVersion: "0.1.2",
@@ -256,6 +276,33 @@ const agentProfiles: AgentProfile[] = [
   { name: "Immaculate", role: "Crew pacing", status: "Ready", load: 28 }
 ];
 
+const initialUpdatePipeline: UpdatePipelineEntry[] = [
+  {
+    id: "runtime",
+    label: "Tauri updater",
+    status: "ready",
+    detail: "Waiting for a signed update check from the native runtime."
+  },
+  {
+    id: "qline",
+    label: "qline.site mirror",
+    status: "ready",
+    detail: "https://qline.site/downloads/jaws/latest.json"
+  },
+  {
+    id: "iorch",
+    label: "iorch.net mirror",
+    status: "ready",
+    detail: "https://iorch.net/downloads/jaws/latest.json"
+  },
+  {
+    id: "github",
+    label: "GitHub release",
+    status: "ready",
+    detail: "jaws-v0.1.2 signed assets"
+  }
+];
+
 function hasTauriRuntime() {
   return "__TAURI_INTERNALS__" in window;
 }
@@ -286,6 +333,37 @@ function loadStoredValue<T>(key: string, fallback: T): T {
   }
 }
 
+function loadSlowGuyState(): SlowGuyState {
+  const bestScore = Number(localStorage.getItem("jaws.slowGuyBest") ?? "0") || 0;
+  const fallback = createSlowGuyState(bestScore);
+  const stored = loadStoredValue<Partial<SlowGuyState> | null>("jaws.slowGuy", null);
+  if (!stored || typeof stored !== "object") return fallback;
+  return {
+    ...fallback,
+    ...stored,
+    bestScore: Math.max(bestScore, stored.bestScore ?? fallback.bestScore),
+    hazards: Array.isArray(stored.hazards) ? stored.hazards : fallback.hazards,
+    coins: Array.isArray(stored.coins) ? stored.coins : fallback.coins
+  };
+}
+
+function loadHoldemTable(playerName: string): HoldemTableState {
+  const fallback = createHoldemTable(playerName);
+  const stored = loadStoredValue<Partial<HoldemTableState> | null>("jaws.holdemTable", null);
+  if (!stored || typeof stored !== "object") return fallback;
+  return {
+    ...fallback,
+    ...stored,
+    deck: Array.isArray(stored.deck) ? stored.deck : fallback.deck,
+    communityCards: Array.isArray(stored.communityCards) ? stored.communityCards : fallback.communityCards,
+    seats: Array.isArray(stored.seats) ? stored.seats : fallback.seats,
+    winners: Array.isArray(stored.winners) ? stored.winners : fallback.winners,
+    chat: Array.isArray(stored.chat) ? stored.chat : fallback.chat,
+    multiplayer: stored.multiplayer ?? fallback.multiplayer,
+    sandbox: stored.sandbox ?? fallback.sandbox
+  };
+}
+
 function formatOpenJawsChatResult(result: OpenJawsChatResult) {
   const output = result.stdout || result.stderr || "OpenJaws returned no text output.";
   const code = result.code === null ? "unknown" : String(result.code);
@@ -310,9 +388,9 @@ export function App() {
   const [workspaceStatus, setWorkspaceStatus] = useState<WorkspaceStatus>(fallbackWorkspace);
   const [workspaceSmoke, setWorkspaceSmoke] = useState<SidecarSmoke | null>(null);
   const [updateState, setUpdateState] = useState("Not checked");
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updatePipeline, setUpdatePipeline] = useState<UpdatePipelineEntry[]>(initialUpdatePipeline);
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
-  const [arcadeRunning, setArcadeRunning] = useState(true);
-  const [slowGuyScore, setSlowGuyScore] = useState(12);
   const [account, setAccount] = useState<AccountSession | null>(() => loadStoredAccountSession());
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(initialMessages);
@@ -330,6 +408,10 @@ export function App() {
   const [userProfile, setUserProfile] = useState<UserProfile>(() =>
     loadStoredValue("jaws.userProfile", defaultUserProfile)
   );
+  const [arcadeView, setArcadeView] = useState<ArcadeView>("slow-guy");
+  const [slowGuy, setSlowGuy] = useState<SlowGuyState>(() => loadSlowGuyState());
+  const [holdemTable, setHoldemTable] = useState<HoldemTableState>(() => loadHoldemTable("Founder"));
+  const [holdemChatInput, setHoldemChatInput] = useState("");
   const [jawFrame, setJawFrame] = useState(0);
 
   useEffect(() => {
@@ -389,12 +471,48 @@ export function App() {
   }, [userProfile]);
 
   useEffect(() => {
-    if (!arcadeRunning) return;
+    if (!slowGuy.running || slowGuy.gameOver) return;
     const timer = window.setInterval(() => {
-      setSlowGuyScore((score) => (score + 1) % 1000);
-    }, 1400);
+      setSlowGuy((state) => advanceSlowGuy(state, "tick"));
+    }, 560);
     return () => window.clearInterval(timer);
-  }, [arcadeRunning]);
+  }, [slowGuy.running, slowGuy.gameOver]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.slowGuy", JSON.stringify(slowGuy));
+    localStorage.setItem("jaws.slowGuyBest", String(slowGuy.bestScore));
+  }, [slowGuy]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.holdemTable", JSON.stringify(holdemTable));
+  }, [holdemTable]);
+
+  useEffect(() => {
+    if (active !== "arcade" || arcadeView !== "slow-guy") return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const keyMap: Record<string, SlowGuyAction> = {
+        ArrowLeft: "left",
+        ArrowRight: "right",
+        ArrowUp: "jump",
+        " ": "jump",
+        ArrowDown: "duck",
+        s: "duck",
+        S: "duck",
+        d: "dash",
+        D: "dash",
+        p: "pause",
+        P: "pause",
+        r: "reset",
+        R: "reset"
+      };
+      const action = keyMap[event.key];
+      if (!action) return;
+      event.preventDefault();
+      setSlowGuy((state) => advanceSlowGuy(state, action));
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [active, arcadeView]);
 
   const activeTitle = useMemo(() => navItems.find((item) => item.id === active)?.label ?? "Control", [active]);
   const workspaceSelection = useMemo(
@@ -508,17 +626,64 @@ export function App() {
   }
 
   async function checkForUpdates() {
+    setUpdateChecking(true);
+    setPendingUpdate(null);
     if (!hasTauriRuntime()) {
       setUpdateState("Tauri runtime required");
+      setUpdatePipeline([
+        {
+          id: "runtime",
+          label: "Tauri updater",
+          status: "error",
+          detail: "The signed updater only runs inside the native JAWS desktop shell."
+        },
+        ...status.releaseSites.map((site) => ({
+          id: site,
+          label: site.includes("iorch") ? "iorch.net mirror" : "qline.site mirror",
+          status: "info" as const,
+          detail: site
+        }))
+      ]);
+      setUpdateChecking(false);
       return;
     }
 
     try {
+      setUpdatePipeline((entries) =>
+        entries.map((entry) =>
+          entry.id === "runtime"
+            ? { ...entry, status: "checking", detail: "Calling Tauri updater.check() against signed endpoints." }
+            : { ...entry, status: "checking" }
+        )
+      );
       const update = await check();
       setPendingUpdate(update);
       setUpdateState(update ? `Update ${update.version} ready` : "Current release");
+      setUpdatePipeline((entries) =>
+        entries.map((entry) =>
+          entry.id === "runtime"
+            ? {
+                ...entry,
+                status: "ok",
+                detail: update
+                  ? `Signed update ${update.version} is ready.`
+                  : "No newer signed release was offered by the updater."
+              }
+            : { ...entry, status: "ok", detail: entry.detail }
+        )
+      );
     } catch (error) {
-      setUpdateState(String(error));
+      const detail = String(error);
+      setUpdateState(detail);
+      setUpdatePipeline((entries) =>
+        entries.map((entry) =>
+          entry.id === "runtime"
+            ? { ...entry, status: "error", detail }
+            : { ...entry, status: "info", detail: entry.detail }
+        )
+      );
+    } finally {
+      setUpdateChecking(false);
     }
   }
 
@@ -528,12 +693,30 @@ export function App() {
       return;
     }
     setUpdateState(`Downloading ${pendingUpdate.version}`);
-    await pendingUpdate.downloadAndInstall((event) => {
-      if (event.event === "Started") setUpdateState(`Downloading ${pendingUpdate.version}`);
-      if (event.event === "Progress") setUpdateState(`Downloading ${pendingUpdate.version}`);
-      if (event.event === "Finished") setUpdateState("Installing update");
-    });
-    setUpdateState("Update installed. Restart JAWS to finish.");
+    try {
+      await pendingUpdate.downloadAndInstall((event) => {
+        if (event.event === "Started") setUpdateState(`Downloading ${pendingUpdate.version}`);
+        if (event.event === "Progress") setUpdateState(`Downloading ${pendingUpdate.version}`);
+        if (event.event === "Finished") setUpdateState("Installing update");
+      });
+      setUpdateState("Update installed. Restart JAWS to finish.");
+      setUpdatePipeline((entries) =>
+        entries.map((entry) =>
+          entry.id === "runtime"
+            ? { ...entry, status: "ok", detail: `Installed ${pendingUpdate.version}; restart required.` }
+            : entry
+        )
+      );
+    } catch (error) {
+      setUpdateState(String(error));
+      setUpdatePipeline((entries) =>
+        entries.map((entry) =>
+          entry.id === "runtime"
+            ? { ...entry, status: "error", detail: `Install failed: ${String(error)}` }
+            : entry
+        )
+      );
+    }
   }
 
   async function submitChatCommand(event: FormEvent<HTMLFormElement>) {
@@ -737,6 +920,32 @@ export function App() {
       return;
     }
     window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  function dispatchSlowGuy(action: SlowGuyAction) {
+    setSlowGuy((state) => advanceSlowGuy(state, action));
+  }
+
+  function advanceHoldem() {
+    const next = advanceHoldemRound(holdemTable);
+    setHoldemTable(next);
+    if (next.phase === "showdown" && holdemTable.phase !== "showdown") {
+      setPet((current) => ({
+        ...current,
+        tokens: Math.min(999, current.tokens + 12),
+        mood: "table winner energy"
+      }));
+    }
+  }
+
+  function resetHoldemRoom() {
+    setHoldemTable(createHoldemTable(userProfile.name || account?.displayName || "Founder", `jaws-holdem-${Date.now()}`));
+  }
+
+  function sendHoldemChat(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setHoldemTable((table) => addHoldemChat(table, userProfile.name || "Founder", holdemChatInput));
+    setHoldemChatInput("");
   }
 
   return (
@@ -1181,38 +1390,46 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
         {active === "arcade" && (
           <section className="wide-panel arcade-panel">
             <PanelHeader icon={GamepadIcon} label="Arcade Bar" />
-            <div className="slow-guy-header">
-              <div>
-                <span>Retro wait game</span>
-                <strong>Slow Guy</strong>
-              </div>
-              <div className="slow-guy-stats">
-                <StatusLine label="Score" value={String(slowGuyScore)} />
-                <StatusLine label="Patience" value={arcadeRunning ? "Steady" : "Paused"} />
-              </div>
+            <div className="arcade-tabs" role="tablist" aria-label="Arcade games">
+              <button
+                className={arcadeView === "slow-guy" ? "theme-chip active" : "theme-chip"}
+                type="button"
+                onClick={() => setArcadeView("slow-guy")}
+              >
+                Slow Guy
+              </button>
+              <button
+                className={arcadeView === "holdem" ? "theme-chip active" : "theme-chip"}
+                type="button"
+                onClick={() => setArcadeView("holdem")}
+              >
+                Hold'em Roundtable
+              </button>
+              <button
+                className={arcadeView === "world" ? "theme-chip active" : "theme-chip"}
+                type="button"
+                onClick={() => setArcadeView("world")}
+              >
+                3D Sandbox
+              </button>
             </div>
-            <div className="arcade-layout">
-              <div className="arcade-stage">
-                <div className="slow-guy-skyline">
-                  <span />
-                  <span />
-                  <span />
-                </div>
-                <div className={arcadeRunning ? "runner running" : "runner"} />
-                <div className="slow-guy-pack" />
-                <div className="track">
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </div>
-              </div>
-              <CyberPet pet={pet} compact onFeed={feedPet} onTrain={trainPet} onEquip={equipPet} onDecorate={decoratePet} />
-            </div>
-            <button className="text-button" type="button" onClick={() => setArcadeRunning((value) => !value)}>
-              {arcadeRunning ? <Pause size={16} /> : <Play size={16} />}
-              {arcadeRunning ? "Pause" : "Play"}
-            </button>
+
+            {arcadeView === "slow-guy" && (
+              <SlowGuyGame state={slowGuy} pet={pet} onAction={dispatchSlowGuy} onFeed={feedPet} onTrain={trainPet} onEquip={equipPet} onDecorate={decoratePet} />
+            )}
+
+            {arcadeView === "holdem" && (
+              <HoldemRoundtable
+                table={holdemTable}
+                chatInput={holdemChatInput}
+                onChatInput={setHoldemChatInput}
+                onSendChat={sendHoldemChat}
+                onAdvance={advanceHoldem}
+                onReset={resetHoldemRoom}
+              />
+            )}
+
+            {arcadeView === "world" && <SandboxWorldFoundation pet={pet} />}
           </section>
         )}
 
@@ -1304,7 +1521,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                   <div className="button-row">
                     <button className="text-button primary" type="button" onClick={checkForUpdates}>
                       <RadioTower size={16} />
-                      Check Updates
+                      {updateChecking ? "Checking" : "Check Updates"}
                     </button>
                     {pendingUpdate && (
                       <button className="text-button" type="button" onClick={installUpdate}>
@@ -1313,6 +1530,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                       </button>
                     )}
                   </div>
+                  <UpdatePipelinePanel entries={updatePipeline} releaseSites={status.releaseSites} />
                 </section>
 
                 <section className="settings-group">
@@ -1347,7 +1565,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                           onClick={() => setTheme(layout.id)}
                         >
                           <Icon size={16} />
-                          {layout.label}
+                          <span>{layout.label}</span>
                         </button>
                       );
                     })}
@@ -1377,7 +1595,9 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                     onClick={() => setTheme(layout.id)}
                   >
                     <Icon size={16} />
-                    {layout.label}
+                    <span>{layout.label}</span>
+                    <small>{layout.description}</small>
+                    <i style={{ background: layout.accent }} />
                   </button>
                 );
               })}
@@ -1513,6 +1733,362 @@ function CyberPet({
           Decor
         </button>
       </div>
+    </div>
+  );
+}
+
+function UpdatePipelinePanel({
+  entries,
+  releaseSites
+}: {
+  entries: UpdatePipelineEntry[];
+  releaseSites: string[];
+}) {
+  return (
+    <div className="update-pipeline">
+      {entries.map((entry) => (
+        <article className={`pipeline-step ${entry.status}`} key={entry.id}>
+          <div className="pipeline-icon">
+            {entry.status === "ok" ? (
+              <CheckCircle2 size={16} />
+            ) : entry.status === "error" ? (
+              <XCircle size={16} />
+            ) : entry.status === "checking" ? (
+              <RefreshCcw size={16} />
+            ) : (
+              <CircleDot size={16} />
+            )}
+          </div>
+          <div>
+            <strong>{entry.label}</strong>
+            <span>{entry.detail}</span>
+          </div>
+        </article>
+      ))}
+      <div className="release-mirrors">
+        {(releaseSites.length > 0 ? releaseSites : fallbackStatus.releaseSites).map((site) => (
+          <span key={site}>{site}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SlowGuyGame({
+  state,
+  pet,
+  onAction,
+  onFeed,
+  onTrain,
+  onEquip,
+  onDecorate
+}: {
+  state: SlowGuyState;
+  pet: CyberPetState;
+  onAction: (action: SlowGuyAction) => void;
+  onFeed: () => void;
+  onTrain: () => void;
+  onEquip: () => void;
+  onDecorate: () => void;
+}) {
+  const laneNames = ["High lane", "Middle lane", "Low lane"];
+  return (
+    <div className="slow-guy-shell">
+      <section className="slow-guy-main">
+        <div className="slow-guy-scoreboard">
+          <StatusLine label="Score" value={String(state.score)} />
+          <StatusLine label="Best" value={String(state.bestScore)} />
+          <StatusLine label="Distance" value={`${state.distance}m`} />
+          <StatusLine label="Combo" value={`x${state.combo}`} />
+          <StatusLine label="Stamina" value={`${state.stamina}%`} />
+        </div>
+
+        <div className="slow-guy-objective">
+          <strong>Slow Guy</strong>
+          <span>{state.objective}</span>
+          <small>{state.lastEvent}</small>
+        </div>
+
+        <div className={`arcade-stage slow-guy-stage ${state.gameOver ? "game-over" : ""}`}>
+          <div className="slow-guy-skyline">
+            <span />
+            <span />
+            <span />
+          </div>
+          {laneNames.map((lane, index) => (
+            <div className="slow-lane" key={lane} style={{ top: `${19 + index * 31}%` }}>
+              <span>{lane}</span>
+            </div>
+          ))}
+          <div
+            className={`slow-runner ${state.running ? "running" : ""} ${state.pose}`}
+            style={{ top: `${14 + state.lane * 31}%` }}
+            aria-label={`Slow Guy in lane ${state.lane + 1}`}
+          >
+            <span />
+          </div>
+          {state.hazards.map((hazard) => (
+            <span
+              className={`slow-hazard ${hazard.type}`}
+              key={hazard.id}
+              style={{ left: `${hazard.x}%`, top: `${16 + hazard.lane * 31}%` }}
+              title={hazard.type}
+            />
+          ))}
+          {state.coins.map((coin) => (
+            <span
+              className="slow-coin"
+              key={coin.id}
+              style={{ left: `${coin.x}%`, top: `${17 + coin.lane * 31}%` }}
+            />
+          ))}
+          <div className="slow-goal-line" />
+          {state.gameOver && (
+            <div className="slow-game-over">
+              <strong>Run ended</strong>
+              <span>Reset and chase the 500 point objective.</span>
+            </div>
+          )}
+        </div>
+
+        <div className="slow-controls" aria-label="Slow Guy controls">
+          <button className="text-button" type="button" onClick={() => onAction("left")}>
+            Left
+          </button>
+          <button className="text-button primary" type="button" onClick={() => onAction("jump")}>
+            Jump
+          </button>
+          <button className="text-button" type="button" onClick={() => onAction("duck")}>
+            Duck
+          </button>
+          <button className="text-button" type="button" onClick={() => onAction("right")}>
+            Right
+          </button>
+          <button className="text-button" type="button" onClick={() => onAction("dash")}>
+            Dash
+          </button>
+          <button className="text-button" type="button" onClick={() => onAction("pause")}>
+            {state.running ? <Pause size={15} /> : <Play size={15} />}
+            {state.running ? "Pause" : "Resume"}
+          </button>
+          <button className="text-button" type="button" onClick={() => onAction("reset")}>
+            <RefreshCcw size={15} />
+            Reset
+          </button>
+        </div>
+      </section>
+
+      <aside className="slow-guy-side">
+        <CyberPet pet={pet} compact onFeed={onFeed} onTrain={onTrain} onEquip={onEquip} onDecorate={onDecorate} />
+        <div className="control-card">
+          <strong>Controls</strong>
+          <span>Arrow keys move lanes. Space jumps. S ducks. D dashes. P pauses. R resets.</span>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function HoldemRoundtable({
+  table,
+  chatInput,
+  onChatInput,
+  onSendChat,
+  onAdvance,
+  onReset
+}: {
+  table: HoldemTableState;
+  chatInput: string;
+  onChatInput: (value: string) => void;
+  onSendChat: (event: FormEvent<HTMLFormElement>) => void;
+  onAdvance: () => void;
+  onReset: () => void;
+}) {
+  const buttonLabel = table.phase === "lobby" ? "Deal Hand" : table.phase === "showdown" ? "Next Hand" : "Next Street";
+  return (
+    <div className="holdem-shell">
+      <section className="holdem-table-panel">
+        <div className="holdem-topline">
+          <div>
+            <span>Texas Hold'em Dealer Roundtable</span>
+            <strong>{table.multiplayer.roomCode}</strong>
+          </div>
+          <div>
+            <span>{table.multiplayer.transport}</span>
+            <strong>{table.phase}</strong>
+          </div>
+          <div>
+            <span>Pot</span>
+            <strong>{table.pot}</strong>
+          </div>
+        </div>
+
+        <div className="community-row" aria-label="Community cards">
+          {table.communityCards.length > 0
+            ? table.communityCards.map((card) => <PlayingCard card={card} key={card} />)
+            : Array.from({ length: 5 }, (_, index) => <PlayingCard card="" hidden key={`slot-${index}`} />)}
+        </div>
+
+        <div className="holdem-seat-grid">
+          {table.seats.map((seat) => (
+            <article className={`holdem-seat ${seat.kind} ${seat.connected ? "connected" : "offline"}`} key={seat.id}>
+              <header>
+                <div>
+                  <strong>{seat.name}</strong>
+                  <span>{seat.kind === "open" ? "Invite ready" : seat.agentName ?? seat.petName ?? "Player"}</span>
+                </div>
+                <small>{seat.connected ? "online" : "open"}</small>
+              </header>
+              <div className="card-row">
+                {seat.holeCards.length > 0 ? (
+                  seat.holeCards.map((card) => (
+                    <PlayingCard card={card} hidden={seat.kind === "agent" && table.phase !== "showdown"} key={card} />
+                  ))
+                ) : (
+                  <>
+                    <PlayingCard card="" hidden />
+                    <PlayingCard card="" hidden />
+                  </>
+                )}
+              </div>
+              <StatusLine label="Chips" value={String(seat.chips)} />
+              <StatusLine label="Bet" value={String(seat.currentBet)} />
+              <div className="scope-row">
+                {seat.secureScopes.slice(0, 3).map((scope) => (
+                  <span key={scope}>{scope}</span>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <aside className="holdem-side">
+        <div className="holdem-actions">
+          <button className="text-button primary" type="button" onClick={onAdvance}>
+            <Play size={15} />
+            {buttonLabel}
+          </button>
+          <button className="text-button" type="button" onClick={onReset}>
+            <RefreshCcw size={15} />
+            New Room
+          </button>
+        </div>
+
+        <div className="holdem-status">
+          <strong>{table.lastEvent}</strong>
+          <span>Presence: {table.multiplayer.presence.join(", ")}</span>
+          <span>Mode: {table.multiplayer.mode}</span>
+        </div>
+
+        {table.winners.length > 0 && (
+          <div className="winner-list">
+            <strong>Showdown</strong>
+            {table.winners.map((winner) => (
+              <span key={winner.seatId}>
+                {winner.name}: {winner.description}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="world-chat">
+          <strong>Table Chat</strong>
+          <div className="world-chat-log">
+            {table.chat.map((message) => (
+              <p className={message.channel} key={message.id}>
+                <span>{message.speaker}</span>
+                {message.body}
+              </p>
+            ))}
+          </div>
+          <form className="holdem-chat-form" onSubmit={onSendChat}>
+            <input
+              value={chatInput}
+              onChange={(event) => onChatInput(event.target.value)}
+              placeholder="Chat at the table"
+            />
+            <button className="text-button" type="submit">
+              <Send size={15} />
+            </button>
+          </form>
+        </div>
+
+        <div className="sandbox-scope-card">
+          <strong>Secure PvP Foundation</strong>
+          {table.sandbox.pendingReview.map((item) => (
+            <span key={item}>{item}</span>
+          ))}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function PlayingCard({ card, hidden = false }: { card: string; hidden?: boolean }) {
+  const red = card.endsWith("h") || card.endsWith("d");
+  const rank = card[0] ?? "";
+  const suit = card[1] ?? "";
+  const suitMark: Record<string, string> = { s: "S", h: "H", d: "D", c: "C" };
+  return (
+    <span
+      className={`playing-card ${hidden ? "hidden" : ""} ${red ? "red" : ""}`}
+      aria-label={hidden || !card ? "Hidden card" : describeCard(card)}
+    >
+      {hidden || !card ? (
+        "JAWS"
+      ) : (
+        <>
+          <strong>{rank}</strong>
+          <small>{suitMark[suit] ?? suit}</small>
+        </>
+      )}
+    </span>
+  );
+}
+
+function SandboxWorldFoundation({ pet }: { pet: CyberPetState }) {
+  const nodes = [
+    { label: "You", detail: "profile + credits", x: 12, y: 58 },
+    { label: pet.name, detail: "pet presence", x: 32, y: 36 },
+    { label: "Q", detail: "planner", x: 52, y: 54 },
+    { label: "Agent Forge", detail: "capability review", x: 72, y: 28 },
+    { label: "PvP Table", detail: "room auth", x: 78, y: 68 }
+  ];
+  return (
+    <div className="sandbox-world">
+      <section className="world-stage" aria-label="Agent and pet sandbox foundation">
+        <div className="world-floor" />
+        {nodes.map((node) => (
+          <div className="world-node" key={node.label} style={{ left: `${node.x}%`, top: `${node.y}%` }}>
+            <strong>{node.label}</strong>
+            <span>{node.detail}</span>
+          </div>
+        ))}
+        <div className="world-link a" />
+        <div className="world-link b" />
+        <div className="world-link c" />
+      </section>
+      <aside className="agent-builder-panel">
+        <strong>Sandbox Agent Builder</strong>
+        <span>Agents start as signed local profiles before entering shared rooms.</span>
+        <div className="builder-step ready">
+          <CheckCircle2 size={15} />
+          Capability manifest
+        </div>
+        <div className="builder-step ready">
+          <CheckCircle2 size={15} />
+          Workspace scope
+        </div>
+        <div className="builder-step">
+          <CircleDot size={15} />
+          Multiplayer auth lane
+        </div>
+        <div className="builder-step">
+          <CircleDot size={15} />
+          Pet and agent inventory ledger
+        </div>
+      </aside>
     </div>
   );
 }
