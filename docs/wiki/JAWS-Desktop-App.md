@@ -125,13 +125,13 @@ Windows bundle smoke, run locally on 2026-04-29:
 
 0.1.2 adds the native Settings page, keeps update checks available from Settings, replaces the in-app image logo with a CSS/React JAWS mark so the shell cannot render a broken image, keeps regenerated native installer icons, upgrades Chat into a slimmer animated workstream with per-message activity markers and a bounded `openjaws --print` sidecar bridge, adds the animated Cyber Frog pet loop, adds user and agent profile areas, adds native Open Folder workspace selection, renames the arcade runner to Slow Guy, and keeps the desktop release version aligned across `package.json`, `tauri.conf.json`, `Cargo.toml`, and `Cargo.lock`.
 
-0.1.2 public release mirrors, deployed and live-checked on 2026-04-30:
+0.1.3 public release mirrors, deployed and live-checked on 2026-04-30:
 
 - `https://qline.site/downloads/jaws`
 - `https://iorch.net/downloads/jaws`
-- `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.2`
+- `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.3`
 
-Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries.
+Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries. Both `qline.site` and `iorch.net` also expose `/api/jaws/<target>/<arch>/<current_version>` so existing tester installs can discover the signed 0.1.3 update through the Tauri updater endpoint.
 
 Mirror health gate:
 
@@ -139,7 +139,7 @@ Mirror health gate:
 bun run jaws:mirror:check --json --out .tmp-jaws-release-mirror-health.json
 ```
 
-The gate checks both public mirror pages, every public mirror redirect, the GitHub `jaws-v0.1.2` release asset list, and the signed updater manifest entries for Windows and macOS. When `OPENJAWS_RELEASE_HEALTH_PRIVATE_KEY` or `OPENJAWS_RELEASE_MANIFEST_PRIVATE_KEY` is present, the receipt is signed with the existing Ed25519 release-manifest signature format.
+The gate checks both public mirror pages, every public mirror redirect, the GitHub `jaws-v0.1.3` release asset list, and the signed updater manifest entries for Windows and macOS. When `OPENJAWS_RELEASE_HEALTH_PRIVATE_KEY` or `OPENJAWS_RELEASE_MANIFEST_PRIVATE_KEY` is present, the receipt is signed with the existing Ed25519 release-manifest signature format.
 
 Arcade and update-pipeline local verification, run on 2026-04-30:
 
@@ -175,10 +175,13 @@ Native capability integration pass, run on 2026-04-30:
 - The Co-work tab exposes Q planner, Q_agent implementer, Q_agent verifier, and co-work room controls with explicit pooled-credit consent.
 - Slow Guy now has lives, shield frames, level progression, and token tracking so the game loop has recoverability and objectives instead of one-hit failure.
 
-0.1.3 release-candidate prep, run on 2026-04-30:
+0.1.3 release and update-pipeline pass, run on 2026-04-30:
 
 - Desktop package, Tauri app config, Cargo metadata, Cargo lockfile package entry, and generated release index now align on `0.1.3`.
-- The generated release index points at the future `jaws-v0.1.3` GitHub release and expected asset names; mirror health for that train should be run only after signed assets are published.
+- The `jaws-v0.1.3` GitHub release is published with signed Windows, macOS, Linux, and updater manifest assets.
+- `qline.site` and `iorch.net` now redirect every public JAWS download route to the 0.1.3 signed GitHub assets.
+- Both live updater endpoints return a signed 0.1.3 Windows update for `0.1.2` testers and `204 No Content` for already-current `0.1.3` installs.
+- `bun run jaws:mirror:check` passed against the published 0.1.3 release with 30 checks.
 - Native Playwright demo harness receipts now include a deterministic `fnv1a64` receipt hash covering the generated README, package, config, spec, and pre-hash receipt body.
 - The Preview tab surfaces that receipt hash beside the generated harness/spec/receipt paths for release evidence.
 
@@ -195,5 +198,5 @@ Implementation references:
 3. Replace Q_agents co-work plan stubs with real route runtime controls, signed exchange-code invites, revocation, and explicit pooled-credit consent.
 4. Connect Arobi enrollment to the real account and ledger APIs.
 5. Add marketplace package signing, review states, sandbox scopes, and rollback metadata.
-6. Promote the `0.1.3` candidate through signed CI builds, attach the Windows/macOS/Linux artifacts, then run mirror health against the published `jaws-v0.1.3` assets.
-7. Surface the latest Playwright screenshot/video artifact set in the Preview tab after test execution.
+6. Surface the latest Playwright screenshot/video artifact set in the Preview tab after test execution.
+7. Add a release smoke that opens the installed Windows app, triggers Settings update check, and records the Tauri updater response for the published tester build.
