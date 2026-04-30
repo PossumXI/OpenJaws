@@ -17,7 +17,7 @@ This is the current contract:
 
 - opens `http://` or `https://` URLs through the native OpenJaws browser lane
 - keeps local app previews on the `preview` intent and blocks private-network browsing for the non-preview leisure lanes
-- can write a reusable Playwright demo harness for the current URL so users can capture desktop/mobile screenshots, traces, video-on-failure, and a JSON demo summary without hand-building Playwright setup
+- can write and run a reusable Playwright demo harness for the current URL so users can capture desktop/mobile screenshots, traces, video-on-failure, and a JSON demo summary without hand-building Playwright setup
 - records:
   - intent (`preview`, `research`, `browse`, `watch`, `music`)
   - rationale (`why this session exists`)
@@ -75,7 +75,7 @@ Typical flow:
 /preview http://127.0.0.1:5173/
 ```
 
-Then choose `Write Playwright demo harness` and run the generated `bunx playwright test -c <playwright.config.ts>` command.
+Then choose `Write Playwright demo harness`, or `Run Playwright demo` to capture evidence directly through OpenJaws. The backend writes `openjaws-preview-demo-run.receipt.json` beside the generated harness so agents, Discord bridges, and operators can audit which command ran and where the evidence landed.
 
 ## Direct Connect and agent tool surface
 
@@ -92,7 +92,8 @@ Authenticated Direct Connect routes:
 - `POST /browser/launch`
 - `POST /browser/handoff`
 - `POST /browser/demo-harness`
+- `POST /browser/demo-run`
 
-The existing `WEB_BROWSER_TOOL` feature gate now resolves to the `BrowserPreview` tool instead of a missing module. The tool uses the same shared API runner as Direct Connect, so TUI commands, backend calls, and agent tool use all enforce the same URL policy, accountable requester model, receipt behavior, and Playwright harness writer.
+The existing `WEB_BROWSER_TOOL` feature gate now resolves to the `BrowserPreview` tool instead of a missing module. The tool uses the same shared API runner as Direct Connect, so TUI commands, backend calls, and agent tool use all enforce the same URL policy, accountable requester model, receipt behavior, Playwright harness writer, and Playwright demo runner.
 
-The first production-ready backend slice is deliberately scoped to open/navigate/close/handoff/runtime/receipts/demo-harness. Running and packaging generated Playwright artifacts should be layered on top of this same API runner rather than added as another separate browser path.
+`demo_run` accepts either a `url` to create a new harness or an `outputDir` pointing at an existing harness receipt. It returns the command, exit code, stdout/stderr tails, artifact paths, and a run receipt path. Set `installBrowsers=true` when Chromium has not been installed yet; set `headed=true` for supervised visual runs.

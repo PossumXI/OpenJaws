@@ -43,7 +43,25 @@ const inputSchema = lazySchema(() =>
     outputDir: z
       .string()
       .optional()
-      .describe('Optional output directory for action="demo_harness"'),
+      .describe('Optional output directory for action="demo_harness" or action="demo_run"'),
+    timeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe('Optional timeout for action="demo_run" in milliseconds'),
+    headed: z
+      .boolean()
+      .optional()
+      .describe('Run action="demo_run" in headed Chromium mode'),
+    installBrowsers: z
+      .boolean()
+      .optional()
+      .describe('Run "playwright install chromium" before action="demo_run"'),
+    dryRun: z
+      .boolean()
+      .optional()
+      .describe('Validate action="demo_run" without launching Playwright'),
   }),
 )
 type InputSchema = ReturnType<typeof inputSchema>

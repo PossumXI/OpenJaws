@@ -3,7 +3,11 @@ import { existsSync, readFileSync } from 'fs'
 import { mkdtemp, rm } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { createWebAppPreviewDemoHarness } from './webAppPreviewDemo.js'
+import {
+  createWebAppPreviewDemoHarness,
+  runWebAppPreviewDemoHarness,
+  type WebAppPreviewDemoCommandRunner,
+} from './webAppPreviewDemo.js'
 
 const originalConfigDir = process.env.OPENJAWS_CONFIG_DIR
 
@@ -69,5 +73,49 @@ describe('webAppPreviewDemo', () => {
         url: 'file:///C:/Users/Knight/Desktop/index.html',
       }),
     ).rejects.toThrow('Unsupported preview URL protocol')
+  })
+
+  test('runs a generated Playwright demo harness and records evidence receipt', async () => {
+    const calls: string[] = []
+    const runner: WebAppPreviewDemoCommandRunner = async (file, args, options) => {
+      calls.push(`${file} ${args.join(' ')} cwd=${options.cwd}`)
+      return {
+        stdout: 'demo passed',
+        stderr: '',
+        code: 0,
+      }
+    }
+
+    const run = await runWebAppPreviewDemoHarness({
+      url: 'localhost:5173',
+      name: 'ApexOS Product Demo',
+      rationale: 'Capture launch-ready proof for the local app.',
+      runner,
+    })
+
+    expect(run.ok).toBe(true)
+    expect(run.command.args).toContain('test')
+    expect(calls).toHaveLength(1)
+    expect(existsSync(run.receiptPath)).toBe(true)
+    expect(readFileSync(run.receiptPath, 'utf8')).toContain('"ok": true')
+    expect(run.artifacts.some(artifact => artifact.path === run.receiptPath)).toBe(true)
+  })
+
+  test('can reuse an existing harness receipt without requiring the URL again', async () => {
+    const harness = await createWebAppPreviewDemoHarness({
+      url: 'https://example.com/product',
+      name: 'Existing Demo',
+      outputDir: join(configDir, 'existing-demo'),
+    })
+
+    const run = await runWebAppPreviewDemoHarness({
+      outputDir: harness.outputDir,
+      dryRun: true,
+    })
+
+    expect(run.ok).toBe(true)
+    expect(run.dryRun).toBe(true)
+    expect(run.harness.url).toBe('https://example.com/product')
+    expect(run.stdoutTail).toContain('Dry run:')
   })
 })

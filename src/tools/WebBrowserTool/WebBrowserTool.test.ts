@@ -18,5 +18,19 @@ describe('WebBrowserTool', () => {
     expect(result.data.ok).toBe(true)
     expect(result.data.action).toBe('capabilities')
     expect(JSON.stringify(result.data.data)).toContain('/browser/open')
+    expect(JSON.stringify(result.data.data)).toContain('/browser/demo-run')
+  })
+
+  test('accepts demo run controls in the tool schema', () => {
+    const parsed = WebBrowserTool.inputSchema.safeParse({
+      action: 'demo_run',
+      url: 'http://localhost:5173',
+      timeoutMs: 60_000,
+      installBrowsers: false,
+      headed: false,
+      dryRun: true,
+    })
+
+    expect(parsed.success).toBe(true)
   })
 })

@@ -74,6 +74,22 @@ function readOptionalString(
   return typeof value === 'string' ? value : undefined
 }
 
+function readOptionalBoolean(
+  body: Record<string, unknown>,
+  key: string,
+): boolean | undefined {
+  const value = body[key]
+  return typeof value === 'boolean' ? value : undefined
+}
+
+function readOptionalNumber(
+  body: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const value = body[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
 function readBrowserAction(pathname: string): BrowserPreviewApiAction | null {
   switch (pathname) {
     case '/browser/capabilities':
@@ -95,6 +111,9 @@ function readBrowserAction(pathname: string): BrowserPreviewApiAction | null {
     case '/browser/demo-harness':
     case '/browser/demo_harness':
       return 'demo_harness'
+    case '/browser/demo-run':
+    case '/browser/demo_run':
+      return 'demo_run'
     default:
       return null
   }
@@ -124,6 +143,12 @@ async function handleBrowserPreviewRequest(
       'agent') as BrowserPreviewApiInput['requestedBy'],
     name: readOptionalString(body, 'name'),
     outputDir: readOptionalString(body, 'outputDir') ?? readOptionalString(body, 'output_dir'),
+    timeoutMs: readOptionalNumber(body, 'timeoutMs') ?? readOptionalNumber(body, 'timeout_ms'),
+    headed: readOptionalBoolean(body, 'headed'),
+    installBrowsers:
+      readOptionalBoolean(body, 'installBrowsers') ??
+      readOptionalBoolean(body, 'install_browsers'),
+    dryRun: readOptionalBoolean(body, 'dryRun') ?? readOptionalBoolean(body, 'dry_run'),
   }
 
   try {

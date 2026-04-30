@@ -1,7 +1,8 @@
-import { mkdir, writeFile } from 'fs/promises'
+import { mkdir, readdir, readFile, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { getOpenJawsConfigHomeDir } from './envUtils.js'
 import { normalizeBrowserPreviewUrl } from './browserPreview.js'
+import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
 
 export type WebAppPreviewDemoHarnessFile = {
   kind: 'readme' | 'package' | 'config' | 'spec' | 'receipt'
@@ -26,6 +27,47 @@ export type WebAppPreviewDemoHarness = {
   }
 }
 
+export type WebAppPreviewDemoArtifact = {
+  kind: 'receipt' | 'summary' | 'screenshot' | 'trace' | 'video' | 'report' | 'artifact'
+  path: string
+}
+
+export type WebAppPreviewDemoCommandResult = {
+  stdout: string
+  stderr: string
+  code: number
+  error?: string
+}
+
+export type WebAppPreviewDemoCommandRunner = (
+  file: string,
+  args: string[],
+  options: {
+    cwd: string
+    timeoutMs: number
+  },
+) => Promise<WebAppPreviewDemoCommandResult>
+
+export type WebAppPreviewDemoRun = {
+  version: 1
+  generatedAt: string
+  ok: boolean
+  exitCode: number
+  command: {
+    file: string
+    args: string[]
+    cwd: string
+  }
+  harness: WebAppPreviewDemoHarness
+  receiptPath: string
+  artifacts: WebAppPreviewDemoArtifact[]
+  stdoutTail: string
+  stderrTail: string
+  error?: string
+  setup?: WebAppPreviewDemoCommandResult
+  dryRun?: boolean
+}
+
 export type CreateWebAppPreviewDemoHarnessArgs = {
   url: string
   name?: string | null
@@ -33,6 +75,22 @@ export type CreateWebAppPreviewDemoHarnessArgs = {
   outputDir?: string | null
   generatedAt?: string | null
 }
+
+export type RunWebAppPreviewDemoHarnessArgs = {
+  url?: string | null
+  name?: string | null
+  rationale?: string | null
+  outputDir?: string | null
+  timeoutMs?: number | null
+  headed?: boolean | null
+  installBrowsers?: boolean | null
+  dryRun?: boolean | null
+  runner?: WebAppPreviewDemoCommandRunner
+}
+
+const DEFAULT_DEMO_RUN_TIMEOUT_MS = 3 * 60 * 1000
+const MAX_DEMO_RUN_TIMEOUT_MS = 15 * 60 * 1000
+const OUTPUT_TAIL_CHARS = 16_000
 
 function sanitizeDemoName(value: string | null | undefined): string {
   const trimmed = value?.trim()
@@ -65,6 +123,127 @@ function buildCommands(args: {
     codegen: `bunx playwright codegen ${quotedUrl}`,
     test: `bunx playwright test -c ${quotedConfig}`,
     headed: `bunx playwright test -c ${quotedConfig} --headed`,
+  }
+}
+
+function clampTimeoutMs(timeoutMs: number | null | undefined): number {
+  if (!Number.isFinite(timeoutMs ?? Number.NaN)) {
+    return DEFAULT_DEMO_RUN_TIMEOUT_MS
+  }
+  return Math.max(10_000, Math.min(Math.trunc(timeoutMs!), MAX_DEMO_RUN_TIMEOUT_MS))
+}
+
+function tail(value: string): string {
+  return value.length > OUTPUT_TAIL_CHARS
+    ? value.slice(value.length - OUTPUT_TAIL_CHARS)
+    : value
+}
+
+function getHarnessFile(
+  harness: WebAppPreviewDemoHarness,
+  kind: WebAppPreviewDemoHarnessFile['kind'],
+): string {
+  const file = harness.files.find(candidate => candidate.kind === kind)
+  if (!file) {
+    throw new Error(`Playwright demo harness is missing ${kind} file metadata.`)
+  }
+  return file.path
+}
+
+async function defaultDemoCommandRunner(
+  file: string,
+  args: string[],
+  options: {
+    cwd: string
+    timeoutMs: number
+  },
+): Promise<WebAppPreviewDemoCommandResult> {
+  return execFileNoThrowWithCwd(file, args, {
+    cwd: options.cwd,
+    timeout: options.timeoutMs,
+    maxBuffer: 4_000_000,
+  })
+}
+
+function classifyArtifact(path: string): WebAppPreviewDemoArtifact['kind'] {
+  const normalized = path.toLowerCase()
+  if (normalized.endsWith('.receipt.json')) return 'receipt'
+  if (normalized.endsWith('demo-summary.json')) return 'summary'
+  if (normalized.endsWith('.png') || normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) {
+    return 'screenshot'
+  }
+  if (normalized.endsWith('.zip') || normalized.includes('trace')) return 'trace'
+  if (normalized.endsWith('.webm') || normalized.endsWith('.mp4')) return 'video'
+  if (normalized.includes('playwright-report')) return 'report'
+  return 'artifact'
+}
+
+async function collectDemoArtifacts(rootDir: string): Promise<WebAppPreviewDemoArtifact[]> {
+  const artifacts: WebAppPreviewDemoArtifact[] = []
+
+  async function walk(dir: string): Promise<void> {
+    let entries: Awaited<ReturnType<typeof readdir>>
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        await walk(path)
+        continue
+      }
+      artifacts.push({
+        kind: classifyArtifact(path),
+        path,
+      })
+    }
+  }
+
+  await walk(rootDir)
+  return artifacts.sort((a, b) => a.path.localeCompare(b.path))
+}
+
+function parseHarnessReceipt(raw: string): WebAppPreviewDemoHarness | null {
+  try {
+    const parsed = JSON.parse(raw) as Partial<WebAppPreviewDemoHarness>
+    if (
+      parsed.version === 1 &&
+      typeof parsed.generatedAt === 'string' &&
+      typeof parsed.name === 'string' &&
+      typeof parsed.slug === 'string' &&
+      typeof parsed.url === 'string' &&
+      typeof parsed.rationale === 'string' &&
+      typeof parsed.outputDir === 'string' &&
+      Array.isArray(parsed.files) &&
+      parsed.commands &&
+      typeof parsed.commands.test === 'string'
+    ) {
+      return parsed as WebAppPreviewDemoHarness
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+async function readExistingHarness(
+  outputDir: string | null | undefined,
+): Promise<WebAppPreviewDemoHarness | null> {
+  const trimmed = outputDir?.trim()
+  if (!trimmed) {
+    return null
+  }
+  try {
+    const raw = await readFile(
+      join(trimmed, 'openjaws-preview-demo.receipt.json'),
+      'utf8',
+    )
+    return parseHarnessReceipt(raw)
+  } catch {
+    return null
   }
 }
 
@@ -278,4 +457,87 @@ export async function createWebAppPreviewDemoHarness(
   ])
 
   return receipt
+}
+
+export async function runWebAppPreviewDemoHarness(
+  args: RunWebAppPreviewDemoHarnessArgs,
+): Promise<WebAppPreviewDemoRun> {
+  const existingHarness = await readExistingHarness(args.outputDir)
+  const url = args.url?.trim()
+  if (!existingHarness && !url) {
+    throw new Error(
+      'url is required when outputDir does not contain an OpenJaws Playwright demo harness receipt.',
+    )
+  }
+  const harness =
+    existingHarness ??
+    (await createWebAppPreviewDemoHarness({
+      url: url!,
+      name: args.name,
+      rationale: args.rationale,
+      outputDir: args.outputDir,
+    }))
+  const timeoutMs = clampTimeoutMs(args.timeoutMs)
+  const configPath = getHarnessFile(harness, 'config')
+  const runner = args.runner ?? defaultDemoCommandRunner
+  const command = {
+    file: 'bunx',
+    args: ['playwright', 'test', '-c', configPath, ...(args.headed ? ['--headed'] : [])],
+    cwd: harness.outputDir,
+  }
+  const runReceiptPath = join(harness.outputDir, 'openjaws-preview-demo-run.receipt.json')
+  const generatedAt = new Date().toISOString()
+
+  let setup: WebAppPreviewDemoCommandResult | undefined
+  let result: WebAppPreviewDemoCommandResult
+
+  if (args.dryRun) {
+    result = {
+      stdout: `Dry run: ${command.file} ${command.args.join(' ')}`,
+      stderr: '',
+      code: 0,
+    }
+  } else {
+    if (args.installBrowsers) {
+      setup = await runner('bunx', ['playwright', 'install', 'chromium'], {
+        cwd: harness.outputDir,
+        timeoutMs,
+      })
+      if (setup.code !== 0) {
+        result = setup
+      } else {
+        result = await runner(command.file, command.args, {
+          cwd: command.cwd,
+          timeoutMs,
+        })
+      }
+    } else {
+      result = await runner(command.file, command.args, {
+        cwd: command.cwd,
+        timeoutMs,
+      })
+    }
+  }
+
+  const artifacts = await collectDemoArtifacts(harness.outputDir)
+  const run: WebAppPreviewDemoRun = {
+    version: 1,
+    generatedAt,
+    ok: result.code === 0,
+    exitCode: result.code,
+    command,
+    harness,
+    receiptPath: runReceiptPath,
+    artifacts,
+    stdoutTail: tail(result.stdout),
+    stderrTail: tail(result.stderr),
+    error: result.error,
+    setup,
+    dryRun: args.dryRun ? true : undefined,
+  }
+
+  await writeFile(runReceiptPath, `${JSON.stringify(run, null, 2)}\n`, 'utf8')
+  run.artifacts = await collectDemoArtifacts(harness.outputDir)
+  await writeFile(runReceiptPath, `${JSON.stringify(run, null, 2)}\n`, 'utf8')
+  return run
 }

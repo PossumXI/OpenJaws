@@ -11,7 +11,11 @@ import {
   type BrowserPreviewIntent,
   type BrowserPreviewRequester,
 } from './browserPreview.js'
-import { createWebAppPreviewDemoHarness } from './webAppPreviewDemo.js'
+import {
+  createWebAppPreviewDemoHarness,
+  runWebAppPreviewDemoHarness,
+  type WebAppPreviewDemoCommandRunner,
+} from './webAppPreviewDemo.js'
 
 export const BROWSER_PREVIEW_API_ACTIONS = [
   'capabilities',
@@ -23,6 +27,7 @@ export const BROWSER_PREVIEW_API_ACTIONS = [
   'launch',
   'handoff',
   'demo_harness',
+  'demo_run',
 ] as const
 
 export const BROWSER_PREVIEW_API_INTENTS = [
@@ -51,6 +56,10 @@ export type BrowserPreviewApiInput = {
   requestedBy?: string
   name?: string
   outputDir?: string
+  timeoutMs?: number
+  headed?: boolean
+  installBrowsers?: boolean
+  dryRun?: boolean
 }
 
 export type BrowserPreviewApiOutput = {
@@ -68,7 +77,12 @@ const MUTATING_ACTIONS = new Set<BrowserPreviewApiAction>([
   'launch',
   'handoff',
   'demo_harness',
+  'demo_run',
 ])
+
+export type BrowserPreviewApiDependencies = {
+  demoRunner?: WebAppPreviewDemoCommandRunner
+}
 
 export function isBrowserPreviewApiReadOnly(
   action: BrowserPreviewApiAction,
@@ -120,6 +134,8 @@ function defaultRationale(action: BrowserPreviewApiAction): string {
       return 'Hand off a browser session into the accountable preview lane.'
     case 'demo_harness':
       return 'Create reusable Playwright demo evidence for this web surface.'
+    case 'demo_run':
+      return 'Run Playwright demo evidence capture for this web surface.'
     case 'launch':
     case 'close':
     case 'capabilities':
@@ -141,6 +157,7 @@ function summarizeRuntime(): Promise<{
 
 export async function runBrowserPreviewApiAction(
   input: BrowserPreviewApiInput,
+  dependencies: BrowserPreviewApiDependencies = {},
 ): Promise<BrowserPreviewApiOutput> {
   switch (input.action) {
     case 'capabilities': {
@@ -149,7 +166,7 @@ export async function runBrowserPreviewApiAction(
         action: input.action,
         summary: 'OpenJaws browser preview capabilities are available.',
         message:
-          'Direct Connect can inspect the browser runtime, open/navigate/close accountable preview sessions, hand off sessions, and write Playwright demo harnesses.',
+          'Direct Connect can inspect the browser runtime, open/navigate/close accountable preview sessions, hand off sessions, and write or run Playwright demo harnesses.',
         data: {
           actions: BROWSER_PREVIEW_API_ACTIONS,
           intents: BROWSER_PREVIEW_API_INTENTS,
@@ -164,6 +181,7 @@ export async function runBrowserPreviewApiAction(
             launch: 'POST /browser/launch',
             handoff: 'POST /browser/handoff',
             demoHarness: 'POST /browser/demo-harness',
+            demoRun: 'POST /browser/demo-run',
           },
         },
       }
@@ -285,6 +303,32 @@ export async function runBrowserPreviewApiAction(
           `Run "${harness.commands.test}" to capture desktop/mobile evidence.`,
         data: {
           harness,
+        },
+      }
+    }
+    case 'demo_run': {
+      const run = await runWebAppPreviewDemoHarness({
+        url: input.url,
+        name: input.name,
+        rationale: input.rationale?.trim() || defaultRationale(input.action),
+        outputDir: input.outputDir,
+        timeoutMs: input.timeoutMs,
+        headed: input.headed,
+        installBrowsers: input.installBrowsers,
+        dryRun: input.dryRun,
+        runner: dependencies.demoRunner,
+      })
+      return {
+        ok: run.ok,
+        action: input.action,
+        summary: run.ok
+          ? `Captured Playwright demo evidence in ${run.harness.outputDir}`
+          : `Playwright demo capture failed with exit code ${run.exitCode}`,
+        message:
+          `Ran "${run.command.file} ${run.command.args.join(' ')}" in ` +
+          `${run.command.cwd}. Receipt: ${run.receiptPath}`,
+        data: {
+          run,
         },
       }
     }

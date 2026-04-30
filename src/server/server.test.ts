@@ -87,6 +87,7 @@ describe('Direct Connect browser preview API', () => {
     expect(response.status).toBe(200)
     expect(body.ok).toBe(true)
     expect(body.data.endpoints.demoHarness).toBe('POST /browser/demo-harness')
+    expect(body.data.endpoints.demoRun).toBe('POST /browser/demo-run')
   })
 
   test('rejects wrong methods and invalid browser action values', async () => {
@@ -131,5 +132,25 @@ describe('Direct Connect browser preview API', () => {
     expect(body.data.harness.outputDir).toBe(outputDir)
     expect(existsSync(join(outputDir, 'playwright.config.ts'))).toBe(true)
     expect(existsSync(join(outputDir, 'tests', 'demo.spec.ts'))).toBe(true)
+  })
+
+  test('runs Playwright demo captures from the backend API in dry-run mode', async () => {
+    const outputDir = join(configDir, 'api-demo-run')
+    const response = await fetch(`${baseUrl}/browser/demo-run`, {
+      method: 'POST',
+      headers: authHeaders({ 'content-type': 'application/json' }),
+      body: JSON.stringify({
+        url: 'localhost:5173',
+        name: 'Backend Browser Preview Demo Run',
+        outputDir,
+        dryRun: true,
+      }),
+    })
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(body.data.run.dryRun).toBe(true)
+    expect(existsSync(join(outputDir, 'openjaws-preview-demo-run.receipt.json'))).toBe(true)
   })
 })

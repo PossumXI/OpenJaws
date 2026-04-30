@@ -28,7 +28,10 @@ import {
   summarizeBrowserPreviewReceipt,
   summarizeBrowserPreviewRuntime,
 } from '../../utils/browserPreview.js'
-import { createWebAppPreviewDemoHarness } from '../../utils/webAppPreviewDemo.js'
+import {
+  createWebAppPreviewDemoHarness,
+  runWebAppPreviewDemoHarness,
+} from '../../utils/webAppPreviewDemo.js'
 
 const REFRESH_INTERVAL_MS = 15_000
 
@@ -44,6 +47,7 @@ type PreviewAction =
   | 'navigate-preview'
   | 'close-preview'
   | 'write-demo-harness'
+  | 'run-demo-harness'
   | 'refresh'
 
 function getIntentFromAction(action: PreviewAction): BrowserPreviewIntent | null {
@@ -291,6 +295,12 @@ function PreviewLaunch({
           'Generate a reusable Playwright demo package with screenshots, responsive checks, and a receipt.',
       },
       {
+        label: 'Run Playwright demo',
+        value: 'run-demo-harness',
+        description:
+          'Capture desktop/mobile Playwright evidence and write a run receipt.',
+      },
+      {
         label: 'Refresh browser state',
         value: 'refresh',
         description: 'Reload the live browser bridge state and accountable receipts.',
@@ -483,6 +493,25 @@ function PreviewCommand({
         })
         setActionMessage(
           `Wrote Playwright demo harness to ${result.outputDir}. Run: ${result.commands.test}`,
+        )
+        return
+      }
+
+      if (action === 'run-demo-harness') {
+        const activeSession =
+          runtime?.summary?.sessions.find(
+            session => session.id === runtime.summary?.activeSessionId,
+          ) ?? runtime?.summary?.sessions[0] ?? null
+        setActionMessage('Running Playwright demo capture. This can take a minute.')
+        const result = await runWebAppPreviewDemoHarness({
+          url,
+          name: activeSession?.title ?? 'OpenJaws web app demo',
+          rationale,
+        })
+        setActionMessage(
+          result.ok
+            ? `Captured Playwright demo evidence in ${result.harness.outputDir}. Receipt: ${result.receiptPath}`
+            : `Playwright demo capture failed with exit code ${result.exitCode}. Receipt: ${result.receiptPath}`,
         )
         return
       }

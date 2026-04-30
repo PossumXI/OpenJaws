@@ -37,12 +37,14 @@ describe('browserPreviewApi', () => {
   test('reports browser preview capability endpoints as read-only metadata', async () => {
     expect(isBrowserPreviewApiReadOnly('capabilities')).toBe(true)
     expect(isBrowserPreviewApiReadOnly('demo_harness')).toBe(false)
+    expect(isBrowserPreviewApiReadOnly('demo_run')).toBe(false)
 
     const result = await runBrowserPreviewApiAction({ action: 'capabilities' })
 
     expect(result.ok).toBe(true)
     expect(result.summary).toContain('browser preview capabilities')
     expect(JSON.stringify(result.data)).toContain('POST /browser/demo-harness')
+    expect(JSON.stringify(result.data)).toContain('POST /browser/demo-run')
   })
 
   test('writes a Playwright demo harness through the API facade', async () => {
@@ -80,5 +82,31 @@ describe('browserPreviewApi', () => {
         requestedBy: 'anonymous',
       }),
     ).rejects.toThrow('Unsupported browser preview requester "anonymous"')
+  })
+
+  test('runs a Playwright demo capture through the API facade', async () => {
+    const outputDir = join(configDir, 'demo-run')
+    const result = await runBrowserPreviewApiAction(
+      {
+        action: 'demo_run',
+        url: 'localhost:5173',
+        name: 'Browser Preview Demo Run',
+        outputDir,
+        rationale: 'Capture product demo evidence.',
+      },
+      {
+        demoRunner: async () => ({
+          stdout: 'demo passed',
+          stderr: '',
+          code: 0,
+        }),
+      },
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.summary).toContain('Captured Playwright demo evidence')
+    expect(JSON.stringify(result.data)).toContain(
+      'openjaws-preview-demo-run.receipt.json',
+    )
   })
 })
