@@ -46,7 +46,6 @@ import {
   type ThemeId
 } from "./data";
 import { buildWorkspaceSelection, type TerminalPlatform } from "./workspace";
-import jawsLogo from "./assets/jaws-logo.svg";
 
 interface BackendStatus {
   appVersion: string;
@@ -744,7 +743,7 @@ export function App() {
     <main className="shell">
       <aside className={collapsed ? "sidebar collapsed" : "sidebar"}>
         <div className="brand-row">
-          <img className="brand-mark" src={jawsLogo} alt="" aria-hidden="true" />
+          <JawsMark className="brand-mark" />
           {!collapsed && (
             <div>
               <p className="eyebrow">JAWS</p>
@@ -813,7 +812,7 @@ export function App() {
                 </p>
               </div>
               <div className="status-stack">
-                <img className="hero-logo" src={jawsLogo} alt="JAWS blue shark jaws logo" />
+                <JawsMark className="hero-logo" />
                 <button className="text-button primary" type="button" onClick={runSmoke}>
                   <RefreshCcw size={16} />
                   Test Sidecar
@@ -1395,6 +1394,25 @@ function PanelHeader({ icon: Icon, label }: { icon: typeof Activity; label: stri
     <div className="panel-header">
       <Icon size={18} />
       <h3>{label}</h3>
+    </div>
+  );
+}
+
+function JawsMark({ className = "" }: { className?: string }) {
+  return (
+    <div className={`jaws-mark ${className}`} aria-hidden="true">
+      <span className="jaws-mark-fin" />
+      <span className="jaws-mark-head" />
+      <span className="jaws-mark-mouth">
+        <i />
+        <i />
+        <i />
+        <i />
+        <i />
+        <i />
+      </span>
+      <span className="jaws-mark-water" />
+      <strong>JAWS</strong>
     </div>
   );
 }

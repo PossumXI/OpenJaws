@@ -110,7 +110,7 @@ Windows bundle smoke, run locally on 2026-04-29:
 - `bun run test`
 - `bun run showcase:copy:check`
 
-0.1.2 adds the native Settings page, keeps update checks available from Settings, repairs the JAWS logo and regenerated native icons, upgrades Chat into a slimmer animated workstream with per-message activity markers and a bounded `openjaws --print` sidecar bridge, adds the animated Cyber Frog pet loop, adds user and agent profile areas, adds native Open Folder workspace selection, renames the arcade runner to Slow Guy, and keeps the desktop release version aligned across `package.json`, `tauri.conf.json`, `Cargo.toml`, and `Cargo.lock`.
+0.1.2 adds the native Settings page, keeps update checks available from Settings, replaces the in-app image logo with a CSS/React JAWS mark so the shell cannot render a broken image, keeps regenerated native installer icons, upgrades Chat into a slimmer animated workstream with per-message activity markers and a bounded `openjaws --print` sidecar bridge, adds the animated Cyber Frog pet loop, adds user and agent profile areas, adds native Open Folder workspace selection, renames the arcade runner to Slow Guy, and keeps the desktop release version aligned across `package.json`, `tauri.conf.json`, `Cargo.toml`, and `Cargo.lock`.
 
 Implementation references:
 

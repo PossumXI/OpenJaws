@@ -118,15 +118,7 @@ button {
 }
 
 .brand-mark {
-  align-items: center;
-  background: #07131f;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  display: grid;
   height: 42px;
-  justify-items: center;
-  object-fit: contain;
-  padding: 4px;
   width: 42px;
 }
 
@@ -282,13 +274,88 @@ p {
 }
 
 .hero-logo {
+  height: 118px;
+  width: 118px;
+}
+
+.jaws-mark {
+  align-items: center;
+  background:
+    radial-gradient(circle at 50% 72%, rgba(85, 216, 239, 0.34), transparent 44%),
+    linear-gradient(145deg, #0a2b49, #07131f 58%, #03080d);
   border: 1px solid var(--line);
   border-radius: 8px;
-  height: 112px;
-  background: #07131f;
-  object-fit: contain;
-  padding: 8px;
-  width: 112px;
+  display: grid;
+  justify-items: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.jaws-mark-fin {
+  background: linear-gradient(180deg, #8be5ff, #1572ad);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  height: 30%;
+  position: absolute;
+  top: 10%;
+  width: 32%;
+}
+
+.jaws-mark-head {
+  background: linear-gradient(160deg, #67cdf4, #1572ad 54%, #062946);
+  border-radius: 46% 46% 38% 38%;
+  bottom: 22%;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.32);
+  height: 58%;
+  position: absolute;
+  width: 64%;
+}
+
+.jaws-mark-mouth {
+  align-items: start;
+  background: #05070b;
+  border-radius: 0 0 999px 999px;
+  bottom: 31%;
+  display: grid;
+  gap: 2px;
+  grid-template-columns: repeat(6, 1fr);
+  height: 22%;
+  padding: 2px 5px 0;
+  position: absolute;
+  width: 46%;
+}
+
+.jaws-mark-mouth i {
+  background: #f7fbf8;
+  clip-path: polygon(50% 100%, 0 0, 100% 0);
+  display: block;
+  height: 70%;
+}
+
+.jaws-mark-water {
+  background:
+    linear-gradient(90deg, transparent, rgba(155, 232, 251, 0.82), transparent),
+    linear-gradient(180deg, #147cae, #083c63);
+  bottom: 0;
+  height: 26%;
+  position: absolute;
+  width: 100%;
+}
+
+.jaws-mark strong {
+  bottom: 8%;
+  color: #d9f8ff;
+  font-size: clamp(0.48rem, 0.6vw, 0.72rem);
+  letter-spacing: 0;
+  position: absolute;
+}
+
+.hero-logo .jaws-mark-mouth {
+  gap: 4px;
+  padding: 5px 12px 0;
+}
+
+.hero-logo strong {
+  font-size: 1rem;
 }
 
 .page-grid,
