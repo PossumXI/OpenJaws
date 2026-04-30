@@ -144,6 +144,19 @@ jobs:
         with:
           path: jaws-desktop-artifacts
 
+      - name: Verify tagged desktop version
+        shell: bash
+        run: |
+          version="$(node -p "require('./apps/jaws-desktop/package.json').version")"
+          expected="${TAG_NAME#jaws-v}"
+          if [[ "$version" != "$expected" ]]; then
+            echo "Desktop package version ${version} does not match tag ${TAG_NAME}."
+            exit 1
+          fi
+          node apps/jaws-desktop/scripts/build-release-index.mjs --check
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+
       - name: Generate updater manifest
         shell: bash
         run: |
@@ -196,3 +209,10 @@ jobs:
           else
             gh release upload "$TAG_NAME" --clobber "${files[@]}"
           fi
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          gh release edit "$TAG_NAME" --draft=false --title "JAWS ${TAG_NAME}"

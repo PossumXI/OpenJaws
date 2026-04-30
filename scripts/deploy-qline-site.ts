@@ -1,6 +1,12 @@
 import { existsSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 import { execa } from 'execa'
+import {
+  JAWS_RELEASE_API_URL,
+  JAWS_RELEASE_PREVIOUS_PATCH_VERSION,
+  JAWS_RELEASE_TAG,
+  JAWS_RELEASE_VERSION,
+} from './jaws-release-index.ts'
 
 const LEGACY_DEPLOY_OVERRIDE_ENV = 'OPENJAWS_ALLOW_LEGACY_QLINE_DEPLOY'
 const CANONICAL_Q_REPO = 'https://github.com/PossumXI/q-s-unfolding-story'
@@ -15,7 +21,16 @@ const REQUIRED_CONTENT_CHECKS = [
   'github.com/PossumXI/OpenJaws',
   'q-share-card',
 ] as const
-const REQUIRED_LIVE_ROUTES = [
+
+type RequiredLiveRoute = {
+  label: string
+  url: string
+  expectedStatus: number
+  marker: string | null
+  releaseGated?: boolean
+}
+
+const REQUIRED_LIVE_ROUTES: readonly RequiredLiveRoute[] = [
   {
     label: 'terms',
     url: `https://${EXPECTED_DOMAIN}/terms`,
@@ -30,13 +45,14 @@ const REQUIRED_LIVE_ROUTES = [
   },
   {
     label: 'jaws-updater-available',
-    url: `https://${EXPECTED_DOMAIN}/api/jaws/windows/x86_64/0.1.3`,
+    url: `https://${EXPECTED_DOMAIN}/api/jaws/windows/x86_64/${JAWS_RELEASE_PREVIOUS_PATCH_VERSION}`,
     expectedStatus: 200,
     marker: '"version"',
+    releaseGated: true,
   },
   {
     label: 'jaws-updater-current',
-    url: `https://${EXPECTED_DOMAIN}/api/jaws/windows/x86_64/0.1.4`,
+    url: `https://${EXPECTED_DOMAIN}/api/jaws/windows/x86_64/${JAWS_RELEASE_VERSION}`,
     expectedStatus: 204,
     marker: null,
   },
@@ -355,11 +371,33 @@ async function fetchLiveRouteWithRetries(
   throw lastError ?? new Error(`Failed to fetch ${url}`)
 }
 
+async function checkJawsReleasePublished(): Promise<boolean> {
+  try {
+    const response = await fetchLiveRouteWithRetries(JAWS_RELEASE_API_URL)
+    if (response.status !== 200) {
+      return false
+    }
+    const body = JSON.parse(response.text) as { tag_name?: string; draft?: boolean }
+    return body.tag_name === JAWS_RELEASE_TAG && body.draft !== true
+  } catch {
+    return false
+  }
+}
+
 async function assertRequiredLiveRoutes(): Promise<LiveRouteCheck[]> {
   const checks: LiveRouteCheck[] = []
+  const jawsReleasePublished = await checkJawsReleasePublished()
   for (const route of REQUIRED_LIVE_ROUTES) {
     const response = await fetchLiveRouteWithRetries(route.url)
     if (response.status !== route.expectedStatus) {
+      if (route.releaseGated && response.status === 204 && !jawsReleasePublished) {
+        checks.push({
+          label: route.label,
+          url: route.url,
+          status: response.status,
+        })
+        continue
+      }
       throw new Error(
         `${route.label} route returned HTTP ${response.status}; expected ${route.expectedStatus}.`,
       )

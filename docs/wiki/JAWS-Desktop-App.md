@@ -126,13 +126,13 @@ Windows bundle smoke, run locally on 2026-04-29:
 
 0.1.2 adds the native Settings page, keeps update checks available from Settings, replaces the in-app image logo with a CSS/React JAWS mark so the shell cannot render a broken image, keeps regenerated native installer icons, upgrades Chat into a slimmer animated workstream with per-message activity markers and a bounded `openjaws --print` sidecar bridge, adds the animated Cyber Frog pet loop, adds user and agent profile areas, adds native Open Folder workspace selection, renames the arcade runner to Slow Guy, and keeps the desktop release version aligned across `package.json`, `tauri.conf.json`, `Cargo.toml`, and `Cargo.lock`.
 
-0.1.4 release-candidate mirrors for the next public update:
+0.1.5 release-candidate mirrors for the next public update:
 
 - `https://qline.site/downloads/jaws`
 - `https://iorch.net/downloads/jaws`
-- `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.4`
+- `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.5`
 
-Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries. Both `qline.site` and `iorch.net` also expose `/api/jaws/<target>/<arch>/<current_version>` so existing tester installs can discover the signed 0.1.4 update through the Tauri updater endpoint after the tag workflow publishes artifacts.
+Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries. Both `qline.site` and `iorch.net` also expose `/api/jaws/<target>/<arch>/<current_version>` so existing tester installs can discover the signed 0.1.5 update through the Tauri updater endpoint after the tag workflow publishes artifacts.
 
 Mirror health gate:
 
@@ -140,7 +140,7 @@ Mirror health gate:
 bun run jaws:mirror:check --json --out .tmp-jaws-release-mirror-health.json
 ```
 
-The gate checks both public mirror pages, every public mirror redirect, the GitHub `jaws-v0.1.4` release asset list, and the signed updater manifest entries for Windows and macOS. When `OPENJAWS_RELEASE_HEALTH_PRIVATE_KEY` or `OPENJAWS_RELEASE_MANIFEST_PRIVATE_KEY` is present, the receipt is signed with the existing Ed25519 release-manifest signature format.
+The gate checks both public mirror pages, every public mirror redirect, the GitHub `jaws-v0.1.5` release asset list, and the signed updater manifest entries for Windows and macOS. When `OPENJAWS_RELEASE_HEALTH_PRIVATE_KEY` or `OPENJAWS_RELEASE_MANIFEST_PRIVATE_KEY` is present, the receipt is signed with the existing Ed25519 release-manifest signature format.
 
 Arcade and update-pipeline local verification, run on 2026-04-30:
 
@@ -194,6 +194,13 @@ Context trust and notification pass, run on 2026-04-30:
 - `bun run jaws:mirror:check` remains the release gate for the published 0.1.4 release assets.
 - Native Playwright demo harness receipts now include a deterministic `fnv1a64` receipt hash covering the generated README, package, config, spec, and pre-hash receipt body.
 - The Preview tab surfaces that receipt hash beside the generated harness/spec/receipt paths for release evidence.
+
+0.1.5 release workflow hardening pass, prepared on 2026-04-30:
+
+- Desktop package, Tauri app config, Cargo metadata, Cargo lockfile package entry, and generated release index align on `0.1.5`.
+- Public route probes now derive current and previous tester versions from `apps/jaws-desktop/src/release-index.json` instead of hardcoded `0.1.4` URLs.
+- The native startup updater workflow is covered by focused tests for startup/manual checks, Install Now visibility, Later deferral, and preview-mode diagnostics.
+- The JAWS desktop tag workflow publishes the signed GitHub release after artifact upload, so a new `jaws-v*` tag can become visible to tester installs without a separate manual draft-publish step.
 
 Implementation references:
 
