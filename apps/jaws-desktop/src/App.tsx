@@ -386,6 +386,24 @@ const fallbackPreviewSnapshot: BrowserPreviewSnapshot = {
   sessions: []
 };
 
+function normalizePreviewFrameUrl(rawValue: string, fallbackUrl = fallbackPreviewSnapshot.launchUrl): string {
+  const trimmed = rawValue.trim();
+  const candidate = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : /^(localhost|127\.0\.0\.1|\[::1\])/i.test(trimmed)
+      ? `http://${trimmed}`
+      : `https://${trimmed}`;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      return url.href;
+    }
+  } catch {
+    // Fall back to the local preview instead of mounting a malformed frame URL.
+  }
+  return fallbackUrl;
+}
+
 const fallbackCoworkPlan: QAgentsCoworkPlan = {
   mode: "stacked-agents",
   roomCode: "JWS-QAGENTS",
@@ -969,9 +987,7 @@ export function App() {
   );
   const previewFrameUrl = useMemo(() => {
     const value = (previewUrl || previewSnapshot.launchUrl || fallbackPreviewSnapshot.launchUrl).trim();
-    if (/^https?:\/\//i.test(value)) return value;
-    if (/^(localhost|127\.0\.0\.1)/i.test(value)) return `http://${value}`;
-    return `https://${value}`;
+    return normalizePreviewFrameUrl(value);
   }, [previewSnapshot.launchUrl, previewUrl]);
   const contextLabel = contextConfidenceLabel(projectContext);
   const contextCoverage = contextScanRatio(projectContext);

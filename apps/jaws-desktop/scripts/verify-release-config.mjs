@@ -40,6 +40,19 @@ function signingKeyReady() {
 const args = parseArgs(process.argv.slice(2));
 const publicKey = String(process.env.JAWS_TAURI_UPDATER_PUBLIC_KEY || updater.pubkey || "").trim();
 const endpoints = Array.isArray(updater.endpoints) ? updater.endpoints : [];
+const endpointUrls = endpoints.map((endpoint) => {
+  try {
+    return new URL(endpoint);
+  } catch {
+    return null;
+  }
+});
+
+function endpointMatchesHost(url, host) {
+  if (!url) return false;
+  const hostname = url.hostname.toLowerCase();
+  return hostname === host || hostname.endsWith(`.${host}`);
+}
 
 require(config.productName === "JAWS", "Tauri productName must remain JAWS.");
 require(pkg.version === config.version, "Desktop package version and Tauri app version must match.");
@@ -48,9 +61,9 @@ require(config.bundle?.publisher === requiredPublisher, `bundle.publisher must b
 require(config.bundle?.externalBin?.includes("binaries/openjaws"), "OpenJaws sidecar must be listed in bundle.externalBin.");
 require(publicKey.length >= 40, "Set JAWS_TAURI_UPDATER_PUBLIC_KEY or tauri.conf updater.pubkey before release.");
 require(endpoints.length >= 2, "Updater must keep both qline.site and iorch.net endpoints.");
-require(endpoints.every((endpoint) => endpoint.startsWith("https://")), "Updater endpoints must use HTTPS.");
-require(endpoints.some((endpoint) => endpoint.includes("qline.site")), "Updater endpoints must include qline.site.");
-require(endpoints.some((endpoint) => endpoint.includes("iorch.net")), "Updater endpoints must include iorch.net.");
+require(endpointUrls.every((url) => url?.protocol === "https:"), "Updater endpoints must use HTTPS.");
+require(endpointUrls.some((url) => endpointMatchesHost(url, "qline.site")), "Updater endpoints must include qline.site.");
+require(endpointUrls.some((url) => endpointMatchesHost(url, "iorch.net")), "Updater endpoints must include iorch.net.");
 require(existsSync(iconPath) && statSync(iconPath).size > 1024, "Native Windows icon must exist at src-tauri/icons/icon.ico.");
 if (args.requireSigningKey) {
   require(

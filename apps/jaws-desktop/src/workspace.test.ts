@@ -4,6 +4,8 @@ import {
   buildOpenJawsTuiCommand,
   cleanWorkspaceInput,
   isLikelyAbsolutePath,
+  quotePosixShellPath,
+  quoteWindowsCmdPath,
   workspaceName
 } from "./workspace";
 
@@ -21,7 +23,12 @@ describe("workspace helpers", () => {
     expect(buildOpenJawsTuiCommand("D:\\openjaws\\OpenJaws", "windows")).toBe(
       'cd /d "D:\\openjaws\\OpenJaws" && openjaws'
     );
-    expect(buildOpenJawsTuiCommand("/opt/jaws", "posix")).toBe('cd "/opt/jaws" && openjaws');
+    expect(buildOpenJawsTuiCommand("/opt/jaws", "posix")).toBe("cd '/opt/jaws' && openjaws");
+  });
+
+  test("quotes shell paths without letting metacharacters escape", () => {
+    expect(quotePosixShellPath("/tmp/jaws agent's app")).toBe("'/tmp/jaws agent'\\''s app'");
+    expect(quoteWindowsCmdPath('D:\\jaws "demo"')).toBe('"D:\\jaws demo"');
   });
 
   test("recognizes absolute workspace paths", () => {

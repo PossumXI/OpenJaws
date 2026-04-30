@@ -20,17 +20,22 @@ export function workspaceName(path: string): string {
   return parts.at(-1) ?? cleaned;
 }
 
-export function quoteShellPath(path: string): string {
-  return `"${path.replace(/"/g, '\\"')}"`;
+export function quotePosixShellPath(path: string): string {
+  return `'${path.replace(/'/g, "'\\''")}'`;
+}
+
+export function quoteWindowsCmdPath(path: string): string {
+  const safePath = path.replace(/["\r\n]/g, "");
+  return `"${safePath}"`;
 }
 
 export function buildOpenJawsTuiCommand(path: string, platform: TerminalPlatform): string {
   const cleaned = cleanWorkspaceInput(path);
   if (!cleaned) return "openjaws";
   if (platform === "windows") {
-    return `cd /d ${quoteShellPath(cleaned)} && openjaws`;
+    return `cd /d ${quoteWindowsCmdPath(cleaned)} && openjaws`;
   }
-  return `cd ${quoteShellPath(cleaned)} && openjaws`;
+  return `cd ${quotePosixShellPath(cleaned)} && openjaws`;
 }
 
 export function isLikelyAbsolutePath(path: string): boolean {
