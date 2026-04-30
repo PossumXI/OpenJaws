@@ -16,9 +16,10 @@ This page summarizes the current public OpenJaws surface that is already working
 ## TUI and Branding
 
 - JAWS Desktop is now scaffolded as the native Tauri app lane for OpenJaws, with the OpenJaws backend bundled as a sidecar, signed updater artifact wiring, a collapsible workspace shell, Q/Q_agents/OpenCheek/Immaculate surfaces, Arobi enrollment, co-work pairing, marketplace, studio, arcade, billing, layout themes, an original blue shark-jaws logo asset, and the Settings/update page plus bundled Cyber Frog companion asset.
-- JAWS Desktop 0.1.3 is now published on GitHub and mirrored through `qline.site/downloads/jaws` and `iorch.net/downloads/jaws`; both route installer and updater-manifest downloads back to the signed `jaws-v0.1.3` GitHub release assets.
-- The live qline.site and iorch.net updater endpoints now return a signed `0.1.3` update payload for `0.1.2` tester installs and `204 No Content` for current `0.1.3` installs.
-- JAWS Desktop 0.1.3 adds native Playwright demo harness receipt integrity hashes and keeps the generated `release-index.json` aligned with the published `jaws-v0.1.3` asset set.
+- JAWS Desktop 0.1.4 is the next release lane for the merged Context Brain, notification, preview hardening, shell quoting hardening, and CodeQL-clean JAWS desktop app.
+- JAWS Desktop 0.1.4 is prepared for GitHub release and mirrored through `qline.site/downloads/jaws` and `iorch.net/downloads/jaws`; both route installer and updater-manifest downloads back to the signed `jaws-v0.1.4` GitHub release assets.
+- The live qline.site and iorch.net updater endpoints should return a signed `0.1.4` update payload for `0.1.3` tester installs and `204 No Content` for current `0.1.4` installs once the tag workflow publishes the assets.
+- JAWS Desktop 0.1.4 keeps native Playwright demo harness receipt integrity hashes and keeps the generated `release-index.json` aligned with the published `jaws-v0.1.4` asset set.
 - `bun run jaws:mirror:check` now verifies the qline mirror, iorch mirror, GitHub release asset list, and signed updater manifest before a release pass can be called complete.
 - JAWS Desktop arcade now has real gameplay foundations: `Slow Guy` has scored lane controls, jump/duck/dash mechanics, hazards, token pickup, stamina, best-score persistence, and Cyber Frog reward hooks; the new Texas Hold'em Dealer Roundtable uses deterministic local dealing, `pokersolver` showdown scoring, table chat, Q/OpenCheek seats, and secure multiplayer metadata for the future PvP websocket room.
 - JAWS Desktop Settings now exposes update-pipeline diagnostics for the Tauri updater, qline mirror, iorch mirror, and GitHub release lane; layout themes now include richer palette tints, descriptive cards, and accent swatches.

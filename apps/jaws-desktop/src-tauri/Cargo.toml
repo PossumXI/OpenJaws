@@ -1,6 +1,6 @@
 [package]
 name = "jaws-desktop"
-version = "0.1.3"
+version = "0.1.4"
 description = "JAWS native desktop shell for OpenJaws."
 authors = ["PossumX"]
 edition = "2021"
