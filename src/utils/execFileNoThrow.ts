@@ -50,7 +50,6 @@ type ExecFileWithCwdOptions = {
   maxBuffer?: number
   cwd?: string
   env?: NodeJS.ProcessEnv
-  shell?: boolean | string | undefined
   stdin?: 'ignore' | 'inherit' | 'pipe'
   input?: string
 }
@@ -83,6 +82,12 @@ function getErrorMessage(
   return String(errorCode)
 }
 
+function assertNoNulByte(value: string, label: string): void {
+  if (value.includes('\0')) {
+    throw new Error(`${label} must not contain NUL bytes`)
+  }
+}
+
 /**
  * execFile, but always resolves (never throws)
  */
@@ -96,7 +101,6 @@ export function execFileNoThrowWithCwd(
     cwd: finalCwd,
     env: finalEnv,
     maxBuffer,
-    shell,
     stdin: finalStdin,
     input: finalInput,
   }: ExecFileWithCwdOptions = {
@@ -106,14 +110,26 @@ export function execFileNoThrowWithCwd(
   },
 ): Promise<{ stdout: string; stderr: string; code: number; error?: string }> {
   return new Promise(resolve => {
-    // Use execa for cross-platform .bat/.cmd compatibility on Windows
+    try {
+      assertNoNulByte(file, 'Executable path')
+      for (const [index, arg] of args.entries()) {
+        assertNoNulByte(arg, `Argument ${index}`)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid command'
+      void resolve({ stdout: '', stderr: message, code: 1, error: message })
+      return
+    }
+
+    // Use execa for cross-platform .bat/.cmd compatibility on Windows.
+    // The shared wrapper intentionally uses argv execution without a shell; callers
+    // that accept command strings must parse them before reaching this boundary.
     execa(file, args, {
       maxBuffer,
       signal: abortSignal,
       timeout: finalTimeout,
       cwd: finalCwd,
       env: finalEnv,
-      shell,
       stdin: finalStdin,
       input: finalInput,
       reject: false, // Don't throw on non-zero exit codes

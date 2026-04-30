@@ -43,6 +43,42 @@ const INITIAL_STATE: State = {
   selectedApiKeyOption: 'new' as 'existing' | 'new' | 'oauth',
   authType: 'api_key'
 };
+
+function isValidGitHubRepoName(repoName: string): boolean {
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repoName) && !repoName.split('/').some(part => part === '.' || part === '..');
+}
+
+function normalizeGitHubRepoInput(input: string): { ok: true; repoName: string } | { ok: false } {
+  const trimmed = input.trim();
+  const sshMatch = trimmed.match(/^git@github\.com:([^/\s]+)\/([^/\s]+?)(?:\.git)?$/i);
+  if (sshMatch) {
+    const repoName = `${sshMatch[1]}/${sshMatch[2]}`;
+    return isValidGitHubRepoName(repoName) ? { ok: true, repoName } : { ok: false };
+  }
+  const hostPathMatch = trimmed.match(/^github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?$/i);
+  if (hostPathMatch) {
+    const repoName = `${hostPathMatch[1]}/${hostPathMatch[2]}`;
+    return isValidGitHubRepoName(repoName) ? { ok: true, repoName } : { ok: false };
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return { ok: false };
+    }
+    if (parsed.hostname.toLowerCase() !== 'github.com') {
+      return { ok: false };
+    }
+    const [owner, repo] = parsed.pathname.split('/').filter(Boolean);
+    if (!owner || !repo) {
+      return { ok: false };
+    }
+    const repoName = `${owner}/${repo.replace(/\.git$/i, '')}`;
+    return isValidGitHubRepoName(repoName) ? { ok: true, repoName } : { ok: false };
+  } catch {
+    return { ok: true, repoName: trimmed.replace(/\.git$/i, '') };
+  }
+}
+
 function InstallGitHubApp(props: {
   onDone: (message: string) => void;
 }): React.ReactNode {
@@ -60,8 +96,7 @@ function InstallGitHubApp(props: {
     const warnings: Warning[] = [];
 
     // Check if gh is installed
-    const ghVersionResult = await execa('gh --version', {
-      shell: true,
+    const ghVersionResult = await execa('gh', ['--version'], {
       reject: false
     });
     if (ghVersionResult.exitCode !== 0) {
@@ -73,8 +108,7 @@ function InstallGitHubApp(props: {
     }
 
     // Check auth status
-    const authResult = await execa('gh auth status -a', {
-      shell: true,
+    const authResult = await execa('gh', ['auth', 'status', '-a'], {
       reject: false
     });
     if (authResult.exitCode !== 0) {
@@ -281,19 +315,17 @@ function InstallGitHubApp(props: {
         return;
       }
       const repoWarnings: Warning[] = [];
-      if (repoName_1.includes('github.com')) {
-        const match = repoName_1.match(/github\.com[:/]([^/]+\/[^/]+)(\.git)?$/);
-        if (!match) {
-          repoWarnings.push({
-            title: 'Invalid GitHub URL format',
-            message: 'The repository URL format appears to be invalid.',
-            instructions: ['Use format: owner/repo or https://github.com/owner/repo', 'Example: PossumXI/openjaws']
-          });
-        } else {
-          repoName_1 = match[1]?.replace(/\.git$/, '') || '';
-        }
+      const normalizedRepoInput = normalizeGitHubRepoInput(repoName_1);
+      if (!normalizedRepoInput.ok) {
+        repoWarnings.push({
+          title: 'Invalid GitHub URL format',
+          message: 'The repository URL format appears to be invalid.',
+          instructions: ['Use format: owner/repo or https://github.com/owner/repo', 'Example: PossumXI/openjaws']
+        });
+      } else {
+        repoName_1 = normalizedRepoInput.repoName;
       }
-      if (!repoName_1.includes('/')) {
+      if (!isValidGitHubRepoName(repoName_1)) {
         repoWarnings.push({
           title: 'Repository format warning',
           message: 'Repository should be in format "owner/repo"',

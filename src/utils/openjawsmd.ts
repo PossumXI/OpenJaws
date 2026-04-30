@@ -300,16 +300,41 @@ export function stripHtmlComments(content: string): {
   return stripHtmlCommentsFromTokens(new Lexer({ gfm: false }).lex(content))
 }
 
+function stripHtmlCommentSpans(raw: string): {
+  content: string
+  stripped: boolean
+} {
+  let content = ''
+  let cursor = 0
+  let stripped = false
+
+  while (cursor < raw.length) {
+    const start = raw.indexOf('<!--', cursor)
+    if (start === -1) {
+      content += raw.slice(cursor)
+      break
+    }
+
+    const end = raw.indexOf('-->', start + 4)
+    if (end === -1) {
+      content += raw.slice(cursor)
+      break
+    }
+
+    content += raw.slice(cursor, start)
+    cursor = end + 3
+    stripped = true
+  }
+
+  return { content, stripped }
+}
+
 function stripHtmlCommentsFromTokens(tokens: ReturnType<Lexer['lex']>): {
   content: string
   stripped: boolean
 } {
   let result = ''
   let stripped = false
-
-  // A well-formed HTML comment span. Non-greedy so multiple comments on the
-  // same line are matched independently; [\s\S] to span newlines.
-  const commentSpan = /<!--[\s\S]*?-->/g
 
   for (const token of tokens) {
     if (token.type === 'html') {
@@ -318,11 +343,11 @@ function stripHtmlCommentsFromTokens(tokens: ReturnType<Lexer['lex']>): {
         // Per CommonMark, a type-2 HTML block ends at the *line* containing
         // `-->`, so text after `-->` on that line is part of this token.
         // Strip only the comment spans and keep any residual content.
-        const residue = token.raw.replace(commentSpan, '')
-        stripped = true
-        if (residue.trim().length > 0) {
+        const residue = stripHtmlCommentSpans(token.raw)
+        stripped = stripped || residue.stripped
+        if (residue.content.trim().length > 0) {
           // Residual content exists (e.g. `<!-- note --> Use bun`): keep it.
-          result += residue
+          result += residue.content
         }
         continue
       }
@@ -504,10 +529,9 @@ function extractIncludePathsFromTokens(
         const raw = element.raw || ''
         const trimmed = raw.trimStart()
         if (trimmed.startsWith('<!--') && trimmed.includes('-->')) {
-          const commentSpan = /<!--[\s\S]*?-->/g
-          const residue = raw.replace(commentSpan, '')
-          if (residue.trim().length > 0) {
-            extractPathsFromText(residue)
+          const residue = stripHtmlCommentSpans(raw)
+          if (residue.content.trim().length > 0) {
+            extractPathsFromText(residue.content)
           }
         }
         continue
