@@ -92,6 +92,10 @@ export function buildPersonaPlexCoherenceProbe(
     result.repair.missing.length > 0
       ? `missing local launcher: ${result.repair.missing.join(', ')}`
       : null
+  const warningDetail =
+    result.repair.warnings.length > 0
+      ? result.repair.warnings.join(' | ')
+      : null
   return {
     label: 'PersonaPlex',
     url: redactPersonaPlexProbeWebSocketUrl(result.websocketUrl),
@@ -103,6 +107,7 @@ export function buildPersonaPlexCoherenceProbe(
           result.error ?? `probe status ${result.status}`,
           repairDetail,
           missingDetail,
+          warningDetail,
         ].filter((part): part is string => Boolean(part)).join(' | '),
   }
 }
@@ -117,6 +122,13 @@ async function probePersonaPlexCoherence(): Promise<ProbeResult> {
           process.env.PERSONAPLEX_ALLOW_REMOTE?.trim().toLowerCase() === 'true',
         timeoutMs: PERSONAPLEX_COHERENCE_TIMEOUT_MS,
         runtimeUrl: process.env.PERSONAPLEX_URL?.trim() || null,
+        stationRoot:
+          process.env.PERSONAPLEX_STATION_ROOT?.trim() ||
+          process.env.OPENJAWS_LOCAL_COMMAND_STATION_ROOT?.trim() ||
+          null,
+        runtimeStatePath:
+          process.env.PERSONAPLEX_RUNTIME_STATE_PATH?.trim() || null,
+        launcherPath: process.env.PERSONAPLEX_LAUNCHER_PATH?.trim() || null,
         textPrompt:
           process.env.PERSONAPLEX_TEXT_PROMPT?.trim() ||
           process.env.PERSONAPLEX_PREWARM_TEXT_PROMPT?.trim() ||

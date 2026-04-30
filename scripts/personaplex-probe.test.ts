@@ -2,8 +2,9 @@ import { describe, expect, test } from 'bun:test'
 import { mkdirSync, writeFileSync } from 'fs'
 import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import {
+  buildPersonaPlexLauncherWarnings,
   buildPersonaPlexRepairHint,
   buildPersonaPlexRuntimeStateDiagnostic,
   buildPersonaPlexProbeWebSocketUrl,
@@ -12,6 +13,9 @@ import {
   readRuntimeState,
   redactSensitiveText,
   redactPersonaPlexProbeWebSocketUrl,
+  resolvePersonaPlexLauncherPath,
+  resolvePersonaPlexRuntimeStatePath,
+  resolvePersonaPlexStationRoot,
   sanitizePersonaPlexRuntimeState,
   sanitizePersonaPlexProbeResultForOutput,
   selectPersonaPlexProbeRuntimeUrl,
@@ -23,7 +27,9 @@ function createStation(files: string[] = []) {
   const station = join(root, 'local-command-station')
   mkdirSync(station, { recursive: true })
   for (const file of files) {
-    writeFileSync(join(station, file), '# test\n', 'utf8')
+    const target = join(station, file)
+    mkdirSync(dirname(target), { recursive: true })
+    writeFileSync(target, '# test\n', 'utf8')
   }
   return root
 }
@@ -70,6 +76,7 @@ describe('personaplex-probe', () => {
           stationRoot: 'station',
           launcherPath: 'launcher',
           missing: [],
+          warnings: [],
         },
       }),
     ).toMatchObject({
@@ -88,6 +95,12 @@ describe('personaplex-probe', () => {
         'http://127.0.0.1:8998',
         '--timeout-ms',
         '250',
+        '--station-root',
+        'D:\\openjaws\\OpenJaws\\local-command-station',
+        '--runtime-state-path',
+        'D:\\openjaws\\OpenJaws\\local-command-station\\personaplex-runtime\\runtime.json',
+        '--launcher-path',
+        'D:\\openjaws\\OpenJaws\\local-command-station\\start-personaplex-voice.ps1',
         '--voice-prompt',
         'NATF2.pt',
       ]),
@@ -96,8 +109,54 @@ describe('personaplex-probe', () => {
       allowRemote: false,
       runtimeUrl: 'http://127.0.0.1:8998',
       timeoutMs: 1000,
+      stationRoot: 'D:\\openjaws\\OpenJaws\\local-command-station',
+      runtimeStatePath:
+        'D:\\openjaws\\OpenJaws\\local-command-station\\personaplex-runtime\\runtime.json',
+      launcherPath:
+        'D:\\openjaws\\OpenJaws\\local-command-station\\start-personaplex-voice.ps1',
       voicePrompt: 'NATF2.pt',
     })
+  })
+
+  test('resolves explicit operator station paths for release audits', () => {
+    const root = createStation(['start-personaplex-voice.ps1'])
+    const stationRoot = join(root, 'local-command-station')
+    const runtimeStatePath = join(stationRoot, 'personaplex-runtime', 'runtime.json')
+    const launcherPath = join(stationRoot, 'start-personaplex-voice.ps1')
+
+    expect(resolvePersonaPlexStationRoot({ stationRoot })).toBe(stationRoot)
+    expect(
+      resolvePersonaPlexRuntimeStatePath({ stationRoot, runtimeStatePath }),
+    ).toBe(runtimeStatePath)
+    expect(resolvePersonaPlexLauncherPath({ stationRoot, launcherPath })).toBe(
+      launcherPath,
+    )
+  })
+
+  test('warns on generated PersonaPlex scripts with inline secrets without leaking values', () => {
+    const root = createStation(['start-personaplex-voice.ps1'])
+    const stationRoot = join(root, 'local-command-station')
+    const generatedScript = join(
+      stationRoot,
+      'personaplex-runtime',
+      'start-personaplex-wsl.sh',
+    )
+    mkdirSync(dirname(generatedScript), { recursive: true })
+    writeFileSync(
+      generatedScript,
+      "export HF_TOKEN='hf_test_secret_value_that_should_not_log'\n",
+      'utf8',
+    )
+
+    const warnings = buildPersonaPlexLauncherWarnings({
+      stationRoot,
+      launcherPath: join(stationRoot, 'start-personaplex-voice.ps1'),
+    })
+
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('inline secret assignment detected')
+    expect(warnings[0]).toContain('start-personaplex-wsl.sh')
+    expect(warnings[0]).not.toContain('hf_test_secret_value')
   })
 
   test('only probes loopback PersonaPlex endpoints by default', async () => {
