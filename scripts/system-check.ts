@@ -49,6 +49,10 @@ const qSmokeBaseModelSource =
   process.env.OPENJAWS_Q_SMOKE_MODEL ?? Q_SMOKE_BASE_MODEL
 const qSmokeBaseModel = getOpenJawsTrainingModelDisplay(qSmokeBaseModelSource)
 const qPythonCommand = resolveQTrainingPythonCommand(rootDir)
+const discordSupervisorSurfaceFiles = [
+  'scripts/discord-agent-supervisor.ts',
+  'scripts/discord-agent-supervisor.test.ts',
+] as const
 
 function tailText(text: string, maxLines = 40, maxChars = 4000): string {
   const trimmed = text.trim()
@@ -307,6 +311,33 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function checkDiscordSupervisorSurface(): CheckResult {
+  const startedAt = Date.now()
+  const files = discordSupervisorSurfaceFiles.map(relativePath => {
+    const path = resolve(rootDir, relativePath)
+    return {
+      relativePath,
+      path,
+      present: existsSync(path),
+    }
+  })
+  const missing = files.filter(file => !file.present)
+
+  return {
+    name: 'discord-supervisor-release-surface',
+    status: missing.length > 0 ? 'failed' : 'passed',
+    durationMs: Date.now() - startedAt,
+    summary:
+      missing.length > 0
+        ? `Discord supervisor release surface is incomplete (${missing.length} missing files)`
+        : 'Discord supervisor release surface files are present',
+    details: {
+      missingCount: missing.length,
+      files,
+    },
+  }
+}
+
 async function main() {
   await rm(runDir, { recursive: true, force: true })
   await mkdir(runDir, { recursive: true })
@@ -319,6 +350,7 @@ async function main() {
   const auditedDir = join(runDir, 'audited-sample')
   const liveTrainDir = join(runDir, 'q-live-smoke')
 
+  results.push(checkDiscordSupervisorSurface())
   results.push(
     await runCommandCheck('unit-tests', 'bun', ['run', 'test'], {
       successSummary: 'unit tests passed',
