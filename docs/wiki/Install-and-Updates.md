@@ -64,8 +64,28 @@ Official public update inputs are:
 - tagged GitHub Releases from this repository
 - [`release-policy.json`](../../release-policy.json)
 - the per-platform signed release manifest with SHA-256 checksum data
+- official JAWS desktop mirror pages on `https://qline.site/downloads/jaws` and `https://iorch.net/downloads/jaws`, which redirect back to signed GitHub release assets
 
 OpenJaws does not treat arbitrary `main` pushes, mirrors, or copied installer snippets as an official update source.
+
+## JAWS Desktop Mirrors
+
+JAWS Desktop 0.1.2 is mirrored on the public site surfaces for users who want a native installer instead of a source checkout:
+
+- qline.site: `https://qline.site/downloads/jaws`
+- iorch.net: `https://iorch.net/downloads/jaws`
+- GitHub release: `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.2`
+
+The mirror download routes are Netlify redirects to the GitHub release assets:
+
+- `/downloads/jaws/windows`
+- `/downloads/jaws/windows-msi`
+- `/downloads/jaws/macos`
+- `/downloads/jaws/linux-deb`
+- `/downloads/jaws/linux-rpm`
+- `/downloads/jaws/latest.json`
+
+Use the mirror pages for the branded public install flow. Use the GitHub release page when you want to inspect every artifact and signature directly.
 
 ## First-Run Checklist
 

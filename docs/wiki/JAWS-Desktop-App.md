@@ -77,7 +77,7 @@ Required GitHub secrets:
 - `JAWS_TAURI_SIGNING_PRIVATE_KEY`
 - `JAWS_TAURI_SIGNING_PRIVATE_KEY_PASSWORD` only when the signing key was generated with a password
 
-The release workflow is `.github/workflows/jaws-desktop.yml`. It builds OpenJaws, prepares the sidecar, builds the Tauri bundle, and uploads signed installer/update artifacts. Public download pages on `qline.site` and `iorch.net` should publish only artifacts from that workflow.
+The release workflow is `.github/workflows/jaws-desktop.yml`. It builds OpenJaws, prepares the sidecar, builds the Tauri bundle, and uploads signed installer/update artifacts. Public download pages on `qline.site` and `iorch.net` publish only artifacts from that workflow or from the verified GitHub release assets produced by that workflow.
 
 The updater public key is committed in `tauri.conf.json`, and the matching private key is stored in the repository secret `JAWS_TAURI_SIGNING_PRIVATE_KEY`. The private signing key must stay in CI secrets only. `bun run jaws:release:check` fails closed until the public key, HTTPS update endpoints, native icon, updater artifacts, and sidecar bundle config are all present.
 
@@ -112,6 +112,14 @@ Windows bundle smoke, run locally on 2026-04-29:
 
 0.1.2 adds the native Settings page, keeps update checks available from Settings, replaces the in-app image logo with a CSS/React JAWS mark so the shell cannot render a broken image, keeps regenerated native installer icons, upgrades Chat into a slimmer animated workstream with per-message activity markers and a bounded `openjaws --print` sidecar bridge, adds the animated Cyber Frog pet loop, adds user and agent profile areas, adds native Open Folder workspace selection, renames the arcade runner to Slow Guy, and keeps the desktop release version aligned across `package.json`, `tauri.conf.json`, `Cargo.toml`, and `Cargo.lock`.
 
+0.1.2 public release mirrors, deployed and live-checked on 2026-04-30:
+
+- `https://qline.site/downloads/jaws`
+- `https://iorch.net/downloads/jaws`
+- `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.2`
+
+Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries.
+
 Implementation references:
 
 - Tauri updater plugin: `https://v2.tauri.app/plugin/updater/`
@@ -120,10 +128,9 @@ Implementation references:
 
 ## Next Production Tasks
 
-1. Deploy the new `/api/jaws/{target}/{arch}/{current_version}` endpoint on both `qline.site` and `iorch.net`.
-2. Publish a signed `jaws-v*` GitHub release and promote it from draft only after installer smoke testing.
-3. Replace the desktop timeline fixture with live event streaming from the OpenJaws route/runtime log bus.
-4. Connect Arobi enrollment to the real account and ledger APIs.
-5. Implement exchange-code collaboration with signed workspace invites, revocation, and explicit pooled-credit consent.
-6. Add marketplace package signing, review states, sandbox scopes, and rollback metadata.
-7. Publish first installer links after signed bundle verification passes in GitHub Actions.
+1. Implement the dynamic `/api/jaws/{target}/{arch}/{current_version}` updater endpoint on `iorch.net`; `qline.site` already has the release mirror and updater manifest redirect live.
+2. Replace the desktop timeline fixture with live event streaming from the OpenJaws route/runtime log bus.
+3. Connect Arobi enrollment to the real account and ledger APIs.
+4. Implement exchange-code collaboration with signed workspace invites, revocation, and explicit pooled-credit consent.
+5. Add marketplace package signing, review states, sandbox scopes, and rollback metadata.
+6. Add a signed mirror-health receipt that checks qline, iorch, GitHub release assets, and updater manifest redirects before each public release announcement.
