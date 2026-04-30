@@ -9,10 +9,37 @@ const EXPECTED_SITE_NAME = 'qline-site-20260415022202'
 const EXPECTED_DOMAIN = 'qline.site'
 const REQUIRED_CONTENT_CHECKS = [
   'Agent Co-Work',
-  'Public TerminalBench',
-  'TerminalBench Soak',
-  'circuit-fibsqrt',
-  'OpenJaws on GitHub',
+  'TerminalBench',
+  'BridgeBench',
+  'Q // JAWS // OpenJaws // Q_agents',
+  'github.com/PossumXI/OpenJaws',
+  'q-share-card',
+] as const
+const REQUIRED_LIVE_ROUTES = [
+  {
+    label: 'terms',
+    url: `https://${EXPECTED_DOMAIN}/terms`,
+    expectedStatus: 200,
+    marker: '<html',
+  },
+  {
+    label: 'jaws-downloads',
+    url: `https://${EXPECTED_DOMAIN}/downloads/jaws`,
+    expectedStatus: 200,
+    marker: 'JAWS',
+  },
+  {
+    label: 'jaws-updater-available',
+    url: `https://${EXPECTED_DOMAIN}/api/jaws/windows/x86_64/0.1.3`,
+    expectedStatus: 200,
+    marker: '"version"',
+  },
+  {
+    label: 'jaws-updater-current',
+    url: `https://${EXPECTED_DOMAIN}/api/jaws/windows/x86_64/0.1.4`,
+    expectedStatus: 204,
+    marker: null,
+  },
 ] as const
 
 type CliOptions = {
@@ -49,6 +76,12 @@ type NetlifySite = {
   custom_domain?: string | null
   published_deploy?: { id?: string } | null
   published_deploy_id?: string | null
+}
+
+type LiveRouteCheck = {
+  label: string
+  url: string
+  status: number
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -244,6 +277,51 @@ function assertContent(content: string, label: string): string[] {
   return [...REQUIRED_CONTENT_CHECKS]
 }
 
+async function fetchLiveRouteWithRetries(
+  url: string,
+  retries = 6,
+  delayMs = 1500,
+): Promise<{ status: number; text: string }> {
+  let lastError: Error | null = null
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        redirect: 'follow',
+        headers: { 'User-Agent': 'openjaws-qline-route-check/1.0' },
+      })
+      return {
+        status: response.status,
+        text: await response.text(),
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      await Bun.sleep(delayMs)
+    }
+  }
+  throw lastError ?? new Error(`Failed to fetch ${url}`)
+}
+
+async function assertRequiredLiveRoutes(): Promise<LiveRouteCheck[]> {
+  const checks: LiveRouteCheck[] = []
+  for (const route of REQUIRED_LIVE_ROUTES) {
+    const response = await fetchLiveRouteWithRetries(route.url)
+    if (response.status !== route.expectedStatus) {
+      throw new Error(
+        `${route.label} route returned HTTP ${response.status}; expected ${route.expectedStatus}.`,
+      )
+    }
+    if (route.marker && !response.text.includes(route.marker)) {
+      throw new Error(`${route.label} route is missing required marker ${route.marker}.`)
+    }
+    checks.push({
+      label: route.label,
+      url: route.url,
+      status: response.status,
+    })
+  }
+  return checks
+}
+
 function toWslPath(windowsPath: string): string {
   const normalized = windowsPath.replace(/\\/g, '/')
   const match = normalized.match(/^([A-Za-z]):\/(.*)$/)
@@ -364,14 +442,26 @@ async function main(): Promise<void> {
   }
 
   const liveDeploy = await netlifyApi<NetlifyDeploy>(token, `/deploys/${promotedDeployId}`)
-  const liveRuntime = assertNextRuntime(liveDeploy)
+  const liveRuntime = options.promote
+    ? assertNextRuntime(liveDeploy)
+    : (() => {
+        try {
+          return assertNextRuntime(liveDeploy)
+        } catch (error) {
+          return {
+            functionName: null,
+            runtime: null,
+            generator: null,
+            invocationMode: null,
+            deployUrl:
+              liveDeploy.deploy_ssl_url ?? liveDeploy.ssl_url ?? liveDeploy.url ?? null,
+            warning: error instanceof Error ? error.message : String(error),
+          }
+        }
+      })()
   const apexContent = await fetchTextWithRetries(`https://${EXPECTED_DOMAIN}`)
-  const termsContent = await fetchTextWithRetries(`https://${EXPECTED_DOMAIN}/terms`)
   const checks = assertContent(apexContent, `https://${EXPECTED_DOMAIN}`)
-
-  if (!termsContent.toLowerCase().includes('<html')) {
-    throw new Error(`https://${EXPECTED_DOMAIN}/terms did not return a valid HTML document.`)
-  }
+  const liveRoutes = await assertRequiredLiveRoutes()
 
   console.log(
     JSON.stringify(
@@ -383,17 +473,12 @@ async function main(): Promise<void> {
         customDomain: site.custom_domain,
         publishedDeployId: promotedDeployId,
         draftDeployId,
-        nextHandler: {
-          name: liveRuntime.functionName,
-          runtime: liveRuntime.runtime,
-          generator: liveRuntime.generator,
-          invocationMode: liveRuntime.invocationMode,
-        },
+        nextHandler: liveRuntime,
         checks: {
           uniqueDeployUrl: liveRuntime.deployUrl,
           apexUrl: `https://${EXPECTED_DOMAIN}`,
           apexStatus: 200,
-          termsStatus: 200,
+          routes: liveRoutes,
           content: checks,
         },
       },

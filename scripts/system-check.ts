@@ -400,6 +400,18 @@ async function main() {
     }),
   )
   results.push(
+    await runJsonCommandCheck('service-route-health', 'bun', [
+      'run',
+      'service:routes',
+    ], {
+      successSummary:
+        'service route health audited public mirrors, updater endpoints, local admin routes, and required production configuration',
+      failureSummary:
+        'service route health found a required public route failure',
+      timeoutMs: 180_000,
+    }),
+  )
+  results.push(
     await runCommandCheck('python-compile', 'python', ['-m', 'py_compile', 'training\\q\\train_lora.py'], {
       successSummary: 'Q trainer compiles',
       timeoutMs: 180_000,

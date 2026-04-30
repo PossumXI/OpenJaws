@@ -63,6 +63,7 @@
     "runtime:coherence": "bun scripts/runtime-coherence.ts --json",
     "personaplex:probe": "bun scripts/personaplex-probe.ts --json",
     "orchestration:guardrails": "bun scripts/agentic-orchestration-guardrails.ts --json",
+    "service:routes": "bun scripts/service-route-health.ts --json",
     "discord:q:repair": "bun scripts/discord-agent-supervisor.ts repair --agent Q",
     "discord:viola:repair": "bun scripts/discord-agent-supervisor.ts repair --agent Viola",
     "discord:blackbeak:repair": "bun scripts/discord-agent-supervisor.ts repair --agent Blackbeak",

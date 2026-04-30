@@ -35,6 +35,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - `bun run jaws:soak -- --duration-ms 300000 --users 5000` adds a five-minute durability lane for logo rendering, docs/legal presence, release metadata, updater security, Agent Watch bridge wiring, Slow Guy, Hold'em, and synthetic user-presence scaling.
 - Website checkout and billing coverage now tests Stripe readiness, checkout route fail-closed cases, hosted billing proxy mode, local entitlement activation from `checkout.session.completed`, cancellation from `customer.subscription.deleted`, usage receipts, key blocking before checkout, and webhook signature verification.
 - Stripe webhook verification now uses the SDK async verifier so the Next/Bun route can validate signed Stripe webhooks without failing on the SDK SubtleCrypto provider.
+- `bun run service:routes` now audits qline/iorch public routes, JAWS updater endpoints, local Immaculate/Q/Apex admin routes, and required production config classes for OCI, Cloudflare, database, mail, hosted-Q, and AROBI LAAS without printing secrets.
 - FIGlet-style `OPENJAWS` banner now uses a six-row ANSI-shadow treatment with the `OPENCHEEKS // ANSI-SHADOW FLIGHT DECK // IMMACULATE` deck line across the startup TUI
 - ocean-blue flight-deck styling is used across the cockpit, footer, task surfaces, and wiki/repo entry pages
 - shark mascot animation now breaches through the waterline instead of acting as a static icon
