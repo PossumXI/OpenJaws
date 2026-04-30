@@ -87,6 +87,14 @@ The mirror download routes are Netlify redirects to the GitHub release assets:
 
 Use the mirror pages for the branded public install flow. Use the GitHub release page when you want to inspect every artifact and signature directly.
 
+Release operators should verify the mirrors before announcing or re-announcing a desktop release:
+
+```powershell
+bun run jaws:mirror:check --json --out .tmp-jaws-release-mirror-health.json
+```
+
+The check fails closed when a public route points at the wrong asset, when a required GitHub release asset or signature is missing, or when the updater manifest loses a required signed platform entry.
+
 ## First-Run Checklist
 
 After the first launch:

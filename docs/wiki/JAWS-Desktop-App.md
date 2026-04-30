@@ -120,6 +120,14 @@ Windows bundle smoke, run locally on 2026-04-29:
 
 Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries.
 
+Mirror health gate:
+
+```powershell
+bun run jaws:mirror:check --json --out .tmp-jaws-release-mirror-health.json
+```
+
+The gate checks both public mirror pages, every public mirror redirect, the GitHub `jaws-v0.1.2` release asset list, and the signed updater manifest entries for Windows and macOS. When `OPENJAWS_RELEASE_HEALTH_PRIVATE_KEY` or `OPENJAWS_RELEASE_MANIFEST_PRIVATE_KEY` is present, the receipt is signed with the existing Ed25519 release-manifest signature format.
+
 Implementation references:
 
 - Tauri updater plugin: `https://v2.tauri.app/plugin/updater/`
@@ -133,4 +141,4 @@ Implementation references:
 3. Connect Arobi enrollment to the real account and ledger APIs.
 4. Implement exchange-code collaboration with signed workspace invites, revocation, and explicit pooled-credit consent.
 5. Add marketplace package signing, review states, sandbox scopes, and rollback metadata.
-6. Add a signed mirror-health receipt that checks qline, iorch, GitHub release assets, and updater manifest redirects before each public release announcement.
+6. Remove the remaining hardcoded `jaws-v0.1.2` mirror metadata once the next JAWS release train has a generated release-index source of truth.

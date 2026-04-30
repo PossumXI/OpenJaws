@@ -17,6 +17,7 @@ This page summarizes the current public OpenJaws surface that is already working
 
 - JAWS Desktop is now scaffolded as the native Tauri app lane for OpenJaws, with the OpenJaws backend bundled as a sidecar, signed updater artifact wiring, a collapsible workspace shell, Q/Q_agents/OpenCheek/Immaculate surfaces, Arobi enrollment, co-work pairing, marketplace, studio, arcade, billing, layout themes, an original blue shark-jaws logo asset, and the 0.1.2 Settings/update page plus bundled Cyber Frog companion asset.
 - JAWS Desktop 0.1.2 now has public download mirrors on `qline.site/downloads/jaws` and `iorch.net/downloads/jaws`; both route installer and updater-manifest downloads back to the signed `jaws-v0.1.2` GitHub release assets.
+- `bun run jaws:mirror:check` now verifies the qline mirror, iorch mirror, GitHub release asset list, and signed updater manifest before a release pass can be called complete.
 - FIGlet-style `OPENJAWS` banner now uses a six-row ANSI-shadow treatment with the `OPENCHEEKS // ANSI-SHADOW FLIGHT DECK // IMMACULATE` deck line across the startup TUI
 - ocean-blue flight-deck styling is used across the cockpit, footer, task surfaces, and wiki/repo entry pages
 - shark mascot animation now breaches through the waterline instead of acting as a static icon
