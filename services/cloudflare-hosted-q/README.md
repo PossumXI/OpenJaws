@@ -5,6 +5,7 @@ This worker is the repo-owned production backend surface for:
 - hosted Q signup, usage, and key issuance
 - Stripe checkout and verified webhook entitlement sync
 - D1-backed account and usage storage
+- JAWS user profile, code-token wallet, and promotion/contact storage
 - service-authenticated Resend notification sends
 - service-authenticated AROBI ledger / LAAS event receipts
 
@@ -15,18 +16,27 @@ account IDs or secrets.
 
 - `GET /health`
 - `POST /signup`
+- `POST /profile`
 - `POST /checkout`
 - `POST /keys`
 - `POST /usage`
 - `POST /usage/record`
+- `GET /code-tokens/wallet?email=<email>`
+- `GET /code-tokens/ledger?email=<email>&limit=25`
+- `POST /code-tokens/ledger`
 - `POST /stripe-webhook`
 - `POST /mail/notify`
 - `POST /laas/events`
 - `GET /laas/events`
+- `GET /promotions/campaign?slug=<slug>`
+- `POST /promotions/campaigns`
+- `POST /promotions/contacts`
 
 Privileged routes require `Authorization: Bearer <SERVICE_TOKEN>`. This
 includes checkout, verified Stripe webhook sync, usage recording, mail, and
-LAAS writes.
+LAAS writes. Code-token ledger writes and promotion campaign upserts are also
+service-authenticated; public promotion contact capture only stores normalized
+contact intent for an existing campaign.
 
 ## Deploy
 
@@ -60,5 +70,9 @@ token used by the worker.
 - Mail receipts hash recipient and subject values before storage.
 - Checkout, webhook sync, ledger writes, usage writes, and mail sends are
   service-authenticated.
+- Code-token wallet mutations are append-only through privileged ledger writes
+  so app-side game rewards and marketplace spends can be audited.
+- Promotion contacts are deduped per campaign and keep marketing consent
+  separate from hosted Q entitlement state.
 - The worker health route reports binding presence without exposing secret
   values.

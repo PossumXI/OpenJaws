@@ -3,9 +3,11 @@ import {
   addHoldemChat,
   advanceHoldemRound,
   advanceSlowGuy,
+  applyHoldemAction,
   createHoldemTable,
   createSlowGuyState,
-  evaluateHoldemWinners
+  evaluateHoldemWinners,
+  holdemCodeTokenPrize
 } from "./games";
 
 describe("Slow Guy mechanics", () => {
@@ -62,9 +64,11 @@ describe("Hold'em roundtable foundation", () => {
     table = advanceHoldemRound(table);
     expect(table.phase).toBe("preflop");
     expect(table.seats[0]?.holeCards).toHaveLength(2);
+    expect(table.currentBet).toBe(table.bigBlind);
     table = advanceHoldemRound(table);
     expect(table.phase).toBe("flop");
     expect(table.communityCards).toHaveLength(3);
+    expect(table.currentBet).toBe(0);
     table = advanceHoldemRound(table);
     table = advanceHoldemRound(table);
     expect(table.phase).toBe("river");
@@ -100,5 +104,32 @@ describe("Hold'em roundtable foundation", () => {
     }
     expect(table.chat.length).toBeLessThanOrEqual(11);
     expect(table.chat.at(-1)?.body).toBe("message 13");
+  });
+
+  test("supports hold, check, pass, bet, and raise actions with table-token accounting", () => {
+    let table = advanceHoldemRound(createHoldemTable("Founder", "action-seed"));
+    const startingPot = table.pot;
+    const startingChips = table.seats[0]!.chips;
+
+    table = applyHoldemAction(table, "seat-founder", "hold");
+    expect(table.seats[0]!.chips).toBeLessThan(startingChips);
+    expect(table.pot).toBeGreaterThan(startingPot);
+
+    table = advanceHoldemRound(table);
+    table = applyHoldemAction(table, "seat-founder", "check");
+    expect(table.lastEvent).toContain("checks");
+
+    table = applyHoldemAction(table, "seat-founder", "bet", 40);
+    expect(table.currentBet).toBeGreaterThanOrEqual(40);
+    expect(table.pot).toBeGreaterThan(startingPot);
+
+    table = applyHoldemAction(table, "seat-founder", "raise", 40);
+    expect(table.currentBet).toBeGreaterThanOrEqual(80);
+
+    table = applyHoldemAction(table, "seat-q", "pass");
+    table = applyHoldemAction(table, "seat-opencheek", "pass");
+    expect(table.phase).toBe("showdown");
+    expect(table.winners[0]?.seatId).toBe("seat-founder");
+    expect(holdemCodeTokenPrize(table)).toBeGreaterThan(0);
   });
 });

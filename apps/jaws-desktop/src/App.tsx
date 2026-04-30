@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -22,6 +22,7 @@ import {
   Heart,
   Maximize2,
   MessageSquare,
+  Minimize2,
   MonitorPlay,
   PackagePlus,
   Pause,
@@ -48,12 +49,14 @@ import {
   type ThemeId
 } from "./data";
 import {
-  addHoldemChat,
   advanceHoldemRound,
   advanceSlowGuy,
+  applyHoldemAction,
   createHoldemTable,
   createSlowGuyState,
   describeCard,
+  holdemCodeTokenPrize,
+  type HoldemAction,
   type HoldemTableState,
   type SlowGuyAction,
   type SlowGuyState
@@ -139,6 +142,19 @@ interface ChatMessage {
   lane: string;
 }
 
+interface ChatWindowState {
+  id: string;
+  title: string;
+  workspacePath: string;
+  workspaceName: string;
+  input: string;
+  messages: ChatMessage[];
+  minimized: boolean;
+  expanded: boolean;
+  sideCollapsed: boolean;
+  createdAt: string;
+}
+
 interface JawsNotification {
   id: string;
   title: string;
@@ -169,6 +185,9 @@ interface UserProfile {
   name: string;
   handle: string;
   focus: string;
+  walletId: string;
+  promotionOptIn: boolean;
+  lastPromotionTouch: string;
 }
 
 interface AgentProfile {
@@ -497,6 +516,8 @@ const chatTools = [
   { label: "Ship", prompt: "Prepare release notes, tag the build, and verify updater metadata." }
 ];
 
+const codeTokenCap = 999_999;
+
 const defaultPet: CyberPetState = {
   name: "Byte Hopper",
   tokens: 42,
@@ -511,7 +532,10 @@ const defaultPet: CyberPetState = {
 const defaultUserProfile: UserProfile = {
   name: "Founder",
   handle: "gaetano",
-  focus: "Ship clean releases"
+  focus: "Ship clean releases",
+  walletId: "local-founder-wallet",
+  promotionOptIn: true,
+  lastPromotionTouch: "local only"
 };
 
 const agentProfiles: AgentProfile[] = [
@@ -628,6 +652,73 @@ function loadStoredValue<T>(key: string, fallback: T): T {
   }
 }
 
+function withWindowMessageIds(messages: ChatMessage[], suffix: string): ChatMessage[] {
+  return messages.map((message) => ({
+    ...message,
+    id: `${message.id}-${suffix}`
+  }));
+}
+
+function createChatWindow(
+  workspacePath = "",
+  workspaceName = "No workspace",
+  title = workspaceName || "JAWS Chat"
+): ChatWindowState {
+  const id = `chat-window-${Date.now()}-${Math.round(Math.random() * 10000)}`;
+  const createdAt = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return {
+    id,
+    title: title || "JAWS Chat",
+    workspacePath,
+    workspaceName: workspaceName || "No workspace",
+    input: "",
+    messages: [
+      ...withWindowMessageIds(initialMessages, id),
+      {
+        id: `workspace-bound-${id}`,
+        speaker: "JAWS",
+        role: "system",
+        body: workspacePath
+          ? `This chat window is pinned to ${workspacePath}. Commands launched here use that project folder.`
+          : "This chat window is not pinned yet. Open a folder or start a project window before running agents.",
+        time: createdAt,
+        state: workspacePath ? "done" : "queued",
+        lane: "workspace"
+      }
+    ],
+    minimized: false,
+    expanded: false,
+    sideCollapsed: false,
+    createdAt
+  };
+}
+
+function normalizeStoredChatWindows(value: unknown): ChatWindowState[] {
+  if (!Array.isArray(value)) return [createChatWindow()];
+  const windows = value
+    .filter((entry): entry is Partial<ChatWindowState> => Boolean(entry) && typeof entry === "object")
+    .slice(0, 6)
+    .map((entry, index) => ({
+      ...createChatWindow(),
+      ...entry,
+      id: typeof entry.id === "string" && entry.id ? entry.id : `chat-window-restored-${index}`,
+      title: typeof entry.title === "string" && entry.title ? entry.title : entry.workspaceName || "JAWS Chat",
+      workspacePath: typeof entry.workspacePath === "string" ? entry.workspacePath : "",
+      workspaceName: typeof entry.workspaceName === "string" && entry.workspaceName ? entry.workspaceName : "No workspace",
+      input: typeof entry.input === "string" ? entry.input : "",
+      messages: Array.isArray(entry.messages) && entry.messages.length > 0 ? entry.messages : initialMessages,
+      minimized: Boolean(entry.minimized),
+      expanded: Boolean(entry.expanded),
+      sideCollapsed: Boolean(entry.sideCollapsed),
+      createdAt: typeof entry.createdAt === "string" ? entry.createdAt : "restored"
+    }));
+  return windows.length > 0 ? windows : [createChatWindow()];
+}
+
+function loadChatWindows(): ChatWindowState[] {
+  return normalizeStoredChatWindows(loadStoredValue<unknown>("jaws.chatWindows", null));
+}
+
 function loadSlowGuyState(): SlowGuyState {
   const bestScore = Number(localStorage.getItem("jaws.slowGuyBest") ?? "0") || 0;
   const fallback = createSlowGuyState(bestScore);
@@ -689,95 +780,32 @@ function fallbackProjectContextSnapshot(workspace: WorkspaceStatus = fallbackWor
     checkedAt: "preview",
     workspacePath: workspace.path,
     workspaceName: workspace.name || "No workspace",
-    valid,
-    source: valid ? "static preview" : "workspace not selected",
-    confidenceScore: valid ? 48 : 0,
+    valid: false,
+    source: valid ? "native scan unavailable" : "workspace not selected",
+    confidenceScore: 0,
     summary: valid
-      ? "Native context packs are available inside the JAWS Tauri desktop runtime. Preview mode shows the shape of the receipt without scanning files."
+      ? "A project folder is selected, but this preview shell cannot scan it. Open the native JAWS app and refresh Context Brain to build a real file-count, skip, priority-file, and token-budget receipt."
       : "Open a project folder to show the exact context pack JAWS can route to Q and Q_agents.",
-    totalFiles: valid ? 12 : 0,
-    scannedFiles: valid ? 6 : 0,
-    skippedFiles: valid ? 6 : 0,
-    estimatedTokens: valid ? 18_000 : 0,
+    totalFiles: 0,
+    scannedFiles: 0,
+    skippedFiles: 0,
+    estimatedTokens: 0,
     contextBudgetTokens: 200_000,
-    categories: valid
-      ? [
-          {
-            id: "code",
-            label: "Code",
-            fileCount: 4,
-            includedCount: 4,
-            estimatedTokens: 9_500,
-            confidence: 100,
-            status: "included",
-            detail: "Source files that explain behavior and implementation."
-          },
-          {
-            id: "tests",
-            label: "Tests",
-            fileCount: 1,
-            includedCount: 1,
-            estimatedTokens: 2_000,
-            confidence: 100,
-            status: "included",
-            detail: "Verifier files that define expected behavior."
-          },
-          {
-            id: "assets",
-            label: "Assets",
-            fileCount: 7,
-            includedCount: 1,
-            estimatedTokens: 6_500,
-            confidence: 14,
-            status: "partial",
-            detail: "Binary or media assets tracked as metadata only."
-          }
-        ]
-      : [],
-    priorityFiles: valid
-      ? [
-          {
-            path: "README.md",
-            kind: "Docs",
-            reason: "project contract",
-            estimatedTokens: 2_400,
-            status: "included"
-          },
-          {
-            path: "package.json",
-            kind: "Config",
-            reason: "project contract",
-            estimatedTokens: 900,
-            status: "included"
-          }
-        ]
-      : [],
-    skipped: valid
-      ? [
-          {
-            reason: "generated or hidden directory",
-            count: 4,
-            examples: ["node_modules", ".git"]
-          },
-          {
-            reason: "secret-like file",
-            count: 2,
-            examples: [".env.local"]
-          }
-        ]
-      : [],
+    categories: [],
+    priorityFiles: [],
+    skipped: [],
     brainLanes: [
       {
         label: "Q planner",
         receives: "workspace map, priority files, test/config/docs coverage",
-        status: valid ? "review" : "blocked",
-        detail: "Uses the visible context receipt before task decomposition."
+        status: "blocked",
+        detail: "Waiting for the native file scanner to produce a real context receipt."
       },
       {
         label: "Q_agents",
         receives: "bounded file lists, skipped reasons, verifier targets",
-        status: valid ? "review" : "blocked",
-        detail: "Worker lanes inherit the same visible context receipt."
+        status: "blocked",
+        detail: "Workers should not claim project understanding until a native scan is present."
       }
     ],
     notes: [
@@ -802,10 +830,14 @@ export function App() {
   const [updateChecking, setUpdateChecking] = useState(false);
   const [updatePipeline, setUpdatePipeline] = useState<UpdatePipelineEntry[]>(initialUpdatePipeline);
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
+  const [updatePromptHidden, setUpdatePromptHidden] = useState(false);
   const [account, setAccount] = useState<AccountSession | null>(() => loadStoredAccountSession());
-  const [chatInput, setChatInput] = useState("");
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(initialMessages);
+  const [chatWindows, setChatWindows] = useState<ChatWindowState[]>(() => loadChatWindows());
+  const [activeChatWindowId, setActiveChatWindowId] = useState(
+    () => localStorage.getItem("jaws.activeChatWindowId") ?? ""
+  );
   const [chatBusy, setChatBusy] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<JawsNotification[]>(initialNotifications);
   const [firework, setFirework] = useState<JawsNotification | null>(null);
   const [compareMode, setCompareMode] = useState(() => localStorage.getItem("jaws.compareMode") === "true");
@@ -819,12 +851,11 @@ export function App() {
   );
   const [pet, setPet] = useState<CyberPetState>(() => loadStoredValue("jaws.cyberPet", defaultPet));
   const [userProfile, setUserProfile] = useState<UserProfile>(() =>
-    loadStoredValue("jaws.userProfile", defaultUserProfile)
+    ({ ...defaultUserProfile, ...loadStoredValue<Partial<UserProfile>>("jaws.userProfile", {}) })
   );
   const [arcadeView, setArcadeView] = useState<ArcadeView>("slow-guy");
   const [slowGuy, setSlowGuy] = useState<SlowGuyState>(() => loadSlowGuyState());
   const [holdemTable, setHoldemTable] = useState<HoldemTableState>(() => loadHoldemTable("Founder"));
-  const [holdemChatInput, setHoldemChatInput] = useState("");
   const [jawFrame, setJawFrame] = useState(0);
   const [agentRuntime, setAgentRuntime] = useState<AgentRuntimeSnapshot>(() => fallbackAgentRuntimeSnapshot());
   const [agentRuntimeLoading, setAgentRuntimeLoading] = useState(false);
@@ -843,6 +874,8 @@ export function App() {
   const [previewDemoResult, setPreviewDemoResult] = useState<PreviewDemoHarnessResult | null>(null);
   const [previewRunResult, setPreviewRunResult] = useState<OpenJawsChatResult | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
+  const [browserControlMode, setBrowserControlMode] = useState<"user" | "agent-review" | "agent-approved">("user");
+  const [browserTaskInput, setBrowserTaskInput] = useState("");
   const [coworkPlan, setCoworkPlan] = useState<QAgentsCoworkPlan>(fallbackCoworkPlan);
   const [coworkStackMode, setCoworkStackMode] = useState<"solo" | "pair" | "stacked">("stacked");
   const [coworkSharedCredits, setCoworkSharedCredits] = useState(fallbackCoworkPlan.pooledCredits);
@@ -910,6 +943,25 @@ export function App() {
   }, [userProfile]);
 
   useEffect(() => {
+    localStorage.setItem("jaws.chatWindows", JSON.stringify(chatWindows.slice(0, 6)));
+    if (activeChatWindowId) {
+      localStorage.setItem("jaws.activeChatWindowId", activeChatWindowId);
+    }
+  }, [activeChatWindowId, chatWindows]);
+
+  useEffect(() => {
+    if (chatWindows.length === 0) {
+      const windowState = createChatWindow();
+      setChatWindows([windowState]);
+      setActiveChatWindowId(windowState.id);
+      return;
+    }
+    if (!activeChatWindowId || !chatWindows.some((windowState) => windowState.id === activeChatWindowId)) {
+      setActiveChatWindowId(chatWindows[0]!.id);
+    }
+  }, [activeChatWindowId, chatWindows]);
+
+  useEffect(() => {
     if (!slowGuy.running || slowGuy.gameOver) return;
     const timer = window.setInterval(() => {
       setSlowGuy((state) => advanceSlowGuy(state, "tick"));
@@ -963,7 +1015,21 @@ export function App() {
     void refreshProjectContext();
   }, [active]);
 
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+    const timer = window.setTimeout(() => {
+      void checkForUpdates("startup");
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const activeTitle = useMemo(() => navItems.find((item) => item.id === active)?.label ?? "Control", [active]);
+  const activeChatWindow = useMemo(
+    () => chatWindows.find((windowState) => windowState.id === activeChatWindowId) ?? chatWindows[0] ?? createChatWindow(),
+    [activeChatWindowId, chatWindows]
+  );
+  const chatInput = activeChatWindow.input;
+  const chatMessages = activeChatWindow.messages;
   const workspaceSelection = useMemo(
     () => buildWorkspaceSelection(workspaceInput, terminalPlatform()),
     [workspaceInput]
@@ -1045,6 +1111,9 @@ export function App() {
           : "Use an absolute project folder path before opening the TUI view.",
         tuiCommand: selection.command
       });
+      if (selection.cleaned) {
+        attachWorkspaceToActiveChatWindow(selection.cleaned, selection.name);
+      }
       void refreshProjectContext(selection.cleaned);
       return;
     }
@@ -1055,6 +1124,7 @@ export function App() {
     setWorkspaceStatus(result);
     if (result.path) {
       setWorkspaceInput(result.path);
+      attachWorkspaceToActiveChatWindow(result.path, result.name || selection.name);
     }
     void refreshProjectContext(result.path || selection.cleaned);
   }
@@ -1085,6 +1155,7 @@ export function App() {
       path: selected
     });
     setWorkspaceStatus(result);
+    attachWorkspaceToActiveChatWindow(result.path || selected, result.name || workspaceSelection.name);
     void refreshProjectContext(result.path || selected);
 
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -1121,9 +1192,12 @@ export function App() {
     setWorkspaceSmoke(result);
   }
 
-  async function checkForUpdates() {
+  async function checkForUpdates(source: "startup" | "manual" = "manual") {
     setUpdateChecking(true);
     setPendingUpdate(null);
+    if (source === "manual") {
+      setUpdatePromptHidden(false);
+    }
     if (!hasTauriRuntime()) {
       setUpdateState("Tauri runtime required");
       setUpdatePipeline([
@@ -1187,6 +1261,15 @@ export function App() {
       const update = updateResult.value;
       setPendingUpdate(update);
       setUpdateState(update ? `Update ${update.version} ready` : "Current release");
+      if (update) {
+        setUpdatePromptHidden(false);
+        setNotificationsOpen(true);
+        triggerJawsNotification({
+          title: `JAWS ${update.version} ready`,
+          detail: "A signed update is available. Choose Install Now or Later from the top bar or Settings.",
+          tone: "update"
+        });
+      }
       setUpdatePipeline([
         {
           id: "runtime",
@@ -1452,6 +1535,19 @@ export function App() {
     setActive("chat");
   }
 
+  function stageBrowserControlPrompt() {
+    const task = browserTaskInput.trim() || "Browse this site, collect the needed information, and stop for human approval before forms, email sends, payments, or account changes.";
+    setChatInput(
+      [
+        `Start a browser task for ${previewFrameUrl}.`,
+        `Control mode: ${browserControlMode}. Workspace: ${activeChatWindow.workspacePath || workspaceStatus.path || workspaceSelection.cleaned || "not attached"}.`,
+        task,
+        "Use Playwright/browser receipts. Ask for explicit human approval before submitting personal data, applications, resumes, emails, purchases, or irreversible actions."
+      ].join("\n")
+    );
+    setActive("chat");
+  }
+
   function toggleCoworkLane(id: string) {
     setCoworkLaneEnabled((lanes) => ({
       ...lanes,
@@ -1526,20 +1622,83 @@ export function App() {
     }
   }
 
+  function updateChatWindow(windowId: string, update: (windowState: ChatWindowState) => ChatWindowState) {
+    setChatWindows((windows) =>
+      windows.map((windowState) => (windowState.id === windowId ? update(windowState) : windowState))
+    );
+  }
+
+  function setChatWindowInput(windowId: string, value: string) {
+    updateChatWindow(windowId, (windowState) => ({ ...windowState, input: value }));
+  }
+
+  function setChatInput(value: string) {
+    setChatWindowInput(activeChatWindow.id, value);
+  }
+
+  function setChatWindowMessages(windowId: string, update: (messages: ChatMessage[]) => ChatMessage[]) {
+    updateChatWindow(windowId, (windowState) => ({
+      ...windowState,
+      messages: update(windowState.messages)
+    }));
+  }
+
+  function setChatMessages(update: (messages: ChatMessage[]) => ChatMessage[]) {
+    setChatWindowMessages(activeChatWindow.id, update);
+  }
+
+  function attachWorkspaceToActiveChatWindow(path: string, name: string) {
+    const title = name || "Workspace";
+    updateChatWindow(activeChatWindow.id, (windowState) => ({
+      ...windowState,
+      title,
+      workspacePath: path,
+      workspaceName: title,
+      minimized: false
+    }));
+  }
+
+  function startProjectChatWindow() {
+    const workspacePath = workspaceStatus.path || workspaceSelection.cleaned;
+    const workspaceName = workspaceStatus.name || workspaceSelection.name || "Workspace";
+    const next = createChatWindow(workspacePath, workspaceName, workspaceName);
+    setChatWindows((windows) => [next, ...windows].slice(0, 6));
+    setActiveChatWindowId(next.id);
+    setActive("chat");
+  }
+
+  function toggleActiveChatWindow(key: "minimized" | "expanded" | "sideCollapsed") {
+    updateChatWindow(activeChatWindow.id, (windowState) => ({
+      ...windowState,
+      [key]: !windowState[key]
+    }));
+  }
+
+  function clearNotifications() {
+    setNotifications([]);
+    setFirework(null);
+  }
+
+  function dismissNotification(id: string) {
+    setNotifications((items) => items.filter((item) => item.id !== id));
+  }
+
   async function submitChatCommand(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (chatBusy) return;
     const command = chatInput.trim();
     if (!command) return;
 
+    const runWindowId = activeChatWindow.id;
+    const runWorkspacePath = activeChatWindow.workspacePath || workspaceStatus.path || workspaceSelection.cleaned;
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const runMode = fastRunMode ? "fast queue" : "review first";
-    const workspaceName = workspaceStatus.valid ? workspaceStatus.name : workspaceSelection.name;
+    const workspaceName = activeChatWindow.workspaceName || (workspaceStatus.valid ? workspaceStatus.name : workspaceSelection.name);
     const baseId = Date.now();
     const qMessageId = `q-${baseId}`;
     const agentMessageId = `agents-${baseId}`;
 
-    setChatMessages((messages) => [
+    setChatWindowMessages(runWindowId, (messages) => [
       ...messages,
       {
         id: `user-${baseId}`,
@@ -1571,15 +1730,9 @@ export function App() {
         lane: "agents"
       }
     ]);
-    setChatInput("");
+    setChatWindowInput(runWindowId, "");
     setChatBusy(true);
-    setPet((current) => ({
-      ...current,
-      tokens: Math.min(999, current.tokens + 6),
-      energy: Math.min(100, current.energy + 4),
-      egg: Math.min(100, current.egg + 3),
-      mood: "locked in"
-    }));
+    awardCodeTokens(6, "agent route");
     triggerJawsNotification({
       title: "Agent route started",
       detail: `Q and Q_agents started work in ${workspaceName || "the selected workspace"}.`,
@@ -1590,10 +1743,10 @@ export function App() {
       try {
         const result = await invoke<OpenJawsChatResult>("run_openjaws_chat", {
           prompt: command,
-          workspacePath: workspaceStatus.path || workspaceSelection.cleaned || null,
+          workspacePath: runWorkspacePath || null,
           fastRunMode
         });
-        setChatMessages((messages) =>
+        setChatWindowMessages(runWindowId, (messages) =>
           messages.map((message) => {
             if (message.id === qMessageId) {
               return {
@@ -1623,7 +1776,7 @@ export function App() {
           tone: result.ok ? "complete" : "input"
         });
       } catch (error) {
-        setChatMessages((messages) =>
+        setChatWindowMessages(runWindowId, (messages) =>
           messages.map((message) => {
             if (message.id === qMessageId) {
               return {
@@ -1655,7 +1808,7 @@ export function App() {
     }
 
     window.setTimeout(() => {
-      setChatMessages((messages) =>
+      setChatWindowMessages(runWindowId, (messages) =>
         messages.map((message) => {
           if (message.id === qMessageId) {
             return {
@@ -1678,7 +1831,7 @@ export function App() {
       );
     }, 650);
     window.setTimeout(() => {
-      setChatMessages((messages) =>
+      setChatWindowMessages(runWindowId, (messages) =>
         messages.map((message) =>
           message.id === agentMessageId
             ? {
@@ -1695,6 +1848,18 @@ export function App() {
         tone: "complete"
       });
     }, 1500);
+  }
+
+  function awardCodeTokens(amount: number, reason: string) {
+    const reward = Math.max(0, Math.round(amount));
+    if (reward === 0) return;
+    setPet((current) => ({
+      ...current,
+      tokens: Math.min(codeTokenCap, current.tokens + reward),
+      energy: Math.min(100, current.energy + Math.min(8, Math.ceil(reward / 2))),
+      egg: Math.min(100, current.egg + Math.min(6, Math.ceil(reward / 3))),
+      mood: `${reason} reward`
+    }));
   }
 
   function spendPetTokens(cost: number, update: (current: CyberPetState) => CyberPetState) {
@@ -1749,29 +1914,36 @@ export function App() {
   }
 
   function dispatchSlowGuy(action: SlowGuyAction) {
-    setSlowGuy((state) => advanceSlowGuy(state, action));
+    setSlowGuy((state) => {
+      const next = advanceSlowGuy(state, action);
+      const earned = Math.max(0, next.tokens - state.tokens);
+      if (earned > 0) {
+        awardCodeTokens(earned, "Slow Guy");
+      }
+      return next;
+    });
   }
 
   function advanceHoldem() {
     const next = advanceHoldemRound(holdemTable);
     setHoldemTable(next);
     if (next.phase === "showdown" && holdemTable.phase !== "showdown") {
-      setPet((current) => ({
-        ...current,
-        tokens: Math.min(999, current.tokens + 12),
-        mood: "table winner energy"
-      }));
+      awardCodeTokens(holdemCodeTokenPrize(next), "Hold'em");
     }
+  }
+
+  function actHoldem(action: HoldemAction, amount?: number) {
+    setHoldemTable((table) => {
+      const next = applyHoldemAction(table, "seat-founder", action, amount);
+      if (next.phase === "showdown" && table.phase !== "showdown") {
+        awardCodeTokens(holdemCodeTokenPrize(next), "Hold'em");
+      }
+      return next;
+    });
   }
 
   function resetHoldemRoom() {
     setHoldemTable(createHoldemTable(userProfile.name || account?.displayName || "Founder", `jaws-holdem-${Date.now()}`));
-  }
-
-  function sendHoldemChat(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setHoldemTable((table) => addHoldemChat(table, userProfile.name || "Founder", holdemChatInput));
-    setHoldemChatInput("");
   }
 
   return (
@@ -1825,14 +1997,57 @@ export function App() {
             <h2>Jaws IDE. The future wrapped with OpenJaws, with Q and Immaculate built in.</h2>
           </div>
           <div className="top-actions">
-            <button
-              className={notificationsArmed ? "text-button notification-button armed" : "text-button notification-button"}
-              type="button"
-              onClick={() => setNotificationsArmed((value) => !value)}
-            >
-              <BellRing size={16} />
-              {notifications.length}
-            </button>
+            <div className="notification-tray">
+              <button
+                className={notificationsOpen ? "text-button notification-button active" : notificationsArmed ? "text-button notification-button armed" : "text-button notification-button"}
+                type="button"
+                onClick={() => setNotificationsOpen((value) => !value)}
+                aria-expanded={notificationsOpen}
+                aria-label="Open notifications"
+              >
+                <BellRing size={16} />
+                {notifications.length}
+              </button>
+              {notificationsOpen && (
+                <NotificationList
+                  notifications={notifications}
+                  armed={notificationsArmed}
+                  compact
+                  onToggleArmed={() => setNotificationsArmed((value) => !value)}
+                  onClear={clearNotifications}
+                  onDismiss={dismissNotification}
+                  onTest={() =>
+                    triggerJawsNotification({
+                      title: "Fireworks test",
+                      detail: "JAWS notifications are armed for agent completion, human input, and release updates.",
+                      tone: "complete"
+                    })
+                  }
+                />
+              )}
+            </div>
+            {pendingUpdate && !updatePromptHidden && (
+              <div className="update-inline-card" role="status" aria-live="polite">
+                <div>
+                  <span>Signed update ready</span>
+                  <strong>{pendingUpdate.version}</strong>
+                </div>
+                <button className="text-button primary" type="button" onClick={installUpdate}>
+                  <CheckCircle2 size={16} />
+                  Install Now
+                </button>
+                <button
+                  className="text-button"
+                  type="button"
+                  onClick={() => {
+                    setUpdatePromptHidden(true);
+                    setUpdateState(`Update ${pendingUpdate.version} deferred for this session`);
+                  }}
+                >
+                  Later
+                </button>
+              </div>
+            )}
             <button className="icon-button" type="button" onClick={() => setAppearance(appearance === "dark" ? "light" : "dark")} aria-label="Toggle light and dark mode">
               {appearance === "dark" ? <Sparkles size={18} /> : <ShieldCheck size={18} />}
             </button>
@@ -1862,7 +2077,7 @@ export function App() {
                   <RefreshCcw size={16} />
                   Test Sidecar
                 </button>
-                <button className="text-button" type="button" onClick={checkForUpdates}>
+                <button className="text-button" type="button" onClick={() => checkForUpdates()}>
                   <RadioTower size={16} />
                   Check Update
                 </button>
@@ -1908,8 +2123,55 @@ export function App() {
 
         {active === "chat" && (
           <section className="chat-page">
-            <div className="wide-panel chat-panel">
-              <PanelHeader icon={MessageSquare} label="Chat Window" />
+            <div className={`wide-panel chat-panel ${activeChatWindow.expanded ? "expanded" : ""} ${activeChatWindow.sideCollapsed ? "side-collapsed" : ""}`}>
+              <div className="panel-header-row">
+                <PanelHeader icon={MessageSquare} label="Chat Window" />
+                <div className="button-row">
+                  <button className="text-button" type="button" onClick={startProjectChatWindow}>
+                    <PackagePlus size={16} />
+                    New Project Chat
+                  </button>
+                  <button className="text-button" type="button" onClick={() => toggleActiveChatWindow("sideCollapsed")}>
+                    {activeChatWindow.sideCollapsed ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+                    {activeChatWindow.sideCollapsed ? "Tools" : "Collapse"}
+                  </button>
+                  <button className="text-button" type="button" onClick={() => toggleActiveChatWindow("expanded")}>
+                    <Maximize2 size={16} />
+                    {activeChatWindow.expanded ? "Normal" : "Expand"}
+                  </button>
+                  <button className="text-button" type="button" onClick={() => toggleActiveChatWindow("minimized")}>
+                    {activeChatWindow.minimized ? <Maximize2 size={16} /> : <Minimize2 size={16} />}
+                    {activeChatWindow.minimized ? "Restore" : "Minimize"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="chat-window-strip" aria-label="Open chat windows">
+                {chatWindows.map((windowState) => (
+                  <button
+                    className={windowState.id === activeChatWindow.id ? "chat-window-tab active" : windowState.minimized ? "chat-window-tab minimized" : "chat-window-tab"}
+                    key={windowState.id}
+                    type="button"
+                    onClick={() => setActiveChatWindowId(windowState.id)}
+                  >
+                    <span>{windowState.title}</span>
+                    <small>{windowState.workspacePath || "no folder"}</small>
+                  </button>
+                ))}
+              </div>
+
+              {activeChatWindow.minimized ? (
+                <div className="chat-minimized-card">
+                  <MessageActivity active={chatBusy} state={chatBusy ? "thinking" : "queued"} frame={jawFrame} />
+                  <div>
+                    <strong>{activeChatWindow.title} is minimized</strong>
+                    <span>{activeChatWindow.workspacePath || "No project folder pinned."}</span>
+                  </div>
+                  <button className="text-button primary" type="button" onClick={() => toggleActiveChatWindow("minimized")}>
+                    Restore
+                  </button>
+                </div>
+              ) : (
               <div className="chat-layout">
                 <section className="chat-main" aria-label="JAWS command chat">
                   <div className="chat-status slim">
@@ -1922,7 +2184,7 @@ export function App() {
                     <div className="chat-status-tools" aria-label="Chat state">
                       <span>{compareMode ? "Compare on" : "Compare off"}</span>
                       <span>{contextConfidenceLabel(projectContext)}</span>
-                      <span>{workspaceStatus.valid ? workspaceStatus.name : "No folder"}</span>
+                      <span>{activeChatWindow.workspaceName || workspaceStatus.name || "No folder"}</span>
                     </div>
                   </div>
 
@@ -1974,7 +2236,7 @@ export function App() {
                   </form>
                 </section>
 
-                <aside className="chat-side">
+                {!activeChatWindow.sideCollapsed && <aside className="chat-side">
                   <div className="side-module profile-mini">
                     <div className="profile-avatar">
                       <UserRound size={20} />
@@ -2027,8 +2289,9 @@ export function App() {
 
                   <StatusLine label="Workspace" value={workspaceStatus.path || workspaceSelection.cleaned || "Not set"} />
                   <StatusLine label="Updates" value={updateState} />
-                </aside>
+                </aside>}
               </div>
+              )}
             </div>
 
             {compareMode && (
@@ -2184,6 +2447,31 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                       Playwright Task
                     </button>
                   </div>
+                  <div className="browser-control-card">
+                    <strong>Browser Control</strong>
+                    <div className="stack-mode-row" role="group" aria-label="Browser control mode">
+                      {(["user", "agent-review", "agent-approved"] as const).map((mode) => (
+                        <button
+                          className={browserControlMode === mode ? "theme-chip active" : "theme-chip"}
+                          key={mode}
+                          type="button"
+                          onClick={() => setBrowserControlMode(mode)}
+                        >
+                          {mode}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      value={browserTaskInput}
+                      onChange={(event) => setBrowserTaskInput(event.target.value)}
+                      placeholder="Describe a browsing task. JAWS stops for approval before forms, emails, purchases, or account changes."
+                      rows={4}
+                    />
+                    <button className="text-button primary" type="button" onClick={stageBrowserControlPrompt}>
+                      <Bot size={16} />
+                      Send To Chat
+                    </button>
+                  </div>
                   {previewConfigResult && (
                     <div className={previewConfigResult.ok ? "workspace-state ready" : "workspace-state blocked"}>
                       {previewConfigResult.ok ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
@@ -2297,6 +2585,24 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                 <StatusLine label="Skipped" value={String(projectContext.skippedFiles)} />
                 <StatusLine label="Estimated context" value={formatTokenEstimate(projectContext.estimatedTokens)} />
                 <StatusLine label="Budget used" value={`${contextBudgetPercent}%`} />
+              </div>
+              <div className="context-vision-map" aria-label="Context trust vision map">
+                <div className="context-brain-core">
+                  <BrainCircuit size={24} />
+                  <strong>{contextLabel}</strong>
+                  <span>{projectContext.source}</span>
+                </div>
+                {(projectContext.categories.length > 0 ? projectContext.categories : [{ id: "waiting", label: "Native scan", confidence: 0, includedCount: 0, fileCount: 0, estimatedTokens: 0, detail: "Open native JAWS to scan.", status: "blocked" }]).map((category, index) => (
+                  <article
+                    className={`context-orbit ${category.status}`}
+                    key={category.id}
+                    style={{ "--orbit-index": String(index) } as CSSProperties}
+                  >
+                    <strong>{category.label}</strong>
+                    <span>{category.confidence}%</span>
+                    <small>{category.includedCount}/{category.fileCount} files</small>
+                  </article>
+                ))}
               </div>
             </div>
 
@@ -2426,11 +2732,23 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
             </div>
             <div className="wide-panel">
               <PanelHeader icon={NetworkIcon} label="Orchestration" />
-              <div className="orchestration-map">
-                <Node label="Q" />
-                <Node label="Q_agents" />
-                <Node label="OpenCheek" />
-                <Node label="Immaculate" />
+              <div className="agent-orchestration-board">
+                {agentRuntime.events.map((event, index) => (
+                  <article className={`agent-orchestration-node ${event.state}`} key={`${event.time}-${event.lane}-${index}`}>
+                    <span>{event.time}</span>
+                    <strong>{event.lane}</strong>
+                    <p>{event.detail}</p>
+                    <small>{event.state}</small>
+                  </article>
+                ))}
+                {agentRuntime.events.length === 0 && (
+                  <article className="agent-orchestration-node blocked">
+                    <span>idle</span>
+                    <strong>No workers visible</strong>
+                    <p>Refresh Agent Watch inside the native runtime to inspect live queue, worker, and Q_agents state.</p>
+                    <small>blocked</small>
+                  </article>
+                )}
               </div>
             </div>
           </section>
@@ -2462,9 +2780,26 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                     onChange={(event) => setUserProfile((profile) => ({ ...profile, focus: event.target.value }))}
                   />
                 </label>
+                <label>
+                  Wallet ID
+                  <input
+                    value={userProfile.walletId}
+                    onChange={(event) => setUserProfile((profile) => ({ ...profile, walletId: event.target.value }))}
+                  />
+                </label>
+                <label className="profile-toggle">
+                  <input
+                    type="checkbox"
+                    checked={userProfile.promotionOptIn}
+                    onChange={(event) => setUserProfile((profile) => ({ ...profile, promotionOptIn: event.target.checked }))}
+                  />
+                  <span>Allow product updates, promotions, and follow-up emails</span>
+                </label>
               </div>
               <div className="profile-stat-grid">
                 <StatusLine label="Code tokens" value={String(pet.tokens)} />
+                <StatusLine label="Wallet" value={userProfile.walletId || "Local wallet"} />
+                <StatusLine label="Promotions" value={userProfile.promotionOptIn ? "Opted in" : "Off"} />
                 <StatusLine label="Workspace" value={workspaceStatus.name || workspaceSelection.name} />
                 <StatusLine label="Account" value={account?.email ?? "Local trial"} />
               </div>
@@ -2560,11 +2895,14 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
               <div id="holdem-panel" role="tabpanel">
                 <HoldemRoundtable
                   table={holdemTable}
-                  chatInput={holdemChatInput}
-                  onChatInput={setHoldemChatInput}
-                  onSendChat={sendHoldemChat}
+                  userTokens={pet.tokens}
+                  onAction={actHoldem}
                   onAdvance={advanceHoldem}
                   onReset={resetHoldemRoom}
+                  onOpenChat={() => {
+                    setChatInput(`Open Hold'em room ${holdemTable.multiplayer.roomCode} chat and coordinate the table safely.`);
+                    setActive("chat");
+                  }}
                 />
               </div>
             )}
@@ -2791,7 +3129,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                   <StatusLine label="Update" value={updateState} />
                   <StatusLine label="Notifications" value={notificationsArmed ? "Armed" : "Muted"} />
                   <div className="button-row">
-                    <button className="text-button primary" type="button" onClick={checkForUpdates}>
+                    <button className="text-button primary" type="button" onClick={() => checkForUpdates()}>
                       <RadioTower size={16} />
                       {updateChecking ? "Checking" : "Check Updates"}
                     </button>
@@ -2818,6 +3156,9 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                   <NotificationList
                     notifications={notifications}
                     armed={notificationsArmed}
+                    onToggleArmed={() => setNotificationsArmed((value) => !value)}
+                    onClear={clearNotifications}
+                    onDismiss={dismissNotification}
                     onTest={() =>
                       triggerJawsNotification({
                         title: "Fireworks test",
@@ -2967,32 +3308,65 @@ function FireworkNotice({ notification }: { notification: JawsNotification }) {
 function NotificationList({
   notifications,
   armed,
+  compact = false,
+  onToggleArmed,
+  onClear,
+  onDismiss,
   onTest
 }: {
   notifications: JawsNotification[];
   armed: boolean;
+  compact?: boolean;
+  onToggleArmed?: () => void;
+  onClear?: () => void;
+  onDismiss?: (id: string) => void;
   onTest: () => void;
 }) {
   return (
-    <div className="notification-center">
+    <div className={compact ? "notification-center compact" : "notification-center"}>
       <div className="panel-header-row">
         <PanelHeader icon={BellRing} label="Notifications" />
-        <button className="text-button" type="button" onClick={onTest}>
-          <Sparkles size={16} />
-          Test
-        </button>
+        <div className="button-row">
+          {onToggleArmed && (
+            <button className="text-button" type="button" onClick={onToggleArmed}>
+              <BellRing size={16} />
+              {armed ? "Mute" : "Arm"}
+            </button>
+          )}
+          <button className="text-button" type="button" onClick={onTest}>
+            <Sparkles size={16} />
+            Test
+          </button>
+          {onClear && (
+            <button className="text-button" type="button" onClick={onClear} disabled={notifications.length === 0}>
+              Clear
+            </button>
+          )}
+        </div>
       </div>
       <StatusLine label="Sound and fireworks" value={armed ? "Armed" : "Muted"} />
       <div className="notification-list">
-        {notifications.map((notification) => (
-          <article className={`notification-card ${notification.tone}`} key={notification.id}>
-            <header>
-              <strong>{notification.title}</strong>
-              <span>{notification.time}</span>
-            </header>
-            <p>{notification.detail}</p>
+        {notifications.length > 0 ? (
+          notifications.map((notification) => (
+            <article className={`notification-card ${notification.tone}`} key={notification.id}>
+              <header>
+                <strong>{notification.title}</strong>
+                <span>{notification.time}</span>
+                {onDismiss && (
+                  <button className="icon-button mini" type="button" onClick={() => onDismiss(notification.id)} aria-label={`Dismiss ${notification.title}`}>
+                    <XCircle size={14} />
+                  </button>
+                )}
+              </header>
+              <p>{notification.detail}</p>
+            </article>
+          ))
+        ) : (
+          <article className="notification-card empty">
+            <strong>No notifications</strong>
+            <p>Agent completion, human input, billing, updates, and release prompts will appear here.</p>
           </article>
-        ))}
+        )}
       </div>
     </div>
   );
@@ -3234,20 +3608,22 @@ function SlowGuyGame({
 
 function HoldemRoundtable({
   table,
-  chatInput,
-  onChatInput,
-  onSendChat,
+  userTokens,
+  onAction,
   onAdvance,
-  onReset
+  onReset,
+  onOpenChat
 }: {
   table: HoldemTableState;
-  chatInput: string;
-  onChatInput: (value: string) => void;
-  onSendChat: (event: FormEvent<HTMLFormElement>) => void;
+  userTokens: number;
+  onAction: (action: HoldemAction, amount?: number) => void;
   onAdvance: () => void;
   onReset: () => void;
+  onOpenChat: () => void;
 }) {
   const buttonLabel = table.phase === "lobby" ? "Deal Hand" : table.phase === "showdown" ? "Next Hand" : "Next Street";
+  const userSeat = table.seats.find((seat) => seat.id === "seat-founder");
+  const canAct = table.phase !== "lobby" && table.phase !== "showdown" && Boolean(userSeat && !userSeat.folded);
   return (
     <div className="holdem-shell">
       <section className="holdem-table-panel">
@@ -3263,6 +3639,10 @@ function HoldemRoundtable({
           <div>
             <span>Pot</span>
             <strong>{table.pot}</strong>
+          </div>
+          <div>
+            <span>Live bet</span>
+            <strong>{table.currentBet}</strong>
           </div>
         </div>
 
@@ -3318,6 +3698,31 @@ function HoldemRoundtable({
           </button>
         </div>
 
+        <div className="holdem-token-bank">
+          <strong>Token Bank</strong>
+          <span>Profile code tokens: {userTokens}</span>
+          <span>Table chips: {userSeat?.chips ?? 0}</span>
+          <span>Prize: winner earns code tokens, table chips settle in-game.</span>
+        </div>
+
+        <div className="holdem-control-grid" aria-label="Hold'em player actions">
+          <button className="text-button" type="button" disabled={!canAct} onClick={() => onAction("hold")}>
+            Hold
+          </button>
+          <button className="text-button" type="button" disabled={!canAct} onClick={() => onAction("check")}>
+            Check
+          </button>
+          <button className="text-button" type="button" disabled={!canAct} onClick={() => onAction("pass")}>
+            Pass
+          </button>
+          <button className="text-button primary" type="button" disabled={!canAct || table.currentBet > 0} onClick={() => onAction("bet", table.bigBlind)}>
+            Bet {table.bigBlind}
+          </button>
+          <button className="text-button" type="button" disabled={!canAct} onClick={() => onAction("raise", table.minimumRaise)}>
+            Raise {table.minimumRaise}
+          </button>
+        </div>
+
         <div className="holdem-status">
           <strong>{table.lastEvent}</strong>
           <span>Presence: {table.multiplayer.presence.join(", ")}</span>
@@ -3335,8 +3740,14 @@ function HoldemRoundtable({
           </div>
         )}
 
-        <div className="world-chat">
-          <strong>Table Chat</strong>
+        <div className="world-chat table-log">
+          <div className="panel-header-row">
+            <strong>Table Log</strong>
+            <button className="text-button" type="button" onClick={onOpenChat}>
+              <MessageSquare size={15} />
+              Chat
+            </button>
+          </div>
           <div className="world-chat-log">
             {table.chat.map((message) => (
               <p className={message.channel} key={message.id}>
@@ -3345,20 +3756,6 @@ function HoldemRoundtable({
               </p>
             ))}
           </div>
-          <form className="holdem-chat-form" onSubmit={onSendChat}>
-            <label className="sr-only" htmlFor="holdem-chat-input">
-              Hold'em table chat
-            </label>
-            <input
-              id="holdem-chat-input"
-              value={chatInput}
-              onChange={(event) => onChatInput(event.target.value)}
-              placeholder="Chat at the table"
-            />
-            <button className="text-button" type="submit" disabled={chatInput.trim().length === 0}>
-              <Send size={15} />
-            </button>
-          </form>
         </div>
 
         <div className="sandbox-scope-card">
