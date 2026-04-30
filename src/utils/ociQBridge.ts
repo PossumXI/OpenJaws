@@ -37,10 +37,63 @@ export type OciQBridgeRuntimeOverride =
       model: string
     }
 
+type OciQBridgeProcessResult = {
+  exitCode: number | null
+  stdout: string
+  stderr: string
+}
+
 export function resolveOciBridgeModel(model: string): string {
   return model.trim().toLowerCase() === 'q'
     ? resolveOciQRuntime().model
     : model.trim()
+}
+
+function parseBridgeJson(stdout: string): OciQBridgeResponse | null {
+  const trimmed = stdout.trim()
+  if (!trimmed) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as Partial<OciQBridgeResponse> & {
+      error?: unknown
+    }
+    if (typeof parsed.ok === 'boolean') {
+      return parsed as OciQBridgeResponse
+    }
+  } catch {
+    // Fall through to the caller's normal failure message.
+  }
+  return null
+}
+
+export function parseOciBridgeProcessResult(
+  result: OciQBridgeProcessResult,
+  fallbackFailure: string,
+): OciQBridgeResponse {
+  const parsed = parseBridgeJson(result.stdout)
+  if (result.exitCode === 0 && parsed) {
+    if (parsed.ok === false) {
+      const error =
+        typeof (parsed as { error?: unknown }).error === 'string'
+          ? (parsed as { error: string }).error
+          : fallbackFailure
+      throw new Error(error)
+    }
+    return parsed
+  }
+
+  if (parsed?.ok === true) {
+    return parsed
+  }
+
+  throw new Error(
+    result.stderr.trim() ||
+      (parsed && typeof (parsed as { error?: unknown }).error === 'string'
+        ? String((parsed as { error: string }).error)
+        : result.stdout.trim()) ||
+      fallbackFailure,
+  )
 }
 
 function resolveOciQPythonInvocation(): {
@@ -210,13 +263,7 @@ export async function queryOciQViaPython(args: {
       env: args.env,
     })
 
-    if (result.exitCode !== 0) {
-      throw new Error(
-        result.stderr.trim() || result.stdout.trim() || 'OCI Q bridge failed.',
-      )
-    }
-
-    return JSON.parse(result.stdout) as OciQBridgeResponse
+    return parseOciBridgeProcessResult(result, 'OCI Q bridge failed.')
   })
 }
 
@@ -337,12 +384,6 @@ export async function queryOciResponsesViaPython(args: {
       env: args.env,
     })
 
-    if (result.exitCode !== 0) {
-      throw new Error(
-        result.stderr.trim() || result.stdout.trim() || 'OCI Responses bridge failed.',
-      )
-    }
-
-    return JSON.parse(result.stdout) as OciQBridgeResponse
+    return parseOciBridgeProcessResult(result, 'OCI Responses bridge failed.')
   })
 }
