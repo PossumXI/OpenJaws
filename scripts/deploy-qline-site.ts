@@ -84,6 +84,60 @@ type LiveRouteCheck = {
   status: number
 }
 
+type NextRuntimeCheck =
+  | {
+      functionName: string
+      runtime: string
+      generator: string
+      invocationMode: string
+      deployUrl: string
+    }
+  | {
+      functionName: null
+      runtime: null
+      generator: null
+      invocationMode: null
+      deployUrl: string | null
+      warning: string
+    }
+
+type NetlifyMetadataCheck = {
+  siteName: string | null
+  customDomain: string | null
+  publishedDeployId: string | null
+  nextHandler: NextRuntimeCheck | null
+  warning: string | null
+}
+
+export class MissingNetlifyAuthTokenError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'MissingNetlifyAuthTokenError'
+  }
+}
+
+export class NetlifyApiError extends Error {
+  readonly status: number
+  readonly statusText: string
+
+  constructor(path: string, status: number, statusText: string) {
+    super(`Netlify API ${path} failed: ${status} ${statusText}`)
+    this.name = 'NetlifyApiError'
+    this.status = status
+    this.statusText = statusText
+  }
+}
+
+export function shouldFallbackToPublicLiveCheck(error: unknown): boolean {
+  if (error instanceof MissingNetlifyAuthTokenError) {
+    return true
+  }
+  if (error instanceof NetlifyApiError) {
+    return error.status === 429 || error.status >= 500
+  }
+  return false
+}
+
 function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     checkLive: false,
@@ -145,7 +199,7 @@ function readNetlifyAuthToken(repoRoot: string): string {
     }
   }
 
-  throw new Error(
+  throw new MissingNetlifyAuthTokenError(
     'No Netlify auth token found. Set NETLIFY_AUTH_TOKEN or log in through website/.netlify-cli-config/config.json or the Windows Netlify CLI config.',
   )
 }
@@ -171,7 +225,7 @@ async function netlifyApi<T>(token: string, path: string): Promise<T> {
     }
     await Bun.sleep(2000 * (attempt + 1))
   }
-  throw new Error(`Netlify API ${path} failed: ${lastStatus} ${lastStatusText}`)
+  throw new NetlifyApiError(path, lastStatus, lastStatusText)
 }
 
 function assertSiteIdentity(site: NetlifySite, siteId: string): void {
@@ -405,6 +459,11 @@ async function promoteDeploy(siteId: string, deployId: string, token: string): P
   await runWslCommand(command, { NETLIFY_AUTH_TOKEN: token })
 }
 
+function appendWarning(current: string | null, next: unknown): string {
+  const nextMessage = next instanceof Error ? next.message : String(next)
+  return current ? `${current} ${nextMessage}` : nextMessage
+}
+
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2))
 
@@ -419,15 +478,29 @@ async function main(): Promise<void> {
   }
 
   const repoRoot = resolve(process.cwd())
-  const token = readNetlifyAuthToken(repoRoot)
-
-  const site = await netlifyApi<NetlifySite>(token, `/sites/${options.siteId}`)
-  assertSiteIdentity(site, options.siteId)
-
-  let promotedDeployId = site.published_deploy_id ?? site.published_deploy?.id ?? null
+  let token: string | null = null
+  let site: NetlifySite | null = null
+  let promotedDeployId: string | null = null
   let draftDeployId: string | null = null
+  let liveRuntime: NextRuntimeCheck | null = null
+  let netlifyWarning: string | null = null
+
+  try {
+    token = readNetlifyAuthToken(repoRoot)
+    site = await netlifyApi<NetlifySite>(token, `/sites/${options.siteId}`)
+    assertSiteIdentity(site, options.siteId)
+    promotedDeployId = site.published_deploy_id ?? site.published_deploy?.id ?? null
+  } catch (error) {
+    if (options.promote || !shouldFallbackToPublicLiveCheck(error)) {
+      throw error
+    }
+    netlifyWarning = appendWarning(netlifyWarning, error)
+  }
 
   if (options.promote) {
+    if (!token) {
+      throw new Error('Netlify auth token is required to promote qline.site.')
+    }
     draftDeployId = await createDraftDeploy(repoRoot, options.siteId, token)
     const draftDeploy = await netlifyApi<NetlifyDeploy>(token, `/deploys/${draftDeployId}`)
     const draftRuntime = assertNextRuntime(draftDeploy)
@@ -438,30 +511,51 @@ async function main(): Promise<void> {
   }
 
   if (!promotedDeployId) {
-    throw new Error(`Site ${options.siteId} does not have a published deploy id.`)
+    const error = new Error(`Site ${options.siteId} does not have a published deploy id.`)
+    if (options.promote) {
+      throw error
+    }
+    netlifyWarning = appendWarning(netlifyWarning, error)
   }
 
-  const liveDeploy = await netlifyApi<NetlifyDeploy>(token, `/deploys/${promotedDeployId}`)
-  const liveRuntime = options.promote
-    ? assertNextRuntime(liveDeploy)
-    : (() => {
-        try {
-          return assertNextRuntime(liveDeploy)
-        } catch (error) {
-          return {
-            functionName: null,
-            runtime: null,
-            generator: null,
-            invocationMode: null,
-            deployUrl:
-              liveDeploy.deploy_ssl_url ?? liveDeploy.ssl_url ?? liveDeploy.url ?? null,
-            warning: error instanceof Error ? error.message : String(error),
-          }
-        }
-      })()
+  if (token && promotedDeployId) {
+    try {
+      const liveDeploy = await netlifyApi<NetlifyDeploy>(token, `/deploys/${promotedDeployId}`)
+      liveRuntime = options.promote
+        ? assertNextRuntime(liveDeploy)
+        : (() => {
+            try {
+              return assertNextRuntime(liveDeploy)
+            } catch (error) {
+              return {
+                functionName: null,
+                runtime: null,
+                generator: null,
+                invocationMode: null,
+                deployUrl:
+                  liveDeploy.deploy_ssl_url ?? liveDeploy.ssl_url ?? liveDeploy.url ?? null,
+                warning: error instanceof Error ? error.message : String(error),
+              }
+            }
+          })()
+    } catch (error) {
+      if (options.promote || !shouldFallbackToPublicLiveCheck(error)) {
+        throw error
+      }
+      netlifyWarning = appendWarning(netlifyWarning, error)
+    }
+  }
+
   const apexContent = await fetchTextWithRetries(`https://${EXPECTED_DOMAIN}`)
   const checks = assertContent(apexContent, `https://${EXPECTED_DOMAIN}`)
   const liveRoutes = await assertRequiredLiveRoutes()
+  const netlifyMetadata: NetlifyMetadataCheck = {
+    siteName: site?.name ?? null,
+    customDomain: site?.custom_domain ?? null,
+    publishedDeployId: promotedDeployId,
+    nextHandler: liveRuntime,
+    warning: netlifyWarning,
+  }
 
   console.log(
     JSON.stringify(
@@ -469,13 +563,14 @@ async function main(): Promise<void> {
         status: 'ok',
         mode: options.promote ? 'promote' : 'check-live',
         siteId: options.siteId,
-        siteName: site.name,
-        customDomain: site.custom_domain,
+        siteName: netlifyMetadata.siteName,
+        customDomain: netlifyMetadata.customDomain,
         publishedDeployId: promotedDeployId,
         draftDeployId,
         nextHandler: liveRuntime,
+        netlifyMetadata,
         checks: {
-          uniqueDeployUrl: liveRuntime.deployUrl,
+          uniqueDeployUrl: liveRuntime?.deployUrl ?? null,
           apexUrl: `https://${EXPECTED_DOMAIN}`,
           apexStatus: 200,
           routes: liveRoutes,
@@ -488,4 +583,6 @@ async function main(): Promise<void> {
   )
 }
 
-await main()
+if (import.meta.main) {
+  await main()
+}
