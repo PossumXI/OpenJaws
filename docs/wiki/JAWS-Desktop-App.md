@@ -126,13 +126,13 @@ Windows bundle smoke, run locally on 2026-04-29:
 
 0.1.2 adds the native Settings page, keeps update checks available from Settings, replaces the in-app image logo with a CSS/React JAWS mark so the shell cannot render a broken image, keeps regenerated native installer icons, upgrades Chat into a slimmer animated workstream with per-message activity markers and a bounded `openjaws --print` sidecar bridge, adds the animated Cyber Frog pet loop, adds user and agent profile areas, adds native Open Folder workspace selection, renames the arcade runner to Slow Guy, and keeps the desktop release version aligned across `package.json`, `tauri.conf.json`, `Cargo.toml`, and `Cargo.lock`.
 
-0.1.3 public release mirrors, deployed and live-checked on 2026-04-30:
+0.1.4 release-candidate mirrors for the next public update:
 
 - `https://qline.site/downloads/jaws`
 - `https://iorch.net/downloads/jaws`
-- `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.3`
+- `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.4`
 
-Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries. Both `qline.site` and `iorch.net` also expose `/api/jaws/<target>/<arch>/<current_version>` so existing tester installs can discover the signed 0.1.3 update through the Tauri updater endpoint.
+Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries. Both `qline.site` and `iorch.net` also expose `/api/jaws/<target>/<arch>/<current_version>` so existing tester installs can discover the signed 0.1.4 update through the Tauri updater endpoint after the tag workflow publishes artifacts.
 
 Mirror health gate:
 
@@ -140,7 +140,7 @@ Mirror health gate:
 bun run jaws:mirror:check --json --out .tmp-jaws-release-mirror-health.json
 ```
 
-The gate checks both public mirror pages, every public mirror redirect, the GitHub `jaws-v0.1.3` release asset list, and the signed updater manifest entries for Windows and macOS. When `OPENJAWS_RELEASE_HEALTH_PRIVATE_KEY` or `OPENJAWS_RELEASE_MANIFEST_PRIVATE_KEY` is present, the receipt is signed with the existing Ed25519 release-manifest signature format.
+The gate checks both public mirror pages, every public mirror redirect, the GitHub `jaws-v0.1.4` release asset list, and the signed updater manifest entries for Windows and macOS. When `OPENJAWS_RELEASE_HEALTH_PRIVATE_KEY` or `OPENJAWS_RELEASE_MANIFEST_PRIVATE_KEY` is present, the receipt is signed with the existing Ed25519 release-manifest signature format.
 
 Arcade and update-pipeline local verification, run on 2026-04-30:
 
@@ -185,13 +185,13 @@ Context trust and notification pass, run on 2026-04-30:
 - Settings now includes a notification center with history and a test button.
 - Agent completion, human-input-required, and update-prep events trigger an in-app fireworks toast and generated audio cue when notifications are armed.
 
-0.1.3 release and update-pipeline pass, run on 2026-04-30:
+0.1.4 release and update-pipeline pass, prepared on 2026-04-30:
 
-- Desktop package, Tauri app config, Cargo metadata, Cargo lockfile package entry, and generated release index now align on `0.1.3`.
-- The `jaws-v0.1.3` GitHub release is published with signed Windows, macOS, Linux, and updater manifest assets.
-- `qline.site` and `iorch.net` now redirect every public JAWS download route to the 0.1.3 signed GitHub assets.
-- Both live updater endpoints return a signed 0.1.3 Windows update for `0.1.2` testers and `204 No Content` for already-current `0.1.3` installs.
-- `bun run jaws:mirror:check` passed against the published 0.1.3 release with 30 checks.
+- Desktop package, Tauri app config, Cargo metadata, Cargo lockfile package entry, and generated release index now align on `0.1.4`.
+- The `jaws-v0.1.4` GitHub release workflow is the source for signed Windows, macOS, Linux, and updater manifest assets.
+- `qline.site` and `iorch.net` redirects are prepared to route every public JAWS download route to the 0.1.4 signed GitHub assets.
+- Both live updater endpoints should return a signed 0.1.4 Windows update for `0.1.3` testers and `204 No Content` for already-current `0.1.4` installs after release publication.
+- `bun run jaws:mirror:check` remains the release gate for the published 0.1.4 release assets.
 - Native Playwright demo harness receipts now include a deterministic `fnv1a64` receipt hash covering the generated README, package, config, spec, and pre-hash receipt body.
 - The Preview tab surfaces that receipt hash beside the generated harness/spec/receipt paths for release evidence.
 
