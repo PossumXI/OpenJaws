@@ -10,9 +10,11 @@ Path: `services/cloudflare-hosted-q`
 - Cloudflare Worker route surface:
   - `GET /health`
   - `POST /signup`
+  - `POST /checkout`
   - `POST /keys`
   - `POST /usage`
   - `POST /usage/record`
+  - `POST /stripe-webhook`
   - `POST /mail/notify`
   - `POST /laas/events`
   - `GET /laas/events`
@@ -22,7 +24,10 @@ Path: `services/cloudflare-hosted-q`
   - usage events
   - AROBI LAAS ledger events
   - mail receipts
-- service-token protection for privileged usage, mail, and ledger writes
+- service-token protection for checkout, verified Stripe webhook sync,
+  privileged usage, mail, and ledger writes
+- Stripe checkout session creation plus entitlement sync for verified webhook
+  events proxied by qline.site/iorch.net
 - Resend-backed notification sending without storing raw recipient or subject
   values in receipts
 
@@ -34,6 +39,11 @@ Before production deploy, bind:
 - Cloudflare account and API token for deployment
 - D1 database id in `services/cloudflare-hosted-q/wrangler.toml`
 - `SERVICE_TOKEN`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_PRICE_BUILDER`
+- `STRIPE_PRICE_OPERATOR`
+- `STRIPE_SUCCESS_URL`
+- `STRIPE_CANCEL_URL`
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
 

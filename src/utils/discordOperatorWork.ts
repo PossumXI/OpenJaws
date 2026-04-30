@@ -47,7 +47,7 @@ export function sanitizeBranchSegment(value: string): string {
 function branchExists(gitRoot: string, branchName: string): boolean {
   const result = spawnSync(
     'git',
-    ['-C', gitRoot, 'branch', '--list', branchName],
+    ['-C', gitRoot, 'show-ref', '--verify', '--quiet', `refs/heads/${branchName}`],
     {
       env: {
         ...process.env,
@@ -57,10 +57,7 @@ function branchExists(gitRoot: string, branchName: string): boolean {
       encoding: 'utf8',
     },
   )
-  if ((result.status ?? 1) !== 0) {
-    return false
-  }
-  return Boolean(result.stdout?.trim())
+  return result.status === 0
 }
 
 function allocateUniqueOperatorBranch(args: {

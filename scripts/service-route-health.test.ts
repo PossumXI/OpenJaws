@@ -67,6 +67,15 @@ describe('service-route-health', () => {
     expect(
       report.checks.find(check => check.id === 'hosted-q-backend-config'),
     ).toMatchObject({ status: 'passed' })
+    expect(
+      report.checks.find(check => check.id === 'stripe-billing-config'),
+    ).toMatchObject({
+      status: 'passed',
+      details: {
+        checkoutRoute: 'POST /checkout',
+        webhookRoute: 'POST /stripe-webhook',
+      },
+    })
   })
 
   test('fails closed when a required public route is unhealthy', async () => {
