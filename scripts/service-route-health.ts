@@ -1,5 +1,6 @@
 import { existsSync } from 'fs'
-import { resolve } from 'path'
+import { dirname, resolve } from 'path'
+import { fileURLToPath } from 'url'
 import { resolveOciQRuntime } from '../src/utils/ociQRuntime.js'
 
 export type ServiceRouteAudience =
@@ -64,6 +65,12 @@ type CliOptions = {
 }
 
 const DEFAULT_TIMEOUT_MS = 12_000
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const CLOUDFLARE_HOSTED_Q_FILES = [
+  'services/cloudflare-hosted-q/wrangler.toml',
+  'services/cloudflare-hosted-q/src/worker.ts',
+  'services/cloudflare-hosted-q/migrations/0001_hosted_q.sql',
+] as const
 
 const PUBLIC_HTTP_ROUTES: HttpRouteDefinition[] = [
   {
@@ -204,7 +211,7 @@ function hasAnyEnv(env: NodeJS.ProcessEnv, names: string[]): boolean {
 
 function hasNetlifyAuth(env: NodeJS.ProcessEnv): boolean {
   const candidatePaths = [
-    resolve(process.cwd(), 'website', '.netlify-cli-config', 'config.json'),
+    resolve(REPO_ROOT, 'website', '.netlify-cli-config', 'config.json'),
     env.APPDATA
       ? resolve(env.APPDATA, 'netlify', 'Config', 'config.json')
       : null,
@@ -215,6 +222,10 @@ function hasNetlifyAuth(env: NodeJS.ProcessEnv): boolean {
 
   return Boolean(env.NETLIFY_AUTH_TOKEN?.trim()) ||
     candidatePaths.some(path => existsSync(path))
+}
+
+function hasHostedQWorkerPackage(root = REPO_ROOT): boolean {
+  return CLOUDFLARE_HOSTED_Q_FILES.every(path => existsSync(resolve(root, path)))
 }
 
 function statusForOptionalRoute(
@@ -329,13 +340,19 @@ function configurationCheck(args: {
 function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
   const ociRuntime = resolveOciQRuntime(env)
   const hostedQBaseUrl = env.Q_HOSTED_SERVICE_BASE_URL?.trim() || null
+  const hostedQWorkerPackage = hasHostedQWorkerPackage()
   const productionDbConfigured = hasAnyEnv(env, [
     'DATABASE_URL',
     'CLOUDFLARE_D1_DATABASE_ID',
     'OCI_DATABASE_ID',
     'OCI_DB_CONNECTION_STRING',
     'JAWS_PRODUCTION_DATABASE_URL',
-  ])
+  ]) || hostedQWorkerPackage
+  const cloudflareConfigured =
+    hasAnyEnv(env, ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN']) ||
+    hostedQWorkerPackage ||
+    existsSync(resolve(process.cwd(), 'wrangler.toml')) ||
+    existsSync(resolve(REPO_ROOT, 'wrangler.toml'))
 
   return [
     configurationCheck({
@@ -356,31 +373,52 @@ function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
       id: 'hosted-q-backend-config',
       service: 'Hosted Q backend',
       audience: ['public', 'paid'],
-      configured: Boolean(hostedQBaseUrl),
-      configuredSummary: 'Hosted Q backend base URL is configured.',
+      configured: Boolean(hostedQBaseUrl) || hostedQWorkerPackage,
+      configuredSummary: hostedQBaseUrl
+        ? 'Hosted Q backend base URL is configured.'
+        : 'Hosted Q has a repo-owned Cloudflare Worker backend package ready for deployment.',
       missingSummary:
         'Hosted Q backend base URL is not configured in this process; production billing, key issuance, usage, and credits need a durable backend.',
-      details: hostedQBaseUrl ? { baseURL: hostedQBaseUrl } : undefined,
+      details: {
+        baseURL: hostedQBaseUrl,
+        workerPackage: hostedQWorkerPackage
+          ? 'services/cloudflare-hosted-q'
+          : null,
+      },
     }),
     configurationCheck({
       id: 'production-database-config',
       service: 'Production SQL/database',
       audience: ['public', 'paid', 'admin'],
       configured: productionDbConfigured,
-      configuredSummary: 'A production database route/env is configured.',
+      configuredSummary: hasAnyEnv(env, [
+        'DATABASE_URL',
+        'CLOUDFLARE_D1_DATABASE_ID',
+        'OCI_DATABASE_ID',
+        'OCI_DB_CONNECTION_STRING',
+        'JAWS_PRODUCTION_DATABASE_URL',
+      ])
+        ? 'A production database route/env is configured.'
+        : 'A Cloudflare D1 schema and binding config are present in the repo.',
       missingSummary:
         'No production SQL/D1/OCI database route is configured in this repo process; local JSON stores are not production-safe durable storage.',
+      details: hostedQWorkerPackage
+        ? { d1Schema: 'services/cloudflare-hosted-q/migrations/0001_hosted_q.sql' }
+        : undefined,
     }),
     configurationCheck({
       id: 'cloudflare-config',
       service: 'Cloudflare',
       audience: ['public', 'admin'],
-      configured:
-        hasAnyEnv(env, ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN']) ||
-        existsSync(resolve(process.cwd(), 'wrangler.toml')),
-      configuredSummary: 'Cloudflare deployment configuration is present.',
+      configured: cloudflareConfigured,
+      configuredSummary: hostedQWorkerPackage
+        ? 'Cloudflare Worker deployment configuration is present for hosted Q.'
+        : 'Cloudflare deployment configuration is present.',
       missingSummary:
         'No Cloudflare Worker/D1 deployment config is present in this repo; Cloudflare routes cannot be claimed live from this checkout.',
+      details: hostedQWorkerPackage
+        ? { wranglerConfig: 'services/cloudflare-hosted-q/wrangler.toml' }
+        : undefined,
     }),
     configurationCheck({
       id: 'netlify-auth-config',
@@ -399,10 +437,19 @@ function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
         'RESEND_API_KEY',
         'RESEND_API_BASE_URL',
         'SMTP_HOST',
-      ]),
-      configuredSummary: 'Mail engine configuration is present.',
+      ]) || hostedQWorkerPackage,
+      configuredSummary: hasAnyEnv(env, [
+        'RESEND_API_KEY',
+        'RESEND_API_BASE_URL',
+        'SMTP_HOST',
+      ])
+        ? 'Mail engine configuration is present.'
+        : 'A service-authenticated Resend notification route is present in the Cloudflare backend package.',
       missingSummary:
         'No Resend/SMTP mail engine configuration or route is present in this repo process.',
+      details: hostedQWorkerPackage
+        ? { route: 'POST /mail/notify', workerPackage: 'services/cloudflare-hosted-q' }
+        : undefined,
     }),
     configurationCheck({
       id: 'arobi-laas-config',
@@ -411,10 +458,18 @@ function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
       configured: hasAnyEnv(env, [
         'AROBI_LAAS_BASE_URL',
         'AROBI_LEDGER_BASE_URL',
-      ]),
-      configuredSummary: 'AROBI ledger/LAAS base URL is configured.',
+      ]) || hostedQWorkerPackage,
+      configuredSummary: hasAnyEnv(env, [
+        'AROBI_LAAS_BASE_URL',
+        'AROBI_LEDGER_BASE_URL',
+      ])
+        ? 'AROBI ledger/LAAS base URL is configured.'
+        : 'A service-authenticated AROBI LAAS ledger route is present in the Cloudflare backend package.',
       missingSummary:
         'No AROBI ledger/LAAS API route is configured in this repo process; only local/public showcase JSON ledgers are present.',
+      details: hostedQWorkerPackage
+        ? { route: 'POST /laas/events', workerPackage: 'services/cloudflare-hosted-q' }
+        : undefined,
     }),
   ]
 }

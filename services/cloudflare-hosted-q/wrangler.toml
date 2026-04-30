@@ -1,0 +1,25 @@
+name = "openjaws-hosted-q"
+main = "src/worker.ts"
+compatibility_date = "2026-04-30"
+workers_dev = false
+
+# Replace these before production deploy:
+# routes = [
+#   { pattern = "api.qline.site/*", custom_domain = true },
+#   { pattern = "api.iorch.net/*", custom_domain = true }
+# ]
+
+[[d1_databases]]
+binding = "Q_HOSTED_DB"
+database_name = "openjaws-hosted-q"
+database_id = "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[vars]
+PUBLIC_SITE_URL = "https://qline.site"
+PUBLIC_AURA_GENESIS_URL = "https://aura-genesis.org"
+
+# Required secrets, set with wrangler secret put:
+# SERVICE_TOKEN
+# RESEND_API_KEY
+# RESEND_FROM_EMAIL
