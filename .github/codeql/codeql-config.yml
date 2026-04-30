@@ -1,0 +1,12 @@
+name: OpenJaws CodeQL
+
+paths-ignore:
+  - "**/.coverage/**"
+  - "**/.next/**"
+  - "**/coverage/**"
+  - "**/dist/**"
+  - "**/node_modules/**"
+  - "artifacts/**"
+  - "benchmarks/**"
+  - "docs/**"
+  - "training/**"
