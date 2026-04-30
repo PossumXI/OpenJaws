@@ -8,6 +8,9 @@ import {
   buildPersonaPlexRuntimeStateDiagnostic,
   buildPersonaPlexProbeWebSocketUrl,
   parseArgs,
+  probePersonaPlexRuntime,
+  redactPersonaPlexProbeWebSocketUrl,
+  sanitizePersonaPlexProbeResultForOutput,
   selectPersonaPlexProbeRuntimeUrl,
 } from './personaplex-probe.ts'
 
@@ -34,6 +37,45 @@ describe('personaplex-probe', () => {
     )
   })
 
+  test('redacts configured prompts before probe output is logged', () => {
+    const websocketUrl =
+      'ws://127.0.0.1:8998/api/chat?text_prompt=private+operator+text&voice_prompt=NATF2.pt'
+
+    expect(redactPersonaPlexProbeWebSocketUrl(websocketUrl)).toBe(
+      'ws://127.0.0.1:8998/api/chat?text_prompt=%5Bconfigured%5D&voice_prompt=%5Bconfigured%5D',
+    )
+    expect(
+      sanitizePersonaPlexProbeResultForOutput({
+        status: 'error',
+        ready: false,
+        runtimeUrl: 'http://127.0.0.1:8998',
+        websocketUrl,
+        voicePrompt: 'NATF2.pt',
+        textPrompt: 'private operator text',
+        latencyMs: 3,
+        firstByte: null,
+        messageType: null,
+        runtimeState: null,
+        runtimeUrlSource: 'default',
+        ignoredStateRuntimeUrl: null,
+        repair: {
+          status: 'start_required',
+          summary: 'start required',
+          command: 'pwsh',
+          args: [],
+          stationRoot: 'station',
+          launcherPath: 'launcher',
+          missing: [],
+        },
+      }),
+    ).toMatchObject({
+      websocketUrl:
+        'ws://127.0.0.1:8998/api/chat?text_prompt=%5Bconfigured%5D&voice_prompt=%5Bconfigured%5D',
+      textPrompt: '[configured]',
+      voicePrompt: '[configured]',
+    })
+  })
+
   test('parseArgs keeps the probe bounded and explicit', () => {
     expect(
       parseArgs([
@@ -51,6 +93,21 @@ describe('personaplex-probe', () => {
       timeoutMs: 1000,
       voicePrompt: 'NATF2.pt',
     })
+  })
+
+  test('reports invalid runtime URLs as structured probe errors', async () => {
+    const result = await probePersonaPlexRuntime({
+      json: true,
+      timeoutMs: 1000,
+      runtimeUrl: 'not a url',
+      textPrompt: 'hello',
+      voicePrompt: 'NATF2.pt',
+    })
+
+    expect(result.ready).toBe(false)
+    expect(result.status).toBe('error')
+    expect(result.error).toContain('Invalid PersonaPlex runtime URL')
+    expect(result.repair.status).toBe('start_required')
   })
 
   test('summarizes stale runtime state for failed probes', () => {

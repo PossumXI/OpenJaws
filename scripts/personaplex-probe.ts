@@ -304,6 +304,31 @@ export function buildPersonaPlexProbeWebSocketUrl(args: {
   return url.toString()
 }
 
+export function redactPersonaPlexProbeWebSocketUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    for (const key of ['text_prompt', 'voice_prompt']) {
+      if (parsed.searchParams.has(key)) {
+        parsed.searchParams.set(key, '[configured]')
+      }
+    }
+    return parsed.toString()
+  } catch {
+    return url
+  }
+}
+
+export function sanitizePersonaPlexProbeResultForOutput(
+  result: PersonaPlexProbeResult,
+): PersonaPlexProbeResult {
+  return {
+    ...result,
+    websocketUrl: redactPersonaPlexProbeWebSocketUrl(result.websocketUrl),
+    textPrompt: result.textPrompt ? '[configured]' : result.textPrompt,
+    voicePrompt: result.voicePrompt ? '[configured]' : result.voicePrompt,
+  }
+}
+
 async function messageDataToUint8Array(data: unknown): Promise<Uint8Array> {
   if (data instanceof Uint8Array) {
     return data
@@ -359,12 +384,41 @@ export async function probePersonaPlexRuntime(
     state,
   })
   const runtimeUrl = selectedRuntime.runtimeUrl
-  const websocketUrl = buildPersonaPlexProbeWebSocketUrl({
-    runtimeUrl,
-    textPrompt: options.textPrompt,
-    voicePrompt: options.voicePrompt,
-  })
   const startedAt = Date.now()
+  let websocketUrl: string
+
+  try {
+    websocketUrl = buildPersonaPlexProbeWebSocketUrl({
+      runtimeUrl,
+      textPrompt: options.textPrompt,
+      voicePrompt: options.voicePrompt,
+    })
+  } catch (error) {
+    return {
+      status: 'error',
+      ready: false,
+      runtimeUrl,
+      websocketUrl: runtimeUrl,
+      voicePrompt: options.voicePrompt,
+      textPrompt: options.textPrompt,
+      latencyMs: Date.now() - startedAt,
+      firstByte: null,
+      messageType: null,
+      runtimeState: state,
+      runtimeUrlSource: selectedRuntime.runtimeUrlSource,
+      ignoredStateRuntimeUrl: selectedRuntime.ignoredStateRuntimeUrl,
+      repair: buildPersonaPlexRepairHint({
+        state,
+        ready: false,
+      }),
+      error: withRuntimeStateDiagnostic(
+        `Invalid PersonaPlex runtime URL: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        state,
+      ),
+    }
+  }
 
   return await new Promise<PersonaPlexProbeResult>(resolveProbe => {
     let settled = false
@@ -508,10 +562,12 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
   const options = parseArgs(argv)
   const result = await probePersonaPlexRuntime(options)
   if (options.json) {
-    console.log(JSON.stringify(result, null, 2))
+    console.log(
+      JSON.stringify(sanitizePersonaPlexProbeResultForOutput(result), null, 2),
+    )
   } else if (result.ready) {
     console.log(
-      `PersonaPlex ready at ${result.runtimeUrl} (${result.latencyMs}ms, ${result.voicePrompt})`,
+      `PersonaPlex ready at ${result.runtimeUrl} (${result.latencyMs}ms)`,
     )
   } else {
     console.error(result.error ?? 'PersonaPlex probe failed')

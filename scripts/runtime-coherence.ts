@@ -10,6 +10,7 @@ import { readQTrainingRouteQueue } from '../src/utils/qTraining.js'
 import {
   type PersonaPlexProbeResult,
   probePersonaPlexRuntime,
+  redactPersonaPlexProbeWebSocketUrl,
 } from './personaplex-probe.js'
 
 type RuntimeCoherenceCliOptions = {
@@ -93,7 +94,7 @@ export function buildPersonaPlexCoherenceProbe(
       : null
   return {
     label: 'PersonaPlex',
-    url: result.websocketUrl,
+    url: redactPersonaPlexProbeWebSocketUrl(result.websocketUrl),
     reachable: result.ready,
     status: result.ready ? null : result.status,
     detail: result.ready
