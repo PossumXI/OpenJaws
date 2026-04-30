@@ -29,6 +29,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   codeql:
+    # CodeQL remains blocking on pull requests and manual security runs.
+    # Default-branch push analysis can hang in GitHub's upload/analyze phase, so
+    # push runs keep the fast leak scanners while PRs carry the CodeQL gate.
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
