@@ -8,7 +8,8 @@ describe('runtime-coherence PersonaPlex mapping', () => {
         status: 'ok',
         ready: true,
         runtimeUrl: 'http://127.0.0.1:8998',
-        websocketUrl: 'ws://127.0.0.1:8998/api/chat',
+        websocketUrl:
+          'ws://127.0.0.1:8998/api/chat?text_prompt=private&voice_prompt=NATF2.pt',
         voicePrompt: 'NATF2.pt',
         textPrompt: 'hello',
         latencyMs: 42,
@@ -29,7 +30,8 @@ describe('runtime-coherence PersonaPlex mapping', () => {
       }),
     ).toEqual({
       label: 'PersonaPlex',
-      url: 'ws://127.0.0.1:8998/api/chat',
+      url:
+        'ws://127.0.0.1:8998/api/chat?text_prompt=%5Bconfigured%5D&voice_prompt=%5Bconfigured%5D',
       reachable: true,
       status: null,
       detail: 'http://127.0.0.1:8998 hello byte 0 in 42ms',
