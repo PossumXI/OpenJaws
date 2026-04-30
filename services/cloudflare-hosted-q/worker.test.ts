@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 import { handleRequest, type WorkerEnv } from './src/worker.ts'
 
 type UserRow = Record<string, unknown> & { email: string }
@@ -21,6 +21,14 @@ class MemoryStatement {
 
   async first<T>(): Promise<T | null> {
     if (this.query.startsWith('SELECT * FROM hosted_q_users')) {
+      if (this.query.includes('stripe_customer_id')) {
+        const customerId = String(this.values[0])
+        return (
+          Array.from(this.db.users.values()).find(
+            user => user.stripe_customer_id === customerId,
+          ) ?? null
+        ) as T | null
+      }
       return (this.db.users.get(String(this.values[0])) ?? null) as T | null
     }
     return null
@@ -113,9 +121,15 @@ function request(path: string, init: RequestInit = {}): Request {
   return new Request(`https://api.qline.site${path}`, init)
 }
 
+const originalFetch = globalThis.fetch
+
 async function jsonBody(response: Response): Promise<Record<string, unknown>> {
   return await response.json() as Record<string, unknown>
 }
+
+afterEach(() => {
+  globalThis.fetch = originalFetch
+})
 
 describe('cloudflare-hosted-q worker', () => {
   test('reports health and missing D1 binding separately', async () => {
@@ -171,6 +185,155 @@ describe('cloudflare-hosted-q worker', () => {
     expect(await jsonBody(usage)).toMatchObject({
       ok: true,
       storage: 'cloudflare-d1',
+    })
+  })
+
+  test('creates Stripe checkout sessions through the worker billing route', async () => {
+    const env: WorkerEnv = {
+      Q_HOSTED_DB: new MemoryD1(),
+      SERVICE_TOKEN: 'service-token',
+      STRIPE_SECRET_KEY: 'stripe-secret-unit-test',
+      STRIPE_PUBLISHABLE_KEY: 'stripe-publishable-unit-test',
+      STRIPE_PRICE_BUILDER: 'price_builder_unit',
+      STRIPE_SUCCESS_URL: 'https://qline.site/success',
+      STRIPE_CANCEL_URL: 'https://qline.site/cancel',
+    }
+    let captured: { input: RequestInfo | URL; init?: RequestInit } | null = null
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      captured = { input, init }
+      return Response.json({
+        id: 'cs_unit_checkout',
+        url: 'https://checkout.stripe.test/session',
+      })
+    }) as typeof fetch
+
+    const denied = await handleRequest(
+      request('/checkout', {
+        method: 'POST',
+        body: JSON.stringify({ email: 'buyer@example.com', plan: 'builder' }),
+      }),
+      env,
+    )
+    expect(denied.status).toBe(401)
+
+    const response = await handleRequest(
+      request('/checkout', {
+        method: 'POST',
+        headers: { authorization: 'Bearer service-token' },
+        body: JSON.stringify({ email: 'Buyer@Example.com', plan: 'builder' }),
+      }),
+      env,
+    )
+    const payload = await jsonBody(response)
+    expect(response.status).toBe(201)
+    expect(payload).toMatchObject({
+      ok: true,
+      storage: 'cloudflare-d1',
+      url: 'https://checkout.stripe.test/session',
+      sessionId: 'cs_unit_checkout',
+      plan: 'builder',
+    })
+    expect(String(captured?.input)).toBe('https://api.stripe.com/v1/checkout/sessions')
+    expect(captured?.init?.headers).toMatchObject({
+      authorization: 'Bearer stripe-secret-unit-test',
+      'content-type': 'application/x-www-form-urlencoded',
+    })
+    const form = String(captured?.init?.body)
+    expect(form).toContain('mode=subscription')
+    expect(form).toContain('line_items%5B0%5D%5Bprice%5D=price_builder_unit')
+    expect(form).toContain('metadata%5Bq_email%5D=buyer%40example.com')
+  })
+
+  test('syncs verified Stripe webhooks into hosted Q entitlements', async () => {
+    const env: WorkerEnv = {
+      Q_HOSTED_DB: new MemoryD1(),
+      SERVICE_TOKEN: 'service-token',
+    }
+
+    const unverified = await handleRequest(
+      request('/stripe-webhook', {
+        method: 'POST',
+        headers: { authorization: 'Bearer service-token' },
+        body: JSON.stringify({ type: 'checkout.session.completed' }),
+      }),
+      env,
+    )
+    expect(unverified.status).toBe(400)
+
+    const synced = await handleRequest(
+      request('/stripe-webhook', {
+        method: 'POST',
+        headers: { authorization: 'Bearer service-token' },
+        body: JSON.stringify({
+          verified: true,
+          type: 'checkout.session.completed',
+          event: {
+            type: 'checkout.session.completed',
+            data: {
+              object: {
+                customer: 'cus_unit',
+                subscription: 'sub_unit',
+                customer_details: { email: 'buyer@example.com' },
+                metadata: {
+                  q_plan: 'builder',
+                  q_email: 'buyer@example.com',
+                },
+              },
+            },
+          },
+        }),
+      }),
+      env,
+    )
+    expect(synced.status).toBe(200)
+    expect(synced.headers.get('x-q-plan')).toBe('builder')
+    expect(await jsonBody(synced)).toMatchObject({
+      ok: true,
+      received: true,
+      type: 'checkout.session.completed',
+      user: {
+        email: 'buyer@example.com',
+        plan: 'builder',
+        subscriptionStatus: 'active',
+        creditsRemaining: 300,
+      },
+    })
+
+    const issuedKey = await handleRequest(
+      request('/keys', {
+        method: 'POST',
+        body: JSON.stringify({ email: 'buyer@example.com', label: 'desktop' }),
+      }),
+      env,
+    )
+    expect(issuedKey.status).toBe(200)
+
+    const canceled = await handleRequest(
+      request('/stripe-webhook', {
+        method: 'POST',
+        headers: { authorization: 'Bearer service-token' },
+        body: JSON.stringify({
+          verified: true,
+          type: 'customer.subscription.deleted',
+          event: {
+            type: 'customer.subscription.deleted',
+            data: {
+              object: {
+                id: 'sub_unit',
+                customer: 'cus_unit',
+                status: 'canceled',
+              },
+            },
+          },
+        }),
+      }),
+      env,
+    )
+    expect(canceled.status).toBe(200)
+    expect(await jsonBody(canceled)).toMatchObject({
+      user: {
+        subscriptionStatus: 'canceled',
+      },
     })
   })
 

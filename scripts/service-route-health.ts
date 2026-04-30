@@ -430,6 +430,32 @@ function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
         'Netlify auth/config is not available locally; public route checks can still run, but deploy metadata checks cannot.',
     }),
     configurationCheck({
+      id: 'stripe-billing-config',
+      service: 'Stripe billing',
+      audience: ['public', 'paid', 'admin'],
+      configured: hasAnyEnv(env, [
+        'STRIPE_SECRET_KEY',
+        'STRIPE_PRICE_BUILDER',
+        'STRIPE_PRICE_OPERATOR',
+      ]) || hostedQWorkerPackage,
+      configuredSummary: hasAnyEnv(env, [
+        'STRIPE_SECRET_KEY',
+        'STRIPE_PRICE_BUILDER',
+        'STRIPE_PRICE_OPERATOR',
+      ])
+        ? 'Stripe billing configuration is present.'
+        : 'The Cloudflare hosted-Q backend owns service-authenticated checkout and webhook routes.',
+      missingSummary:
+        'No Stripe billing configuration or hosted-Q billing backend route is present in this repo process.',
+      details: hostedQWorkerPackage
+        ? {
+            checkoutRoute: 'POST /checkout',
+            webhookRoute: 'POST /stripe-webhook',
+            workerPackage: 'services/cloudflare-hosted-q',
+          }
+        : undefined,
+    }),
+    configurationCheck({
       id: 'mail-engine-config',
       service: 'Mail/Resend',
       audience: ['public', 'paid', 'admin'],

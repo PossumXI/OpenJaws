@@ -11,6 +11,7 @@ import {
 } from './discordOperatorWork.js'
 
 const tempDirs: string[] = []
+const GIT_OPERATOR_WORK_TEST_TIMEOUT_MS = 15_000
 
 afterEach(() => {
   while (tempDirs.length > 0) {
@@ -191,5 +192,5 @@ describe('discordOperatorWork', () => {
         'utils',
       ),
     )
-  })
+  }, GIT_OPERATOR_WORK_TEST_TIMEOUT_MS)
 })

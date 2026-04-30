@@ -11,6 +11,7 @@ import {
 } from './discordOperatorExecution.js'
 
 const tempDirs: string[] = []
+const GIT_APPROVAL_TEST_TIMEOUT_MS = 15_000
 
 afterEach(() => {
   while (tempDirs.length > 0) {
@@ -115,9 +116,9 @@ describe('discordOperatorExecution', () => {
       }),
     ).resolves.toEqual({
       currentBranch: 'agents/test-approval',
-      currentCommitSha: repo.head,
-    })
-  })
+        currentCommitSha: repo.head,
+      })
+  }, GIT_APPROVAL_TEST_TIMEOUT_MS)
 
   it('rejects approval pushes when the stored commit no longer matches HEAD', async () => {
     const repo = createGitRepo('agents/test-approval-drift')
@@ -129,7 +130,7 @@ describe('discordOperatorExecution', () => {
         commitSha: 'deadbeef',
       }),
     ).rejects.toThrow(/expected commit deadbeef/i)
-  })
+  }, GIT_APPROVAL_TEST_TIMEOUT_MS)
 
   it('rejects approval pushes when the worktree branch drifts', async () => {
     const repo = createGitRepo('agents/test-approval-branch')
@@ -141,5 +142,5 @@ describe('discordOperatorExecution', () => {
         commitSha: repo.head,
       }),
     ).rejects.toThrow(/expected branch agents\/expected-branch/i)
-  })
+  }, GIT_APPROVAL_TEST_TIMEOUT_MS)
 })

@@ -26,6 +26,13 @@ export type WorkerEnv = {
   RESEND_API_KEY?: string
   RESEND_FROM_EMAIL?: string
   RESEND_API_BASE_URL?: string
+  STRIPE_SECRET_KEY?: string
+  STRIPE_PUBLISHABLE_KEY?: string
+  STRIPE_SUCCESS_URL?: string
+  STRIPE_CANCEL_URL?: string
+  STRIPE_PRICE_BUILDER?: string
+  STRIPE_PRICE_OPERATOR?: string
+  STRIPE_API_BASE_URL?: string
   PUBLIC_SITE_URL?: string
   PUBLIC_AURA_GENESIS_URL?: string
 }
@@ -99,6 +106,12 @@ function normalizeEmail(value: unknown): string | null {
 
 function normalizeString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
 }
 
 function findPlan(value: unknown): QPlanDefinition | null {
@@ -190,6 +203,24 @@ function randomApiKey(): string {
   return `qk_${token}`
 }
 
+function stripePriceForPlan(env: WorkerEnv, planId: QPlanId): string | null {
+  if (planId === 'builder') {
+    return normalizeString(env.STRIPE_PRICE_BUILDER)
+  }
+  if (planId === 'operator') {
+    return normalizeString(env.STRIPE_PRICE_OPERATOR)
+  }
+  return null
+}
+
+function appendQueryParams(value: string, params: Record<string, string>): string {
+  const url = new URL(value)
+  for (const [key, entry] of Object.entries(params)) {
+    url.searchParams.set(key, entry)
+  }
+  return url.toString()
+}
+
 function summarizeUser(user: UserRow, keys: ApiKeyRow[] = []): Record<string, unknown> {
   const plan = PLANS.find(candidate => candidate.id === user.plan)
   return {
@@ -238,6 +269,16 @@ async function getUser(db: D1Database, email: string): Promise<UserRow | null> {
   return await db
     .prepare('SELECT * FROM hosted_q_users WHERE email = ?')
     .bind(email)
+    .first<UserRow>()
+}
+
+async function getUserByStripeCustomerId(
+  db: D1Database,
+  customerId: string,
+): Promise<UserRow | null> {
+  return await db
+    .prepare('SELECT * FROM hosted_q_users WHERE stripe_customer_id = ? LIMIT 1')
+    .bind(customerId)
     .first<UserRow>()
 }
 
@@ -345,6 +386,148 @@ async function handleSignup(request: Request, env: WorkerEnv): Promise<Response>
       user: summarizeUser(nextUser, await listKeys(db, email)),
     },
     { status: 200, headers: rateHeaders(nextUser) },
+  )
+}
+
+async function handleCheckout(request: Request, env: WorkerEnv): Promise<Response> {
+  const auth = requireServiceAuth(request, env)
+  if (auth) {
+    return auth
+  }
+  const dbOrResponse = requireDb(env)
+  if (dbOrResponse instanceof Response) {
+    return dbOrResponse
+  }
+  const db = dbOrResponse
+  const body = await readJsonBody(request)
+  const email = normalizeEmail(body.email)
+  if (!email) {
+    return json(
+      {
+        ok: false,
+        code: 'email_required',
+        message: 'Email is required before creating a Stripe checkout session.',
+      },
+      { status: 400 },
+    )
+  }
+
+  const plan = findPlan(body.plan)
+  if (!plan) {
+    return json(
+      { ok: false, code: 'unknown_plan', message: 'Unknown hosted Q plan.' },
+      { status: 400 },
+    )
+  }
+  if (plan.id === 'starter') {
+    return json(
+      {
+        ok: false,
+        code: 'free_plan_checkout_not_required',
+        message: 'Starter is a free lane and does not create a Stripe checkout session.',
+      },
+      { status: 400 },
+    )
+  }
+
+  const stripeSecret = normalizeString(env.STRIPE_SECRET_KEY)
+  const stripePriceId = stripePriceForPlan(env, plan.id)
+  const successUrl = normalizeString(env.STRIPE_SUCCESS_URL)
+  const cancelUrl = normalizeString(env.STRIPE_CANCEL_URL)
+  if (!stripeSecret || !stripePriceId || !successUrl || !cancelUrl) {
+    return json(
+      {
+        ok: false,
+        code: 'stripe_not_configured',
+        message:
+          'Stripe checkout requires STRIPE_SECRET_KEY, plan price id, STRIPE_SUCCESS_URL, and STRIPE_CANCEL_URL.',
+        requiredEnv: [
+          'STRIPE_SECRET_KEY',
+          plan.id === 'builder' ? 'STRIPE_PRICE_BUILDER' : 'STRIPE_PRICE_OPERATOR',
+          'STRIPE_SUCCESS_URL',
+          'STRIPE_CANCEL_URL',
+        ],
+      },
+      { status: 503 },
+    )
+  }
+
+  const current = await getUser(db, email)
+  const now = new Date().toISOString()
+  const user: UserRow = {
+    email,
+    plan: plan.id,
+    subscription_status: current?.subscription_status === 'active' ? 'active' : 'pending_checkout',
+    monthly_credits: plan.monthlyCredits,
+    credits_remaining: current?.subscription_status === 'active'
+      ? current.credits_remaining
+      : 0,
+    requests_this_month: current?.requests_this_month ?? 0,
+    tokens_this_month: current?.tokens_this_month ?? 0,
+    resets_at: current?.resets_at ?? nextMonthlyReset(),
+    created_at: current?.created_at ?? now,
+    updated_at: now,
+    stripe_customer_id: current?.stripe_customer_id ?? null,
+    stripe_subscription_id: current?.stripe_subscription_id ?? null,
+  }
+  await upsertUser(db, user)
+
+  const form = new URLSearchParams()
+  form.set('mode', 'subscription')
+  form.set('success_url', appendQueryParams(successUrl, {
+    plan: plan.id,
+    session_id: '{CHECKOUT_SESSION_ID}',
+  }))
+  form.set('cancel_url', appendQueryParams(cancelUrl, { plan: plan.id }))
+  form.set('customer_email', email)
+  form.set('client_reference_id', email)
+  form.set('line_items[0][price]', stripePriceId)
+  form.set('line_items[0][quantity]', '1')
+  form.set('allow_promotion_codes', 'true')
+  form.set('billing_address_collection', 'auto')
+  form.set('metadata[q_plan]', plan.id)
+  form.set('metadata[q_email]', email)
+
+  const stripeResponse = await fetch(
+    `${env.STRIPE_API_BASE_URL ?? 'https://api.stripe.com'}/v1/checkout/sessions`,
+    {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${stripeSecret}`,
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: form.toString(),
+    },
+  )
+  const stripePayload = await stripeResponse.json().catch(() => ({})) as {
+    id?: string
+    url?: string
+    error?: { message?: string }
+  }
+  if (!stripeResponse.ok || !stripePayload.url || !stripePayload.id) {
+    return json(
+      {
+        ok: false,
+        code: 'stripe_checkout_failed',
+        message:
+          stripePayload.error?.message ??
+          `Stripe checkout failed with HTTP ${stripeResponse.status}.`,
+      },
+      { status: 502 },
+    )
+  }
+
+  return json(
+    {
+      ok: true,
+      storage: 'cloudflare-d1',
+      url: stripePayload.url,
+      sessionId: stripePayload.id,
+      publishableKey: normalizeString(env.STRIPE_PUBLISHABLE_KEY),
+      plan: plan.id,
+      user: summarizeUser(user, await listKeys(db, email)),
+    },
+    { status: 201, headers: rateHeaders(user) },
   )
 }
 
@@ -522,6 +705,110 @@ async function handleRecordUsage(request: Request, env: WorkerEnv): Promise<Resp
   return json({ ok: true, user: summarizeUser(updatedUser) }, { status: 200 })
 }
 
+async function handleStripeWebhook(request: Request, env: WorkerEnv): Promise<Response> {
+  const auth = requireServiceAuth(request, env)
+  if (auth) {
+    return auth
+  }
+  const dbOrResponse = requireDb(env)
+  if (dbOrResponse instanceof Response) {
+    return dbOrResponse
+  }
+  const db = dbOrResponse
+  const body = await readJsonBody(request)
+  if (body.verified !== true) {
+    return json(
+      {
+        ok: false,
+        code: 'unverified_stripe_event',
+        message: 'Stripe events must be verified by the website edge before proxying.',
+      },
+      { status: 400 },
+    )
+  }
+
+  const event = asRecord(body.event)
+  const type = normalizeString(body.type) ?? normalizeString(event?.type)
+  const eventData = asRecord(event?.data)
+  const object = asRecord(eventData?.object)
+  if (!type || !object) {
+    return json({ ok: false, code: 'invalid_stripe_event' }, { status: 400 })
+  }
+
+  let touchedUser: UserRow | null = null
+  const now = new Date().toISOString()
+  if (type === 'checkout.session.completed') {
+    const metadata = asRecord(object.metadata)
+    const details = asRecord(object.customer_details)
+    const email =
+      normalizeEmail(metadata?.q_email) ??
+      normalizeEmail(details?.email) ??
+      normalizeEmail(object.customer_email)
+    const plan = findPlan(metadata?.q_plan ?? 'builder')
+    if (email && plan) {
+      const current = await getUser(db, email)
+      touchedUser = {
+        email,
+        plan: plan.id,
+        subscription_status: plan.id === 'starter' ? 'starter' : 'active',
+        monthly_credits: plan.monthlyCredits,
+        credits_remaining: plan.monthlyCredits,
+        requests_this_month: current?.requests_this_month ?? 0,
+        tokens_this_month: current?.tokens_this_month ?? 0,
+        resets_at: nextMonthlyReset(),
+        created_at: current?.created_at ?? now,
+        updated_at: now,
+        stripe_customer_id: normalizeString(object.customer),
+        stripe_subscription_id: normalizeString(object.subscription),
+      }
+      await upsertUser(db, touchedUser)
+    }
+  }
+
+  if (
+    type === 'customer.subscription.deleted' ||
+    type === 'customer.subscription.updated' ||
+    type === 'customer.subscription.created'
+  ) {
+    const customerId = normalizeString(object.customer)
+    const subscriptionId = normalizeString(object.id)
+    const subscriptionStatus = normalizeString(object.status)
+    const current = customerId ? await getUserByStripeCustomerId(db, customerId) : null
+    if (current) {
+      const active = subscriptionStatus === 'active' || subscriptionStatus === 'trialing'
+      touchedUser = {
+        ...current,
+        subscription_status:
+          type === 'customer.subscription.deleted'
+            ? 'canceled'
+            : active
+              ? 'active'
+              : 'past_due',
+        stripe_subscription_id: subscriptionId ?? current.stripe_subscription_id,
+        updated_at: now,
+      }
+      await upsertUser(db, touchedUser)
+    }
+  }
+
+  return json(
+    {
+      ok: true,
+      received: true,
+      type,
+      storage: 'cloudflare-d1',
+      message: touchedUser
+        ? 'Stripe webhook verified and synced into hosted Q access.'
+        : 'Stripe webhook verified. No hosted Q account matched this event.',
+      user: touchedUser ? summarizeUser(touchedUser, await listKeys(db, touchedUser.email)) : null,
+    },
+    {
+      status: 200,
+      headers: touchedUser ? rateHeaders(touchedUser) : undefined,
+    },
+  )
+}
+
 async function handleMailNotify(request: Request, env: WorkerEnv): Promise<Response> {
   const auth = requireServiceAuth(request, env)
   if (auth) {
@@ -669,9 +956,11 @@ function handleHealth(env: WorkerEnv): Response {
     routes: [
       '/health',
       '/signup',
+      '/checkout',
       '/keys',
       '/usage',
       '/usage/record',
+      '/stripe-webhook',
       '/mail/notify',
       '/laas/events',
     ],
@@ -679,6 +968,11 @@ function handleHealth(env: WorkerEnv): Response {
       database: hasDb(env),
       serviceToken: Boolean(normalizeString(env.SERVICE_TOKEN)),
       resend: Boolean(normalizeString(env.RESEND_API_KEY) && normalizeString(env.RESEND_FROM_EMAIL)),
+      stripe: Boolean(
+        normalizeString(env.STRIPE_SECRET_KEY) &&
+        normalizeString(env.STRIPE_SUCCESS_URL) &&
+        normalizeString(env.STRIPE_CANCEL_URL),
+      ),
     },
   })
 }
@@ -702,6 +996,9 @@ export async function handleRequest(request: Request, env: WorkerEnv): Promise<R
   if (url.pathname === '/signup' && request.method === 'POST') {
     return handleSignup(request, env)
   }
+  if (url.pathname === '/checkout' && request.method === 'POST') {
+    return handleCheckout(request, env)
+  }
   if (url.pathname === '/keys' && request.method === 'POST') {
     return handleIssueKey(request, env)
   }
@@ -710,6 +1007,9 @@ export async function handleRequest(request: Request, env: WorkerEnv): Promise<R
   }
   if (url.pathname === '/usage/record' && request.method === 'POST') {
     return handleRecordUsage(request, env)
+  }
+  if (url.pathname === '/stripe-webhook' && request.method === 'POST') {
+    return handleStripeWebhook(request, env)
   }
   if (url.pathname === '/mail/notify' && request.method === 'POST') {
     return handleMailNotify(request, env)
