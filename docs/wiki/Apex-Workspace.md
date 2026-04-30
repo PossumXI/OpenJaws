@@ -115,6 +115,17 @@ Typical local operator path:
 3. run `/apex`
 4. launch `Workspace API`
 5. optionally launch `Chrono Bridge`
+
+For release checks and local repair, use:
+
+```powershell
+bun run apex:bridges
+bun run apex:bridges:start
+```
+
+The first command only reports the three local bridge health states. The second
+uses the existing guarded launchers for missing bridges and reports whether the
+ports recovered.
 6. use `/status` to confirm both bridges are visible
 
 If you need deeper browser control, keep ownership with `/preview`.

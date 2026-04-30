@@ -41,6 +41,7 @@ OpenJaws is meant to feel like a real control deck, not a blind text box. You ca
 - [Install and Updates](Install-and-Updates.md)
 - [Q and OCI Setup](Q-and-OCI-Setup.md)
 - [Q Access and Limits](Q-Access-and-Limits.md)
+- [Hosted Q Backend Provisioning](Hosted-Q-Backend-Provisioning.md)
 - [Release and Update Policy](Release-and-Update-Policy.md)
 - [Features and Capabilities](Features-and-Capabilities.md)
 - [Apex Workspace Bridge](Apex-Workspace.md)

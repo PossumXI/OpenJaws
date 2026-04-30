@@ -48,7 +48,7 @@ const EMPTY_ENV = {
 } as NodeJS.ProcessEnv
 
 describe('service-route-health', () => {
-  test('keeps public routes required while reporting missing infra as warnings', async () => {
+  test('keeps public routes required while recognizing repo-owned backend provisioning', async () => {
     const report = await runServiceRouteHealth({
       fetchImpl: makeFetch(),
       env: EMPTY_ENV,
@@ -58,8 +58,15 @@ describe('service-route-health', () => {
     expect(report.status).toBe('warning')
     expect(report.failures).toHaveLength(0)
     expect(report.counts.passed).toBeGreaterThanOrEqual(9)
-    expect(report.warnings.some(check => check.id === 'production-database-config')).toBe(true)
-    expect(report.warnings.some(check => check.id === 'cloudflare-config')).toBe(true)
+    expect(
+      report.checks.find(check => check.id === 'production-database-config'),
+    ).toMatchObject({ status: 'passed' })
+    expect(
+      report.checks.find(check => check.id === 'cloudflare-config'),
+    ).toMatchObject({ status: 'passed' })
+    expect(
+      report.checks.find(check => check.id === 'hosted-q-backend-config'),
+    ).toMatchObject({ status: 'passed' })
   })
 
   test('fails closed when a required public route is unhealthy', async () => {
