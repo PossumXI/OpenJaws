@@ -333,6 +333,43 @@ describe('discordRoundtableScheduler', () => {
     ).toBe(true)
   })
 
+  it('does not treat skipped actions with changed files as weak after enough concrete work exists', () => {
+    expect(
+      shouldForceRoundtableContribution({
+        turnCount: 8,
+        latestHumanQuestion: null,
+        roundtableMemory: {
+          summary: 'Recent code-bearing work landed.',
+          openThreads: [],
+        },
+        recentActions: [
+          {
+            status: 'completed',
+            changedFiles: ['src/utils/alpha.ts'],
+            completedAt: '2026-04-20T21:00:00.000Z',
+            commitSha: 'sha-alpha',
+            verificationSummary: 'Verification passed',
+          },
+          {
+            status: 'completed',
+            changedFiles: ['src/utils/beta.ts'],
+            completedAt: '2026-04-20T21:05:00.000Z',
+            commitSha: 'sha-beta',
+            verificationSummary: 'Verification passed',
+          },
+          {
+            status: 'skipped',
+            changedFiles: ['src/utils/review-notes.md'],
+            completedAt: '2026-04-20T21:10:00.000Z',
+            commitSha: null,
+            verificationSummary: 'Skipped: review-only change was held back.',
+          },
+        ],
+        nowMs: Date.parse('2026-04-20T21:15:00.000Z'),
+      }),
+    ).toBe(false)
+  })
+
   it('inspects replies so PASS is retried when contribution is required', () => {
     expect(
       inspectRoundtableReply({

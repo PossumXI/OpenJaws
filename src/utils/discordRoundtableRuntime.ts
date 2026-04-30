@@ -2181,6 +2181,50 @@ function pruneOperatorPendingPushes(args: {
   })
 }
 
+function summarizeExpiredPendingApprovals(args: {
+  previousJobs: DiscordRoundtableTrackedJob[]
+  nextJobs: DiscordRoundtableTrackedJob[]
+}): string | null {
+  const previousById = new Map(args.previousJobs.map(job => [job.id, job]))
+  const expired = args.nextJobs.filter(job => {
+    const previous = previousById.get(job.id)
+    return (
+      previous?.status === 'awaiting_approval' &&
+      (previous.approvalState ?? 'pending') === 'pending' &&
+      job.status === 'rejected' &&
+      job.approvalState === 'rejected' &&
+      job.rejectionReason === 'approval window expired before confirmation'
+    )
+  })
+  if (expired.length === 0) {
+    return null
+  }
+  return expired
+    .map(job => `${job.repoLabel} roundtable action ${job.id}`)
+    .join('; ')
+}
+
+function repairStaleApprovalSummary(
+  state: DiscordRoundtableRuntimeState,
+): DiscordRoundtableRuntimeState {
+  if (
+    state.status === 'awaiting_approval' ||
+    !/awaiting approval/i.test(state.lastSummary ?? '')
+  ) {
+    return state
+  }
+  const latestRejected = [...state.jobs]
+    .reverse()
+    .find(job => job.status === 'rejected' && job.rejectionReason)
+  if (!latestRejected) {
+    return state
+  }
+  return {
+    ...state,
+    lastSummary: `${latestRejected.repoLabel} roundtable action ${latestRejected.id} was rejected: ${latestRejected.rejectionReason}.`,
+  }
+}
+
 function holdbackReason(result: DiscordRoundtableExecutionResult): string {
   if (result.artifactOnly) {
     return 'artifact-only output'
@@ -2371,6 +2415,17 @@ export async function processDiscordRoundtableRuntime(
       nowMs: (options.now?.() ?? new Date()).getTime(),
     }) as DiscordRoundtableTrackedJob[],
   }
+  const expiredApprovalSummary = summarizeExpiredPendingApprovals({
+    previousJobs,
+    nextJobs: state.jobs,
+  })
+  if (expiredApprovalSummary) {
+    state = {
+      ...state,
+      lastError: null,
+      lastSummary: `Rejected expired pending roundtable approval ${expiredApprovalSummary}: approval window expired before confirmation.`,
+    }
+  }
   const approvalRevalidation = rejectInvalidPendingApprovals({
     jobs: state.jobs,
     rejectedAt: (options.now?.() ?? new Date()).toISOString(),
@@ -2492,6 +2547,7 @@ export async function processDiscordRoundtableRuntime(
 
   state.updatedAt = (options.now?.() ?? new Date()).toISOString()
   state.status = normalizeRuntimeStatus(state.jobs, state.lastError, state.status)
+  state = repairStaleApprovalSummary(state)
   const finalPreferredRoundtableChannelName = resolvePreferredRoundtableChannelName({
     configuredChannelName: options.roundtableChannelName,
     state,

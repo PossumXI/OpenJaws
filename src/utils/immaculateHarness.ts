@@ -443,8 +443,13 @@ function resolveLocalImmaculateHarnessUrl(): string | undefined {
   if (direct) {
     return direct
   }
-  const port = getLocalImmaculateEnvValue('IMMACULATE_PORT')
-  const host = getLocalImmaculateEnvValue('IMMACULATE_HOST') || '127.0.0.1'
+  const port =
+    getLocalImmaculateEnvValue('IMMACULATE_HARNESS_PORT') ??
+    getLocalImmaculateEnvValue('IMMACULATE_PORT')
+  const host =
+    getLocalImmaculateEnvValue('IMMACULATE_HARNESS_HOST') ??
+    getLocalImmaculateEnvValue('IMMACULATE_HOST') ??
+    '127.0.0.1'
   return port ? `http://${host}:${port}` : undefined
 }
 

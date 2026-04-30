@@ -1,6 +1,11 @@
 import type { ServerConfig } from './types.js'
 import type { DirectConnectWebSocket, SessionManager } from './sessionManager.js'
 import type { ServerLogger } from './serverLog.js'
+import {
+  runBrowserPreviewApiAction,
+  type BrowserPreviewApiAction,
+  type BrowserPreviewApiInput,
+} from '../utils/browserPreviewApi.js'
 
 export type DirectConnectServerHandle = {
   port: number | null
@@ -19,6 +24,10 @@ function jsonResponse(value: unknown, status = 200): Response {
 
 function unauthorized(): Response {
   return jsonResponse({ error: 'unauthorized' }, 401)
+}
+
+function badRequest(message: string): Response {
+  return jsonResponse({ error: 'bad_request', message }, 400)
 }
 
 function isAuthorized(request: Request, authToken: string): boolean {
@@ -44,6 +53,85 @@ function resolvePublicHost(host: string): string {
     return '127.0.0.1'
   }
   return host
+}
+
+async function readJsonBody(request: Request): Promise<Record<string, unknown>> {
+  try {
+    const body = await request.json()
+    return body && typeof body === 'object' && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+function readOptionalString(
+  body: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = body[key]
+  return typeof value === 'string' ? value : undefined
+}
+
+function readBrowserAction(pathname: string): BrowserPreviewApiAction | null {
+  switch (pathname) {
+    case '/browser/capabilities':
+      return 'capabilities'
+    case '/browser/runtime':
+      return 'runtime'
+    case '/browser/receipts':
+      return 'receipts'
+    case '/browser/open':
+      return 'open'
+    case '/browser/navigate':
+      return 'navigate'
+    case '/browser/close':
+      return 'close'
+    case '/browser/launch':
+      return 'launch'
+    case '/browser/handoff':
+      return 'handoff'
+    case '/browser/demo-harness':
+    case '/browser/demo_harness':
+      return 'demo_harness'
+    default:
+      return null
+  }
+}
+
+async function handleBrowserPreviewRequest(
+  request: Request,
+  action: BrowserPreviewApiAction,
+): Promise<Response> {
+  const readOnly = action === 'capabilities' || action === 'runtime' || action === 'receipts'
+  if (readOnly && request.method !== 'GET') {
+    return badRequest(`${action} requires GET.`)
+  }
+  if (!readOnly && request.method !== 'POST') {
+    return badRequest(`${action} requires POST.`)
+  }
+
+  const body = request.method === 'POST' ? await readJsonBody(request) : {}
+  const input: BrowserPreviewApiInput = {
+    action,
+    url: readOptionalString(body, 'url'),
+    sessionId: readOptionalString(body, 'sessionId') ?? readOptionalString(body, 'session_id'),
+    intent: readOptionalString(body, 'intent') as BrowserPreviewApiInput['intent'],
+    rationale: readOptionalString(body, 'rationale'),
+    requestedBy: (readOptionalString(body, 'requestedBy') ??
+      readOptionalString(body, 'requested_by') ??
+      'agent') as BrowserPreviewApiInput['requestedBy'],
+    name: readOptionalString(body, 'name'),
+    outputDir: readOptionalString(body, 'outputDir') ?? readOptionalString(body, 'output_dir'),
+  }
+
+  try {
+    const result = await runBrowserPreviewApiAction(input)
+    return jsonResponse(result, result.ok ? 200 : 409)
+  } catch (error) {
+    return badRequest(error instanceof Error ? error.message : String(error))
+  }
 }
 
 function buildWsUrl(args: {
@@ -92,6 +180,11 @@ export function startServer(
 
       if (!isAuthorized(request, config.authToken)) {
         return unauthorized()
+      }
+
+      const browserAction = readBrowserAction(url.pathname)
+      if (browserAction) {
+        return handleBrowserPreviewRequest(request, browserAction)
       }
 
       if (request.method === 'GET' && url.pathname === '/sessions') {

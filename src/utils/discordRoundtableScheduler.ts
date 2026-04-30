@@ -413,7 +413,10 @@ export function shouldForceRoundtableContribution(args: {
     if (!recentEnough) {
       return false
     }
-    if (action.status === 'rejected' || action.status === 'skipped') {
+    if (
+      action.status === 'rejected' ||
+      (action.status === 'skipped' && action.changedFiles.length === 0)
+    ) {
       return true
     }
     return (

@@ -1652,6 +1652,110 @@ describe('discordRoundtableRuntime', () => {
     expect(existsSync(operatorStatePath)).toBe(false)
   })
 
+  it('updates the runtime summary when an approval expires by ttl', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-ttl-summary-'))
+    tempDirs.push(root)
+    const repoRoot = join(root, 'repo')
+    mkdirSync(join(repoRoot, '.git'), { recursive: true })
+    const pendingJob: DiscordRoundtableTrackedJob = {
+      kind: 'roundtable',
+      id: 'ttl-approval-job',
+      branchName: 'discord-q-ttl-approval',
+      worktreePath: repoRoot,
+      workspacePath: join(repoRoot, 'src', 'utils'),
+      changedFiles: ['src/utils/debug.ts'],
+      summary: 'OpenJaws · Q · TTL approval · Verification passed',
+      verificationSummary: 'Verification passed',
+      commitSha: 'abc123',
+      status: 'awaiting_approval',
+      approvalState: 'pending',
+      workKey: 'openjaws::src/utils',
+      projectKey: 'openjaws',
+      sourcePath: join(root, 'handoff.json'),
+      sourceSessionId: 'session-ttl',
+      sourceScheduleId: null,
+      handoffKey: 'handoff-ttl',
+      repoId: 'openjaws',
+      repoLabel: 'OpenJaws',
+      role: 'Q',
+      objective: 'TTL approval',
+      rationale: 'Expired approvals should not leave stale awaiting-approval copy.',
+      commandHint: null,
+      targetPath: join(repoRoot, 'src', 'utils'),
+      targetRootLabel: 'OpenJaws',
+      receiptPath: null,
+      outputDir: null,
+      deliveryArtifactManifestPath: null,
+      deliveryArtifacts: [],
+      commitStatement: null,
+      decisionTraceId: null,
+      routeSuggestion: null,
+      executionReady: true,
+      requiresManualCheckout: false,
+      workspaceMaterialized: true,
+      authorityBound: true,
+      action: {
+        id: 'ttl-approval-job',
+        title: 'TTL approval',
+        reason: 'Expired approvals should not leave stale awaiting-approval copy.',
+        targetPath: join(repoRoot, 'src', 'utils'),
+        prompt: 'tighten the runtime status summary',
+        gitRoot: repoRoot,
+      },
+      completedAt: '2026-04-30T04:00:00.000Z',
+      approvedAt: null,
+      approvedBy: null,
+      rejectedAt: null,
+      rejectedBy: null,
+      rejectionReason: null,
+      leaseClaimedAt: null,
+      leaseExpiresAt: null,
+      leaseOwner: null,
+    }
+    const runtimeStatePath = getDiscordRoundtableStatePath(root)
+    mkdirSync(dirname(runtimeStatePath), { recursive: true })
+    writeFileSync(
+      runtimeStatePath,
+      JSON.stringify(
+        {
+          ...createDiscordRoundtableRuntimeState({
+            now: new Date('2026-04-30T04:05:00.000Z'),
+            roundtableChannelName: 'dev_support',
+          }),
+          status: 'awaiting_approval',
+          lastSummary:
+            'OpenJaws roundtable action ttl-approval-job is awaiting approval.',
+          jobs: [pendingJob],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const result = await processDiscordRoundtableRuntime({
+      root,
+      allowedRoots: [repoRoot],
+      ingestInbox: false,
+      maxActionsPerRun: 0,
+      approvalTtlHours: 0.5,
+      model: 'oci:Q',
+      runnerScriptPath:
+        'D:\\openjaws\\OpenJaws\\local-command-station\\run-openjaws-visible.ps1',
+      worktreeRoot: join(root, 'worktrees'),
+      outputRoot: join(root, 'outputs'),
+      now: () => new Date('2026-04-30T04:45:00.000Z'),
+    })
+
+    expect(result.awaitingApprovalCount).toBe(0)
+    expect(result.state.status).toBe('idle')
+    expect(result.state.jobs[0]?.status).toBe('rejected')
+    expect(result.state.lastSummary).toContain(
+      'Rejected expired pending roundtable approval OpenJaws roundtable action ttl-approval-job',
+    )
+    expect(result.state.lastSummary).not.toContain('awaiting approval')
+  })
+
   it('marks no-diff roundtable executions as skipped instead of completed', async () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-no-diff-'))
     tempDirs.push(root)

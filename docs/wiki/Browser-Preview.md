@@ -76,3 +76,23 @@ Typical flow:
 ```
 
 Then choose `Write Playwright demo harness` and run the generated `bunx playwright test -c <playwright.config.ts>` command.
+
+## Direct Connect and agent tool surface
+
+The same browser preview lane is now exposed as a structured backend contract for agents, Discord/OpenJaws bridges, and Direct Connect clients.
+
+Authenticated Direct Connect routes:
+
+- `GET /browser/capabilities`
+- `GET /browser/runtime`
+- `GET /browser/receipts`
+- `POST /browser/open`
+- `POST /browser/navigate`
+- `POST /browser/close`
+- `POST /browser/launch`
+- `POST /browser/handoff`
+- `POST /browser/demo-harness`
+
+The existing `WEB_BROWSER_TOOL` feature gate now resolves to the `BrowserPreview` tool instead of a missing module. The tool uses the same shared API runner as Direct Connect, so TUI commands, backend calls, and agent tool use all enforce the same URL policy, accountable requester model, receipt behavior, and Playwright harness writer.
+
+The first production-ready backend slice is deliberately scoped to open/navigate/close/handoff/runtime/receipts/demo-harness. Running and packaging generated Playwright artifacts should be layered on top of this same API runner rather than added as another separate browser path.

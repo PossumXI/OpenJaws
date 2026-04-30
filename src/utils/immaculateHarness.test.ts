@@ -106,6 +106,31 @@ describe('immaculate harness config', () => {
     })
   })
 
+  test('accepts Immaculate harness host and port env names from the local env file', () => {
+    delete process.env.IMMACULATE_HARNESS_URL
+    delete process.env.IMMACULATE_API_KEY
+    const dir = mkdtempSync(join(tmpdir(), 'openjaws-immaculate-harness-env-'))
+    const envPath = join(dir, '.env.local')
+    writeFileSync(
+      envPath,
+      [
+        'IMMACULATE_API_KEY=local-key',
+        'IMMACULATE_HARNESS_HOST=0.0.0.0',
+        'IMMACULATE_HARNESS_PORT=8788',
+        'IMMACULATE_HOST=127.0.0.1',
+        'IMMACULATE_PORT=9797',
+      ].join('\n'),
+      'utf8',
+    )
+    process.env.IMMACULATE_ENV_FILE = envPath
+
+    expect(getImmaculateHarnessConfig()).toMatchObject({
+      harnessUrl: 'http://0.0.0.0:8788',
+      apiKey: 'local-key',
+      apiKeySource: 'IMMACULATE_ENV_FILE',
+    })
+  })
+
   test('applies explicit governance defaults for governed actions', () => {
     expect(getImmaculateHarnessGovernanceProfile('control')).toEqual({
       action: 'operator-control',
