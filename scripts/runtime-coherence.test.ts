@@ -26,6 +26,7 @@ describe('runtime-coherence PersonaPlex mapping', () => {
           stationRoot: 'station',
           launcherPath: 'launcher',
           missing: [],
+          warnings: [],
         },
       }),
     ).toEqual({
@@ -62,6 +63,7 @@ describe('runtime-coherence PersonaPlex mapping', () => {
         stationRoot: 'station',
         launcherPath: 'launcher',
         missing: [],
+        warnings: ['inline secret assignment detected in start-personaplex-wsl.sh'],
       },
     })
 
@@ -69,5 +71,6 @@ describe('runtime-coherence PersonaPlex mapping', () => {
     expect(probe.status).toBe('error')
     expect(probe.detail).toContain('PersonaPlex WebSocket error')
     expect(probe.detail).toContain('start it with the local voice launcher')
+    expect(probe.detail).toContain('inline secret assignment detected')
   })
 })

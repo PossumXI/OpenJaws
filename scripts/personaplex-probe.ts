@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'fs'
-import { dirname, join, resolve } from 'path'
+import { existsSync, readFileSync, statSync } from 'fs'
+import { basename, dirname, join, resolve } from 'path'
 import { fileURLToPath } from 'url'
 
 export type PersonaPlexProbeOptions = {
@@ -9,6 +9,9 @@ export type PersonaPlexProbeOptions = {
   runtimeUrl: string | null
   textPrompt: string
   voicePrompt: string
+  stationRoot?: string | null
+  runtimeStatePath?: string | null
+  launcherPath?: string | null
 }
 
 export type PersonaPlexRuntimeState = {
@@ -35,6 +38,7 @@ export type PersonaPlexRepairHint = {
   stationRoot: string
   launcherPath: string
   missing: string[]
+  warnings: string[]
 }
 
 export type PersonaPlexProbeResult = {
@@ -55,20 +59,13 @@ export type PersonaPlexProbeResult = {
 }
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const LOCAL_COMMAND_STATION_ROOT = join(REPO_ROOT, 'local-command-station')
-const PERSONAPLEX_LAUNCHER_PATH = join(
-  LOCAL_COMMAND_STATION_ROOT,
-  'start-personaplex-voice.ps1',
-)
-const RUNTIME_STATE_PATH = join(
-  LOCAL_COMMAND_STATION_ROOT,
-  'personaplex-runtime',
-  'runtime.json',
-)
 const DEFAULT_PERSONAPLEX_RUNTIME_URL = 'http://127.0.0.1:8998'
 const RUNTIME_STATE_STALE_MS = 30 * 60 * 1000
 const REDACTED = '[redacted]'
 const CONFIGURED = '[configured]'
+const MAX_SCRIPT_SCAN_BYTES = 64 * 1024
+const INLINE_SECRET_ASSIGNMENT_PATTERN =
+  /^\s*(?:export\s+)?(?:HF_TOKEN|HUGGINGFACE(?:HUB)?_[A-Z0-9_]*(?:TOKEN|KEY|SECRET)|PERSONAPLEX_[A-Z0-9_]*(?:TOKEN|KEY|SECRET)|ELEVENLABS_API_KEY|DISCORD_TOKEN)\s*=\s*['"]?(?!\$|%|\[redacted\]|<redacted>|<[^>]+>)[^'"\s#]{12,}/im
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -86,6 +83,53 @@ function coerceRuntimeId(value: unknown): string | number | null {
     return value.trim() || null
   }
   return null
+}
+
+function trimToNull(value: string | null | undefined): string | null {
+  return value?.trim() || null
+}
+
+export function resolvePersonaPlexStationRoot(args: {
+  root?: string
+  stationRoot?: string | null
+} = {}): string {
+  const explicit =
+    trimToNull(args.stationRoot) ??
+    trimToNull(process.env.PERSONAPLEX_STATION_ROOT) ??
+    trimToNull(process.env.OPENJAWS_LOCAL_COMMAND_STATION_ROOT)
+  return explicit
+    ? resolve(explicit)
+    : join(resolve(args.root ?? REPO_ROOT), 'local-command-station')
+}
+
+export function resolvePersonaPlexLauncherPath(args: {
+  root?: string
+  stationRoot?: string | null
+  launcherPath?: string | null
+} = {}): string {
+  const explicit =
+    trimToNull(args.launcherPath) ??
+    trimToNull(process.env.PERSONAPLEX_LAUNCHER_PATH)
+  return explicit
+    ? resolve(explicit)
+    : join(resolvePersonaPlexStationRoot(args), 'start-personaplex-voice.ps1')
+}
+
+export function resolvePersonaPlexRuntimeStatePath(args: {
+  root?: string
+  stationRoot?: string | null
+  runtimeStatePath?: string | null
+} = {}): string {
+  const explicit =
+    trimToNull(args.runtimeStatePath) ??
+    trimToNull(process.env.PERSONAPLEX_RUNTIME_STATE_PATH)
+  return explicit
+    ? resolve(explicit)
+    : join(
+        resolvePersonaPlexStationRoot(args),
+        'personaplex-runtime',
+        'runtime.json',
+      )
 }
 
 function redactUrlForDiagnostics(value: string): string {
@@ -180,6 +224,12 @@ export function parseArgs(argv: string[]): PersonaPlexProbeOptions {
       process.env.PERSONAPLEX_ALLOW_REMOTE?.trim().toLowerCase() === 'true',
     timeoutMs: 90_000,
     runtimeUrl: process.env.PERSONAPLEX_URL?.trim() || null,
+    stationRoot:
+      process.env.PERSONAPLEX_STATION_ROOT?.trim() ||
+      process.env.OPENJAWS_LOCAL_COMMAND_STATION_ROOT?.trim() ||
+      null,
+    runtimeStatePath: process.env.PERSONAPLEX_RUNTIME_STATE_PATH?.trim() || null,
+    launcherPath: process.env.PERSONAPLEX_LAUNCHER_PATH?.trim() || null,
     textPrompt:
       process.env.PERSONAPLEX_TEXT_PROMPT?.trim() ||
       process.env.PERSONAPLEX_PREWARM_TEXT_PROMPT?.trim() ||
@@ -202,6 +252,18 @@ export function parseArgs(argv: string[]): PersonaPlexProbeOptions {
       case '--url':
       case '--runtime-url':
         options.runtimeUrl = argv[index + 1]?.trim() || null
+        index += 1
+        break
+      case '--station-root':
+        options.stationRoot = argv[index + 1]?.trim() || null
+        index += 1
+        break
+      case '--runtime-state-path':
+        options.runtimeStatePath = argv[index + 1]?.trim() || null
+        index += 1
+        break
+      case '--launcher-path':
+        options.launcherPath = argv[index + 1]?.trim() || null
         index += 1
         break
       case '--timeout-ms':
@@ -227,7 +289,7 @@ export function parseArgs(argv: string[]): PersonaPlexProbeOptions {
 }
 
 export function readRuntimeState(
-  path = RUNTIME_STATE_PATH,
+  path = resolvePersonaPlexRuntimeStatePath(),
 ): PersonaPlexRuntimeState | null {
   if (!existsSync(path)) {
     return null
@@ -372,17 +434,73 @@ function withRuntimeStateDiagnostic(
   return diagnostic ? `${message} (${diagnostic})` : message
 }
 
+function readSmallScriptForInspection(path: string): string | null {
+  if (!existsSync(path)) {
+    return null
+  }
+  try {
+    const stat = statSync(path)
+    if (!stat.isFile() || stat.size > MAX_SCRIPT_SCAN_BYTES) {
+      return null
+    }
+    return readFileSync(path, 'utf8')
+  } catch {
+    return null
+  }
+}
+
+export function buildPersonaPlexLauncherWarnings(args: {
+  stationRoot: string
+  launcherPath: string
+}): string[] {
+  const candidates = [
+    args.launcherPath,
+    join(args.stationRoot, 'personaplex-runtime', 'start-personaplex-wsl.sh'),
+  ]
+  const warnings: string[] = []
+  const seen = new Set<string>()
+
+  for (const path of candidates) {
+    const resolved = resolve(path)
+    if (seen.has(resolved)) {
+      continue
+    }
+    seen.add(resolved)
+    const content = readSmallScriptForInspection(resolved)
+    if (!content || !INLINE_SECRET_ASSIGNMENT_PATTERN.test(content)) {
+      continue
+    }
+    warnings.push(
+      `inline secret assignment detected in ${basename(resolved)}; rotate the affected credential and regenerate the launcher from environment only`,
+    )
+  }
+
+  return warnings
+}
+
 export function buildPersonaPlexRepairHint(args: {
   state: PersonaPlexRuntimeState | null
   ready: boolean
   root?: string
+  stationRoot?: string | null
+  launcherPath?: string | null
 }): PersonaPlexRepairHint {
-  const root = resolve(args.root ?? REPO_ROOT)
-  const stationRoot = join(root, 'local-command-station')
-  const launcherPath = join(stationRoot, 'start-personaplex-voice.ps1')
+  const stationRoot = resolvePersonaPlexStationRoot({
+    root: args.root,
+    stationRoot: args.stationRoot,
+  })
+  const launcherPath = resolvePersonaPlexLauncherPath({
+    root: args.root,
+    stationRoot,
+    launcherPath: args.launcherPath,
+  })
   const missing = [
     !existsSync(launcherPath) ? launcherPath : null,
   ].filter((item): item is string => Boolean(item))
+  const warnings = buildPersonaPlexLauncherWarnings({
+    stationRoot,
+    launcherPath,
+  })
   const failedWithoutHealthyRuntime = hasFailedWithoutHealthyRuntime(args.state)
   const status = args.ready
     ? 'ready'
@@ -403,6 +521,7 @@ export function buildPersonaPlexRepairHint(args: {
     stationRoot,
     launcherPath,
     missing,
+    warnings,
   }
 }
 
@@ -535,7 +654,25 @@ function closeWebSocketGracefully(
 export async function probePersonaPlexRuntime(
   options: PersonaPlexProbeOptions,
 ): Promise<PersonaPlexProbeResult> {
-  const state = readRuntimeState()
+  const stationRoot = resolvePersonaPlexStationRoot({
+    stationRoot: options.stationRoot,
+  })
+  const runtimeStatePath = resolvePersonaPlexRuntimeStatePath({
+    stationRoot,
+    runtimeStatePath: options.runtimeStatePath,
+  })
+  const launcherPath = resolvePersonaPlexLauncherPath({
+    stationRoot,
+    launcherPath: options.launcherPath,
+  })
+  const state = readRuntimeState(runtimeStatePath)
+  const buildRepair = (ready: boolean) =>
+    buildPersonaPlexRepairHint({
+      state,
+      ready,
+      stationRoot,
+      launcherPath,
+    })
   const selectedRuntime = selectPersonaPlexProbeRuntimeUrl({
     runtimeUrl: options.runtimeUrl,
     state,
@@ -562,10 +699,7 @@ export async function probePersonaPlexRuntime(
       runtimeState: state,
       runtimeUrlSource: selectedRuntime.runtimeUrlSource,
       ignoredStateRuntimeUrl: selectedRuntime.ignoredStateRuntimeUrl,
-      repair: buildPersonaPlexRepairHint({
-        state,
-        ready: false,
-      }),
+      repair: buildRepair(false),
       error: withRuntimeStateDiagnostic(validationError, state),
     }
   }
@@ -590,10 +724,7 @@ export async function probePersonaPlexRuntime(
       runtimeState: state,
       runtimeUrlSource: selectedRuntime.runtimeUrlSource,
       ignoredStateRuntimeUrl: selectedRuntime.ignoredStateRuntimeUrl,
-      repair: buildPersonaPlexRepairHint({
-        state,
-        ready: false,
-      }),
+      repair: buildRepair(false),
       error: withRuntimeStateDiagnostic(
         `Invalid PersonaPlex runtime URL: ${
           error instanceof Error ? error.message : String(error)
@@ -619,10 +750,7 @@ export async function probePersonaPlexRuntime(
         resolveProbe({
           ...result,
           latencyMs: Date.now() - startedAt,
-          repair: buildPersonaPlexRepairHint({
-            state,
-            ready: result.ready,
-          }),
+          repair: buildRepair(result.ready),
         })
       })()
     }
