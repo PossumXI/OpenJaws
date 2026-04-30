@@ -49,9 +49,11 @@ const qSmokeBaseModelSource =
   process.env.OPENJAWS_Q_SMOKE_MODEL ?? Q_SMOKE_BASE_MODEL
 const qSmokeBaseModel = getOpenJawsTrainingModelDisplay(qSmokeBaseModelSource)
 const qPythonCommand = resolveQTrainingPythonCommand(rootDir)
-const discordSupervisorSurfaceFiles = [
+const operatorReleaseSurfaceFiles = [
   'scripts/discord-agent-supervisor.ts',
   'scripts/discord-agent-supervisor.test.ts',
+  'scripts/personaplex-probe.ts',
+  'scripts/personaplex-probe.test.ts',
 ] as const
 
 function tailText(text: string, maxLines = 40, maxChars = 4000): string {
@@ -311,9 +313,9 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-function checkDiscordSupervisorSurface(): CheckResult {
+function checkOperatorReleaseSurface(): CheckResult {
   const startedAt = Date.now()
-  const files = discordSupervisorSurfaceFiles.map(relativePath => {
+  const files = operatorReleaseSurfaceFiles.map(relativePath => {
     const path = resolve(rootDir, relativePath)
     return {
       relativePath,
@@ -324,13 +326,13 @@ function checkDiscordSupervisorSurface(): CheckResult {
   const missing = files.filter(file => !file.present)
 
   return {
-    name: 'discord-supervisor-release-surface',
+    name: 'operator-release-surface',
     status: missing.length > 0 ? 'failed' : 'passed',
     durationMs: Date.now() - startedAt,
     summary:
       missing.length > 0
-        ? `Discord supervisor release surface is incomplete (${missing.length} missing files)`
-        : 'Discord supervisor release surface files are present',
+        ? `Operator release surface is incomplete (${missing.length} missing files)`
+        : 'Operator release surface files are present',
     details: {
       missingCount: missing.length,
       files,
@@ -350,7 +352,7 @@ async function main() {
   const auditedDir = join(runDir, 'audited-sample')
   const liveTrainDir = join(runDir, 'q-live-smoke')
 
-  results.push(checkDiscordSupervisorSurface())
+  results.push(checkOperatorReleaseSurface())
   results.push(
     await runCommandCheck('unit-tests', 'bun', ['run', 'test'], {
       successSummary: 'unit tests passed',
@@ -556,6 +558,20 @@ async function main() {
       failureSummary:
         'Runtime coherence found drift between live harness state and local audit surfaces',
       timeoutMs: 60_000,
+      allowFailure: true,
+    }),
+  )
+  results.push(
+    await runJsonCommandCheck('personaplex-probe-live', 'bun', [
+      'scripts/personaplex-probe.ts',
+      '--json',
+      '--timeout-ms',
+      '15000',
+    ], {
+      successSummary: 'PersonaPlex live bridge probe passed',
+      failureSummary:
+        'PersonaPlex live bridge probe failed; inspect the JSON repair hint before marking voice production-ready',
+      timeoutMs: 30_000,
       allowFailure: true,
     }),
   )

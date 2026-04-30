@@ -61,6 +61,7 @@
     "q:receipt:sign": "bun scripts/sign-benchmark-receipt.ts",
     "roundtable:runtime": "bun scripts/roundtable-runtime.ts --json",
     "runtime:coherence": "bun scripts/runtime-coherence.ts --json",
+    "personaplex:probe": "bun scripts/personaplex-probe.ts --json",
     "discord:q:repair": "bun scripts/discord-agent-supervisor.ts repair --agent Q",
     "discord:viola:repair": "bun scripts/discord-agent-supervisor.ts repair --agent Viola",
     "discord:blackbeak:repair": "bun scripts/discord-agent-supervisor.ts repair --agent Blackbeak",

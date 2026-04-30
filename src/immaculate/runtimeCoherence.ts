@@ -373,7 +373,7 @@ export function buildRuntimeCoherenceReport(args: {
       id: `probe-${probe.label}`,
       status: probe.reachable ? 'ok' : 'warning',
       summary: `${probe.label} ${probe.reachable ? 'reachable' : 'unreachable'} at ${probe.url}`,
-      detail: probe.status ?? probe.detail ?? null,
+      detail: probe.detail ?? probe.status ?? null,
     })
   }
 

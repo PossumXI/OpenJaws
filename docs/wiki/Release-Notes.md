@@ -114,6 +114,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - routed `Q` fallback thresholds, route lease timing, worker lease duration, and Immaculate crew pressure delays now come from one shared policy layer instead of drifting across launch, routing, and worker helpers
 - `bun run runtime:coherence` now audits live harness reachability against Discord receipts, route queue depth, trace summaries, roundtable state, and local bot health
 - `system:check` now includes that live runtime coherence pass as an allow-failure audit instead of leaving the live-control surface unverified
+- `bun run personaplex:probe` is now a tracked release command, and runtime coherence includes PersonaPlex WebSocket readiness with a non-secret local repair hint for the voice launcher
 - Discord runtime receipts now normalize older payloads on read so `/status` can keep rendering a stable gateway/voice view across older local receipt files
 
 ## Provider and First-Run Setup

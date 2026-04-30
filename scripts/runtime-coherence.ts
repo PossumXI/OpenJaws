@@ -7,6 +7,10 @@ import { readDiscordQAgentReceipt } from '../src/utils/discordQAgentRuntime.js'
 import { readDiscordRoundtableSessionSnapshot } from '../src/utils/discordRoundtableRuntime.js'
 import { getImmaculateHarnessStatus } from '../src/utils/immaculateHarness.js'
 import { readQTrainingRouteQueue } from '../src/utils/qTraining.js'
+import {
+  type PersonaPlexProbeResult,
+  probePersonaPlexRuntime,
+} from './personaplex-probe.js'
 
 type RuntimeCoherenceCliOptions = {
   json: boolean
@@ -20,6 +24,12 @@ type ProbeResult = {
   detail?: string | null
 }
 
+const PERSONAPLEX_COHERENCE_TIMEOUT_MS = Math.max(
+  1_000,
+  Number.parseInt(process.env.PERSONAPLEX_COHERENCE_TIMEOUT_MS ?? '', 10) ||
+    15_000,
+)
+
 export function parseArgs(argv: string[]): RuntimeCoherenceCliOptions {
   return {
     json: argv.includes('--json'),
@@ -31,14 +41,25 @@ async function probeJsonHealth(
   url: string,
 ): Promise<ProbeResult> {
   try {
-    const response = await fetch(url)
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(5_000),
+    })
     const text = await response.text()
     const body = text.trim()
     let status: string | null = null
+    let detail: string | null = null
     if (body) {
       try {
         const parsed = JSON.parse(body) as Record<string, unknown>
         status = typeof parsed.status === 'string' ? parsed.status : null
+        detail =
+          typeof parsed.gatewayLastError === 'string'
+            ? parsed.gatewayLastError
+            : typeof parsed.detail === 'string'
+              ? parsed.detail
+              : typeof parsed.lastError === 'string'
+                ? parsed.lastError
+                : null
       } catch {
         status = body
       }
@@ -48,7 +69,7 @@ async function probeJsonHealth(
       url,
       reachable: response.ok,
       status,
-      detail: response.ok ? null : `HTTP ${response.status}`,
+      detail: response.ok ? detail : detail ?? `HTTP ${response.status}`,
     }
   } catch (error) {
     return {
@@ -56,6 +77,58 @@ async function probeJsonHealth(
       url,
       reachable: false,
       status: null,
+      detail: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
+export function buildPersonaPlexCoherenceProbe(
+  result: PersonaPlexProbeResult,
+): ProbeResult {
+  const repairDetail =
+    result.repair.status === 'ready' ? null : result.repair.summary
+  const missingDetail =
+    result.repair.missing.length > 0
+      ? `missing local launcher: ${result.repair.missing.join(', ')}`
+      : null
+  return {
+    label: 'PersonaPlex',
+    url: result.websocketUrl,
+    reachable: result.ready,
+    status: result.ready ? null : result.status,
+    detail: result.ready
+      ? `${result.runtimeUrl} hello byte ${result.firstByte} in ${result.latencyMs}ms`
+      : [
+          result.error ?? `probe status ${result.status}`,
+          repairDetail,
+          missingDetail,
+        ].filter((part): part is string => Boolean(part)).join(' | '),
+  }
+}
+
+async function probePersonaPlexCoherence(): Promise<ProbeResult> {
+  try {
+    return buildPersonaPlexCoherenceProbe(
+      await probePersonaPlexRuntime({
+        json: true,
+        timeoutMs: PERSONAPLEX_COHERENCE_TIMEOUT_MS,
+        runtimeUrl: process.env.PERSONAPLEX_URL?.trim() || null,
+        textPrompt:
+          process.env.PERSONAPLEX_TEXT_PROMPT?.trim() ||
+          process.env.PERSONAPLEX_PREWARM_TEXT_PROMPT?.trim() ||
+          'You enjoy having a good conversation.',
+        voicePrompt:
+          process.env.PERSONAPLEX_VOICE_PROMPT?.trim() ||
+          process.env.PERSONAPLEX_PREWARM_VOICE_PROMPT?.trim() ||
+          'NATF2.pt',
+      }),
+    )
+  } catch (error) {
+    return {
+      label: 'PersonaPlex',
+      url: process.env.PERSONAPLEX_URL?.trim() || 'local PersonaPlex runtime',
+      reachable: false,
+      status: 'error',
       detail: error instanceof Error ? error.message : String(error),
     }
   }
@@ -83,6 +156,14 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   const options = parseArgs(argv)
   const root = process.cwd()
   const harnessStatus = await getImmaculateHarnessStatus()
+  const [agentProbes, personaPlexProbe] = await Promise.all([
+    Promise.all([
+      probeJsonHealth('Q', 'http://127.0.0.1:8788/health'),
+      probeJsonHealth('Viola', 'http://127.0.0.1:8789/health'),
+      probeJsonHealth('Blackbeak', 'http://127.0.0.1:8790/health'),
+    ]),
+    probePersonaPlexCoherence(),
+  ])
   const report = buildRuntimeCoherenceReport({
     harnessStatus,
     qAgentReceipt: readDiscordQAgentReceipt(root),
@@ -90,11 +171,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     qTrace: readLatestQTraceSummary(root),
     routeQueueDepth: readQTrainingRouteQueue(root).length,
     roundtable: readRoundtableState(root),
-    probes: await Promise.all([
-      probeJsonHealth('Q', 'http://127.0.0.1:8788/health'),
-      probeJsonHealth('Viola', 'http://127.0.0.1:8789/health'),
-      probeJsonHealth('Blackbeak', 'http://127.0.0.1:8790/health'),
-    ]),
+    probes: [...agentProbes, personaPlexProbe],
   })
 
   const output = options.json
