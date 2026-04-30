@@ -2,6 +2,12 @@ import { existsSync, readFileSync } from 'fs'
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { resolveOciQRuntime } from '../src/utils/ociQRuntime.js'
+import {
+  JAWS_RELEASE_API_URL,
+  JAWS_RELEASE_PREVIOUS_PATCH_VERSION,
+  JAWS_RELEASE_TAG,
+  JAWS_RELEASE_VERSION,
+} from './jaws-release-index.ts'
 
 export type ServiceRouteAudience =
   | 'public'
@@ -49,6 +55,7 @@ type HttpRouteDefinition = {
   expectedStatuses: number[]
   marker?: string | null
   required?: boolean
+  releaseGated?: boolean
 }
 
 type ServiceRouteHealthOptions = {
@@ -131,16 +138,17 @@ const PUBLIC_HTTP_ROUTES: HttpRouteDefinition[] = [
     id: 'qline-jaws-updater-old',
     service: 'JAWS updater',
     audience: ['public'],
-    url: 'https://qline.site/api/jaws/windows/x86_64/0.1.3',
+    url: `https://qline.site/api/jaws/windows/x86_64/${JAWS_RELEASE_PREVIOUS_PATCH_VERSION}`,
     expectedStatuses: [200],
     marker: '"version"',
     required: true,
+    releaseGated: true,
   },
   {
     id: 'qline-jaws-updater-current',
     service: 'JAWS updater',
     audience: ['public'],
-    url: 'https://qline.site/api/jaws/windows/x86_64/0.1.4',
+    url: `https://qline.site/api/jaws/windows/x86_64/${JAWS_RELEASE_VERSION}`,
     expectedStatuses: [204],
     required: true,
   },
@@ -165,16 +173,17 @@ const PUBLIC_HTTP_ROUTES: HttpRouteDefinition[] = [
     id: 'iorch-jaws-updater-old',
     service: 'JAWS updater',
     audience: ['public'],
-    url: 'https://iorch.net/api/jaws/windows/x86_64/0.1.3',
+    url: `https://iorch.net/api/jaws/windows/x86_64/${JAWS_RELEASE_PREVIOUS_PATCH_VERSION}`,
     expectedStatuses: [200],
     marker: '"version"',
     required: true,
+    releaseGated: true,
   },
   {
     id: 'iorch-jaws-updater-current',
     service: 'JAWS updater',
     audience: ['public'],
-    url: 'https://iorch.net/api/jaws/windows/x86_64/0.1.4',
+    url: `https://iorch.net/api/jaws/windows/x86_64/${JAWS_RELEASE_VERSION}`,
     expectedStatuses: [204],
     required: true,
   },
@@ -348,7 +357,9 @@ async function fetchWithTimeout(
 
 async function checkHttpRoute(
   route: HttpRouteDefinition,
-  options: Required<Pick<ServiceRouteHealthOptions, 'fetchImpl' | 'timeoutMs' | 'strictPrivate'>>,
+  options: Required<Pick<ServiceRouteHealthOptions, 'fetchImpl' | 'timeoutMs' | 'strictPrivate'>> & {
+    jawsReleasePublished: boolean
+  },
 ): Promise<ServiceRouteCheck> {
   try {
     const response = await fetchWithTimeout(
@@ -358,6 +369,27 @@ async function checkHttpRoute(
     )
     const text = response.status === 204 ? '' : await response.text()
     if (!route.expectedStatuses.includes(response.status)) {
+      if (
+        route.releaseGated &&
+        response.status === 204 &&
+        !options.jawsReleasePublished
+      ) {
+        return {
+          id: route.id,
+          service: route.service,
+          audience: route.audience,
+          status: 'not_configured',
+          url: route.url,
+          httpStatus: response.status,
+          summary: `${route.service} is not offering ${JAWS_RELEASE_VERSION} yet because ${JAWS_RELEASE_TAG} is not published.`,
+          details: {
+            releaseTag: JAWS_RELEASE_TAG,
+            currentVersion: JAWS_RELEASE_VERSION,
+            previousTesterVersion: JAWS_RELEASE_PREVIOUS_PATCH_VERSION,
+            releaseApiUrl: JAWS_RELEASE_API_URL,
+          },
+        }
+      }
       return {
         id: route.id,
         service: route.service,
@@ -401,6 +433,22 @@ async function checkHttpRoute(
         error: error instanceof Error ? error.message : String(error),
       },
     }
+  }
+}
+
+async function checkJawsReleasePublished(
+  fetchImpl: FetchLike,
+  timeoutMs: number,
+): Promise<boolean> {
+  try {
+    const response = await fetchWithTimeout(fetchImpl, JAWS_RELEASE_API_URL, timeoutMs)
+    if (response.status !== 200) {
+      return false
+    }
+    const body = await response.json() as { tag_name?: string; draft?: boolean }
+    return body.tag_name === JAWS_RELEASE_TAG && body.draft !== true
+  } catch {
+    return false
   }
 }
 
@@ -646,15 +694,16 @@ export async function runServiceRouteHealth(
   const strictPrivate = options.strictPrivate ?? false
   const env = options.env ?? process.env
   const checks: ServiceRouteCheck[] = []
+  const jawsReleasePublished = await checkJawsReleasePublished(fetchImpl, timeoutMs)
 
   for (const route of PUBLIC_HTTP_ROUTES) {
-    checks.push(await checkHttpRoute(route, { fetchImpl, timeoutMs, strictPrivate }))
+    checks.push(await checkHttpRoute(route, { fetchImpl, timeoutMs, strictPrivate, jawsReleasePublished }))
   }
   for (const route of buildConfiguredHttpRoutes(env)) {
-    checks.push(await checkHttpRoute(route, { fetchImpl, timeoutMs, strictPrivate }))
+    checks.push(await checkHttpRoute(route, { fetchImpl, timeoutMs, strictPrivate, jawsReleasePublished }))
   }
   for (const route of LOCAL_HTTP_ROUTES) {
-    checks.push(await checkHttpRoute(route, { fetchImpl, timeoutMs, strictPrivate }))
+    checks.push(await checkHttpRoute(route, { fetchImpl, timeoutMs, strictPrivate, jawsReleasePublished }))
   }
   checks.push(...buildConfigurationChecks(env))
 

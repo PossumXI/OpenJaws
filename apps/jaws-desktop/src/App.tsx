@@ -69,6 +69,17 @@ import {
 } from "./context";
 import releaseIndex from "./release-index.json";
 import { normalizePreviewFrameUrl } from "./previewUrl";
+import {
+  createInitialUpdatePipeline,
+  createPreviewUpdatePipeline,
+  formatDeferredUpdateState,
+  markUpdatePipelineChecking,
+  resolveUpdateFailure,
+  resolveUpdateSuccess,
+  shouldResetDeferredPrompt,
+  type JawsReleaseIndex,
+  type UpdatePipelineEntry
+} from "./updateWorkflow";
 import { buildWorkspaceSelection, type TerminalPlatform } from "./workspace";
 
 declare global {
@@ -195,13 +206,6 @@ interface AgentProfile {
   role: string;
   status: string;
   load: number;
-}
-
-interface UpdatePipelineEntry {
-  id: string;
-  label: string;
-  status: "ready" | "checking" | "ok" | "error" | "info";
-  detail: string;
 }
 
 interface AgentRuntimeSnapshot {
@@ -342,23 +346,6 @@ interface ProjectContextSnapshot {
 }
 
 type ArcadeView = "slow-guy" | "holdem" | "world";
-
-interface JawsReleaseIndex {
-  version: string;
-  tag: string;
-  repo: string;
-  github: {
-    releaseUrl: string;
-    apiUrl: string;
-    baseAssetUrl: string;
-  };
-  mirrors: Array<{
-    id: string;
-    label: string;
-    pageUrl: string;
-    routeBaseUrl: string;
-  }>;
-}
 
 const jawsReleaseIndex = releaseIndex as JawsReleaseIndex;
 
@@ -545,26 +532,7 @@ const agentProfiles: AgentProfile[] = [
   { name: "Immaculate", role: "Crew pacing", status: "Ready", load: 28 }
 ];
 
-const initialUpdatePipeline: UpdatePipelineEntry[] = [
-  {
-    id: "runtime",
-    label: "Tauri updater",
-    status: "ready",
-    detail: "Waiting for a signed update check from the native runtime."
-  },
-  ...jawsReleaseIndex.mirrors.map((mirror) => ({
-    id: mirror.id,
-    label: `${mirror.label} mirror`,
-    status: "ready",
-    detail: `${mirror.routeBaseUrl}/latest.json`
-  }) satisfies UpdatePipelineEntry),
-  {
-    id: "github",
-    label: "GitHub release",
-    status: "ready",
-    detail: `${jawsReleaseIndex.tag} signed assets`
-  }
-];
+const initialUpdatePipeline = createInitialUpdatePipeline(jawsReleaseIndex);
 
 const complianceDocuments = [
   {
@@ -1195,51 +1163,17 @@ export function App() {
   async function checkForUpdates(source: "startup" | "manual" = "manual") {
     setUpdateChecking(true);
     setPendingUpdate(null);
-    if (source === "manual") {
+    if (shouldResetDeferredPrompt(source)) {
       setUpdatePromptHidden(false);
     }
     if (!hasTauriRuntime()) {
       setUpdateState("Tauri runtime required");
-      setUpdatePipeline([
-        {
-          id: "runtime",
-          label: "Tauri updater",
-          status: "error",
-          detail: "The signed updater only runs inside the native JAWS desktop shell."
-        },
-        ...jawsReleaseIndex.mirrors.map((mirror) => ({
-          id: mirror.id,
-          label: `${mirror.label} mirror`,
-          status: "info" as const,
-          detail: mirror.pageUrl
-        })),
-        {
-          id: "github",
-          label: "GitHub release",
-          status: "info",
-          detail: jawsReleaseIndex.github.releaseUrl
-        },
-        {
-          id: "manifest",
-          label: "Signed manifest",
-          status: "info",
-          detail: `${jawsReleaseIndex.github.baseAssetUrl}/latest.json`
-        }
-      ]);
+      setUpdatePipeline(createPreviewUpdatePipeline(jawsReleaseIndex));
       setUpdateChecking(false);
       return;
     }
 
-    setUpdatePipeline((entries) =>
-      entries.map((entry) => ({
-        ...entry,
-        status: "checking",
-        detail:
-          entry.id === "runtime"
-            ? "Calling Tauri updater.check() against signed endpoints."
-            : "Native runtime is probing the live release surface."
-      }))
-    );
+    setUpdatePipeline(markUpdatePipelineChecking);
 
     const [updateResult, probeResult] = await Promise.allSettled([
       check(),
@@ -1260,39 +1194,20 @@ export function App() {
     if (updateResult.status === "fulfilled") {
       const update = updateResult.value;
       setPendingUpdate(update);
-      setUpdateState(update ? `Update ${update.version} ready` : "Current release");
-      if (update) {
-        setUpdatePromptHidden(false);
+      const workflow = resolveUpdateSuccess(update?.version ?? null, releaseEntries);
+      setUpdateState(workflow.updateState);
+      setUpdatePromptHidden(workflow.promptHidden);
+      if (workflow.openNotificationTray) {
         setNotificationsOpen(true);
-        triggerJawsNotification({
-          title: `JAWS ${update.version} ready`,
-          detail: "A signed update is available. Choose Install Now or Later from the top bar or Settings.",
-          tone: "update"
-        });
       }
-      setUpdatePipeline([
-        {
-          id: "runtime",
-          label: "Tauri updater",
-          status: "ok",
-          detail: update
-            ? `Signed update ${update.version} is ready.`
-            : "No newer signed release was offered by the updater."
-        },
-        ...releaseEntries
-      ]);
+      if (workflow.notice) {
+        triggerJawsNotification(workflow.notice);
+      }
+      setUpdatePipeline(workflow.pipeline);
     } else {
-      const detail = String(updateResult.reason);
-      setUpdateState(detail);
-      setUpdatePipeline([
-        {
-          id: "runtime",
-          label: "Tauri updater",
-          status: "error",
-          detail
-        },
-        ...releaseEntries
-      ]);
+      const workflow = resolveUpdateFailure(updateResult.reason, releaseEntries);
+      setUpdateState(workflow.updateState);
+      setUpdatePipeline(workflow.pipeline);
     }
     setUpdateChecking(false);
   }
@@ -2041,7 +1956,7 @@ export function App() {
                   type="button"
                   onClick={() => {
                     setUpdatePromptHidden(true);
-                    setUpdateState(`Update ${pendingUpdate.version} deferred for this session`);
+                    setUpdateState(formatDeferredUpdateState(pendingUpdate.version));
                   }}
                 >
                   Later

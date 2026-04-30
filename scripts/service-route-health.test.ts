@@ -1,4 +1,10 @@
 import { describe, expect, test } from 'bun:test'
+import {
+  JAWS_RELEASE_API_URL,
+  JAWS_RELEASE_PREVIOUS_PATCH_VERSION,
+  JAWS_RELEASE_TAG,
+  JAWS_RELEASE_VERSION,
+} from './jaws-release-index.ts'
 import { runServiceRouteHealth } from './service-route-health.js'
 
 function response(status: number, body = ''): Response {
@@ -15,16 +21,19 @@ function makeFetch(overrides: Record<string, Response> = {}) {
     if (url === 'https://qline.site') {
       return response(200, '<html>OpenJaws</html>')
     }
+    if (url === JAWS_RELEASE_API_URL) {
+      return response(200, JSON.stringify({ tag_name: JAWS_RELEASE_TAG, draft: false }))
+    }
     if (url === 'https://qline.site/terms') {
       return response(200, '<html>terms</html>')
     }
     if (url === 'https://qline.site/downloads/jaws') {
       return response(200, '<html>JAWS</html>')
     }
-    if (url === 'https://qline.site/api/jaws/windows/x86_64/0.1.3') {
-      return response(200, '{"version":"0.1.4"}')
+    if (url === `https://qline.site/api/jaws/windows/x86_64/${JAWS_RELEASE_PREVIOUS_PATCH_VERSION}`) {
+      return response(200, `{"version":"${JAWS_RELEASE_VERSION}"}`)
     }
-    if (url === 'https://qline.site/api/jaws/windows/x86_64/0.1.4') {
+    if (url === `https://qline.site/api/jaws/windows/x86_64/${JAWS_RELEASE_VERSION}`) {
       return response(204)
     }
     if (url === 'https://qline.site/api/signup') {
@@ -36,10 +45,10 @@ function makeFetch(overrides: Record<string, Response> = {}) {
     if (url === 'https://iorch.net/downloads/jaws') {
       return response(200, '<html>JAWS</html>')
     }
-    if (url === 'https://iorch.net/api/jaws/windows/x86_64/0.1.3') {
-      return response(200, '{"version":"0.1.4"}')
+    if (url === `https://iorch.net/api/jaws/windows/x86_64/${JAWS_RELEASE_PREVIOUS_PATCH_VERSION}`) {
+      return response(200, `{"version":"${JAWS_RELEASE_VERSION}"}`)
     }
-    if (url === 'https://iorch.net/api/jaws/windows/x86_64/0.1.4') {
+    if (url === `https://iorch.net/api/jaws/windows/x86_64/${JAWS_RELEASE_VERSION}`) {
       return response(204)
     }
     throw new Error(`offline: ${url}`)
@@ -82,6 +91,32 @@ describe('service-route-health', () => {
     expect(
       report.checks.find(check => check.id === 'arobi-laas-config'),
     ).toMatchObject({ status: 'not_configured' })
+  })
+
+  test('treats next JAWS updater payload as not configured before the tag is public', async () => {
+    const report = await runServiceRouteHealth({
+      fetchImpl: makeFetch({
+        [JAWS_RELEASE_API_URL]: response(404, '{"message":"Not Found"}'),
+        [`https://qline.site/api/jaws/windows/x86_64/${JAWS_RELEASE_PREVIOUS_PATCH_VERSION}`]: response(204),
+        [`https://iorch.net/api/jaws/windows/x86_64/${JAWS_RELEASE_PREVIOUS_PATCH_VERSION}`]: response(204),
+      }),
+      env: EMPTY_ENV,
+      timeoutMs: 1,
+    })
+
+    expect(report.failures).toHaveLength(0)
+    expect(report.status).toBe('warning')
+    expect(
+      report.checks.find(check => check.id === 'qline-jaws-updater-old'),
+    ).toMatchObject({
+      status: 'not_configured',
+      httpStatus: 204,
+      details: {
+        releaseTag: JAWS_RELEASE_TAG,
+        currentVersion: JAWS_RELEASE_VERSION,
+        previousTesterVersion: JAWS_RELEASE_PREVIOUS_PATCH_VERSION,
+      },
+    })
   })
 
   test('requires concrete remote config before production services pass', async () => {
