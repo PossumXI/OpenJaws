@@ -13,7 +13,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -36,7 +36,7 @@ jobs:
       - name: Q soak dry run
         run: bun scripts/q-soak-bench.ts --dry-run --out-dir artifacts/ci-q-soak --mode both --duration-minutes 30 --interval-ms 60000 --timeout-ms 120000
       - name: Upload benchmark receipts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: q-benchmark-soak-receipts
           path: |
