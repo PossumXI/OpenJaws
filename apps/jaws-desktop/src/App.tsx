@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   Activity,
+  BellRing,
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
@@ -11,7 +13,9 @@ import {
   ExternalLink,
   Film,
   FolderOpen,
+  GitCompare,
   Maximize2,
+  MessageSquare,
   MonitorPlay,
   Pause,
   Play,
@@ -19,6 +23,7 @@ import {
   RefreshCcw,
   Settings2,
   ShieldCheck,
+  Send,
   Sparkles,
   TerminalSquare,
   XCircle,
@@ -76,6 +81,21 @@ interface AccountSession {
   displayName: string;
 }
 
+interface ChatMessage {
+  id: string;
+  speaker: string;
+  role: "user" | "agent" | "system";
+  body: string;
+  time: string;
+}
+
+interface ChangePreview {
+  file: string;
+  status: string;
+  before: string;
+  after: string;
+}
+
 const fallbackStatus: BackendStatus = {
   appVersion: "0.1.2",
   sidecarName: "openjaws",
@@ -98,6 +118,65 @@ const fallbackWorkspace: WorkspaceStatus = {
   message: "Set a project folder to route OpenJaws like a local cd command.",
   tuiCommand: "openjaws"
 };
+
+const jawFrames = [
+  String.raw`    __
+ __/  \__
+/  JAWS  \
+\__    __/
+   \__/`,
+  String.raw`  \        /
+   \  JAWS /
+    \    /
+     \  /
+      \/`,
+  String.raw`  /\/\/\/\
+ <  JAWS  >
+  \/\/\/\/`,
+  String.raw`      /\
+  ___/  \___
+ /  JAWS   \
+ \___  ____/
+     \/`
+];
+
+const initialMessages: ChatMessage[] = [
+  {
+    id: "system-ready",
+    speaker: "JAWS",
+    role: "system",
+    body: "Chat lane ready. Commands route through OpenJaws with Q, Q_agents, OpenCheek, and Immaculate visible in the work stream.",
+    time: "now"
+  },
+  {
+    id: "agent-watch",
+    speaker: "Q_agents",
+    role: "agent",
+    body: "Workspace watcher armed. Turn on compare mode to inspect file deltas while agents work.",
+    time: "now"
+  }
+];
+
+const changePreview: ChangePreview[] = [
+  {
+    file: "src/orchestrator/dispatch.ts",
+    status: "proposed",
+    before: "dispatch(worker, task)",
+    after: "dispatch(healthGate(worker), task, sharedPhaseMemory)"
+  },
+  {
+    file: "apps/jaws-desktop/session.json",
+    status: "local",
+    before: "permissions: prompt",
+    after: "permissions: review first or fast queue"
+  },
+  {
+    file: "website/api/jaws/latest.json",
+    status: "release",
+    before: "notification: idle",
+    after: "notification: update pipeline armed"
+  }
+];
 
 function hasTauriRuntime() {
   return "__TAURI_INTERNALS__" in window;
@@ -135,7 +214,20 @@ export function App() {
   const [updateState, setUpdateState] = useState("Not checked");
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
   const [arcadeRunning, setArcadeRunning] = useState(true);
+  const [slowGuyScore, setSlowGuyScore] = useState(12);
   const [account, setAccount] = useState<AccountSession | null>(() => loadStoredAccountSession());
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(initialMessages);
+  const [compareMode, setCompareMode] = useState(() => localStorage.getItem("jaws.compareMode") === "true");
+  const [fastRunMode, setFastRunMode] = useState(
+    () =>
+      localStorage.getItem("jaws.fastRunMode") === "true" ||
+      localStorage.getItem("jaws.bypassPermissions") === "true"
+  );
+  const [notificationsArmed, setNotificationsArmed] = useState(
+    () => localStorage.getItem("jaws.notificationsArmed") !== "false"
+  );
+  const [jawFrame, setJawFrame] = useState(0);
 
   useEffect(() => {
     document.documentElement.dataset.appearance = appearance;
@@ -164,6 +256,34 @@ export function App() {
       })
       .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setJawFrame((frame) => (frame + 1) % jawFrames.length);
+    }, 520);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.compareMode", String(compareMode));
+  }, [compareMode]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.fastRunMode", String(fastRunMode));
+    localStorage.removeItem("jaws.bypassPermissions");
+  }, [fastRunMode]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.notificationsArmed", String(notificationsArmed));
+  }, [notificationsArmed]);
+
+  useEffect(() => {
+    if (!arcadeRunning) return;
+    const timer = window.setInterval(() => {
+      setSlowGuyScore((score) => (score + 1) % 1000);
+    }, 1400);
+    return () => window.clearInterval(timer);
+  }, [arcadeRunning]);
 
   const activeTitle = useMemo(() => navItems.find((item) => item.id === active)?.label ?? "Control", [active]);
   const workspaceSelection = useMemo(
@@ -215,6 +335,48 @@ export function App() {
     }
   }
 
+  async function openWorkspaceFolder() {
+    if (!hasTauriRuntime()) {
+      setWorkspaceStatus({
+        path: workspaceSelection.cleaned,
+        name: workspaceSelection.name,
+        valid: false,
+        message: "Open Folder uses the native Tauri desktop picker.",
+        tuiCommand: workspaceSelection.command
+      });
+      return;
+    }
+
+    const selected = await openDialog({
+      title: "Open JAWS workspace folder",
+      directory: true,
+      multiple: false,
+      defaultPath: workspaceStatus.path || workspaceSelection.cleaned || undefined
+    });
+    if (!selected || Array.isArray(selected)) return;
+
+    setWorkspaceInput(selected);
+    localStorage.setItem("jaws.workspace", selected);
+    const result = await invoke<WorkspaceStatus>("validate_workspace", {
+      path: selected
+    });
+    setWorkspaceStatus(result);
+
+    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    setChatMessages((messages) => [
+      ...messages,
+      {
+        id: `workspace-${Date.now()}`,
+        speaker: "JAWS",
+        role: "system",
+        body: result.valid
+          ? `Workspace opened: ${result.path}. Chat and TUI routes now use this project folder.`
+          : result.message,
+        time
+      }
+    ]);
+  }
+
   async function runWorkspaceSmoke() {
     if (!hasTauriRuntime()) {
       setWorkspaceSmoke({
@@ -259,6 +421,47 @@ export function App() {
       if (event.event === "Finished") setUpdateState("Installing update");
     });
     setUpdateState("Update installed. Restart JAWS to finish.");
+  }
+
+  function submitChatCommand(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const command = chatInput.trim();
+    if (!command) return;
+
+    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const runMode = fastRunMode ? "fast queue" : "review first";
+    const workspaceName = workspaceStatus.valid ? workspaceStatus.name : workspaceSelection.name;
+
+    setChatMessages((messages) => [
+      ...messages,
+      {
+        id: `user-${Date.now()}`,
+        speaker: account?.displayName || "You",
+        role: "user",
+        body: command,
+        time
+      },
+      {
+        id: `q-${Date.now()}`,
+        speaker: "Q",
+        role: "agent",
+        body: `Queued through audited ${runMode}. Workspace: ${workspaceName || "not set"}.`,
+        time
+      },
+      {
+        id: `agents-${Date.now()}`,
+        speaker: "Q_agents",
+        role: "agent",
+        body: compareMode
+          ? "Change compare mode is active. Proposed edits will stay visible beside the transcript."
+          : "Work stream active. Compare mode is off, so edits can flow without the side-by-side review pane.",
+        time
+      }
+    ]);
+    setChatInput("");
+    if (notificationsArmed) {
+      setUpdateState("Notification queued: chat command routed");
+    }
   }
 
   async function openExternal(url: string) {
@@ -391,6 +594,99 @@ export function App() {
           </section>
         )}
 
+        {active === "chat" && (
+          <section className="chat-page">
+            <div className="wide-panel chat-panel">
+              <PanelHeader icon={MessageSquare} label="Chat Window" />
+              <div className="chat-layout">
+                <section className="chat-main" aria-label="JAWS command chat">
+                  <div className="chat-status">
+                    <pre className="jaw-spinner" aria-label="JAWS spinner">
+                      {jawFrames[jawFrame]}
+                    </pre>
+                    <div>
+                      <span>Live Workstream</span>
+                      <strong>{fastRunMode ? "Fast queue" : "Review first"}</strong>
+                      <small>{notificationsArmed ? "Updates and notifications armed" : "Notifications muted"}</small>
+                    </div>
+                  </div>
+
+                  <div className="chat-transcript">
+                    {chatMessages.map((message) => (
+                      <article className={`chat-message ${message.role}`} key={message.id}>
+                        <header>
+                          <strong>{message.speaker}</strong>
+                          <span>{message.time}</span>
+                        </header>
+                        <p>{message.body}</p>
+                      </article>
+                    ))}
+                  </div>
+
+                  <form className="chat-input" onSubmit={submitChatCommand}>
+                    <textarea
+                      value={chatInput}
+                      onChange={(event) => setChatInput(event.target.value)}
+                      placeholder="Ask JAWS to inspect, code, test, run agents, or route work through Q."
+                      rows={3}
+                    />
+                    <button className="text-button primary" type="submit">
+                      <Send size={16} />
+                      Send
+                    </button>
+                  </form>
+                </section>
+
+                <aside className="chat-side">
+                  <button className="text-button primary" type="button" onClick={openWorkspaceFolder}>
+                    <FolderOpen size={16} />
+                    Open Folder
+                  </button>
+                  <button className="text-button primary" type="button" onClick={() => setActive("terminal")}>
+                    <TerminalSquare size={16} />
+                    Switch To TUI
+                  </button>
+                  <button className="text-button" type="button" onClick={() => setCompareMode((value) => !value)}>
+                    <GitCompare size={16} />
+                    {compareMode ? "Hide Compare" : "Show Compare"}
+                  </button>
+                  <button className="text-button" type="button" onClick={() => setFastRunMode((value) => !value)}>
+                    {fastRunMode ? <Send size={16} /> : <ShieldCheck size={16} />}
+                    {fastRunMode ? "Fast Queue" : "Review First"}
+                  </button>
+                  <button className="text-button" type="button" onClick={() => setNotificationsArmed((value) => !value)}>
+                    <BellRing size={16} />
+                    {notificationsArmed ? "Notify On" : "Notify Off"}
+                  </button>
+                  <StatusLine label="Workspace" value={workspaceStatus.path || workspaceSelection.cleaned || "Not set"} />
+                  <StatusLine label="Agents" value="Q, Q_agents, OpenCheek" />
+                  <StatusLine label="Updates" value={updateState} />
+                </aside>
+              </div>
+            </div>
+
+            {compareMode && (
+              <div className="wide-panel compare-panel">
+                <PanelHeader icon={GitCompare} label="Change Compare" />
+                <div className="compare-grid">
+                  {changePreview.map((change) => (
+                    <article className="compare-card" key={change.file}>
+                      <header>
+                        <strong>{change.file}</strong>
+                        <span>{change.status}</span>
+                      </header>
+                      <div className="diff-columns">
+                        <pre>{change.before}</pre>
+                        <pre>{change.after}</pre>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
         {active === "terminal" && (
           <section className="terminal-page">
             <div className="wide-panel terminal-panel">
@@ -402,9 +698,13 @@ export function App() {
                     id="workspace-path"
                     value={workspaceInput}
                     onChange={(event) => setWorkspaceInput(event.target.value)}
-                    placeholder={terminalPlatform() === "windows" ? "D:\\projects\\my-app" : "/home/me/projects/my-app"}
+                    placeholder="Choose a project folder"
                     spellCheck={false}
                   />
+                  <button className="text-button" type="button" onClick={openWorkspaceFolder}>
+                    <FolderOpen size={16} />
+                    Open Folder
+                  </button>
                   <button className="text-button primary" type="button" onClick={applyWorkspace}>
                     <FolderOpen size={16} />
                     Set Folder
@@ -500,9 +800,25 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
         {active === "arcade" && (
           <section className="wide-panel arcade-panel">
             <PanelHeader icon={GamepadIcon} label="Arcade Bar" />
+            <div className="slow-guy-header">
+              <div>
+                <span>Retro wait game</span>
+                <strong>Slow Guy</strong>
+              </div>
+              <div className="slow-guy-stats">
+                <StatusLine label="Score" value={String(slowGuyScore)} />
+                <StatusLine label="Patience" value={arcadeRunning ? "Steady" : "Paused"} />
+              </div>
+            </div>
             <div className="arcade-layout">
               <div className="arcade-stage">
+                <div className="slow-guy-skyline">
+                  <span />
+                  <span />
+                  <span />
+                </div>
                 <div className={arcadeRunning ? "runner running" : "runner"} />
+                <div className="slow-guy-pack" />
                 <div className="track">
                   <span />
                   <span />
@@ -610,6 +926,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                   <StatusLine label="Installed" value={status.appVersion} />
                   <StatusLine label="Channel" value={status.updateChannel} />
                   <StatusLine label="Update" value={updateState} />
+                  <StatusLine label="Notifications" value={notificationsArmed ? "Armed" : "Muted"} />
                   <div className="button-row">
                     <button className="text-button primary" type="button" onClick={checkForUpdates}>
                       <RadioTower size={16} />
@@ -630,6 +947,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                   <StatusLine label="Role" value={account?.role ?? "Not enrolled"} />
                   <StatusLine label="Plan" value={account?.plan ?? "Trial"} />
                   <StatusLine label="Status" value={account?.status ?? "Local session needed"} />
+                  <StatusLine label="Run mode" value={fastRunMode ? "Fast audited queue" : "Review prompts"} />
                 </section>
 
                 <section className="settings-group">

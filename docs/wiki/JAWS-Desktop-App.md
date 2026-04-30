@@ -10,10 +10,11 @@ Brand line:
 
 - Collapsible side menu for focused workspace viewing.
 - Control dashboard for OpenJaws, Q, Q_agents, OpenCheek, Immaculate, Arobi, and security lanes.
-- Terminal workspace tab that validates an absolute project folder, stores the selected workspace locally, shows the exact OpenJaws TUI launch command, and can run the bundled OpenJaws sidecar from that folder.
+- Chat window for command entry, live agent/work transcript, a shark-jaw ASCII activity spinner, permission review/bypass state, notification state, and optional change comparison.
+- Terminal workspace tab that can open a native folder picker, validates the selected project folder, stores the workspace locally, shows the exact OpenJaws TUI launch command, and can run the bundled OpenJaws sidecar from that folder.
 - Agent Watch timeline for live orchestration events.
 - Image Studio and Video Studio panels for provider-gated creative work.
-- Arcade Bar with a tiny idle-safe retro runner.
+- Arcade Bar with the idle-safe retro runner game `Slow Guy`.
 - Bundled Cyber Frog companion asset in the JAWS blue, teal, and graphite palette.
 - Arobi ledger and enrollment links.
 - Shared workspace pairing lane for future exchange-code collaboration.
@@ -46,6 +47,8 @@ bun run jaws:verify
 ```
 
 The desktop verification gate now runs Bun UI/helper tests before sidecar prep, TypeScript/Vite build, and Tauri `cargo check`.
+
+Workspace selection uses the Tauri native dialog plugin. Users should open a project folder from the desktop picker, and JAWS stores that selection as the active Chat and TUI workspace. Manual path entry remains available for diagnostics and scripted paths.
 
 Local founder admin session:
 
@@ -106,7 +109,7 @@ Windows bundle smoke, run locally on 2026-04-29:
 - `bun run test`
 - `bun run showcase:copy:check`
 
-0.1.2 adds the native Settings page, keeps update checks available from Settings, bundles the original Cyber Frog companion SVG, and keeps the desktop release version aligned across `package.json`, `tauri.conf.json`, `Cargo.toml`, and `Cargo.lock`.
+0.1.2 adds the native Settings page, keeps update checks available from Settings, bundles the original Cyber Frog companion SVG, adds the Chat/work transcript lane, adds native Open Folder workspace selection, renames the arcade runner to Slow Guy, and keeps the desktop release version aligned across `package.json`, `tauri.conf.json`, `Cargo.toml`, and `Cargo.lock`.
 
 Implementation references:
 

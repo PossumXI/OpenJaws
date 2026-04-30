@@ -9,6 +9,7 @@ import {
   Handshake,
   LayoutDashboard,
   LockKeyhole,
+  MessageSquare,
   Moon,
   Network,
   Puzzle,
@@ -24,6 +25,7 @@ import type { LucideIcon } from "lucide-react";
 
 export type SectionId =
   | "control"
+  | "chat"
   | "terminal"
   | "agents"
   | "studio"
@@ -66,6 +68,7 @@ export interface MarketplaceItem {
 
 export const navItems: NavItem[] = [
   { id: "control", label: "Control", icon: LayoutDashboard },
+  { id: "chat", label: "Chat", icon: MessageSquare },
   { id: "terminal", label: "Terminal", icon: TerminalSquare },
   { id: "agents", label: "Agents", icon: Radar },
   { id: "studio", label: "Studio", icon: Clapperboard },
