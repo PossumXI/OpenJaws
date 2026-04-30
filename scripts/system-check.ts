@@ -50,6 +50,9 @@ const qSmokeBaseModelSource =
 const qSmokeBaseModel = getOpenJawsTrainingModelDisplay(qSmokeBaseModelSource)
 const qPythonCommand = resolveQTrainingPythonCommand(rootDir)
 const operatorReleaseSurfaceFiles = [
+  'docs/wiki/Agentic-Orchestration-Guardrails.md',
+  'scripts/agentic-orchestration-guardrails.ts',
+  'scripts/agentic-orchestration-guardrails.test.ts',
   'scripts/discord-agent-supervisor.ts',
   'scripts/discord-agent-supervisor.test.ts',
   'scripts/personaplex-probe.ts',
@@ -353,6 +356,18 @@ async function main() {
   const liveTrainDir = join(runDir, 'q-live-smoke')
 
   results.push(checkOperatorReleaseSurface())
+  results.push(
+    await runJsonCommandCheck('agentic-orchestration-guardrails', 'bun', [
+      'scripts/agentic-orchestration-guardrails.ts',
+      '--json',
+    ], {
+      successSummary:
+        'agentic orchestration guardrails passed for context, Q routing, workers, benchmarks, runtime, and public release surfaces',
+      failureSummary:
+        'agentic orchestration guardrails found a missing release-safety surface',
+      timeoutMs: 60_000,
+    }),
+  )
   results.push(
     await runCommandCheck('unit-tests', 'bun', ['run', 'test'], {
       successSummary: 'unit tests passed',

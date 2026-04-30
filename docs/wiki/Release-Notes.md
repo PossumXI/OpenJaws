@@ -116,6 +116,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - `system:check` now includes that live runtime coherence pass as an allow-failure audit instead of leaving the live-control surface unverified
 - `bun run personaplex:probe` is now a tracked release command, and runtime coherence includes PersonaPlex WebSocket readiness with a non-secret local repair hint for the voice launcher
 - Discord runtime receipts now normalize older payloads on read so `/status` can keep rendering a stable gateway/voice view across older local receipt files
+- `bun run orchestration:guardrails` now turns the safe parts of the system-card and Symphony review into a release gate for aggregate-only Context Brain, signed Q routing, health-gated workers, honest TerminalBench receipts, PersonaPlex redaction, runtime coherence, public copy safety, and JAWS mirror health
 
 ## Provider and First-Run Setup
 
