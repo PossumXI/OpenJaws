@@ -18,6 +18,7 @@ import {
   formatDiscordRoundtableRuntimeStatus,
   formatDiscordRoundtableTransitionReceipt,
   getDiscordRoundtableQuarantineDir,
+  getDiscordRoundtableQueueStatePath,
   getDiscordRoundtableSessionStatePath,
   getOpenJawsOperatorStatePath,
   ingestDiscordRoundtableHandoff,
@@ -46,6 +47,36 @@ function createRepoRoot(prefix: string) {
 }
 
 describe('discordRoundtableRuntime', () => {
+  it('loads BOM-prefixed runtime JSON written by PowerShell tools', () => {
+    const root = createRepoRoot('oj-roundtable-runtime-bom-')
+    const state = createDiscordRoundtableRuntimeState({
+      now: new Date('2026-04-30T00:00:00.000Z'),
+      roundtableChannelName: 'dev_support',
+    })
+    mkdirSync(dirname(getDiscordRoundtableQueueStatePath(root)), {
+      recursive: true,
+    })
+    writeFileSync(
+      getDiscordRoundtableQueueStatePath(root),
+      `\uFEFF${JSON.stringify(
+        {
+          ...state,
+          status: 'running',
+          lastSummary: 'Roundtable live in #dev_support.',
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    )
+
+    expect(loadDiscordRoundtableRuntimeState(root)).toMatchObject({
+      status: 'running',
+      roundtableChannelName: 'dev_support',
+      lastSummary: 'Roundtable live in #dev_support.',
+    })
+  })
+
   it('ingests governed handoffs into queued repo-scoped jobs', () => {
     const repoRoot = createRepoRoot('oj-roundtable-repo-')
     mkdirSync(join(repoRoot, 'src'), { recursive: true })

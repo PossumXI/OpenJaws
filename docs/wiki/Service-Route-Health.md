@@ -9,6 +9,7 @@ The check is intentionally honest:
 - private, admin, and localhost routes warn by default because they may only exist on the operator machine
 - missing OCI, Cloudflare, production database, Stripe billing, Resend/mail, hosted-Q backend, or AROBI LAAS config is reported as `not_configured`
 - repo-owned deployable backend packages are recognized separately from live remote secrets, so operators can tell whether a service is absent from code or only waiting on account binding/deploy
+- package presence never marks production database, Cloudflare Worker/D1, hosted-Q, mail, or LAAS as provisioned
 - secrets are never printed; the receipt only names the missing config class
 
 ## Current Route Classes
@@ -27,20 +28,22 @@ The check is intentionally honest:
   - Apex workspace, Chrono, and browser bridge health on `127.0.0.1:8797-8799`
 - Required production configuration classes:
   - OCI/Q runtime auth
-  - hosted-Q backend base URL or the repo-owned Cloudflare worker package
-  - production SQL/D1/OCI database route or the checked-in D1 schema
-  - Cloudflare deploy config when Cloudflare is the target host
+  - hosted-Q backend package presence
+  - hosted-Q backend base URL and live `/health` route
+  - production SQL/D1/OCI database route or concrete D1 database id
+  - Cloudflare account auth plus concrete D1 binding when Cloudflare is the target host
   - Netlify auth for deploy metadata checks
-  - Stripe checkout/webhook config or the service-authenticated worker billing routes
-  - Resend/SMTP mail engine or the service-authenticated worker mail route
-  - AROBI ledger / LAAS API route or the service-authenticated worker LAAS route
+  - Stripe checkout/webhook config
+  - Resend/SMTP mail engine config
+  - AROBI ledger / LAAS API route config
 
 The Cloudflare backend package lives at `services/cloudflare-hosted-q`. It adds
 the worker, D1 schema, hosted-Q account/key/usage routes, Stripe checkout and
 verified webhook sync routes, Resend notification route, and AROBI LAAS ledger
 route. The health receipt can prove that package is present, but only a deployed
-worker URL plus real Cloudflare/Stripe/Resend secrets can prove the remote
-service is live.
+worker URL plus real Cloudflare/D1/Stripe/Resend/LAAS configuration can prove
+the remote service is live. Placeholder values such as `replace_me` and
+`REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID` are treated as missing.
 
 ## Release Use
 

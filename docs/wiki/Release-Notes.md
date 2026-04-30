@@ -37,6 +37,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - Stripe webhook verification now uses the SDK async verifier so the Next/Bun route can validate signed Stripe webhooks without failing on the SDK SubtleCrypto provider.
 - `bun run service:routes` now audits qline/iorch public routes, JAWS updater endpoints, local Immaculate/Q/Apex admin routes, and required production config classes for OCI, Cloudflare, database, mail, hosted-Q, and AROBI LAAS without printing secrets.
 - `services/cloudflare-hosted-q` now provides the repo-owned Cloudflare Worker/D1 backend package for hosted-Q signup, Stripe checkout/webhook entitlement sync, key issuance, usage, Resend notifications, and AROBI LAAS ledger events, with tests and service-route health recognition.
+- `bun run service:routes` now separates backend package presence from real provisioning, so hosted-Q, production database, Cloudflare/D1, Stripe billing, mail, and AROBI LAAS stay `not_configured` until concrete non-placeholder bindings or live routes exist.
 - `bun run apex:bridges` and `bun run apex:bridges:start` now give operators a direct local repair lane for Apex workspace, Chrono, and browser bridge health instead of leaving 8798/8799 warnings without a bounded launch command.
 - FIGlet-style `OPENJAWS` banner now uses a six-row ANSI-shadow treatment with the `OPENCHEEKS // ANSI-SHADOW FLIGHT DECK // IMMACULATE` deck line across the startup TUI
 - ocean-blue flight-deck styling is used across the cockpit, footer, task surfaces, and wiki/repo entry pages

@@ -1,4 +1,4 @@
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { resolveOciQRuntime } from '../src/utils/ociQRuntime.js'
@@ -70,6 +70,33 @@ const CLOUDFLARE_HOSTED_Q_FILES = [
   'services/cloudflare-hosted-q/wrangler.toml',
   'services/cloudflare-hosted-q/src/worker.ts',
   'services/cloudflare-hosted-q/migrations/0001_hosted_q.sql',
+] as const
+const HOSTED_Q_WRANGLER_CONFIG =
+  'services/cloudflare-hosted-q/wrangler.toml'
+const PLACEHOLDER_VALUE_PATTERN =
+  /^(replace[-_ ]?me|replace[-_ ]?with.*|changeme|todo|your[-_ ].*|<.*>)$/i
+const INLINE_PLACEHOLDER_PATTERN =
+  /(REPLACE_WITH_|replace_with_|example\.com|localhost\.invalid)/i
+
+const PRODUCTION_DATABASE_ENV_NAMES = [
+  'DATABASE_URL',
+  'CLOUDFLARE_D1_DATABASE_ID',
+  'OCI_DATABASE_ID',
+  'OCI_DB_CONNECTION_STRING',
+  'JAWS_PRODUCTION_DATABASE_URL',
+] as const
+
+const AROBI_LAAS_URL_ENV_NAMES = [
+  'AROBI_LAAS_BASE_URL',
+  'AROBI_LAAS_API_URL',
+  'AROBI_LEDGER_BASE_URL',
+  'AROBI_LEDGER_API_URL',
+] as const
+
+const AROBI_LAAS_TOKEN_ENV_NAMES = [
+  'AROBI_LAAS_TOKEN',
+  'AROBI_LAAS_API_TOKEN',
+  'AROBI_LEDGER_TOKEN',
 ] as const
 
 const PUBLIC_HTTP_ROUTES: HttpRouteDefinition[] = [
@@ -205,8 +232,67 @@ const LOCAL_HTTP_ROUTES: HttpRouteDefinition[] = [
   },
 ]
 
-function hasAnyEnv(env: NodeJS.ProcessEnv, names: string[]): boolean {
-  return names.some(name => Boolean(env[name]?.trim()))
+function isConcreteConfigValue(value: string | undefined): value is string {
+  const trimmed = value?.trim()
+  if (!trimmed) {
+    return false
+  }
+  return !(
+    PLACEHOLDER_VALUE_PATTERN.test(trimmed) ||
+    INLINE_PLACEHOLDER_PATTERN.test(trimmed)
+  )
+}
+
+function getConfiguredEnvValue(
+  env: NodeJS.ProcessEnv,
+  names: readonly string[],
+): string | null {
+  for (const name of names) {
+    const value = env[name]
+    if (isConcreteConfigValue(value)) {
+      return value.trim()
+    }
+  }
+  return null
+}
+
+function hasConfiguredEnv(
+  env: NodeJS.ProcessEnv,
+  names: readonly string[],
+): boolean {
+  return Boolean(getConfiguredEnvValue(env, names))
+}
+
+function readTextIfPresent(path: string): string | null {
+  if (!existsSync(path)) {
+    return null
+  }
+  try {
+    return readFileSync(path, 'utf8')
+  } catch {
+    return null
+  }
+}
+
+function hasConfiguredD1Binding(root = REPO_ROOT): boolean {
+  const config = readTextIfPresent(resolve(root, HOSTED_Q_WRANGLER_CONFIG))
+  if (!config) {
+    return false
+  }
+  const match = config.match(/database_id\s*=\s*"([^"]+)"/)
+  return isConcreteConfigValue(match?.[1])
+}
+
+function hasConfiguredCloudflareRoutes(root = REPO_ROOT): boolean {
+  const config = readTextIfPresent(resolve(root, HOSTED_Q_WRANGLER_CONFIG))
+  if (!config) {
+    return false
+  }
+  return /^\s*routes\s*=/m.test(config)
+}
+
+function joinHealthUrl(baseUrl: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}/health`
 }
 
 function hasNetlifyAuth(env: NodeJS.ProcessEnv): boolean {
@@ -220,7 +306,7 @@ function hasNetlifyAuth(env: NodeJS.ProcessEnv): boolean {
       : null,
   ].filter((value): value is string => typeof value === 'string')
 
-  return Boolean(env.NETLIFY_AUTH_TOKEN?.trim()) ||
+  return isConcreteConfigValue(env.NETLIFY_AUTH_TOKEN) ||
     candidatePaths.some(path => existsSync(path))
 }
 
@@ -337,24 +423,85 @@ function configurationCheck(args: {
   }
 }
 
-function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
-  const ociRuntime = resolveOciQRuntime(env)
-  const hostedQBaseUrl = env.Q_HOSTED_SERVICE_BASE_URL?.trim() || null
-  const hostedQWorkerPackage = hasHostedQWorkerPackage()
-  const productionDbConfigured = hasAnyEnv(env, [
-    'DATABASE_URL',
-    'CLOUDFLARE_D1_DATABASE_ID',
-    'OCI_DATABASE_ID',
-    'OCI_DB_CONNECTION_STRING',
-    'JAWS_PRODUCTION_DATABASE_URL',
-  ]) || hostedQWorkerPackage
-  const cloudflareConfigured =
-    hasAnyEnv(env, ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN']) ||
-    hostedQWorkerPackage ||
-    existsSync(resolve(process.cwd(), 'wrangler.toml')) ||
-    existsSync(resolve(REPO_ROOT, 'wrangler.toml'))
+function buildConfiguredHttpRoutes(env: NodeJS.ProcessEnv): HttpRouteDefinition[] {
+  const hostedQBaseUrl = getConfiguredEnvValue(env, [
+    'Q_HOSTED_SERVICE_BASE_URL',
+  ])
+  if (!hostedQBaseUrl) {
+    return []
+  }
 
   return [
+    {
+      id: 'hosted-q-backend-live',
+      service: 'Hosted Q backend',
+      audience: ['public', 'paid'],
+      url: joinHealthUrl(hostedQBaseUrl),
+      expectedStatuses: [200],
+      marker: 'openjaws-hosted-q',
+      required: true,
+    },
+  ]
+}
+
+function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
+  const ociRuntime = resolveOciQRuntime(env)
+  const hostedQBaseUrl = getConfiguredEnvValue(env, [
+    'Q_HOSTED_SERVICE_BASE_URL',
+  ])
+  const hostedQServiceToken = getConfiguredEnvValue(env, [
+    'Q_HOSTED_SERVICE_TOKEN',
+  ])
+  const hostedQWorkerPackage = hasHostedQWorkerPackage()
+  const d1BindingConfigured =
+    hasConfiguredEnv(env, ['CLOUDFLARE_D1_DATABASE_ID']) ||
+    hasConfiguredD1Binding()
+  const productionDbConfigured =
+    hasConfiguredEnv(env, PRODUCTION_DATABASE_ENV_NAMES) || d1BindingConfigured
+  const cloudflareAuthConfigured =
+    hasConfiguredEnv(env, ['CLOUDFLARE_ACCOUNT_ID']) &&
+    hasConfiguredEnv(env, ['CLOUDFLARE_API_TOKEN'])
+  const cloudflareRoutesConfigured = hasConfiguredCloudflareRoutes()
+  const cloudflareConfigured = cloudflareAuthConfigured && d1BindingConfigured
+  const resendConfigured =
+    hasConfiguredEnv(env, ['RESEND_API_KEY']) &&
+    hasConfiguredEnv(env, ['RESEND_FROM_EMAIL'])
+  const smtpConfigured = hasConfiguredEnv(env, [
+    'SMTP_HOST',
+    'SMTP_URL',
+  ])
+  const stripeSecretConfigured = hasConfiguredEnv(env, ['STRIPE_SECRET_KEY'])
+  const stripePriceConfigured = hasConfiguredEnv(env, [
+    'STRIPE_PRICE_BUILDER',
+    'STRIPE_PRICE_OPERATOR',
+  ])
+  const stripeReturnUrlsConfigured =
+    hasConfiguredEnv(env, ['STRIPE_SUCCESS_URL']) &&
+    hasConfiguredEnv(env, ['STRIPE_CANCEL_URL'])
+  const stripeConfigured =
+    stripeSecretConfigured && stripePriceConfigured && stripeReturnUrlsConfigured
+  const arobiLaasUrl = getConfiguredEnvValue(env, AROBI_LAAS_URL_ENV_NAMES)
+  const arobiLaasToken = getConfiguredEnvValue(
+    env,
+    AROBI_LAAS_TOKEN_ENV_NAMES,
+  )
+
+  return [
+    configurationCheck({
+      id: 'hosted-q-worker-package',
+      service: 'Hosted Q backend package',
+      audience: ['admin'],
+      configured: hostedQWorkerPackage,
+      configuredSummary:
+        'Hosted Q Cloudflare Worker/D1 package is present in the repo.',
+      missingSummary:
+        'Hosted Q Worker/D1 package is missing from this checkout.',
+      details: {
+        path: hostedQWorkerPackage ? 'services/cloudflare-hosted-q' : null,
+        d1BindingConfigured,
+        cloudflareRoutesConfigured,
+      },
+    }),
     configurationCheck({
       id: 'oci-q-runtime-config',
       service: 'Q on OCI',
@@ -373,17 +520,14 @@ function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
       id: 'hosted-q-backend-config',
       service: 'Hosted Q backend',
       audience: ['public', 'paid'],
-      configured: Boolean(hostedQBaseUrl) || hostedQWorkerPackage,
-      configuredSummary: hostedQBaseUrl
-        ? 'Hosted Q backend base URL is configured.'
-        : 'Hosted Q has a repo-owned Cloudflare Worker backend package ready for deployment.',
+      configured: Boolean(hostedQBaseUrl),
+      configuredSummary: 'Hosted Q backend base URL is configured.',
       missingSummary:
         'Hosted Q backend base URL is not configured in this process; production billing, key issuance, usage, and credits need a durable backend.',
       details: {
         baseURL: hostedQBaseUrl,
-        workerPackage: hostedQWorkerPackage
-          ? 'services/cloudflare-hosted-q'
-          : null,
+        serviceTokenConfigured: Boolean(hostedQServiceToken),
+        workerPackagePresent: hostedQWorkerPackage,
       },
     }),
     configurationCheck({
@@ -391,34 +535,32 @@ function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
       service: 'Production SQL/database',
       audience: ['public', 'paid', 'admin'],
       configured: productionDbConfigured,
-      configuredSummary: hasAnyEnv(env, [
-        'DATABASE_URL',
-        'CLOUDFLARE_D1_DATABASE_ID',
-        'OCI_DATABASE_ID',
-        'OCI_DB_CONNECTION_STRING',
-        'JAWS_PRODUCTION_DATABASE_URL',
-      ])
-        ? 'A production database route/env is configured.'
-        : 'A Cloudflare D1 schema and binding config are present in the repo.',
+      configuredSummary: 'A production SQL/D1/OCI database route/env is configured.',
       missingSummary:
         'No production SQL/D1/OCI database route is configured in this repo process; local JSON stores are not production-safe durable storage.',
-      details: hostedQWorkerPackage
-        ? { d1Schema: 'services/cloudflare-hosted-q/migrations/0001_hosted_q.sql' }
-        : undefined,
+      details: {
+        d1SchemaPresent: hostedQWorkerPackage,
+        d1BindingConfigured,
+      },
     }),
     configurationCheck({
       id: 'cloudflare-config',
       service: 'Cloudflare',
       audience: ['public', 'admin'],
       configured: cloudflareConfigured,
-      configuredSummary: hostedQWorkerPackage
-        ? 'Cloudflare Worker deployment configuration is present for hosted Q.'
-        : 'Cloudflare deployment configuration is present.',
+      configuredSummary:
+        'Cloudflare account auth and concrete D1 binding configuration are present.',
       missingSummary:
-        'No Cloudflare Worker/D1 deployment config is present in this repo; Cloudflare routes cannot be claimed live from this checkout.',
-      details: hostedQWorkerPackage
-        ? { wranglerConfig: 'services/cloudflare-hosted-q/wrangler.toml' }
-        : undefined,
+        'Cloudflare Worker/D1 is not configured for deployment from this process; set account auth and a real D1 database id before claiming routes live.',
+      details: {
+        accountConfigured: hasConfiguredEnv(env, ['CLOUDFLARE_ACCOUNT_ID']),
+        apiTokenConfigured: hasConfiguredEnv(env, ['CLOUDFLARE_API_TOKEN']),
+        d1BindingConfigured,
+        routePatternsConfigured: cloudflareRoutesConfigured,
+        wranglerConfigPresent: existsSync(
+          resolve(REPO_ROOT, HOSTED_Q_WRANGLER_CONFIG),
+        ),
+      },
     }),
     configurationCheck({
       id: 'netlify-auth-config',
@@ -433,69 +575,48 @@ function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
       id: 'stripe-billing-config',
       service: 'Stripe billing',
       audience: ['public', 'paid', 'admin'],
-      configured: hasAnyEnv(env, [
-        'STRIPE_SECRET_KEY',
-        'STRIPE_PRICE_BUILDER',
-        'STRIPE_PRICE_OPERATOR',
-      ]) || hostedQWorkerPackage,
-      configuredSummary: hasAnyEnv(env, [
-        'STRIPE_SECRET_KEY',
-        'STRIPE_PRICE_BUILDER',
-        'STRIPE_PRICE_OPERATOR',
-      ])
-        ? 'Stripe billing configuration is present.'
-        : 'The Cloudflare hosted-Q backend owns service-authenticated checkout and webhook routes.',
+      configured: stripeConfigured,
+      configuredSummary: 'Stripe billing configuration is present.',
       missingSummary:
-        'No Stripe billing configuration or hosted-Q billing backend route is present in this repo process.',
-      details: hostedQWorkerPackage
-        ? {
-            checkoutRoute: 'POST /checkout',
-            webhookRoute: 'POST /stripe-webhook',
-            workerPackage: 'services/cloudflare-hosted-q',
-          }
-        : undefined,
+        'No complete Stripe billing configuration is present in this repo process; worker checkout/webhook routes are packaged but need real Stripe secrets and return URLs before they are live.',
+      details: {
+        secretConfigured: stripeSecretConfigured,
+        priceConfigured: stripePriceConfigured,
+        returnUrlsConfigured: stripeReturnUrlsConfigured,
+        workerRoutePresent: hostedQWorkerPackage,
+        checkoutRoute: hostedQWorkerPackage ? 'POST /checkout' : null,
+        webhookRoute: hostedQWorkerPackage ? 'POST /stripe-webhook' : null,
+      },
     }),
     configurationCheck({
       id: 'mail-engine-config',
       service: 'Mail/Resend',
       audience: ['public', 'paid', 'admin'],
-      configured: hasAnyEnv(env, [
-        'RESEND_API_KEY',
-        'RESEND_API_BASE_URL',
-        'SMTP_HOST',
-      ]) || hostedQWorkerPackage,
-      configuredSummary: hasAnyEnv(env, [
-        'RESEND_API_KEY',
-        'RESEND_API_BASE_URL',
-        'SMTP_HOST',
-      ])
-        ? 'Mail engine configuration is present.'
-        : 'A service-authenticated Resend notification route is present in the Cloudflare backend package.',
+      configured: resendConfigured || smtpConfigured,
+      configuredSummary: 'Mail engine configuration is present.',
       missingSummary:
         'No Resend/SMTP mail engine configuration or route is present in this repo process.',
-      details: hostedQWorkerPackage
-        ? { route: 'POST /mail/notify', workerPackage: 'services/cloudflare-hosted-q' }
-        : undefined,
+      details: {
+        resendConfigured,
+        smtpConfigured,
+        workerRoutePresent: hostedQWorkerPackage,
+        route: hostedQWorkerPackage ? 'POST /mail/notify' : null,
+      },
     }),
     configurationCheck({
       id: 'arobi-laas-config',
       service: 'AROBI ledger / LAAS',
       audience: ['public', 'private', 'admin'],
-      configured: hasAnyEnv(env, [
-        'AROBI_LAAS_BASE_URL',
-        'AROBI_LEDGER_BASE_URL',
-      ]) || hostedQWorkerPackage,
-      configuredSummary: hasAnyEnv(env, [
-        'AROBI_LAAS_BASE_URL',
-        'AROBI_LEDGER_BASE_URL',
-      ])
-        ? 'AROBI ledger/LAAS base URL is configured.'
-        : 'A service-authenticated AROBI LAAS ledger route is present in the Cloudflare backend package.',
+      configured: Boolean(arobiLaasUrl),
+      configuredSummary: 'AROBI ledger/LAAS base URL is configured.',
       missingSummary:
         'No AROBI ledger/LAAS API route is configured in this repo process; only local/public showcase JSON ledgers are present.',
-      details: hostedQWorkerPackage
-        ? { route: 'POST /laas/events', workerPackage: 'services/cloudflare-hosted-q' }
-        : undefined,
+      details: {
+        baseURL: arobiLaasUrl,
+        tokenConfigured: Boolean(arobiLaasToken),
+        workerRoutePresent: hostedQWorkerPackage,
+        route: hostedQWorkerPackage ? 'POST /laas/events' : null,
+      },
     }),
   ]
 }
@@ -527,6 +648,9 @@ export async function runServiceRouteHealth(
   const checks: ServiceRouteCheck[] = []
 
   for (const route of PUBLIC_HTTP_ROUTES) {
+    checks.push(await checkHttpRoute(route, { fetchImpl, timeoutMs, strictPrivate }))
+  }
+  for (const route of buildConfiguredHttpRoutes(env)) {
     checks.push(await checkHttpRoute(route, { fetchImpl, timeoutMs, strictPrivate }))
   }
   for (const route of LOCAL_HTTP_ROUTES) {

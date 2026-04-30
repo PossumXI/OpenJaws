@@ -61,6 +61,8 @@ bun run services:backend:deploy
 bun run service:routes
 ```
 
-`bun run service:routes` reports the worker package as present from the repo.
-It still cannot claim the remote route is live until the deployed base URL is
-configured and reachable.
+`bun run service:routes` reports the worker package as present from the repo,
+then keeps hosted-Q, Cloudflare/D1, production database, mail, and LAAS in
+`not_configured` until real non-placeholder account bindings and route env are
+present. It cannot claim the remote route is live until the deployed base URL is
+configured and `/health` is reachable.

@@ -34,6 +34,7 @@ import {
   resolveRoundtableDurationHours,
   resolveRoundtableApprovalTtlHours,
 } from './discordRoundtableScheduler.js'
+import { stripBOM } from './jsonRead.js'
 import { queuePublicShowcaseActivitySync } from './publicShowcaseActivity.js'
 
 type JsonRecord = Record<string, unknown>
@@ -475,7 +476,7 @@ function readJsonFile<T>(path: string): T | null {
     return null
   }
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as T
+    return JSON.parse(stripBOM(readFileSync(path, 'utf8'))) as T
   } catch {
     return null
   }

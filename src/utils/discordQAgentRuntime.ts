@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { basename, resolve } from 'path'
+import { stripBOM } from './jsonRead.js'
 import { queuePublicShowcaseActivitySync } from './publicShowcaseActivity.js'
 
 export type DiscordQAgentRoutePolicy = {
@@ -599,7 +600,7 @@ export function readDiscordQAgentReceipt(
     return null
   }
   return normalizeDiscordQAgentReceipt(
-    JSON.parse(readFileSync(receiptPath, 'utf8')),
+    JSON.parse(stripBOM(readFileSync(receiptPath, 'utf8'))),
   )
 }
 

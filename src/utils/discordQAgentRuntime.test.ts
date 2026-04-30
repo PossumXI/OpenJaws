@@ -6,6 +6,7 @@ import {
   buildDiscordQAgentPublicShowcaseActivityEntry,
   buildDiscordQAgentPublicOperatorLine,
   createDiscordQAgentReceipt,
+  getDiscordQAgentReceiptPath,
   getDiscordQAgentRoutePolicies,
   readDiscordQAgentReceipt,
   recordDiscordQAgentEvent,
@@ -300,6 +301,32 @@ describe('discordQAgentRuntime', () => {
       expect(receipt?.voice.stagedProvider).toBeNull()
       expect(receipt?.voice.runtimeUrl).toBeNull()
       expect(receipt?.voice.channelName).toBeNull()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('reads BOM-prefixed receipts written by PowerShell tooling', () => {
+    const root = mkdtempSync(join(tmpdir(), 'discord-q-agent-runtime-bom-'))
+    try {
+      const receiptPath = getDiscordQAgentReceiptPath(root)
+      mkdirSync(join(root, 'local-command-station'), { recursive: true })
+      writeFileSync(
+        receiptPath,
+        `\uFEFF${JSON.stringify({
+          ...createDiscordQAgentReceipt({
+            backend: 'Q backend',
+            scheduleEnabled: true,
+            scheduleIntervalMs: 900_000,
+            voiceEnabled: false,
+            voiceReady: false,
+          }),
+          status: 'ready',
+        })}\n`,
+        'utf8',
+      )
+
+      expect(readDiscordQAgentReceipt(root)?.status).toBe('ready')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
