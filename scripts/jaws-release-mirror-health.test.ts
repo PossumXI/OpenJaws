@@ -3,6 +3,7 @@ import {
   JAWS_RELEASE_API_URL,
   JAWS_RELEASE_ASSETS,
   JAWS_RELEASE_BASE_URL,
+  JAWS_RELEASE_INDEX,
   JAWS_RELEASE_MIRRORS,
   JAWS_RELEASE_TAG,
   JAWS_RELEASE_VERSION,
@@ -42,6 +43,26 @@ function requiredAssetNames(): string[] {
   return [...names]
 }
 
+function releaseAssetFile(id: string): string {
+  const asset = JAWS_RELEASE_ASSETS.find(asset => asset.id === id)
+  if (!asset) {
+    throw new Error(`Missing release asset in test fixture: ${id}`)
+  }
+  return asset.file
+}
+
+function updaterPlatformFixture(): Record<string, { signature: string; url: string }> {
+  return Object.fromEntries(
+    JAWS_RELEASE_INDEX.updaterPlatforms.map(platform => [
+      platform.platform,
+      {
+        signature: `signed-${platform.platform}`,
+        url: `${JAWS_RELEASE_BASE_URL}/${releaseAssetFile(platform.assetId)}`,
+      },
+    ]),
+  )
+}
+
 function createFetchMock(overrides: Record<string, Response> = {}) {
   return async (input: string | URL): Promise<Response> => {
     const url = input.toString()
@@ -72,16 +93,7 @@ function createFetchMock(overrides: Record<string, Response> = {}) {
     if (url === `${JAWS_RELEASE_BASE_URL}/latest.json`) {
       return jsonResponse({
         version: JAWS_RELEASE_VERSION,
-        platforms: {
-          'windows-x86_64': {
-            signature: 'signed-windows',
-            url: `${JAWS_RELEASE_BASE_URL}/JAWS_0.1.2_x64-setup.exe`,
-          },
-          'darwin-x86_64': {
-            signature: 'signed-darwin',
-            url: `${JAWS_RELEASE_BASE_URL}/JAWS.app.tar.gz`,
-          },
-        },
+        platforms: updaterPlatformFixture(),
       })
     }
     return new Response('not found', { status: 404 })
@@ -116,7 +128,7 @@ describe('jaws release mirror health', () => {
       expect.objectContaining({
         id: 'qline:windows',
         summary: expect.stringContaining('targets the wrong asset'),
-        expected: `${JAWS_RELEASE_BASE_URL}/JAWS_0.1.2_x64-setup.exe`,
+        expected: `${JAWS_RELEASE_BASE_URL}/${releaseAssetFile('windows')}`,
         actual: `${JAWS_RELEASE_BASE_URL}/wrong.exe`,
       }),
     )
@@ -129,7 +141,7 @@ describe('jaws release mirror health', () => {
           version: JAWS_RELEASE_VERSION,
           platforms: {
             'windows-x86_64': {
-              url: `${JAWS_RELEASE_BASE_URL}/JAWS_0.1.2_x64-setup.exe`,
+              url: `${JAWS_RELEASE_BASE_URL}/${releaseAssetFile('windows')}`,
             },
             'darwin-x86_64': {
               signature: 'signed-darwin',

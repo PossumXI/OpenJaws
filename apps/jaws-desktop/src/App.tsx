@@ -56,6 +56,7 @@ import {
   type SlowGuyAction,
   type SlowGuyState
 } from "./games";
+import releaseIndex from "./release-index.json";
 import { buildWorkspaceSelection, type TerminalPlatform } from "./workspace";
 
 interface BackendStatus {
@@ -65,6 +66,11 @@ interface BackendStatus {
   sidecarMessage: string;
   updateChannel: string;
   releaseSites: string[];
+  releaseTag?: string;
+  releaseVersion?: string;
+  releaseRepo?: string;
+  releaseUrl?: string;
+  releaseApiUrl?: string;
 }
 
 interface EnrollmentLink {
@@ -157,13 +163,37 @@ interface UpdatePipelineEntry {
 
 type ArcadeView = "slow-guy" | "holdem" | "world";
 
+interface JawsReleaseIndex {
+  version: string;
+  tag: string;
+  repo: string;
+  github: {
+    releaseUrl: string;
+    apiUrl: string;
+    baseAssetUrl: string;
+  };
+  mirrors: Array<{
+    id: string;
+    label: string;
+    pageUrl: string;
+    routeBaseUrl: string;
+  }>;
+}
+
+const jawsReleaseIndex = releaseIndex as JawsReleaseIndex;
+
 const fallbackStatus: BackendStatus = {
-  appVersion: "0.1.2",
+  appVersion: jawsReleaseIndex.version,
   sidecarName: "openjaws",
   sidecarReady: false,
   sidecarMessage: "Desktop preview running outside Tauri",
   updateChannel: "stable",
-  releaseSites: ["https://qline.site/downloads/jaws", "https://iorch.net/downloads/jaws"]
+  releaseSites: jawsReleaseIndex.mirrors.map((mirror) => mirror.pageUrl),
+  releaseTag: jawsReleaseIndex.tag,
+  releaseVersion: jawsReleaseIndex.version,
+  releaseRepo: jawsReleaseIndex.repo,
+  releaseUrl: jawsReleaseIndex.github.releaseUrl,
+  releaseApiUrl: jawsReleaseIndex.github.apiUrl
 };
 
 const fallbackLinks: EnrollmentLink[] = [
@@ -283,23 +313,17 @@ const initialUpdatePipeline: UpdatePipelineEntry[] = [
     status: "ready",
     detail: "Waiting for a signed update check from the native runtime."
   },
-  {
-    id: "qline",
-    label: "qline.site mirror",
+  ...jawsReleaseIndex.mirrors.map((mirror) => ({
+    id: mirror.id,
+    label: `${mirror.label} mirror`,
     status: "ready",
-    detail: "https://qline.site/downloads/jaws/latest.json"
-  },
-  {
-    id: "iorch",
-    label: "iorch.net mirror",
-    status: "ready",
-    detail: "https://iorch.net/downloads/jaws/latest.json"
-  },
+    detail: `${mirror.routeBaseUrl}/latest.json`
+  }) satisfies UpdatePipelineEntry),
   {
     id: "github",
     label: "GitHub release",
     status: "ready",
-    detail: "jaws-v0.1.2 signed assets"
+    detail: `${jawsReleaseIndex.tag} signed assets`
   }
 ];
 
@@ -637,54 +661,85 @@ export function App() {
           status: "error",
           detail: "The signed updater only runs inside the native JAWS desktop shell."
         },
-        ...status.releaseSites.map((site) => ({
-          id: site,
-          label: site.includes("iorch") ? "iorch.net mirror" : "qline.site mirror",
+        ...jawsReleaseIndex.mirrors.map((mirror) => ({
+          id: mirror.id,
+          label: `${mirror.label} mirror`,
           status: "info" as const,
-          detail: site
-        }))
+          detail: mirror.pageUrl
+        })),
+        {
+          id: "github",
+          label: "GitHub release",
+          status: "info",
+          detail: jawsReleaseIndex.github.releaseUrl
+        },
+        {
+          id: "manifest",
+          label: "Signed manifest",
+          status: "info",
+          detail: `${jawsReleaseIndex.github.baseAssetUrl}/latest.json`
+        }
       ]);
       setUpdateChecking(false);
       return;
     }
 
-    try {
-      setUpdatePipeline((entries) =>
-        entries.map((entry) =>
+    setUpdatePipeline((entries) =>
+      entries.map((entry) => ({
+        ...entry,
+        status: "checking",
+        detail:
           entry.id === "runtime"
-            ? { ...entry, status: "checking", detail: "Calling Tauri updater.check() against signed endpoints." }
-            : { ...entry, status: "checking" }
-        )
-      );
-      const update = await check();
+            ? "Calling Tauri updater.check() against signed endpoints."
+            : "Native runtime is probing the live release surface."
+      }))
+    );
+
+    const [updateResult, probeResult] = await Promise.allSettled([
+      check(),
+      invoke<UpdatePipelineEntry[]>("probe_release_update_pipeline")
+    ]);
+    const releaseEntries =
+      probeResult.status === "fulfilled"
+        ? probeResult.value
+        : [
+            {
+              id: "native-probe",
+              label: "Native release probe",
+              status: "error" as const,
+              detail: String(probeResult.reason)
+            }
+          ];
+
+    if (updateResult.status === "fulfilled") {
+      const update = updateResult.value;
       setPendingUpdate(update);
       setUpdateState(update ? `Update ${update.version} ready` : "Current release");
-      setUpdatePipeline((entries) =>
-        entries.map((entry) =>
-          entry.id === "runtime"
-            ? {
-                ...entry,
-                status: "ok",
-                detail: update
-                  ? `Signed update ${update.version} is ready.`
-                  : "No newer signed release was offered by the updater."
-              }
-            : { ...entry, status: "ok", detail: entry.detail }
-        )
-      );
-    } catch (error) {
-      const detail = String(error);
+      setUpdatePipeline([
+        {
+          id: "runtime",
+          label: "Tauri updater",
+          status: "ok",
+          detail: update
+            ? `Signed update ${update.version} is ready.`
+            : "No newer signed release was offered by the updater."
+        },
+        ...releaseEntries
+      ]);
+    } else {
+      const detail = String(updateResult.reason);
       setUpdateState(detail);
-      setUpdatePipeline((entries) =>
-        entries.map((entry) =>
-          entry.id === "runtime"
-            ? { ...entry, status: "error", detail }
-            : { ...entry, status: "info", detail: entry.detail }
-        )
-      );
-    } finally {
-      setUpdateChecking(false);
+      setUpdatePipeline([
+        {
+          id: "runtime",
+          label: "Tauri updater",
+          status: "error",
+          detail
+        },
+        ...releaseEntries
+      ]);
     }
+    setUpdateChecking(false);
   }
 
   async function installUpdate() {

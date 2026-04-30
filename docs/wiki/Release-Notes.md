@@ -20,6 +20,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - `bun run jaws:mirror:check` now verifies the qline mirror, iorch mirror, GitHub release asset list, and signed updater manifest before a release pass can be called complete.
 - JAWS Desktop arcade now has real gameplay foundations: `Slow Guy` has scored lane controls, jump/duck/dash mechanics, hazards, token pickup, stamina, best-score persistence, and Cyber Frog reward hooks; the new Texas Hold'em Dealer Roundtable uses deterministic local dealing, `pokersolver` showdown scoring, table chat, Q/OpenCheek seats, and secure multiplayer metadata for the future PvP websocket room.
 - JAWS Desktop Settings now exposes update-pipeline diagnostics for the Tauri updater, qline mirror, iorch mirror, and GitHub release lane; layout themes now include richer palette tints, descriptive cards, and accent swatches.
+- JAWS Desktop now generates `src/release-index.json` from the desktop package version and uses it as the shared release contract for Settings, the native Tauri mirror probe, and `bun run jaws:mirror:check`.
 - FIGlet-style `OPENJAWS` banner now uses a six-row ANSI-shadow treatment with the `OPENCHEEKS // ANSI-SHADOW FLIGHT DECK // IMMACULATE` deck line across the startup TUI
 - ocean-blue flight-deck styling is used across the cockpit, footer, task surfaces, and wiki/repo entry pages
 - shark mascot animation now breaches through the waterline instead of acting as a static icon

@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { signReleaseManifestPayload } from '../src/utils/releaseManifestSignature.js'
 
@@ -22,6 +22,27 @@ export type JawsReleaseMirror = {
   label: string
   pageUrl: string
   routeBaseUrl: string
+}
+
+export type JawsReleaseUpdaterPlatform = {
+  platform: string
+  assetId: string
+}
+
+export type JawsReleaseIndex = {
+  schemaVersion: number
+  product: string
+  version: string
+  tag: string
+  repo: string
+  github: {
+    releaseUrl: string
+    apiUrl: string
+    baseAssetUrl: string
+  }
+  mirrors: JawsReleaseMirror[]
+  assets: JawsReleaseAsset[]
+  updaterPlatforms: JawsReleaseUpdaterPlatform[]
 }
 
 export type JawsReleaseMirrorHealthCheck = {
@@ -67,75 +88,28 @@ type CliOptions = {
   timeoutMs: number
 }
 
-export const JAWS_RELEASE_REPO = 'PossumXI/OpenJaws'
-export const JAWS_RELEASE_TAG = 'jaws-v0.1.2'
-export const JAWS_RELEASE_VERSION = '0.1.2'
-export const JAWS_RELEASE_BASE_URL =
-  `https://github.com/${JAWS_RELEASE_REPO}/releases/download/${JAWS_RELEASE_TAG}`
-export const JAWS_RELEASE_URL =
-  `https://github.com/${JAWS_RELEASE_REPO}/releases/tag/${JAWS_RELEASE_TAG}`
-export const JAWS_RELEASE_API_URL =
-  `https://api.github.com/repos/${JAWS_RELEASE_REPO}/releases/tags/${JAWS_RELEASE_TAG}`
+export const JAWS_RELEASE_INDEX_PATH = resolve(
+  import.meta.dir,
+  '..',
+  'apps',
+  'jaws-desktop',
+  'src',
+  'release-index.json',
+)
 
-export const JAWS_RELEASE_ASSETS: JawsReleaseAsset[] = [
-  {
-    id: 'windows',
-    route: 'windows',
-    file: 'JAWS_0.1.2_x64-setup.exe',
-    requiresSignature: true,
-  },
-  {
-    id: 'windows-msi',
-    route: 'windows-msi',
-    file: 'JAWS_0.1.2_x64_en-US.msi',
-    requiresSignature: true,
-  },
-  {
-    id: 'macos',
-    route: 'macos',
-    file: 'JAWS_0.1.2_x64.dmg',
-    requiresSignature: false,
-  },
-  {
-    id: 'macos-updater',
-    route: '',
-    file: 'JAWS.app.tar.gz',
-    requiresSignature: true,
-  },
-  {
-    id: 'linux-deb',
-    route: 'linux-deb',
-    file: 'JAWS_0.1.2_amd64.deb',
-    requiresSignature: true,
-  },
-  {
-    id: 'linux-rpm',
-    route: 'linux-rpm',
-    file: 'JAWS-0.1.2-1.x86_64.rpm',
-    requiresSignature: true,
-  },
-  {
-    id: 'manifest',
-    route: 'latest.json',
-    file: 'latest.json',
-    requiresSignature: false,
-  },
-]
+export function readJawsReleaseIndex(path = JAWS_RELEASE_INDEX_PATH): JawsReleaseIndex {
+  return JSON.parse(readFileSync(path, 'utf8')) as JawsReleaseIndex
+}
 
-export const JAWS_RELEASE_MIRRORS: JawsReleaseMirror[] = [
-  {
-    id: 'qline',
-    label: 'qline.site',
-    pageUrl: 'https://qline.site/downloads/jaws',
-    routeBaseUrl: 'https://qline.site/downloads/jaws',
-  },
-  {
-    id: 'iorch',
-    label: 'iorch.net',
-    pageUrl: 'https://iorch.net/downloads/jaws',
-    routeBaseUrl: 'https://iorch.net/downloads/jaws',
-  },
-]
+export const JAWS_RELEASE_INDEX = readJawsReleaseIndex()
+export const JAWS_RELEASE_REPO = JAWS_RELEASE_INDEX.repo
+export const JAWS_RELEASE_TAG = JAWS_RELEASE_INDEX.tag
+export const JAWS_RELEASE_VERSION = JAWS_RELEASE_INDEX.version
+export const JAWS_RELEASE_BASE_URL = JAWS_RELEASE_INDEX.github.baseAssetUrl
+export const JAWS_RELEASE_URL = JAWS_RELEASE_INDEX.github.releaseUrl
+export const JAWS_RELEASE_API_URL = JAWS_RELEASE_INDEX.github.apiUrl
+export const JAWS_RELEASE_ASSETS: JawsReleaseAsset[] = JAWS_RELEASE_INDEX.assets
+export const JAWS_RELEASE_MIRRORS: JawsReleaseMirror[] = JAWS_RELEASE_INDEX.mirrors
 
 function expectedAssetUrl(file: string): string {
   return `${JAWS_RELEASE_BASE_URL}/${file}`
@@ -143,6 +117,10 @@ function expectedAssetUrl(file: string): string {
 
 function signatureFile(file: string): string {
   return `${file}.sig`
+}
+
+function assetById(id: string): JawsReleaseAsset | null {
+  return JAWS_RELEASE_ASSETS.find(asset => asset.id === id) ?? null
 }
 
 function requiredReleaseAssetNames(): string[] {
@@ -480,11 +458,15 @@ async function checkUpdaterManifest(args: {
       )
     }
 
-    const expectedPlatforms: Record<string, string> = {
-      'windows-x86_64': expectedAssetUrl('JAWS_0.1.2_x64-setup.exe'),
-      'darwin-x86_64': expectedAssetUrl('JAWS.app.tar.gz'),
-    }
-    for (const [platform, expectedUrl] of Object.entries(expectedPlatforms)) {
+    const expectedPlatforms = new Map(
+      JAWS_RELEASE_INDEX.updaterPlatforms
+        .map(platform => {
+          const asset = assetById(platform.assetId)
+          return asset ? [platform.platform, expectedAssetUrl(asset.file)] as const : null
+        })
+        .filter((entry): entry is readonly [string, string] => entry !== null),
+    )
+    for (const [platform, expectedUrl] of expectedPlatforms) {
       const entry = body.platforms?.[platform]
       if (!entry?.url || !entry.signature) {
         checks.push(
