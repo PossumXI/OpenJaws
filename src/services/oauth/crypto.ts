@@ -13,6 +13,7 @@ export function generateCodeVerifier(): string {
 }
 
 export function generateCodeChallenge(verifier: string): string {
+  // lgtm[js/insufficient-password-hash] PKCE S256 requires SHA-256, not a password KDF.
   const hash = createHash('sha256')
   hash.update(verifier)
   return base64URLEncode(hash.digest())

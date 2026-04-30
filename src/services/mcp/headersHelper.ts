@@ -1,5 +1,10 @@
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 import { checkHasTrustDialogAccepted } from '../../utils/config.js'
+import {
+  hasMalformedTokens,
+  hasShellQuoteSingleQuoteBug,
+  tryParseShellCommand,
+} from '../../utils/bash/shellQuote.js'
 import { logAntError } from '../../utils/debug.js'
 import { errorMessage } from '../../utils/errors.js'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
@@ -12,6 +17,37 @@ import type {
   McpWebSocketServerConfig,
   ScopedMcpServerConfig,
 } from './types.js'
+
+function parseHeadersHelperCommand(command: string): {
+  file: string
+  args: string[]
+} {
+  const trimmed = command.trim()
+  if (!trimmed) {
+    throw new Error('headersHelper command must not be empty')
+  }
+  if (hasShellQuoteSingleQuoteBug(trimmed)) {
+    throw new Error('headersHelper command contains ambiguous shell quoting')
+  }
+  const parsed = tryParseShellCommand(trimmed)
+  if (!parsed.success || hasMalformedTokens(trimmed, parsed.tokens)) {
+    throw new Error('headersHelper command could not be parsed safely')
+  }
+
+  const argv: string[] = []
+  for (const token of parsed.tokens) {
+    if (typeof token !== 'string') {
+      throw new Error(
+        'headersHelper must be an executable path plus literal arguments',
+      )
+    }
+    argv.push(token)
+  }
+  if (argv.length === 0 || !argv[0]) {
+    throw new Error('headersHelper command must include an executable path')
+  }
+  return { file: argv[0], args: argv.slice(1) }
+}
 
 /**
  * Check if the MCP server config comes from project settings (projectSettings or localSettings)
@@ -58,17 +94,21 @@ export async function getMcpHeadersFromHelper(
 
   try {
     logMCPDebug(serverName, 'Executing headersHelper to get dynamic headers')
-    const execResult = await execFileNoThrowWithCwd(config.headersHelper, [], {
-      shell: true,
-      timeout: 10000,
-      // Pass server context so one helper script can serve multiple MCP servers
-      // (git credential-helper style). See deshaw/anthropic-issues#28.
-      env: {
-        ...process.env,
-        OPENJAWS_MCP_SERVER_NAME: serverName,
-        OPENJAWS_MCP_SERVER_URL: config.url,
+    const helperCommand = parseHeadersHelperCommand(config.headersHelper)
+    const execResult = await execFileNoThrowWithCwd(
+      helperCommand.file,
+      helperCommand.args,
+      {
+        timeout: 10000,
+        // Pass server context so one helper script can serve multiple MCP servers
+        // (git credential-helper style). See deshaw/anthropic-issues#28.
+        env: {
+          ...process.env,
+          OPENJAWS_MCP_SERVER_NAME: serverName,
+          OPENJAWS_MCP_SERVER_URL: config.url,
+        },
       },
-    })
+    )
     if (execResult.code !== 0 || !execResult.stdout) {
       throw new Error(
         `headersHelper for MCP server '${serverName}' did not return a valid value`,
