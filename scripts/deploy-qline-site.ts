@@ -8,7 +8,7 @@ const EXPECTED_SITE_ID = 'edde15e1-bf1f-4986-aef3-5803fdce7406'
 const EXPECTED_SITE_NAME = 'qline-site-20260415022202'
 const EXPECTED_DOMAIN = 'qline.site'
 const REQUIRED_CONTENT_CHECKS = [
-  'Q // OpenJaws // Q_agents | qline.site',
+  'Q // JAWS // OpenJaws // Q_agents | qline.site',
   'Q is the AI operator for OpenJaws',
   'name="robots"',
   'rel="canonical" href="https://qline.site/"',
