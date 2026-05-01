@@ -48,6 +48,18 @@ describe('discordOperatorWork', () => {
     })
   })
 
+  it('preserves separator text inside explicit OpenJaws prompts', () => {
+    expect(
+      parseDirectOperatorChatCommand(
+        'openjaws ask immaculate :: compare phase one :: phase two and keep both labels',
+      ),
+    ).toEqual({
+      action: 'ask-openjaws',
+      cwd: 'immaculate',
+      text: 'compare phase one :: phase two and keep both labels',
+    })
+  })
+
   it('parses direct roundtable status commands', () => {
     expect(parseDirectOperatorChatCommand('openjaws roundtable')).toEqual({
       action: 'roundtable-status',

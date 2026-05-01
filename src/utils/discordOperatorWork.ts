@@ -348,6 +348,23 @@ function guardRealWorldEngagementPrompt(args: {
   })
 }
 
+function splitWorkspacePrompt(value: string): {
+  workspace: string | null
+  prompt: string | null
+} {
+  const separatorIndex = value.indexOf('::')
+  if (separatorIndex < 0) {
+    return {
+      workspace: value.trim() || null,
+      prompt: null,
+    }
+  }
+  return {
+    workspace: value.slice(0, separatorIndex).trim() || null,
+    prompt: value.slice(separatorIndex + 2).trim() || null,
+  }
+}
+
 export function parseDirectOperatorChatCommand(
   content: string,
 ): DiscordOperatorParsedCommand | null {
@@ -498,11 +515,11 @@ export function parseDirectOperatorChatCommand(
         return { action: 'ask-github-openjaws', cwd: null, text: null }
       }
       if (askTail.includes('::')) {
-        const [workspace, prompt] = askTail.split('::', 2)
+        const { workspace, prompt } = splitWorkspacePrompt(askTail)
         return {
           action: 'ask-github-openjaws',
-          cwd: workspace?.trim() || null,
-          text: prompt?.trim() || null,
+          cwd: workspace,
+          text: prompt,
         }
       }
       const askTokens = tokenizeDirectOperatorCommand(askTail)
@@ -518,9 +535,7 @@ export function parseDirectOperatorChatCommand(
         return { action: 'ask-openjaws', cwd: null, text: null }
       }
       if (askTail.includes('::')) {
-        const [workspace, prompt] = askTail.split('::', 2)
-        const cwd = workspace?.trim() || null
-        const text = prompt?.trim() || null
+        const { workspace: cwd, prompt: text } = splitWorkspacePrompt(askTail)
         return {
           action: 'ask-openjaws',
           cwd,
