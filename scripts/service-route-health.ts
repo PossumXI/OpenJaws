@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'fs'
-import { dirname, resolve } from 'path'
+import { dirname, join, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { resolveOciQRuntime } from '../src/utils/ociQRuntime.js'
 import {
@@ -65,6 +65,21 @@ type ServiceRouteHealthOptions = {
   strictPrivate?: boolean
 }
 
+type NetlifyEnvMetadata = {
+  checked: boolean
+  siteId: string
+  expectedSiteName: string
+  siteName: string | null
+  accountSlug: string | null
+  keysPresent: string[]
+  valuesByKey: Map<string, string>
+  error: string | null
+}
+
+type ExternalServiceConfig = {
+  qlineNetlifyEnv: NetlifyEnvMetadata
+}
+
 type CliOptions = {
   json: boolean
   timeoutMs: number
@@ -73,6 +88,8 @@ type CliOptions = {
 
 const DEFAULT_TIMEOUT_MS = 12_000
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const QLINE_NETLIFY_SITE_ID = 'edde15e1-bf1f-4986-aef3-5803fdce7406'
+const QLINE_NETLIFY_SITE_NAME = 'qline-site-20260415022202'
 const CLOUDFLARE_HOSTED_Q_FILES = [
   'services/cloudflare-hosted-q/wrangler.toml',
   'services/cloudflare-hosted-q/src/worker.ts',
@@ -94,6 +111,8 @@ const PRODUCTION_DATABASE_ENV_NAMES = [
 ] as const
 
 const AROBI_LAAS_URL_ENV_NAMES = [
+  'AROBI_API_URL',
+  'LAAS_API_URL',
   'AROBI_LAAS_BASE_URL',
   'AROBI_LAAS_API_URL',
   'AROBI_LEDGER_BASE_URL',
@@ -101,10 +120,20 @@ const AROBI_LAAS_URL_ENV_NAMES = [
 ] as const
 
 const AROBI_LAAS_TOKEN_ENV_NAMES = [
+  'AROBI_API_TOKEN',
+  'LAAS_API_TOKEN',
   'AROBI_LAAS_TOKEN',
   'AROBI_LAAS_API_TOKEN',
   'AROBI_LEDGER_TOKEN',
 ] as const
+
+const LOCAL_AROBI_EDGE_BASE_URL = 'https://arobi.aura-genesis.org'
+
+type ArobiLaasConfig = {
+  baseURL: string | null
+  tokenConfigured: boolean
+  source: 'env' | 'local_edge_secret' | 'qline_netlify_env' | 'none'
+}
 
 const PUBLIC_HTTP_ROUTES: HttpRouteDefinition[] = [
   {
@@ -283,6 +312,60 @@ function readTextIfPresent(path: string): string | null {
   }
 }
 
+function homeDirFromEnv(env: NodeJS.ProcessEnv): string | null {
+  return env.USERPROFILE?.trim() || env.HOME?.trim() || null
+}
+
+function hasLocalArobiEdgeSecret(env: NodeJS.ProcessEnv): boolean {
+  const homeDir = homeDirFromEnv(env)
+  if (!homeDir) {
+    return false
+  }
+
+  const secretPath = join(homeDir, '.arobi', 'edge-secrets.json')
+  if (!existsSync(secretPath)) {
+    return false
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(secretPath, 'utf8')) as {
+      AROBI_API_TOKEN?: unknown
+    }
+    return (
+      typeof parsed.AROBI_API_TOKEN === 'string' &&
+      isConcreteConfigValue(parsed.AROBI_API_TOKEN)
+    )
+  } catch {
+    return false
+  }
+}
+
+function resolveArobiLaasConfig(env: NodeJS.ProcessEnv): ArobiLaasConfig {
+  const envBaseURL = getConfiguredEnvValue(env, AROBI_LAAS_URL_ENV_NAMES)
+  const envToken = getConfiguredEnvValue(env, AROBI_LAAS_TOKEN_ENV_NAMES)
+  if (envBaseURL) {
+    return {
+      baseURL: envBaseURL,
+      tokenConfigured: Boolean(envToken) || hasLocalArobiEdgeSecret(env),
+      source: 'env',
+    }
+  }
+
+  if (hasLocalArobiEdgeSecret(env)) {
+    return {
+      baseURL: LOCAL_AROBI_EDGE_BASE_URL,
+      tokenConfigured: true,
+      source: 'local_edge_secret',
+    }
+  }
+
+  return {
+    baseURL: null,
+    tokenConfigured: Boolean(envToken),
+    source: 'none',
+  }
+}
+
 function hasConfiguredD1Binding(root = REPO_ROOT): boolean {
   const config = readTextIfPresent(resolve(root, HOSTED_Q_WRANGLER_CONFIG))
   if (!config) {
@@ -301,10 +384,23 @@ function hasConfiguredCloudflareRoutes(root = REPO_ROOT): boolean {
 }
 
 function joinHealthUrl(baseUrl: string): string {
+  try {
+    const parsed = new URL(baseUrl)
+    if (parsed.pathname === '/health' || parsed.pathname.endsWith('/health')) {
+      return parsed.toString()
+    }
+  } catch {
+    // Fall back to plain string handling below for test doubles and invalid operator input.
+  }
   return `${baseUrl.replace(/\/+$/, '')}/health`
 }
 
-function hasNetlifyAuth(env: NodeJS.ProcessEnv): boolean {
+function readNetlifyAuthToken(env: NodeJS.ProcessEnv): string | null {
+  const directToken = env.NETLIFY_AUTH_TOKEN?.trim()
+  if (isConcreteConfigValue(directToken)) {
+    return directToken
+  }
+
   const candidatePaths = [
     resolve(REPO_ROOT, 'website', '.netlify-cli-config', 'config.json'),
     env.APPDATA
@@ -315,8 +411,30 @@ function hasNetlifyAuth(env: NodeJS.ProcessEnv): boolean {
       : null,
   ].filter((value): value is string => typeof value === 'string')
 
-  return isConcreteConfigValue(env.NETLIFY_AUTH_TOKEN) ||
-    candidatePaths.some(path => existsSync(path))
+  for (const path of candidatePaths) {
+    const configText = readTextIfPresent(path)
+    if (!configText) {
+      continue
+    }
+    try {
+      const config = JSON.parse(configText) as {
+        users?: Record<string, { auth?: { token?: string } }>
+      }
+      const firstUser = config.users ? Object.values(config.users)[0] : null
+      const token = firstUser?.auth?.token?.trim()
+      if (isConcreteConfigValue(token)) {
+        return token
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return null
+}
+
+function hasNetlifyAuth(env: NodeJS.ProcessEnv): boolean {
+  return Boolean(readNetlifyAuthToken(env))
 }
 
 function hasHostedQWorkerPackage(root = REPO_ROOT): boolean {
@@ -452,6 +570,238 @@ async function checkJawsReleasePublished(
   }
 }
 
+async function fetchJsonWithTimeout(
+  fetchImpl: FetchLike,
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetchImpl(url, {
+      ...init,
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function extractNetlifyEnvValues(payload: unknown): Map<string, string> {
+  const valuesByKey = new Map<string, string>()
+  if (!Array.isArray(payload)) {
+    return valuesByKey
+  }
+
+  for (const entry of payload) {
+    if (!entry || typeof entry !== 'object') {
+      continue
+    }
+    const key = (entry as { key?: unknown }).key
+    const values = (entry as { values?: unknown }).values
+    if (typeof key !== 'string' || !Array.isArray(values)) {
+      continue
+    }
+
+    const concreteValue = values
+      .map(valueEntry => {
+        if (!valueEntry || typeof valueEntry !== 'object') {
+          return null
+        }
+        const value = (valueEntry as { value?: unknown }).value
+        return typeof value === 'string' && isConcreteConfigValue(value)
+          ? value
+          : null
+      })
+      .find((value): value is string => Boolean(value))
+
+    if (concreteValue) {
+      valuesByKey.set(key, concreteValue)
+    }
+  }
+
+  return valuesByKey
+}
+
+function sanitizeExternalConfigError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+async function fetchQlineNetlifyEnvMetadata(
+  fetchImpl: FetchLike,
+  env: NodeJS.ProcessEnv,
+  timeoutMs: number,
+): Promise<NetlifyEnvMetadata> {
+  const baseMetadata: NetlifyEnvMetadata = {
+    checked: false,
+    siteId: QLINE_NETLIFY_SITE_ID,
+    expectedSiteName: QLINE_NETLIFY_SITE_NAME,
+    siteName: null,
+    accountSlug: null,
+    keysPresent: [],
+    valuesByKey: new Map(),
+    error: null,
+  }
+  const token = readNetlifyAuthToken(env)
+  if (!token) {
+    return {
+      ...baseMetadata,
+      error: 'missing_netlify_auth',
+    }
+  }
+
+  const headers = {
+    authorization: `Bearer ${token}`,
+    accept: 'application/json',
+    'user-agent': 'openjaws-service-route-health/1.0',
+  }
+
+  try {
+    const siteResponse = await fetchJsonWithTimeout(
+      fetchImpl,
+      `https://api.netlify.com/api/v1/sites/${QLINE_NETLIFY_SITE_ID}`,
+      { method: 'GET', headers },
+      timeoutMs,
+    )
+    if (!siteResponse.ok) {
+      return {
+        ...baseMetadata,
+        checked: true,
+        error: `netlify_site_http_${siteResponse.status}`,
+      }
+    }
+    const site = await siteResponse.json() as {
+      name?: unknown
+      account_slug?: unknown
+    }
+    const siteName = typeof site.name === 'string' ? site.name : null
+    const accountSlug =
+      typeof site.account_slug === 'string' ? site.account_slug : null
+    if (siteName !== QLINE_NETLIFY_SITE_NAME || !accountSlug) {
+      return {
+        ...baseMetadata,
+        checked: true,
+        siteName,
+        accountSlug,
+        error: 'netlify_site_identity_mismatch',
+      }
+    }
+
+    const envResponse = await fetchJsonWithTimeout(
+      fetchImpl,
+      `https://api.netlify.com/api/v1/accounts/${accountSlug}/env?site_id=${QLINE_NETLIFY_SITE_ID}`,
+      { method: 'GET', headers },
+      timeoutMs,
+    )
+    if (!envResponse.ok) {
+      return {
+        ...baseMetadata,
+        checked: true,
+        siteName,
+        accountSlug,
+        error: `netlify_env_http_${envResponse.status}`,
+      }
+    }
+
+    const valuesByKey = extractNetlifyEnvValues(await envResponse.json())
+    return {
+      ...baseMetadata,
+      checked: true,
+      siteName,
+      accountSlug,
+      keysPresent: [...valuesByKey.keys()].sort(),
+      valuesByKey,
+    }
+  } catch (error) {
+    return {
+      ...baseMetadata,
+      checked: true,
+      error: sanitizeExternalConfigError(error),
+    }
+  }
+}
+
+async function buildExternalServiceConfig(
+  fetchImpl: FetchLike,
+  env: NodeJS.ProcessEnv,
+  timeoutMs: number,
+): Promise<ExternalServiceConfig> {
+  return {
+    qlineNetlifyEnv: await fetchQlineNetlifyEnvMetadata(fetchImpl, env, timeoutMs),
+  }
+}
+
+function getExternalQlineValue(
+  external: ExternalServiceConfig,
+  name: string,
+): string | null {
+  return external.qlineNetlifyEnv.valuesByKey.get(name) ?? null
+}
+
+function hasExternalQlineValue(
+  external: ExternalServiceConfig,
+  name: string,
+): boolean {
+  return Boolean(getExternalQlineValue(external, name))
+}
+
+function hasExternalQlineAnyValue(
+  external: ExternalServiceConfig,
+  names: readonly string[],
+): boolean {
+  return names.some(name => hasExternalQlineValue(external, name))
+}
+
+function getExternalQlineFirstValue(
+  external: ExternalServiceConfig,
+  names: readonly string[],
+): string | null {
+  for (const name of names) {
+    const value = getExternalQlineValue(external, name)
+    if (value) {
+      return value
+    }
+  }
+  return null
+}
+
+function resolveEffectiveArobiLaasConfig(
+  env: NodeJS.ProcessEnv,
+  external: ExternalServiceConfig,
+): ArobiLaasConfig {
+  const local = resolveArobiLaasConfig(env)
+  if (local.baseURL) {
+    return local
+  }
+
+  const externalBaseURL = getExternalQlineFirstValue(
+    external,
+    AROBI_LAAS_URL_ENV_NAMES,
+  )
+  if (!externalBaseURL) {
+    return local
+  }
+
+  return {
+    baseURL: externalBaseURL,
+    tokenConfigured: hasExternalQlineAnyValue(external, AROBI_LAAS_TOKEN_ENV_NAMES),
+    source: 'qline_netlify_env',
+  }
+}
+
+function publicNetlifyEnvDetails(
+  metadata: NetlifyEnvMetadata,
+): Record<string, unknown> {
+  return {
+    checked: metadata.checked,
+    siteId: metadata.siteId,
+    siteName: metadata.siteName,
+    keysPresent: metadata.keysPresent,
+    error: metadata.error,
+  }
+}
+
 function configurationCheck(args: {
   id: string
   service: string
@@ -471,16 +821,18 @@ function configurationCheck(args: {
   }
 }
 
-function buildConfiguredHttpRoutes(env: NodeJS.ProcessEnv): HttpRouteDefinition[] {
-  const hostedQBaseUrl = getConfiguredEnvValue(env, [
-    'Q_HOSTED_SERVICE_BASE_URL',
-  ])
-  if (!hostedQBaseUrl) {
-    return []
-  }
+function buildConfiguredHttpRoutes(
+  env: NodeJS.ProcessEnv,
+  external: ExternalServiceConfig,
+): HttpRouteDefinition[] {
+  const hostedQBaseUrl =
+    getConfiguredEnvValue(env, ['Q_HOSTED_SERVICE_BASE_URL']) ??
+    getExternalQlineValue(external, 'Q_HOSTED_SERVICE_BASE_URL')
+  const arobiLaas = resolveEffectiveArobiLaasConfig(env, external)
+  const routes: HttpRouteDefinition[] = []
 
-  return [
-    {
+  if (hostedQBaseUrl) {
+    routes.push({
       id: 'hosted-q-backend-live',
       service: 'Hosted Q backend',
       audience: ['public', 'paid'],
@@ -488,18 +840,34 @@ function buildConfiguredHttpRoutes(env: NodeJS.ProcessEnv): HttpRouteDefinition[
       expectedStatuses: [200],
       marker: 'openjaws-hosted-q',
       required: true,
-    },
-  ]
+    })
+  }
+
+  if (arobiLaas.baseURL && arobiLaas.tokenConfigured) {
+    routes.push({
+      id: 'arobi-laas-live',
+      service: 'AROBI ledger / LAAS',
+      audience: ['public', 'private', 'admin'],
+      url: joinHealthUrl(arobiLaas.baseURL),
+      expectedStatuses: [200],
+      required: true,
+    })
+  }
+
+  return routes
 }
 
-function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
+function buildConfigurationChecks(
+  env: NodeJS.ProcessEnv,
+  external: ExternalServiceConfig,
+): ServiceRouteCheck[] {
   const ociRuntime = resolveOciQRuntime(env)
-  const hostedQBaseUrl = getConfiguredEnvValue(env, [
-    'Q_HOSTED_SERVICE_BASE_URL',
-  ])
-  const hostedQServiceToken = getConfiguredEnvValue(env, [
-    'Q_HOSTED_SERVICE_TOKEN',
-  ])
+  const hostedQBaseUrl =
+    getConfiguredEnvValue(env, ['Q_HOSTED_SERVICE_BASE_URL']) ??
+    getExternalQlineValue(external, 'Q_HOSTED_SERVICE_BASE_URL')
+  const hostedQServiceToken =
+    getConfiguredEnvValue(env, ['Q_HOSTED_SERVICE_TOKEN']) ??
+    getExternalQlineValue(external, 'Q_HOSTED_SERVICE_TOKEN')
   const hostedQWorkerPackage = hasHostedQWorkerPackage()
   const d1BindingConfigured =
     hasConfiguredEnv(env, ['CLOUDFLARE_D1_DATABASE_ID']) ||
@@ -512,27 +880,32 @@ function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
   const cloudflareRoutesConfigured = hasConfiguredCloudflareRoutes()
   const cloudflareConfigured = cloudflareAuthConfigured && d1BindingConfigured
   const resendConfigured =
-    hasConfiguredEnv(env, ['RESEND_API_KEY']) &&
-    hasConfiguredEnv(env, ['RESEND_FROM_EMAIL'])
+    (hasConfiguredEnv(env, ['RESEND_API_KEY']) &&
+      hasConfiguredEnv(env, ['RESEND_FROM_EMAIL'])) ||
+    (hasExternalQlineValue(external, 'RESEND_API_KEY') &&
+      hasExternalQlineValue(external, 'RESEND_FROM_EMAIL'))
   const smtpConfigured = hasConfiguredEnv(env, [
     'SMTP_HOST',
     'SMTP_URL',
   ])
-  const stripeSecretConfigured = hasConfiguredEnv(env, ['STRIPE_SECRET_KEY'])
-  const stripePriceConfigured = hasConfiguredEnv(env, [
-    'STRIPE_PRICE_BUILDER',
-    'STRIPE_PRICE_OPERATOR',
-  ])
+  const stripeSecretConfigured =
+    hasConfiguredEnv(env, ['STRIPE_SECRET_KEY']) ||
+    hasExternalQlineValue(external, 'STRIPE_SECRET_KEY')
+  const stripePriceConfigured =
+    hasConfiguredEnv(env, ['STRIPE_PRICE_BUILDER', 'STRIPE_PRICE_OPERATOR']) ||
+    hasExternalQlineAnyValue(external, [
+      'STRIPE_PRICE_BUILDER',
+      'STRIPE_PRICE_OPERATOR',
+    ])
   const stripeReturnUrlsConfigured =
-    hasConfiguredEnv(env, ['STRIPE_SUCCESS_URL']) &&
-    hasConfiguredEnv(env, ['STRIPE_CANCEL_URL'])
+    (hasConfiguredEnv(env, ['STRIPE_SUCCESS_URL']) &&
+      hasConfiguredEnv(env, ['STRIPE_CANCEL_URL'])) ||
+    (hasExternalQlineValue(external, 'STRIPE_SUCCESS_URL') &&
+      hasExternalQlineValue(external, 'STRIPE_CANCEL_URL'))
   const stripeConfigured =
     stripeSecretConfigured && stripePriceConfigured && stripeReturnUrlsConfigured
-  const arobiLaasUrl = getConfiguredEnvValue(env, AROBI_LAAS_URL_ENV_NAMES)
-  const arobiLaasToken = getConfiguredEnvValue(
-    env,
-    AROBI_LAAS_TOKEN_ENV_NAMES,
-  )
+  const arobiLaas = resolveEffectiveArobiLaasConfig(env, external)
+  const netlifyEnvDetails = publicNetlifyEnvDetails(external.qlineNetlifyEnv)
 
   return [
     configurationCheck({
@@ -576,6 +949,7 @@ function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
         baseURL: hostedQBaseUrl,
         serviceTokenConfigured: Boolean(hostedQServiceToken),
         workerPackagePresent: hostedQWorkerPackage,
+        qlineNetlifyEnv: netlifyEnvDetails,
       },
     }),
     configurationCheck({
@@ -631,6 +1005,13 @@ function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
         secretConfigured: stripeSecretConfigured,
         priceConfigured: stripePriceConfigured,
         returnUrlsConfigured: stripeReturnUrlsConfigured,
+        configSource:
+          stripeConfigured && !hasConfiguredEnv(env, ['STRIPE_SECRET_KEY'])
+            ? 'qline-netlify-env'
+            : stripeConfigured
+              ? 'local-process'
+              : 'missing',
+        qlineNetlifyEnv: netlifyEnvDetails,
         workerRoutePresent: hostedQWorkerPackage,
         checkoutRoute: hostedQWorkerPackage ? 'POST /checkout' : null,
         webhookRoute: hostedQWorkerPackage ? 'POST /stripe-webhook' : null,
@@ -647,6 +1028,7 @@ function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
       details: {
         resendConfigured,
         smtpConfigured,
+        qlineNetlifyEnv: netlifyEnvDetails,
         workerRoutePresent: hostedQWorkerPackage,
         route: hostedQWorkerPackage ? 'POST /mail/notify' : null,
       },
@@ -655,13 +1037,18 @@ function buildConfigurationChecks(env: NodeJS.ProcessEnv): ServiceRouteCheck[] {
       id: 'arobi-laas-config',
       service: 'AROBI ledger / LAAS',
       audience: ['public', 'private', 'admin'],
-      configured: Boolean(arobiLaasUrl),
-      configuredSummary: 'AROBI ledger/LAAS base URL is configured.',
+      configured: Boolean(arobiLaas.baseURL && arobiLaas.tokenConfigured),
+      configuredSummary:
+        arobiLaas.source === 'local_edge_secret'
+          ? 'AROBI ledger/LAAS local edge secret and default health route are configured.'
+          : 'AROBI ledger/LAAS base URL and token configuration are present.',
       missingSummary:
-        'No AROBI ledger/LAAS API route is configured in this repo process; only local/public showcase JSON ledgers are present.',
+        'No AROBI ledger/LAAS API route and token are configured in this repo process; only local/public showcase JSON ledgers are present.',
       details: {
-        baseURL: arobiLaasUrl,
-        tokenConfigured: Boolean(arobiLaasToken),
+        baseURL: arobiLaas.baseURL,
+        tokenConfigured: arobiLaas.tokenConfigured,
+        source: arobiLaas.source,
+        qlineNetlifyEnv: netlifyEnvDetails,
         workerRoutePresent: hostedQWorkerPackage,
         route: hostedQWorkerPackage ? 'POST /laas/events' : null,
       },
@@ -695,17 +1082,18 @@ export async function runServiceRouteHealth(
   const env = options.env ?? process.env
   const checks: ServiceRouteCheck[] = []
   const jawsReleasePublished = await checkJawsReleasePublished(fetchImpl, timeoutMs)
+  const external = await buildExternalServiceConfig(fetchImpl, env, timeoutMs)
 
   for (const route of PUBLIC_HTTP_ROUTES) {
     checks.push(await checkHttpRoute(route, { fetchImpl, timeoutMs, strictPrivate, jawsReleasePublished }))
   }
-  for (const route of buildConfiguredHttpRoutes(env)) {
+  for (const route of buildConfiguredHttpRoutes(env, external)) {
     checks.push(await checkHttpRoute(route, { fetchImpl, timeoutMs, strictPrivate, jawsReleasePublished }))
   }
   for (const route of LOCAL_HTTP_ROUTES) {
     checks.push(await checkHttpRoute(route, { fetchImpl, timeoutMs, strictPrivate, jawsReleasePublished }))
   }
-  checks.push(...buildConfigurationChecks(env))
+  checks.push(...buildConfigurationChecks(env, external))
 
   const counts = countStatuses(checks)
   const failures = checks.filter(check => check.status === 'failed')
