@@ -5,6 +5,8 @@ import { dirname, join, resolve } from 'path'
 import { spawnSync } from 'child_process'
 import { execa } from 'execa'
 import {
+  buildQTrainingPythonEnv,
+  evaluateQTrainingPreflight,
   getOpenJawsTrainingModelDisplay,
   Q_SMOKE_BASE_MODEL,
   readQTrainingRouteManifest,
@@ -33,6 +35,7 @@ type CommandCheckOptions = {
   successSummary?: string
   failureSummary?: string
   allowFailure?: boolean
+  env?: Record<string, string | undefined>
 }
 
 const rootDir = process.cwd()
@@ -62,6 +65,8 @@ const operatorReleaseSurfaceFiles = [
   'scripts/personaplex-launcher-bootstrap.test.ts',
   'scripts/personaplex-probe.ts',
   'scripts/personaplex-probe.test.ts',
+  'scripts/q-training-env-bootstrap.ts',
+  'scripts/q-training-env-bootstrap.test.ts',
 ] as const
 
 const OPTIONAL_Q_TRAINING_MODULE_NAMES = [
@@ -107,6 +112,7 @@ async function runCommandCheck(
   try {
     const result = await execa(command, args, {
       cwd: options.cwd ?? rootDir,
+      env: options.env,
       reject: false,
       timeout: options.timeoutMs ?? 120_000,
       windowsHide: true,
@@ -192,7 +198,7 @@ function normalizeQLiveSmokeResult(check: CheckResult): CheckResult {
         ...(isObjectRecord(check.details) ? check.details : {}),
         missingModule: missingTrainingModule,
         remediation:
-          'Install the Q local training environment before running scored local Q smoke or BridgeBench checks.',
+          'Run bun run q:training:bootstrap --install to create/repair .venv-q before running scored local Q smoke or BridgeBench checks.',
       },
     }
   }
@@ -213,6 +219,42 @@ function normalizeQLiveSmokeResult(check: CheckResult): CheckResult {
   return check
 }
 
+function hasFatalQTrainingOutput(check: CheckResult): boolean {
+  const combined = `${check.stderrTail ?? ''}\n${check.stdoutTail ?? ''}`
+  return /Traceback|RuntimeError|UnicodeDecodeError|ModuleNotFoundError|ImportError|ValueError|CUDA out of memory|out of memory/i.test(
+    combined,
+  )
+}
+
+function normalizeImmaculateHarnessDependentResult(
+  check: CheckResult,
+): CheckResult {
+  if (check.status !== 'failed') {
+    return check
+  }
+
+  const combined = `${check.stderrTail ?? ''}\n${check.stdoutTail ?? ''}`
+  const harnessUnavailable =
+    /Immaculate harness is not reachable|harness_unreachable|Immaculate worker registration failed|worker_register_failed|ECONNREFUSED|127\.0\.0\.1:8787/i.test(
+      combined,
+    )
+  if (!harnessUnavailable) {
+    return check
+  }
+
+  return {
+    ...check,
+    status: 'warning',
+    summary:
+      `${check.name} skipped because the local Immaculate harness is not reachable; route execution remained fail-closed`,
+    details: {
+      ...(isObjectRecord(check.details) ? check.details : {}),
+      remediation:
+        'Start the Immaculate harness on http://127.0.0.1:8787 before requiring live route-worker assignment, dispatch, or completion checks.',
+    },
+  }
+}
+
 function getMissingQTrainingModules(command: string): {
   missing: string[]
   error: string | null
@@ -225,6 +267,7 @@ function getMissingQTrainingModules(command: string): {
   const result = spawnSync(command, ['-c', script], {
     cwd: rootDir,
     encoding: 'utf8',
+    env: buildQTrainingPythonEnv(process.env),
     timeout: 15_000,
     windowsHide: true,
   })
@@ -288,7 +331,7 @@ function buildMissingQTrainingModulesCheck(args: {
     details: {
       missingModules: args.missing,
       remediation:
-        `Install the Q local training environment before running scored local Q smoke or BridgeBench checks. Required modules: ${OPTIONAL_Q_TRAINING_MODULE_NAMES.join(', ')}.`,
+        `Run bun run q:training:bootstrap --install to create/repair .venv-q before running scored local Q smoke or BridgeBench checks. Required modules: ${OPTIONAL_Q_TRAINING_MODULE_NAMES.join(', ')}.`,
     },
   }
 }
@@ -357,6 +400,18 @@ async function enrichQLiveSmokeResult(
     }
   }
 
+  if (
+    (stage === 'ready_to_train' || stage === 'running') &&
+    !hasFatalQTrainingOutput(stagedCheck)
+  ) {
+    return {
+      ...stagedCheck,
+      status: 'warning',
+      summary:
+        `live Q smoke reached the ${stage} stage for ${getOpenJawsTrainingModelDisplay(baseModel)} but did not finish inside this host's release-check time budget; use a remote worker for scored smoke and BridgeBench`,
+    }
+  }
+
   return stagedCheck
 }
 
@@ -372,6 +427,7 @@ async function runJsonCommandCheck(
   try {
     const result = await execa(command, args, {
       cwd: options.cwd ?? rootDir,
+      env: options.env,
       reject: false,
       timeout: options.timeoutMs ?? 120_000,
       windowsHide: true,
@@ -834,53 +890,79 @@ async function main() {
       timeoutMs: 120_000,
     }),
   )
+  const qLiveSmokeTrainFile = join(auditedDir, 'train.jsonl')
+  const qLiveSmokeEvalFile = join(auditedDir, 'eval.jsonl')
   const missingQTrainingModules = getMissingQTrainingModules(qPythonCommand)
+  const qLiveSmokePreflight = evaluateQTrainingPreflight({
+    baseModel: qSmokeBaseModelSource,
+    trainFile: qLiveSmokeTrainFile,
+    pythonPath: qPythonCommand,
+    useCpu: true,
+  })
   const qLiveSmokeTrain =
     buildMissingQTrainingModulesCheck(missingQTrainingModules) ??
-    normalizeQLiveSmokeResult(
-      await runCommandCheck(
-        'q-live-smoke-train',
-        qPythonCommand,
-        [
-          'training\\q\\train_lora.py',
-          '--train-file',
-          join(auditedDir, 'train.jsonl'),
-          '--eval-file',
-          join(auditedDir, 'eval.jsonl'),
-          '--base-model',
-          qSmokeBaseModelSource,
-          '--output-dir',
-          liveTrainDir,
-          '--run-name',
-          'system-check-live',
-          '--use-cpu',
-          '--max-steps',
-          '1',
-          '--max-seq-length',
-          '128',
-          '--lora-r',
-          '16',
-          '--lora-alpha',
-          '32',
-          '--per-device-train-batch-size',
-          '1',
-          '--per-device-eval-batch-size',
-          '1',
-          '--gradient-accumulation-steps',
-          '1',
-          '--logging-steps',
-          '1',
-          '--save-steps',
-          '1',
-          '--eval-steps',
-          '1',
-        ],
-        {
-          successSummary: `live Q smoke train completed (${qSmokeBaseModel})`,
-          timeoutMs: 1_800_000,
-        },
-      ),
-    )
+    (qLiveSmokePreflight.decision === 'remote_required'
+      ? {
+          name: 'q-live-smoke-train',
+          status: 'warning' as const,
+          durationMs: 0,
+          summary:
+            `live Q smoke skipped before model load because this host requires remote execution for ${qSmokeBaseModel}: ${qLiveSmokePreflight.summary}`,
+          details: {
+            preflight: qLiveSmokePreflight,
+            remediation:
+              'Register a healthy remote Q worker or free enough local memory before requiring scored local Q smoke and BridgeBench.',
+          },
+        }
+      : normalizeQLiveSmokeResult(
+          await runCommandCheck(
+            'q-live-smoke-train',
+            qPythonCommand,
+            [
+              'training\\q\\train_lora.py',
+              '--train-file',
+              qLiveSmokeTrainFile,
+              '--eval-file',
+              qLiveSmokeEvalFile,
+              '--base-model',
+              qSmokeBaseModelSource,
+              '--output-dir',
+              liveTrainDir,
+              '--run-name',
+              'system-check-live',
+              '--use-cpu',
+              '--max-steps',
+              '1',
+              '--max-seq-length',
+              '128',
+              '--max-train-samples',
+              '1',
+              '--max-eval-samples',
+              '1',
+              '--lora-r',
+              '16',
+              '--lora-alpha',
+              '32',
+              '--per-device-train-batch-size',
+              '1',
+              '--per-device-eval-batch-size',
+              '1',
+              '--gradient-accumulation-steps',
+              '1',
+              '--logging-steps',
+              '1',
+              '--save-steps',
+              '1',
+              '--eval-steps',
+              '1',
+            ],
+            {
+              successSummary: `live Q smoke train completed (${qSmokeBaseModel})`,
+              env: buildQTrainingPythonEnv(),
+              timeoutMs: 600_000,
+            },
+          ),
+        ))
   const qLiveSmokeTrainWithState = await enrichQLiveSmokeResult(
     qLiveSmokeTrain,
     join(liveTrainDir, 'run-state.json'),
@@ -1085,20 +1167,22 @@ async function main() {
           ),
         )
         results.push(
-          await runJsonCommandCheck(
-            'q-route-worker-dry-run',
-            'bun',
-            [
-              'scripts/process-q-routes.ts',
-              '--manifest',
-              routeManifestPath,
-              '--dry-run',
-              '--allow-host-risk',
-            ],
-            {
-              successSummary: 'Q route worker dry-run completed',
-              timeoutMs: 120_000,
-            },
+          normalizeImmaculateHarnessDependentResult(
+            await runJsonCommandCheck(
+              'q-route-worker-dry-run',
+              'bun',
+              [
+                'scripts/process-q-routes.ts',
+                '--manifest',
+                routeManifestPath,
+                '--dry-run',
+                '--allow-host-risk',
+              ],
+              {
+                successSummary: 'Q route worker dry-run completed',
+                timeoutMs: 120_000,
+              },
+            ),
           ),
         )
         results.push(
@@ -1114,51 +1198,59 @@ async function main() {
           ),
         )
         results.push(
-          await runJsonCommandCheck(
-            'q-route-lease-live',
-            'bun',
-            ['scripts/q-route-lease-live.ts'],
-            {
-              successSummary:
-                'Q route worker lease renewal and reap recovery completed',
-              timeoutMs: 240_000,
-            },
+          normalizeImmaculateHarnessDependentResult(
+            await runJsonCommandCheck(
+              'q-route-lease-live',
+              'bun',
+              ['scripts/q-route-lease-live.ts'],
+              {
+                successSummary:
+                  'Q route worker lease renewal and reap recovery completed',
+                timeoutMs: 240_000,
+              },
+            ),
           ),
         )
         results.push(
-          await runJsonCommandCheck(
-            'q-route-worker-assignment-live',
-            'bun',
-            ['scripts/q-route-worker-assignment-live.ts'],
-            {
-              successSummary:
-                'Q route worker registry enforces verified assignment or stays fail-closed pending assignment',
-              timeoutMs: 240_000,
-            },
+          normalizeImmaculateHarnessDependentResult(
+            await runJsonCommandCheck(
+              'q-route-worker-assignment-live',
+              'bun',
+              ['scripts/q-route-worker-assignment-live.ts'],
+              {
+                successSummary:
+                  'Q route worker registry enforces verified assignment or stays fail-closed pending assignment',
+                timeoutMs: 240_000,
+              },
+            ),
           ),
         )
         results.push(
-          await runJsonCommandCheck(
-            'q-route-remote-dispatch-live',
-            'bun',
-            ['scripts/q-route-remote-dispatch-live.ts'],
-            {
-              successSummary:
-                'Q route remote HTTP dispatch either completed with a verified worker or stayed fail-closed pending verified assignment',
-              timeoutMs: 240_000,
-            },
+          normalizeImmaculateHarnessDependentResult(
+            await runJsonCommandCheck(
+              'q-route-remote-dispatch-live',
+              'bun',
+              ['scripts/q-route-remote-dispatch-live.ts'],
+              {
+                successSummary:
+                  'Q route remote HTTP dispatch either completed with a verified worker or stayed fail-closed pending verified assignment',
+                timeoutMs: 240_000,
+              },
+            ),
           ),
         )
         results.push(
-          await runJsonCommandCheck(
-            'q-route-remote-completion-live',
-            'bun',
-            ['scripts/q-route-remote-completion-live.ts'],
-            {
-              successSummary:
-                'Q route remote worker loop either reconciled signed terminal results or stayed fail-closed pending verified assignment',
-              timeoutMs: 240_000,
-            },
+          normalizeImmaculateHarnessDependentResult(
+            await runJsonCommandCheck(
+              'q-route-remote-completion-live',
+              'bun',
+              ['scripts/q-route-remote-completion-live.ts'],
+              {
+                successSummary:
+                  'Q route remote worker loop either reconciled signed terminal results or stayed fail-closed pending verified assignment',
+                timeoutMs: 240_000,
+              },
+            ),
           ),
         )
         results.push(

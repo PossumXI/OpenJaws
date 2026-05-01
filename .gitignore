@@ -1,6 +1,7 @@
 # Dependencies and builds
 node_modules/
 dist/
+.venv-q/
 .venv-gemma4/
 coverage/
 

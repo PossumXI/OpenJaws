@@ -56,6 +56,20 @@ For a Windows CPU-only machine, use:
 python -m pip install -r training/q/requirements-windows-cpu.txt
 ```
 
+The tracked bootstrapper checks the same modules used by `system:check` and can
+create or repair the repo-local `.venv-q` environment:
+
+```powershell
+bun run q:training:bootstrap
+bun run q:training:bootstrap --install
+```
+
+On Windows it defaults to the CPU requirements profile so local smoke tests do
+not accidentally pull GPU-only wheels. OpenJaws launches Q training Python
+processes with `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8`; keep that invariant
+when adding new Q runners because `trl` includes UTF-8 templates that fail under
+the Windows `cp1252` default.
+
 Run a first local adapter fine-tune:
 
 ```powershell

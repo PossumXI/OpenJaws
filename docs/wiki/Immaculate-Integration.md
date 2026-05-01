@@ -70,12 +70,14 @@ Current fail-closed posture:
 - Discord patrol and queue-depth drift are surfaced as mismatches instead of being silently ignored
 - PersonaPlex failures stay warnings in the audit command, but the output now tells the operator which local launcher is missing, how to generate it, or which launcher should be run before voice can be called production-ready
 - Apex bridge failures stay warnings in the audit command, with a concrete `bun run apex:bridges:start` repair path, because a missing local bridge should block preview readiness without falsely claiming the entire harness is down
-- local Q smoke now checks the Python training environment before model load and lists every missing optional module, so operators can repair the environment in one pass instead of chasing one import failure at a time
+- local Q smoke now checks the Python training environment and host memory before model load, lists every missing optional module, and `bun run q:training:bootstrap --install` creates or repairs the repo-local `.venv-q` environment in one pass
+- Q training Python launches force UTF-8 mode on Windows so `trl` template loading does not fail under the default `cp1252` codec
 
 Use:
 
 ```powershell
 bun run runtime:coherence
+bun run q:training:bootstrap
 bun run personaplex:bootstrap
 bun run personaplex:probe
 bun run apex:bridges

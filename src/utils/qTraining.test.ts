@@ -49,6 +49,7 @@ import {
   writeQTrainingRegistry,
   computeQTrainingFileIntegrity,
   buildQTrainingRouteReceipt,
+  buildQTrainingPythonEnv,
   DEFAULT_Q_BASE_MODEL,
   getQTrainingRouteQueueStatusSummary,
 } from './qTraining.js'
@@ -69,6 +70,22 @@ function makeRoot(): string {
   tempDirs.push(dir)
   return dir
 }
+
+describe('q training python environment', () => {
+  it('forces UTF-8 mode while preserving caller env values', () => {
+    const env = buildQTrainingPythonEnv({
+      PYTHONUTF8: '0',
+      PYTHONIOENCODING: 'cp1252',
+      OPENJAWS_BENCHMARK_SEED: '777',
+      IGNORED_UNDEFINED: undefined,
+    })
+
+    expect(env.PYTHONUTF8).toBe('1')
+    expect(env.PYTHONIOENCODING).toBe('utf-8')
+    expect(env.OPENJAWS_BENCHMARK_SEED).toBe('777')
+    expect(env.IGNORED_UNDEFINED).toBeUndefined()
+  })
+})
 
 describe('qTraining registry', () => {
   it('maps upstream Q family checkpoints to Q display labels', () => {

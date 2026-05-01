@@ -9,6 +9,7 @@ import {
   reapStaleQTrainingRouteQueueClaims,
   upsertQTrainingRouteQueueEntry,
 } from '../src/utils/qTraining.js'
+import { getImmaculateHarnessStatus } from '../src/utils/immaculateHarness.js'
 
 const LEASE_TTL_MS = 1_000
 const HEARTBEAT_MS = 100
@@ -72,6 +73,21 @@ async function waitForLeaseRunState(args: {
 
 async function main() {
   const bundleDir = ensureQRouteSmokeBundleDir()
+  const harnessStatus = await getImmaculateHarnessStatus().catch(() => null)
+  if (!harnessStatus?.enabled || !harnessStatus.reachable) {
+    console.error(
+      JSON.stringify(
+        {
+          status: 'failed',
+          summary: 'Immaculate harness is not reachable for route lease smoke.',
+          harnessStatus,
+        },
+        null,
+        2,
+      ),
+    )
+    process.exit(1)
+  }
   const launch = await execa(
     'bun',
     [

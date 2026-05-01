@@ -4,6 +4,7 @@ import { isIP } from 'net'
 import { dirname, join, resolve } from 'path'
 import { execa } from 'execa'
 import {
+  buildQTrainingPythonEnv,
   buildQTrainingRouteDispatchEnvelope,
   claimNextQueuedQTrainingRoute,
   claimQTrainingRouteQueueEntry,
@@ -1220,6 +1221,7 @@ export async function dispatchQTrainingRoute(
           {
             cwd: process.cwd(),
             detached: true,
+            env: buildQTrainingPythonEnv(process.env),
             stdio: ['ignore', stdoutFd, stderrFd],
             windowsHide: true,
           },

@@ -22,6 +22,7 @@ import {
   type QBridgeBenchPack,
 } from '../src/utils/bridgeBench.js'
 import {
+  buildQTrainingPythonEnv,
   DEFAULT_Q_BASE_MODEL,
   resolveQTrainingPythonCommand,
 } from '../src/utils/qTraining.js'
@@ -497,7 +498,7 @@ async function main() {
       reject: false,
       timeout: options.timeoutMs,
       windowsHide: true,
-      env: buildBenchmarkSeedEnv(options.seed),
+      env: buildQTrainingPythonEnv(buildBenchmarkSeedEnv(options.seed)),
     })
 
     if (result.exitCode !== 0) {
