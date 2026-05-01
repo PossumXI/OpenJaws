@@ -68,7 +68,7 @@ Current fail-closed posture:
 - harness down plus no active trace is a warning, not a fake green
 - active-trace/live-harness disagreement is a failure
 - Discord patrol and queue-depth drift are surfaced as mismatches instead of being silently ignored
-- PersonaPlex failures stay warnings in the audit command, but the output now tells the operator which local launcher is missing or should be run before voice can be called production-ready
+- PersonaPlex failures stay warnings in the audit command, but the output now tells the operator which local launcher is missing, how to generate it, or which launcher should be run before voice can be called production-ready
 - Apex bridge failures stay warnings in the audit command, with a concrete `bun run apex:bridges:start` repair path, because a missing local bridge should block preview readiness without falsely claiming the entire harness is down
 - local Q smoke now checks the Python training environment before model load and lists every missing optional module, so operators can repair the environment in one pass instead of chasing one import failure at a time
 
@@ -76,11 +76,12 @@ Use:
 
 ```powershell
 bun run runtime:coherence
+bun run personaplex:bootstrap
 bun run personaplex:probe
 bun run apex:bridges
 ```
 
-That command is an audit surface, not a repair action.
+`runtime:coherence` and `personaplex:probe` are audit surfaces. `personaplex:bootstrap` is the safe local repair starter: it creates ignored launcher templates under `local-command-station` without writing tokens or API keys. The operator still has to set the real local PersonaPlex/Moshi runtime command before the voice bridge can be called ready.
 
 ## Security and Reliability Posture
 

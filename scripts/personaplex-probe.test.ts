@@ -73,10 +73,13 @@ describe('personaplex-probe', () => {
           summary: 'start required',
           command: 'pwsh',
           args: [],
+          bootstrapCommand: 'bun',
+          bootstrapArgs: [],
           stationRoot: 'station',
           launcherPath: 'launcher',
           missing: [],
           warnings: [],
+          nextActions: [],
         },
       }),
     ).toMatchObject({
@@ -324,6 +327,7 @@ describe('personaplex-probe', () => {
     expect(hint.status).toBe('runtime_failed')
     expect(hint.command).toBe('pwsh')
     expect(hint.args).toContain('-File')
+    expect(hint.nextActions.some(action => action.includes('Start the local voice launcher'))).toBe(true)
     expect(hint.launcherPath.endsWith('start-personaplex-voice.ps1')).toBe(true)
     expect(hint.missing).toEqual([])
   })
@@ -338,5 +342,9 @@ describe('personaplex-probe', () => {
 
     expect(hint.status).toBe('start_required')
     expect(hint.missing.some(item => item.endsWith('start-personaplex-voice.ps1'))).toBe(true)
+    expect(hint.bootstrapCommand).toBe('bun')
+    expect(hint.bootstrapArgs).toContain('scripts/personaplex-launcher-bootstrap.ts')
+    expect(hint.bootstrapArgs).toContain('--station-root')
+    expect(hint.nextActions[0]).toContain('Generate the local voice launcher')
   })
 })

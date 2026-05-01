@@ -155,6 +155,10 @@ export function buildPersonaPlexCoherenceProbe(
     result.repair.warnings.length > 0
       ? result.repair.warnings.join(' | ')
       : null
+  const nextActionDetail =
+    result.repair.nextActions.length > 0
+      ? `next action: ${result.repair.nextActions[0]}`
+      : null
   return {
     label: 'PersonaPlex',
     url: redactPersonaPlexProbeWebSocketUrl(result.websocketUrl),
@@ -167,6 +171,7 @@ export function buildPersonaPlexCoherenceProbe(
           repairDetail,
           missingDetail,
           warningDetail,
+          nextActionDetail,
         ].filter((part): part is string => Boolean(part)).join(' | '),
   }
 }
