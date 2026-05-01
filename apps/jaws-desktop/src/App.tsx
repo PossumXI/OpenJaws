@@ -67,6 +67,19 @@ import {
   contextScanRatio,
   formatTokenEstimate
 } from "./context";
+import {
+  buildInferenceStatusFromError,
+  buildInferenceStatusFromNative,
+  buildInferenceTuningPrompt,
+  buildProviderBaseUrlCommand,
+  buildProviderUseCommand,
+  createPreviewInferenceStatus,
+  inferenceProviders,
+  normalizeInferenceProfile,
+  type InferenceProfile,
+  type InferenceStatus,
+  type NativeInferenceStatusResult
+} from "./inference";
 import releaseIndex from "./release-index.json";
 import { normalizePreviewFrameUrl } from "./previewUrl";
 import {
@@ -799,6 +812,13 @@ export function App() {
   const [updatePipeline, setUpdatePipeline] = useState<UpdatePipelineEntry[]>(initialUpdatePipeline);
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
   const [updatePromptHidden, setUpdatePromptHidden] = useState(false);
+  const [inferenceProfile, setInferenceProfile] = useState<InferenceProfile>(() =>
+    normalizeInferenceProfile(loadStoredValue<Partial<InferenceProfile> | null>("jaws.inferenceProfile", null))
+  );
+  const [inferenceStatus, setInferenceStatus] = useState<InferenceStatus>(() =>
+    createPreviewInferenceStatus(inferenceProfile)
+  );
+  const [inferenceChecking, setInferenceChecking] = useState(false);
   const [account, setAccount] = useState<AccountSession | null>(() => loadStoredAccountSession());
   const [chatWindows, setChatWindows] = useState<ChatWindowState[]>(() => loadChatWindows());
   const [activeChatWindowId, setActiveChatWindowId] = useState(
@@ -901,6 +921,10 @@ export function App() {
   useEffect(() => {
     localStorage.setItem("jaws.notificationsArmed", String(notificationsArmed));
   }, [notificationsArmed]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.inferenceProfile", JSON.stringify(inferenceProfile));
+  }, [inferenceProfile]);
 
   useEffect(() => {
     localStorage.setItem("jaws.cyberPet", JSON.stringify(pet));
@@ -1045,6 +1069,15 @@ export function App() {
         );
       })
       .catch(() => setCoworkPlan(fallbackCoworkPlan));
+  }, []);
+
+  useEffect(() => {
+    if (!hasTauriRuntime()) {
+      setInferenceStatus(createPreviewInferenceStatus(inferenceProfile));
+      return;
+    }
+
+    void refreshInferenceStatus(false);
   }, []);
 
   async function runSmoke() {
@@ -1596,6 +1629,47 @@ export function App() {
 
   function dismissNotification(id: string) {
     setNotifications((items) => items.filter((item) => item.id !== id));
+  }
+
+  function updateInferenceProfile(patch: Partial<InferenceProfile>) {
+    setInferenceProfile((current) => normalizeInferenceProfile({ ...current, ...patch }));
+  }
+
+  function stageInferenceCommand(command: string) {
+    setChatInput(command);
+    setActive("chat");
+  }
+
+  async function refreshInferenceStatus(runProbe: boolean) {
+    setInferenceChecking(true);
+
+    if (!hasTauriRuntime()) {
+      setInferenceStatus(createPreviewInferenceStatus(inferenceProfile));
+      setInferenceChecking(false);
+      return;
+    }
+
+    try {
+      const result = await invoke<NativeInferenceStatusResult>("openjaws_inference_status", {
+        provider: inferenceProfile.provider,
+        model: inferenceProfile.model,
+        runProbe
+      });
+      const next = buildInferenceStatusFromNative(result, inferenceProfile);
+      setInferenceStatus(next);
+      setUpdateState(
+        runProbe
+          ? next.state === "ready"
+            ? "Inference route probe passed"
+            : "Inference route probe needs review"
+          : "Inference route status refreshed"
+      );
+    } catch (error) {
+      setInferenceStatus(buildInferenceStatusFromError(error, inferenceProfile));
+      setUpdateState("Inference route status failed");
+    } finally {
+      setInferenceChecking(false);
+    }
   }
 
   async function submitChatCommand(event: FormEvent<HTMLFormElement>) {
@@ -3056,6 +3130,129 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                     )}
                   </div>
                   <UpdatePipelinePanel entries={updatePipeline} releaseSites={status.releaseSites} />
+                </section>
+
+                <section className="settings-group inference-settings">
+                  <span className="settings-kicker">Inference</span>
+                  <StatusLine label="Provider" value={inferenceStatus.provider} />
+                  <StatusLine label="Model" value={inferenceStatus.model} />
+                  <StatusLine label="Auth" value={inferenceStatus.authLabel} />
+                  <StatusLine label="Endpoint" value={inferenceStatus.baseUrl} />
+
+                  <div className="inference-form">
+                    <label>
+                      Provider
+                      <select
+                        value={inferenceProfile.provider}
+                        onChange={(event) => updateInferenceProfile({ provider: event.target.value })}
+                      >
+                        {inferenceProviders.map((provider) => (
+                          <option key={provider.id} value={provider.id}>
+                            {provider.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Model
+                      <input
+                        value={inferenceProfile.model}
+                        onChange={(event) => updateInferenceProfile({ model: event.target.value })}
+                      />
+                    </label>
+                    <label className="full">
+                      Base URL
+                      <input
+                        value={inferenceProfile.baseUrl}
+                        onChange={(event) => updateInferenceProfile({ baseUrl: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Policy
+                      <select
+                        value={inferenceProfile.routePolicy}
+                        onChange={(event) =>
+                          updateInferenceProfile({ routePolicy: event.target.value as InferenceProfile["routePolicy"] })
+                        }
+                      >
+                        <option value="balanced">Balanced</option>
+                        <option value="fast">Fast</option>
+                        <option value="deep">Deep</option>
+                      </select>
+                    </label>
+                    <label>
+                      Temperature
+                      <input
+                        min="0"
+                        max="2"
+                        step="0.1"
+                        type="number"
+                        value={inferenceProfile.temperature}
+                        onChange={(event) => updateInferenceProfile({ temperature: Number(event.target.value) })}
+                      />
+                    </label>
+                    <label>
+                      Max tokens
+                      <input
+                        min="256"
+                        max="65536"
+                        step="256"
+                        type="number"
+                        value={inferenceProfile.maxOutputTokens}
+                        onChange={(event) => updateInferenceProfile({ maxOutputTokens: Number(event.target.value) })}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="button-row">
+                    <button
+                      className="text-button primary"
+                      type="button"
+                      disabled={inferenceChecking}
+                      onClick={() => refreshInferenceStatus(false)}
+                    >
+                      <Gauge size={16} />
+                      {inferenceChecking ? "Checking" : "Check Route"}
+                    </button>
+                    <button
+                      className="text-button"
+                      type="button"
+                      disabled={inferenceChecking}
+                      onClick={() => refreshInferenceStatus(true)}
+                    >
+                      <RadioTower size={16} />
+                      Probe Route
+                    </button>
+                    <button
+                      className="text-button"
+                      type="button"
+                      onClick={() => stageInferenceCommand(buildProviderUseCommand(inferenceProfile))}
+                    >
+                      <Send size={16} />
+                      Stage Use
+                    </button>
+                    <button
+                      className="text-button"
+                      type="button"
+                      onClick={() => stageInferenceCommand(buildProviderBaseUrlCommand(inferenceProfile))}
+                    >
+                      <ExternalLink size={16} />
+                      Stage Endpoint
+                    </button>
+                    <button
+                      className="text-button"
+                      type="button"
+                      onClick={() => stageInferenceCommand(buildInferenceTuningPrompt(inferenceProfile, inferenceStatus))}
+                    >
+                      <Sparkles size={16} />
+                      Stage Tuning
+                    </button>
+                  </div>
+
+                  <div className="inference-receipt" data-state={inferenceStatus.state}>
+                    <strong>{inferenceStatus.summary}</strong>
+                    <pre>{inferenceStatus.detail}</pre>
+                  </div>
                 </section>
 
                 <section className="settings-group">

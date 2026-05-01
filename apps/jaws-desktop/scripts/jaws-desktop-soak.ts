@@ -82,6 +82,9 @@ function verifyStaticSurface() {
   assert(appSource.includes("Docs And Legal"), "In-app docs/legal page is missing.");
   assert(appSource.includes("agent_runtime_snapshot"), "Agent Watch native runtime snapshot bridge is missing.");
   assert(appSource.includes("receiptHash"), "Preview demo receipt hash is not surfaced in the UI.");
+  assert(appSource.includes("inference-settings"), "Settings inference route panel is missing.");
+  assert(nativeSource.includes("openjaws_inference_status"), "Native inference provider bridge is missing.");
+  assert(nativeSource.includes(".arg(\"provider\")"), "Native inference bridge must use the direct provider CLI route.");
   assert(
     nativeSource.includes("deterministic_receipt_hash") &&
       nativeSource.includes("write_browser_preview_demo_harness"),
@@ -149,6 +152,7 @@ function main() {
           logoSurface: true,
           docsLegalSurface: true,
           agentRuntimeBridge: true,
+          inferenceRouteBridge: true,
           securityBrandingScan: true,
           previewDemoReceiptIntegrity: true,
           slowGuySimulation: true,
