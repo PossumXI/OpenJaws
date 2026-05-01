@@ -60,6 +60,8 @@ const READY_ENV = {
   STRIPE_SECRET_KEY: 'stripe-secret',
   STRIPE_PRICE_BUILDER: 'price-builder',
   STRIPE_PRICE_OPERATOR: 'price-operator',
+  STRIPE_SUCCESS_URL: 'https://qline.site/success',
+  STRIPE_CANCEL_URL: 'https://qline.site/cancel',
   Q_HOSTED_SERVICE_BASE_URL: 'https://api.qline.site',
   Q_HOSTED_SERVICE_TOKEN: 'service-token-secret',
 } as NodeJS.ProcessEnv
@@ -132,6 +134,8 @@ describe('hosted-q provisioning preflight', () => {
         'SERVICE_TOKEN',
         'RESEND_FROM_EMAIL',
         'STRIPE_PRICE_OPERATOR',
+        'STRIPE_SUCCESS_URL',
+        'STRIPE_CANCEL_URL',
       ],
     })
     expect(report.checks.find(check => check.id === 'public-site-env')).toMatchObject({

@@ -63,6 +63,8 @@ bunx wrangler secret put RESEND_FROM_EMAIL --config services/cloudflare-hosted-q
 bunx wrangler secret put STRIPE_SECRET_KEY --config services/cloudflare-hosted-q/wrangler.toml
 bunx wrangler secret put STRIPE_PRICE_BUILDER --config services/cloudflare-hosted-q/wrangler.toml
 bunx wrangler secret put STRIPE_PRICE_OPERATOR --config services/cloudflare-hosted-q/wrangler.toml
+bunx wrangler secret put STRIPE_SUCCESS_URL --config services/cloudflare-hosted-q/wrangler.toml
+bunx wrangler secret put STRIPE_CANCEL_URL --config services/cloudflare-hosted-q/wrangler.toml
 ```
 
 4. Apply migrations and deploy:
