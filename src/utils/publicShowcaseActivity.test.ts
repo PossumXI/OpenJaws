@@ -171,7 +171,14 @@ describe('publicShowcaseActivity', () => {
 
       const feed = syncPublicShowcaseActivityFromRoot({ root })
       expect(feed.entries.length).toBeGreaterThan(1)
-      expect(JSON.parse(readFileSync(overlayPath, 'utf8'))).toMatchObject({
+      const overlay = JSON.parse(readFileSync(overlayPath, 'utf8')) as {
+        entries: Array<{ status: string | null; title: string; summary: string | null }>
+      }
+      expect(
+        overlay.entries.some(entry => entry.status === 'warning' || entry.status === 'failed'),
+      ).toBe(false)
+      expect(overlay.entries.some(entry => entry.summary?.includes('#'))).toBe(false)
+      expect(overlay).toMatchObject({
         entries: expect.arrayContaining([
           expect.objectContaining({
             title: 'Roundtable runtime',
@@ -179,7 +186,14 @@ describe('publicShowcaseActivity', () => {
         ]),
       })
       expect(existsSync(mirrorPath)).toBe(true)
-      expect(JSON.parse(readFileSync(mirrorPath, 'utf8'))).toMatchObject({
+      const mirror = JSON.parse(readFileSync(mirrorPath, 'utf8')) as {
+        entries: Array<{ status: string | null; title: string; summary: string | null }>
+      }
+      expect(
+        mirror.entries.some(entry => entry.status === 'warning' || entry.status === 'failed'),
+      ).toBe(false)
+      expect(mirror.entries.some(entry => entry.summary?.includes('#'))).toBe(false)
+      expect(mirror).toMatchObject({
         entries: expect.arrayContaining([
           expect.objectContaining({
             title: 'Roundtable runtime',

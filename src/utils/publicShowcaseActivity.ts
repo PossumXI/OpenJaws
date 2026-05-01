@@ -948,7 +948,7 @@ function buildRoundtableEntry(args: {
     id: `roundtable-${status}-${timestamp ?? 'latest'}`,
     timestamp,
     title: 'Roundtable runtime',
-    summary: `Roundtable is ${status}${channelName ? ` in #${channelName}` : ''}. ${summary}`,
+    summary: `Roundtable is ${status}${channelName ? ' in the configured Discord channel' : ''}. ${summary}`,
     kind: 'roundtable_runtime',
     status:
       status === 'error'
@@ -1321,16 +1321,46 @@ export function buildPublicShowcaseActivityFeed(args: {
   }
 }
 
+function publicSafeShowcaseStatus(status: string | null): string | null {
+  if (status === 'warning' || status === 'failed') {
+    return 'info'
+  }
+  return status
+}
+
+function publicSafeShowcaseText(value: string | null): string | null {
+  if (!value) {
+    return value
+  }
+  return value.replace(/#[A-Za-z0-9_-]+/g, 'the Discord channel')
+}
+
+export function preparePublicShowcaseActivityFeedForPublication(
+  feed: PublicShowcaseActivityFeed,
+): PublicShowcaseActivityFeed {
+  return {
+    updatedAt: feed.updatedAt,
+    entries: feed.entries.map(entry => ({
+      ...entry,
+      title: publicSafeShowcaseText(entry.title) ?? entry.title,
+      summary: publicSafeShowcaseText(entry.summary),
+      source: publicSafeShowcaseText(entry.source),
+      status: publicSafeShowcaseStatus(entry.status),
+    })),
+  }
+}
+
 export function writePublicShowcaseActivityFeed(
   feed: PublicShowcaseActivityFeed,
   outputPath = getPublicShowcaseActivityPath(),
   mirrorPath?: string,
 ): string {
+  const publicFeed = preparePublicShowcaseActivityFeedForPublication(feed)
   mkdirSync(dirname(outputPath), { recursive: true })
-  writeFileSync(outputPath, `${JSON.stringify(feed, null, 2)}\n`, 'utf8')
+  writeFileSync(outputPath, `${JSON.stringify(publicFeed, null, 2)}\n`, 'utf8')
   if (mirrorPath) {
     mkdirSync(dirname(mirrorPath), { recursive: true })
-    writeFileSync(mirrorPath, `${JSON.stringify(feed, null, 2)}\n`, 'utf8')
+    writeFileSync(mirrorPath, `${JSON.stringify(publicFeed, null, 2)}\n`, 'utf8')
   }
   return outputPath
 }
@@ -1347,13 +1377,14 @@ export function syncPublicShowcaseActivityFromRoot(
     roundtableSession: args.roundtableSession ?? null,
     roundtableRuntime: args.roundtableRuntime ?? null,
   })
+  const publicFeed = preparePublicShowcaseActivityFeedForPublication(feed)
   const outputPath = writePublicShowcaseActivityFeed(
-    feed,
+    publicFeed,
     getPublicShowcaseActivityPath(),
     args.writeMirror === false ? undefined : getPublicShowcaseActivityMirrorPath(root),
   )
   queuePublicShowcaseLedgerAutoSync(root, outputPath)
-  return feed
+  return publicFeed
 }
 
 function flushQueuedPublicShowcaseActivitySyncs() {
