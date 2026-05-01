@@ -99,7 +99,13 @@ describe('service-route-health', () => {
     ).toMatchObject({ status: 'not_configured' })
     expect(
       report.checks.find(check => check.id === 'hosted-q-backend-config'),
-    ).toMatchObject({ status: 'not_configured' })
+    ).toMatchObject({
+      status: 'not_configured',
+      missing: ['Q_HOSTED_SERVICE_BASE_URL', 'Q_HOSTED_SERVICE_TOKEN'],
+      nextActions: [
+        'Deploy services/cloudflare-hosted-q, then set Q_HOSTED_SERVICE_BASE_URL and Q_HOSTED_SERVICE_TOKEN locally and on qline.site/iorch.net.',
+      ],
+    })
     expect(
       report.checks.find(check => check.id === 'stripe-billing-config'),
     ).toMatchObject({ status: 'not_configured' })
@@ -182,6 +188,10 @@ describe('service-route-health', () => {
     ).toMatchObject({
       status: 'not_configured',
       httpStatus: 204,
+      missing: [JAWS_RELEASE_TAG],
+      nextActions: [
+        `Publish ${JAWS_RELEASE_TAG} with signed JAWS assets, then rerun bun run service:routes.`,
+      ],
       details: {
         releaseTag: JAWS_RELEASE_TAG,
         currentVersion: JAWS_RELEASE_VERSION,
@@ -248,6 +258,27 @@ describe('service-route-health', () => {
     ).toMatchObject({
       status: 'passed',
       url: 'https://api.qline.site/laas/health',
+    })
+  })
+
+  test('keeps hosted-Q backend not configured when the base URL exists without a service token', async () => {
+    const report = await runServiceRouteHealth({
+      fetchImpl: makeFetch(),
+      env: {
+        ...EMPTY_ENV,
+        Q_HOSTED_SERVICE_BASE_URL: 'https://api.qline.site',
+      },
+      timeoutMs: 1,
+    })
+
+    expect(
+      report.checks.find(check => check.id === 'hosted-q-backend-live'),
+    ).toMatchObject({ status: 'passed', url: 'https://api.qline.site/health' })
+    expect(
+      report.checks.find(check => check.id === 'hosted-q-backend-config'),
+    ).toMatchObject({
+      status: 'not_configured',
+      missing: ['Q_HOSTED_SERVICE_TOKEN'],
     })
   })
 

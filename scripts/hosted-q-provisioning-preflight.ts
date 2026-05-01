@@ -20,6 +20,8 @@ export type HostedQProvisioningPreflightReport = {
   wranglerConfigPath: string
   counts: Record<HostedQProvisioningCheckStatus, number>
   checks: HostedQProvisioningCheck[]
+  missingByCheck: Record<string, string[]>
+  blockedActions: string[]
   commands: string[]
 }
 
@@ -167,6 +169,10 @@ function buildCommands(databaseName: string): string[] {
   ]
 }
 
+function uniqueValues(values: string[]): string[] {
+  return [...new Set(values.filter(value => value.trim().length > 0))]
+}
+
 export function buildHostedQProvisioningPreflight(
   options: HostedQProvisioningPreflightOptions = {},
 ): HostedQProvisioningPreflightReport {
@@ -290,6 +296,15 @@ export function buildHostedQProvisioningPreflight(
     },
     { passed: 0, blocked: 0 } as Record<HostedQProvisioningCheckStatus, number>,
   )
+  const blockedChecks = checks.filter(item => item.status === 'blocked')
+  const missingByCheck = Object.fromEntries(
+    blockedChecks
+      .filter(item => item.missing?.length)
+      .map(item => [item.id, uniqueValues(item.missing ?? [])]),
+  )
+  const blockedActions = uniqueValues(
+    blockedChecks.flatMap(item => item.nextActions ?? []),
+  )
 
   return {
     status: counts.blocked > 0 ? 'blocked' : 'ready',
@@ -298,6 +313,8 @@ export function buildHostedQProvisioningPreflight(
     wranglerConfigPath: resolve(root, WRANGLER_CONFIG),
     counts,
     checks,
+    missingByCheck,
+    blockedActions,
     commands: buildCommands(wrangler.databaseName),
   }
 }
@@ -342,6 +359,13 @@ function formatHumanReport(report: HostedQProvisioningPreflightReport): string {
       ...(item.missing?.length ? [`  Missing: ${item.missing.join(', ')}`] : []),
       ...(item.nextActions?.length ? item.nextActions.map(action => `  Next: ${action}`) : []),
     ]),
+    ...(report.blockedActions.length
+      ? [
+          '',
+          'Blocked action contract:',
+          ...report.blockedActions.map(action => `  ${action}`),
+        ]
+      : []),
     '',
     'Safe command sequence:',
     ...report.commands.map(command => `  ${command}`),

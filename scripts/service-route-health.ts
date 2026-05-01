@@ -28,6 +28,8 @@ export type ServiceRouteCheck = {
   audience: ServiceRouteAudience[]
   status: ServiceRouteCheckStatus
   summary: string
+  missing?: string[]
+  nextActions?: string[]
   url?: string
   httpStatus?: number | null
   details?: Record<string, unknown>
@@ -301,6 +303,17 @@ function hasConfiguredEnv(
   return Boolean(getConfiguredEnvValue(env, names))
 }
 
+function missingEnvNames(
+  env: NodeJS.ProcessEnv,
+  names: readonly string[],
+): string[] {
+  return names.filter(name => !isConcreteConfigValue(env[name]))
+}
+
+function oneOf(names: readonly string[]): string {
+  return `one of ${names.join(', ')}`
+}
+
 function readTextIfPresent(path: string): string | null {
   if (!existsSync(path)) {
     return null
@@ -500,6 +513,10 @@ async function checkHttpRoute(
           url: route.url,
           httpStatus: response.status,
           summary: `${route.service} is not offering ${JAWS_RELEASE_VERSION} yet because ${JAWS_RELEASE_TAG} is not published.`,
+          missing: [JAWS_RELEASE_TAG],
+          nextActions: [
+            `Publish ${JAWS_RELEASE_TAG} with signed JAWS assets, then rerun bun run service:routes.`,
+          ],
           details: {
             releaseTag: JAWS_RELEASE_TAG,
             currentVersion: JAWS_RELEASE_VERSION,
@@ -809,9 +826,11 @@ function configurationCheck(args: {
   configured: boolean
   configuredSummary: string
   missingSummary: string
+  missing?: string[]
+  nextActions?: string[]
   details?: Record<string, unknown>
 }): ServiceRouteCheck {
-  return {
+  const result: ServiceRouteCheck = {
     id: args.id,
     service: args.service,
     audience: args.audience,
@@ -819,6 +838,15 @@ function configurationCheck(args: {
     summary: args.configured ? args.configuredSummary : args.missingSummary,
     details: args.details,
   }
+  if (!args.configured) {
+    if (args.missing?.length) {
+      result.missing = args.missing
+    }
+    if (args.nextActions?.length) {
+      result.nextActions = args.nextActions
+    }
+  }
+  return result
 }
 
 function buildConfiguredHttpRoutes(
@@ -868,6 +896,13 @@ function buildConfigurationChecks(
   const hostedQServiceToken =
     getConfiguredEnvValue(env, ['Q_HOSTED_SERVICE_TOKEN']) ??
     getExternalQlineValue(external, 'Q_HOSTED_SERVICE_TOKEN')
+  const hostedQBackendConfigured = Boolean(
+    hostedQBaseUrl && hostedQServiceToken,
+  )
+  const hostedQBackendMissing = [
+    ...(!hostedQBaseUrl ? ['Q_HOSTED_SERVICE_BASE_URL'] : []),
+    ...(!hostedQServiceToken ? ['Q_HOSTED_SERVICE_TOKEN'] : []),
+  ]
   const hostedQWorkerPackage = hasHostedQWorkerPackage()
   const d1BindingConfigured =
     hasConfiguredEnv(env, ['CLOUDFLARE_D1_DATABASE_ID']) ||
@@ -877,6 +912,10 @@ function buildConfigurationChecks(
   const cloudflareAuthConfigured =
     hasConfiguredEnv(env, ['CLOUDFLARE_ACCOUNT_ID']) &&
     hasConfiguredEnv(env, ['CLOUDFLARE_API_TOKEN'])
+  const missingCloudflareAuth = missingEnvNames(env, [
+    'CLOUDFLARE_ACCOUNT_ID',
+    'CLOUDFLARE_API_TOKEN',
+  ])
   const cloudflareRoutesConfigured = hasConfiguredCloudflareRoutes()
   const cloudflareConfigured = cloudflareAuthConfigured && d1BindingConfigured
   const resendConfigured =
@@ -917,6 +956,10 @@ function buildConfigurationChecks(
         'Hosted Q Cloudflare Worker/D1 package is present in the repo.',
       missingSummary:
         'Hosted Q Worker/D1 package is missing from this checkout.',
+      missing: hostedQWorkerPackage ? [] : [...CLOUDFLARE_HOSTED_Q_FILES],
+      nextActions: hostedQWorkerPackage
+        ? []
+        : ['Restore services/cloudflare-hosted-q before attempting hosted-Q deploy.'],
       details: {
         path: hostedQWorkerPackage ? 'services/cloudflare-hosted-q' : null,
         d1BindingConfigured,
@@ -931,6 +974,10 @@ function buildConfigurationChecks(
       configuredSummary: `OCI/Q runtime is configured with ${ociRuntime.authMode} auth.`,
       missingSummary:
         'OCI/Q runtime is not configured locally. Public users must bring a Q/OCI key or use a hosted key issuer; admin IAM needs OCI config, compartment, and project envs.',
+      missing: ociRuntime.missing,
+      nextActions: [
+        'Configure OCI bearer auth with a Q/OCI API key, or configure IAM with OCI_CONFIG_FILE, OCI_COMPARTMENT_ID, and OCI_GENAI_PROJECT_ID.',
+      ],
       details: {
         authMode: ociRuntime.authMode,
         baseURL: ociRuntime.baseURL,
@@ -941,10 +988,15 @@ function buildConfigurationChecks(
       id: 'hosted-q-backend-config',
       service: 'Hosted Q backend',
       audience: ['public', 'paid'],
-      configured: Boolean(hostedQBaseUrl),
-      configuredSummary: 'Hosted Q backend base URL is configured.',
+      configured: hostedQBackendConfigured,
+      configuredSummary:
+        'Hosted Q backend base URL and service token are configured.',
       missingSummary:
-        'Hosted Q backend base URL is not configured in this process; production billing, key issuance, usage, and credits need a durable backend.',
+        'Hosted Q backend base URL or service token is not configured in this process; production billing, key issuance, usage, and credits need a durable backend.',
+      missing: hostedQBackendMissing,
+      nextActions: [
+        'Deploy services/cloudflare-hosted-q, then set Q_HOSTED_SERVICE_BASE_URL and Q_HOSTED_SERVICE_TOKEN locally and on qline.site/iorch.net.',
+      ],
       details: {
         baseURL: hostedQBaseUrl,
         serviceTokenConfigured: Boolean(hostedQServiceToken),
@@ -960,6 +1012,12 @@ function buildConfigurationChecks(
       configuredSummary: 'A production SQL/D1/OCI database route/env is configured.',
       missingSummary:
         'No production SQL/D1/OCI database route is configured in this repo process; local JSON stores are not production-safe durable storage.',
+      missing: [
+        `${oneOf(PRODUCTION_DATABASE_ENV_NAMES)} or concrete services/cloudflare-hosted-q/wrangler.toml database_id`,
+      ],
+      nextActions: [
+        'Create/bind a production D1, OCI, or SQL database before enabling paid public users.',
+      ],
       details: {
         d1SchemaPresent: hostedQWorkerPackage,
         d1BindingConfigured,
@@ -974,6 +1032,18 @@ function buildConfigurationChecks(
         'Cloudflare account auth and concrete D1 binding configuration are present.',
       missingSummary:
         'Cloudflare Worker/D1 is not configured for deployment from this process; set account auth and a real D1 database id before claiming routes live.',
+      missing: [
+        ...missingCloudflareAuth,
+        ...(!d1BindingConfigured
+          ? ['CLOUDFLARE_D1_DATABASE_ID or wrangler.toml database_id']
+          : []),
+      ],
+      nextActions: [
+        'Set Cloudflare auth, bind a real D1 database id, then run bun run services:backend:preflight before deploy.',
+        ...(cloudflareRoutesConfigured
+          ? []
+          : ['Uncomment production Cloudflare route patterns in services/cloudflare-hosted-q/wrangler.toml before public deploy.']),
+      ],
       details: {
         accountConfigured: hasConfiguredEnv(env, ['CLOUDFLARE_ACCOUNT_ID']),
         apiTokenConfigured: hasConfiguredEnv(env, ['CLOUDFLARE_API_TOKEN']),
@@ -992,6 +1062,10 @@ function buildConfigurationChecks(
       configuredSummary: 'Netlify auth/config is available for live metadata checks.',
       missingSummary:
         'Netlify auth/config is not available locally; public route checks can still run, but deploy metadata checks cannot.',
+      missing: ['NETLIFY_AUTH_TOKEN or Netlify CLI auth config'],
+      nextActions: [
+        'Log in with the Netlify CLI or set NETLIFY_AUTH_TOKEN before checking deployed site env metadata.',
+      ],
     }),
     configurationCheck({
       id: 'stripe-billing-config',
@@ -1001,6 +1075,18 @@ function buildConfigurationChecks(
       configuredSummary: 'Stripe billing configuration is present.',
       missingSummary:
         'No complete Stripe billing configuration is present in this repo process; worker checkout/webhook routes are packaged but need real Stripe secrets and return URLs before they are live.',
+      missing: [
+        ...(!stripeSecretConfigured ? ['STRIPE_SECRET_KEY'] : []),
+        ...(!stripePriceConfigured
+          ? ['STRIPE_PRICE_BUILDER or STRIPE_PRICE_OPERATOR']
+          : []),
+        ...(!stripeReturnUrlsConfigured
+          ? ['STRIPE_SUCCESS_URL and STRIPE_CANCEL_URL']
+          : []),
+      ],
+      nextActions: [
+        'Create Stripe prices and webhook secret bindings, then set the Stripe env keys locally or in qline.site Netlify env.',
+      ],
       details: {
         secretConfigured: stripeSecretConfigured,
         priceConfigured: stripePriceConfigured,
@@ -1025,6 +1111,10 @@ function buildConfigurationChecks(
       configuredSummary: 'Mail engine configuration is present.',
       missingSummary:
         'No Resend/SMTP mail engine configuration or route is present in this repo process.',
+      missing: ['RESEND_API_KEY and RESEND_FROM_EMAIL, or SMTP_HOST/SMTP_URL'],
+      nextActions: [
+        'Set Resend sender credentials or SMTP settings before enabling account and update notifications.',
+      ],
       details: {
         resendConfigured,
         smtpConfigured,
@@ -1044,6 +1134,12 @@ function buildConfigurationChecks(
           : 'AROBI ledger/LAAS base URL and token configuration are present.',
       missingSummary:
         'No AROBI ledger/LAAS API route and token are configured in this repo process; only local/public showcase JSON ledgers are present.',
+      missing: [
+        `${oneOf(AROBI_LAAS_URL_ENV_NAMES)} plus ${oneOf(AROBI_LAAS_TOKEN_ENV_NAMES)}`,
+      ],
+      nextActions: [
+        'Configure an AROBI LAAS route and token, or install the local edge secret at ~/.arobi/edge-secrets.json.',
+      ],
       details: {
         baseURL: arobiLaas.baseURL,
         tokenConfigured: arobiLaas.tokenConfigured,
@@ -1148,6 +1244,14 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     )
     for (const check of [...report.failures, ...report.warnings]) {
       console.log(`- [${check.status}] ${check.id}: ${check.summary}`)
+      if (check.missing?.length) {
+        console.log(`  Missing: ${check.missing.join(', ')}`)
+      }
+      if (check.nextActions?.length) {
+        for (const action of check.nextActions) {
+          console.log(`  Next: ${action}`)
+        }
+      }
     }
   }
 
