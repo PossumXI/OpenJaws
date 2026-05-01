@@ -1976,6 +1976,124 @@ p {
   margin: 0;
 }
 
+.cognitive-runtime-hero {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent-2);
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 112px minmax(0, 1fr);
+  margin-bottom: 14px;
+  padding: 14px;
+}
+
+.cognitive-runtime-hero.ready {
+  border-left-color: var(--accent);
+}
+
+.cognitive-runtime-hero.blocked {
+  border-left-color: var(--danger);
+}
+
+.cognitive-runtime-hero div {
+  display: grid;
+  gap: 2px;
+}
+
+.cognitive-runtime-hero span,
+.cognitive-runtime-hero small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.cognitive-runtime-hero strong {
+  color: var(--accent);
+  font-size: 1.9rem;
+}
+
+.cognitive-runtime-hero p {
+  margin: 0;
+}
+
+.cognitive-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.cognitive-memory-grid,
+.cognitive-scorecards,
+.policy-hint-list {
+  display: grid;
+  gap: 10px;
+}
+
+.cognitive-memory-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.cognitive-memory-card,
+.cognitive-scorecard {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+}
+
+.cognitive-memory-card.active,
+.cognitive-scorecard.pass,
+.cognitive-scorecard.allow {
+  border-color: rgba(120, 214, 163, 0.34);
+}
+
+.cognitive-memory-card.blocked,
+.cognitive-scorecard.fail,
+.cognitive-scorecard.deny {
+  border-color: rgba(240, 124, 103, 0.45);
+}
+
+.cognitive-memory-card span,
+.cognitive-scorecard span {
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.cognitive-memory-card p,
+.cognitive-scorecard p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.cognitive-scorecard header {
+  align-items: start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.cognitive-scorecard small {
+  color: var(--accent-3);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.policy-hint-list {
+  margin-top: 14px;
+}
+
+.policy-hint-list span {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  padding: 9px 11px;
+}
+
 .node {
   align-items: center;
   border: 1px solid var(--line);
@@ -3409,6 +3527,7 @@ p {
   .sandbox-world,
   .profiles-page,
   .cowork-control-grid,
+  .cognitive-memory-grid,
   .agent-timeline.compact {
     grid-template-columns: 1fr;
   }
@@ -3484,6 +3603,8 @@ p {
   .sandbox-world,
   .profiles-page,
   .cowork-control-grid,
+  .cognitive-runtime-hero,
+  .cognitive-memory-grid,
   .agent-timeline.compact,
   .input-row,
   .inference-form {

@@ -67,6 +67,7 @@ function verifyStaticSurface() {
   const appSource = readFileSync(join(appRoot, "src", "App.tsx"), "utf8");
   const styleSource = readFileSync(join(appRoot, "src", "styles.css"), "utf8");
   const nativeSource = readFileSync(join(appRoot, "src-tauri", "src", "main.rs"), "utf8");
+  const capabilitySource = readFileSync(join(appRoot, "src-tauri", "capabilities", "default.json"), "utf8");
 
   assert(tauriConfig.productName === "JAWS", "Tauri productName drifted from JAWS.");
   assert(tauriConfig.bundle?.publisher === requiredPublisher, "Installer publisher attribution is missing.");
@@ -81,8 +82,13 @@ function verifyStaticSurface() {
   assert(appSource.includes("function JawsMark"), "React/CSS JAWS logo surface is missing.");
   assert(appSource.includes("Docs And Legal"), "In-app docs/legal page is missing.");
   assert(appSource.includes("agent_runtime_snapshot"), "Agent Watch native runtime snapshot bridge is missing.");
+  assert(appSource.includes("Cognitive Runtime"), "Agent Watch cognitive runtime panel is missing.");
+  assert(appSource.includes("nativeNotificationPermission"), "Native notification permission state is missing.");
   assert(appSource.includes("receiptHash"), "Preview demo receipt hash is not surfaced in the UI.");
   assert(appSource.includes("inference-settings"), "Settings inference route panel is missing.");
+  assert(capabilitySource.includes("notification:default"), "Tauri notification permission is missing.");
+  assert(nativeSource.includes("tauri_plugin_notification::init()"), "Native notification plugin is missing.");
+  assert(nativeSource.includes("build_cognitive_runtime_snapshot"), "Native cognitive runtime bridge is missing.");
   assert(nativeSource.includes("openjaws_inference_status"), "Native inference provider bridge is missing.");
   assert(nativeSource.includes(".arg(\"provider\")"), "Native inference bridge must use the direct provider CLI route.");
   assert(
@@ -152,6 +158,8 @@ function main() {
           logoSurface: true,
           docsLegalSurface: true,
           agentRuntimeBridge: true,
+          cognitiveRuntimeBridge: true,
+          nativeNotifications: true,
           inferenceRouteBridge: true,
           securityBrandingScan: true,
           previewDemoReceiptIntegrity: true,

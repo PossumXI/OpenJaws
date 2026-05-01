@@ -1,8 +1,9 @@
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
-import { join, resolve } from 'path'
+import { join } from 'path'
 import { execa } from 'execa'
 import { getLatestQTrainingSnapshot } from '../src/utils/qTraining.js'
+import { ensureQRouteSmokeBundleDir } from './q-route-smoke-fixture.js'
 
 function makeRoot(): string {
   return mkdtempSync(join(tmpdir(), 'openjaws-q-route-failure-'))
@@ -11,7 +12,7 @@ function makeRoot(): string {
 async function main() {
   const repoRoot = process.cwd()
   const routeRoot = makeRoot()
-  const bundleDir = resolve(repoRoot, 'data', 'sft', 'audited-v2')
+  const bundleDir = ensureQRouteSmokeBundleDir(repoRoot)
   const harnessUrl = 'http://127.0.0.1:1'
 
   try {

@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, rmSync } from 'fs'
 import { readFile } from 'fs/promises'
 import { tmpdir } from 'os'
-import { dirname, join, resolve } from 'path'
+import { dirname, join } from 'path'
 import { execa } from 'execa'
 import {
   getImmaculateHarnessStatus,
@@ -15,6 +15,7 @@ import {
   verifyQTrainingRouteDispatchEnvelope,
   type QTrainingRouteDispatchEnvelope,
 } from '../src/utils/qTraining.js'
+import { ensureQRouteSmokeBundleDir } from './q-route-smoke-fixture.js'
 
 function makeRoot(): string {
   return mkdtempSync(join(tmpdir(), 'openjaws-q-route-remote-completion-'))
@@ -48,7 +49,7 @@ async function main() {
   const workerLabel = `gpu-remote-completion-${runSuffix}`
   const hostLabel = 'remote-http-gpu-box'
   const executionId = `remote-exec-${runSuffix}`
-  const bundleDir = resolve(repoRoot, 'data', 'sft', 'audited-v2')
+  const bundleDir = ensureQRouteSmokeBundleDir(repoRoot)
   const harnessStatus = await getImmaculateHarnessStatus().catch(() => null)
 
   if (!harnessStatus?.enabled || !harnessStatus.reachable) {

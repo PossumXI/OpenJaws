@@ -10,6 +10,8 @@ export interface JawsNotification {
 
 export const MAX_JAWS_NOTIFICATIONS = 12;
 
+export type NativeNotificationPermission = "granted" | "denied" | "prompt" | "unsupported";
+
 export const initialNotifications: JawsNotification[] = [
   {
     id: "update-coming",
@@ -91,4 +93,28 @@ export function markAllJawsNotificationsRead(
 
 export function countUnreadJawsNotifications(notifications: JawsNotification[]): number {
   return notifications.filter((notification) => !notification.readAt).length;
+}
+
+export function normalizeNativeNotificationPermission(value: unknown): NativeNotificationPermission {
+  if (value === true || value === "granted") return "granted";
+  if (value === false || value === "denied") return "denied";
+  if (value === "prompt" || value === "default") return "prompt";
+  return "unsupported";
+}
+
+export function shouldSendNativeNotification({
+  armed,
+  permission
+}: {
+  armed: boolean;
+  permission: NativeNotificationPermission;
+}): boolean {
+  return armed && permission === "granted";
+}
+
+export function buildNativeNotificationPayload(notification: JawsNotification): { title: string; body: string } {
+  return {
+    title: notification.title.trim() || "JAWS",
+    body: notification.detail.trim() || "Open JAWS for details."
+  };
 }

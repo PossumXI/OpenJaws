@@ -61,6 +61,15 @@ const operatorReleaseSurfaceFiles = [
   'scripts/personaplex-probe.test.ts',
 ] as const
 
+const OPTIONAL_Q_TRAINING_MODULES = new Set([
+  'accelerate',
+  'datasets',
+  'evaluate',
+  'peft',
+  'torch',
+  'transformers',
+])
+
 function tailText(text: string, maxLines = 40, maxChars = 4000): string {
   const trimmed = text.trim()
   if (!trimmed) {
@@ -168,6 +177,22 @@ function normalizeTaskkillResult(
 }
 
 function normalizeQLiveSmokeResult(check: CheckResult): CheckResult {
+  const missingTrainingModule = getMissingQTrainingModule(check)
+  if (check.status === 'failed' && missingTrainingModule !== null) {
+    return {
+      ...check,
+      status: 'warning',
+      summary:
+        `live Q smoke skipped because optional local training module "${missingTrainingModule}" is not installed for ${qPythonCommand}`,
+      details: {
+        ...(isObjectRecord(check.details) ? check.details : {}),
+        missingModule: missingTrainingModule,
+        remediation:
+          'Install the Q local training environment before running scored local Q smoke or BridgeBench checks.',
+      },
+    }
+  }
+
   if (
     check.status === 'failed' &&
     (check.stderrTail?.includes('paging file is too small') ||
@@ -182,6 +207,25 @@ function normalizeQLiveSmokeResult(check: CheckResult): CheckResult {
   }
 
   return check
+}
+
+function getMissingQTrainingModule(check: CheckResult): string | null {
+  const stderr = check.stderrTail ?? ''
+  const stdout = check.stdoutTail ?? ''
+  const combined = `${stderr}\n${stdout}`
+  const match = combined.match(
+    /ModuleNotFoundError:\s+No module named ['"]([^'"]+)['"]/,
+  )
+  if (!match?.[1]) {
+    return null
+  }
+
+  const moduleName = match[1].split('.')[0]?.trim().toLowerCase()
+  if (!moduleName || !OPTIONAL_Q_TRAINING_MODULES.has(moduleName)) {
+    return null
+  }
+
+  return moduleName
 }
 
 async function enrichQLiveSmokeResult(
@@ -684,7 +728,7 @@ async function main() {
     await runJsonCommandCheck('prepare-sft-sample', 'bun', [
       'scripts/prepare-openjaws-sft.ts',
       '--in',
-      'data\\sft\\openjaws-q-sample.jsonl',
+      'fixtures\\sft\\openjaws-q-sample.jsonl',
       '--out-dir',
       preparedDir,
       '--eval-ratio',

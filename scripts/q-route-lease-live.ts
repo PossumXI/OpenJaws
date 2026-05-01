@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'fs'
 import { execa } from 'execa'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { ensureQRouteSmokeBundleDir } from './q-route-smoke-fixture.js'
 import {
   claimQTrainingRouteQueueEntry,
   getQTrainingRouteQueueEntry,
@@ -22,12 +23,13 @@ function toMillis(timestamp: string | null | undefined): number | null {
 }
 
 async function main() {
+  const bundleDir = ensureQRouteSmokeBundleDir()
   const launch = await execa(
     'bun',
     [
       'scripts/launch-q-train.ts',
       '--bundle-dir',
-      'data\\sft\\audited-v2',
+      bundleDir,
       '--run-name',
       'lease-live',
       '--tag',

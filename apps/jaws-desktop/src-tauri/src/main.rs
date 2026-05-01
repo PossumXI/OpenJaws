@@ -138,6 +138,7 @@ struct AgentRuntimeSnapshot {
     worker_count: usize,
     runtime_count: usize,
     events: Vec<AgentRuntimeEvent>,
+    cognitive: CognitiveRuntimeSnapshot,
 }
 
 #[derive(Serialize)]
@@ -147,6 +148,53 @@ struct AgentRuntimeEvent {
     lane: String,
     detail: String,
     state: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CognitiveRuntimeSnapshot {
+    status: String,
+    summary: String,
+    goal_count: usize,
+    decision_count: usize,
+    allow_count: usize,
+    review_count: usize,
+    delay_count: usize,
+    deny_count: usize,
+    highest_risk_tier: u8,
+    average_quality: u8,
+    memory_layers: Vec<CognitiveMemoryLayer>,
+    trace: Vec<CognitiveTraceNode>,
+    scorecards: Vec<CognitiveScorecard>,
+    policy_hints: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CognitiveMemoryLayer {
+    layer: String,
+    count: usize,
+    status: String,
+    detail: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CognitiveTraceNode {
+    kind: String,
+    label: String,
+    state: String,
+    detail: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CognitiveScorecard {
+    goal_id: String,
+    status: String,
+    quality: u8,
+    risk_tier: u8,
+    detail: String,
 }
 
 #[derive(Serialize)]
@@ -707,11 +755,39 @@ fn json_nested_string(value: &serde_json::Value, key: &str, nested_key: &str) ->
         .to_string()
 }
 
+fn json_nested_value<'a>(
+    value: &'a serde_json::Value,
+    key: &str,
+    nested_key: &str,
+) -> Option<&'a serde_json::Value> {
+    value.get(key).and_then(|nested| nested.get(nested_key))
+}
+
 fn json_bool_field(value: &serde_json::Value, key: &str) -> bool {
     value
         .get(key)
         .and_then(|value| value.as_bool())
         .unwrap_or(false)
+}
+
+fn json_number_field(value: &serde_json::Value, key: &str) -> Option<f64> {
+    value.get(key).and_then(|value| value.as_f64())
+}
+
+fn json_string_array(value: Option<&serde_json::Value>, limit: usize) -> Vec<String> {
+    value
+        .and_then(|value| value.as_array())
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|entry| entry.as_str())
+                .map(str::trim)
+                .filter(|entry| !entry.is_empty())
+                .take(limit)
+                .map(str::to_string)
+                .collect::<Vec<String>>()
+        })
+        .unwrap_or_default()
 }
 
 fn json_string_array_summary(value: &serde_json::Value, key: &str, limit: usize) -> String {
@@ -948,6 +1024,338 @@ fn build_agent_runtime_events(
     events
 }
 
+fn queue_cognitive_admission(entry: &serde_json::Value) -> Option<&serde_json::Value> {
+    json_nested_value(entry, "claim", "cognitiveAdmission")
+        .filter(|admission| admission.as_object().is_some())
+}
+
+fn cognitive_quality_percent(admission: &serde_json::Value) -> u8 {
+    let quality = json_number_field(admission, "scorecardQuality").unwrap_or(0.0);
+    let normalized = if quality <= 1.0 { quality * 100.0 } else { quality };
+    normalized.round().clamp(0.0, 100.0) as u8
+}
+
+fn cognitive_risk_tier(admission: &serde_json::Value) -> u8 {
+    json_number_field(admission, "riskTier")
+        .unwrap_or(0.0)
+        .round()
+        .clamp(0.0, 5.0) as u8
+}
+
+fn cognitive_status_state(status: &str) -> String {
+    match status {
+        "allow" => "active",
+        "review" | "delay" => "waiting",
+        "deny" => "blocked",
+        _ => "waiting",
+    }
+    .to_string()
+}
+
+fn cognitive_status_label(admission: &serde_json::Value) -> String {
+    first_non_empty(vec![
+        json_field_string(admission, "status"),
+        "review".to_string(),
+    ])
+}
+
+fn cognitive_trace_detail(admission: &serde_json::Value) -> String {
+    let reasons = json_string_array(admission.get("reasons"), 3);
+    if !reasons.is_empty() {
+        return shorten(&reasons.join(" "), 180);
+    }
+
+    let missing = json_string_array(admission.get("missingApprovals"), 3);
+    if !missing.is_empty() {
+        return format!("Waiting for {} approval.", missing.join(", "));
+    }
+
+    "Admission recorded with no extra operator notes.".to_string()
+}
+
+fn build_cognitive_memory_layers(
+    queue: &[serde_json::Value],
+    workers: &[serde_json::Value],
+    runtime: &[serde_json::Value],
+    admissions_len: usize,
+) -> Vec<CognitiveMemoryLayer> {
+    let live_queue = queue
+        .iter()
+        .filter(|entry| {
+            matches!(
+                json_field_string(entry, "status").as_str(),
+                "queued" | "claimed" | "dispatched"
+            )
+        })
+        .count();
+    let episodic = queue
+        .iter()
+        .filter(|entry| {
+            matches!(
+                json_field_string(entry, "status").as_str(),
+                "completed" | "failed" | "rejected"
+            )
+        })
+        .count();
+    let procedural = queue
+        .iter()
+        .filter(|entry| {
+            !json_field_string(entry, "recommendedLayerId").is_empty()
+                || !json_field_string(entry, "phaseId").is_empty()
+                || queue_cognitive_admission(entry).is_some()
+        })
+        .count();
+
+    vec![
+        CognitiveMemoryLayer {
+            layer: "Working".to_string(),
+            count: live_queue + runtime.len(),
+            status: if live_queue + runtime.len() > 0 {
+                "active".to_string()
+            } else {
+                "waiting".to_string()
+            },
+            detail: "Live queued routes and running worker updates.".to_string(),
+        },
+        CognitiveMemoryLayer {
+            layer: "Episodic".to_string(),
+            count: episodic,
+            status: if episodic > 0 {
+                "active".to_string()
+            } else {
+                "waiting".to_string()
+            },
+            detail: "Finished, failed, and rejected route history.".to_string(),
+        },
+        CognitiveMemoryLayer {
+            layer: "Semantic".to_string(),
+            count: workers.len(),
+            status: if workers.is_empty() {
+                "waiting".to_string()
+            } else {
+                "active".to_string()
+            },
+            detail: "Registered worker capabilities and model lanes.".to_string(),
+        },
+        CognitiveMemoryLayer {
+            layer: "Procedural".to_string(),
+            count: procedural.max(admissions_len),
+            status: if procedural > 0 || admissions_len > 0 {
+                "active".to_string()
+            } else {
+                "waiting".to_string()
+            },
+            detail: "Layer choices, admission decisions, and route handoff patterns.".to_string(),
+        },
+    ]
+}
+
+fn build_cognitive_trace(admissions: &[&serde_json::Value]) -> Vec<CognitiveTraceNode> {
+    let mut trace = Vec::new();
+    for admission in admissions.iter().rev().take(4) {
+        let status = cognitive_status_label(admission);
+        let state = cognitive_status_state(&status);
+        let goal_id = first_non_empty(vec![
+            json_field_string(admission, "goalId"),
+            "q-route goal".to_string(),
+        ]);
+        let tool_name = first_non_empty(vec![
+            json_field_string(admission, "toolName"),
+            "q.route.dispatch".to_string(),
+        ]);
+        let risk_tier = cognitive_risk_tier(admission);
+        let ledger_record = json_field_string(admission, "ledgerRecordId");
+        let scorecard_status = json_field_string(admission, "scorecardStatus");
+        let quality = cognitive_quality_percent(admission);
+
+        trace.push(CognitiveTraceNode {
+            kind: "Goal".to_string(),
+            label: shorten(&goal_id, 48),
+            state: state.clone(),
+            detail: format!("Tool {tool_name}. Risk tier {risk_tier}."),
+        });
+        trace.push(CognitiveTraceNode {
+            kind: "Decision".to_string(),
+            label: status.clone(),
+            state: state.clone(),
+            detail: cognitive_trace_detail(admission),
+        });
+        trace.push(CognitiveTraceNode {
+            kind: "Scorecard".to_string(),
+            label: if scorecard_status.is_empty() {
+                "scorecard".to_string()
+            } else {
+                scorecard_status
+            },
+            state: state.clone(),
+            detail: format!("Quality {quality}%."),
+        });
+        if !ledger_record.is_empty() {
+            trace.push(CognitiveTraceNode {
+                kind: "Ledger".to_string(),
+                label: shorten(&ledger_record, 42),
+                state,
+                detail: "Admission proof is linked to the route claim.".to_string(),
+            });
+        }
+    }
+
+    if trace.is_empty() {
+        trace.push(CognitiveTraceNode {
+            kind: "Waiting".to_string(),
+            label: "No admission yet".to_string(),
+            state: "waiting".to_string(),
+            detail: "A cognitive trace appears after a Q worker claims a route.".to_string(),
+        });
+    }
+
+    trace.truncate(12);
+    trace
+}
+
+fn build_cognitive_scorecards(admissions: &[&serde_json::Value]) -> Vec<CognitiveScorecard> {
+    admissions
+        .iter()
+        .rev()
+        .take(5)
+        .map(|admission| {
+            let status = first_non_empty(vec![
+                json_field_string(admission, "scorecardStatus"),
+                cognitive_status_label(admission),
+            ]);
+            CognitiveScorecard {
+                goal_id: shorten(
+                    &first_non_empty(vec![
+                        json_field_string(admission, "goalId"),
+                        "q-route goal".to_string(),
+                    ]),
+                    54,
+                ),
+                status,
+                quality: cognitive_quality_percent(admission),
+                risk_tier: cognitive_risk_tier(admission),
+                detail: cognitive_trace_detail(admission),
+            }
+        })
+        .collect()
+}
+
+fn push_unique_hint(hints: &mut Vec<String>, hint: String) {
+    if hint.trim().is_empty() || hints.iter().any(|existing| existing == &hint) {
+        return;
+    }
+    hints.push(hint);
+}
+
+fn build_cognitive_policy_hints(admissions: &[&serde_json::Value]) -> Vec<String> {
+    let mut hints = Vec::new();
+    for admission in admissions.iter().rev() {
+        for approval in json_string_array(admission.get("missingApprovals"), 3) {
+            push_unique_hint(
+                &mut hints,
+                format!("Waiting for {approval} before this route can run."),
+            );
+        }
+        for reason in json_string_array(admission.get("reasons"), 2) {
+            push_unique_hint(&mut hints, reason);
+        }
+        if hints.len() >= 4 {
+            break;
+        }
+    }
+
+    if hints.is_empty() {
+        if admissions.is_empty() {
+            hints.push("Q route admissions will appear after a worker claims a route.".to_string());
+        } else {
+            hints.push("Planner, executor, critic, governor, and ledger roles are separated for route dispatch.".to_string());
+        }
+    }
+
+    hints.truncate(4);
+    hints
+}
+
+fn build_cognitive_runtime_snapshot(
+    queue: &[serde_json::Value],
+    workers: &[serde_json::Value],
+    runtime: &[serde_json::Value],
+    source_exists: bool,
+) -> CognitiveRuntimeSnapshot {
+    let admissions = queue
+        .iter()
+        .filter_map(queue_cognitive_admission)
+        .collect::<Vec<&serde_json::Value>>();
+    let mut allow_count = 0usize;
+    let mut review_count = 0usize;
+    let mut delay_count = 0usize;
+    let mut deny_count = 0usize;
+    let mut total_quality = 0usize;
+    let mut highest_risk_tier = 0u8;
+
+    for admission in &admissions {
+        match cognitive_status_label(admission).as_str() {
+            "allow" => allow_count += 1,
+            "delay" => delay_count += 1,
+            "deny" => deny_count += 1,
+            _ => review_count += 1,
+        }
+        let risk_tier = cognitive_risk_tier(admission);
+        highest_risk_tier = highest_risk_tier.max(risk_tier);
+        total_quality += cognitive_quality_percent(admission) as usize;
+    }
+
+    let average_quality = if admissions.is_empty() {
+        0
+    } else {
+        (total_quality / admissions.len()).min(100) as u8
+    };
+    let status = if deny_count > 0 {
+        "blocked"
+    } else if review_count + delay_count > 0 {
+        "review"
+    } else if allow_count > 0 {
+        "ready"
+    } else {
+        "waiting"
+    }
+    .to_string();
+    let summary = if admissions.is_empty() {
+        if source_exists {
+            "Agent files are live. No governed route admission has been recorded yet.".to_string()
+        } else {
+            "No agent route files were found for this workspace yet.".to_string()
+        }
+    } else {
+        format!(
+            "{} governed decisions: {} allowed, {} need review, {} delayed, {} denied. Average score {}%.",
+            admissions.len(),
+            allow_count,
+            review_count,
+            delay_count,
+            deny_count,
+            average_quality
+        )
+    };
+
+    CognitiveRuntimeSnapshot {
+        status,
+        summary,
+        goal_count: admissions.len(),
+        decision_count: admissions.len(),
+        allow_count,
+        review_count,
+        delay_count,
+        deny_count,
+        highest_risk_tier,
+        average_quality,
+        memory_layers: build_cognitive_memory_layers(queue, workers, runtime, admissions.len()),
+        trace: build_cognitive_trace(&admissions),
+        scorecards: build_cognitive_scorecards(&admissions),
+        policy_hints: build_cognitive_policy_hints(&admissions),
+    }
+}
+
 #[tauri::command]
 fn agent_runtime_snapshot(workspace_path: Option<String>) -> AgentRuntimeSnapshot {
     let (q_runs_dir, source_exists) = select_q_runs_dir(workspace_path);
@@ -955,6 +1363,7 @@ fn agent_runtime_snapshot(workspace_path: Option<String>) -> AgentRuntimeSnapsho
     let workers = read_json_array(&q_runs_dir.join("route-workers.json"));
     let runtime = read_json_array(&q_runs_dir.join("route-worker-runtime.json"));
     let events = build_agent_runtime_events(&queue, &workers, &runtime, source_exists);
+    let cognitive = build_cognitive_runtime_snapshot(&queue, &workers, &runtime, source_exists);
     let summary = if source_exists {
         format!(
             "Loaded {} waiting tasks, {} workers, and {} running updates.",
@@ -974,6 +1383,7 @@ fn agent_runtime_snapshot(workspace_path: Option<String>) -> AgentRuntimeSnapsho
         worker_count: workers.len(),
         runtime_count: runtime.len(),
         events,
+        cognitive,
     }
 }
 
@@ -2840,6 +3250,84 @@ async fn run_openjaws_chat(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn cognitive_runtime_snapshot_reports_real_admission_state() {
+        let queue = vec![
+            json!({
+                "runId": "route-123456789",
+                "status": "claimed",
+                "phaseId": "phase-alpha",
+                "claim": {
+                    "workerId": "worker-1",
+                    "cognitiveAdmission": {
+                        "status": "review",
+                        "goalId": "q-route:route-123456789",
+                        "toolName": "q.route.dispatch",
+                        "riskTier": 3,
+                        "reasons": ["policy governor approval is missing"],
+                        "requiredApprovals": ["policy_governor", "ledger_recorder"],
+                        "missingApprovals": ["ledger_recorder"],
+                        "delayMs": 0,
+                        "scorecardStatus": "review",
+                        "scorecardQuality": 0.812,
+                        "ledgerRecordId": "ledger-record-route-123456789"
+                    }
+                }
+            }),
+            json!({
+                "runId": "route-done",
+                "status": "completed",
+                "updatedAt": "2026-05-01T12:00:00Z"
+            }),
+        ];
+        let workers = vec![json!({
+            "workerId": "worker-1",
+            "executionProfile": "local",
+            "supportedBaseModels": ["q-base"]
+        })];
+        let runtime = vec![json!({
+            "workerId": "worker-1",
+            "status": "ready"
+        })];
+
+        let snapshot = build_cognitive_runtime_snapshot(&queue, &workers, &runtime, true);
+
+        assert_eq!(snapshot.status, "review");
+        assert_eq!(snapshot.goal_count, 1);
+        assert_eq!(snapshot.review_count, 1);
+        assert_eq!(snapshot.highest_risk_tier, 3);
+        assert_eq!(snapshot.average_quality, 81);
+        assert!(snapshot
+            .memory_layers
+            .iter()
+            .any(|layer| layer.layer == "Working" && layer.count == 2));
+        assert!(snapshot
+            .trace
+            .iter()
+            .any(|node| node.kind == "Ledger" && node.label.contains("ledger-record")));
+        assert!(snapshot
+            .policy_hints
+            .iter()
+            .any(|hint| hint.contains("ledger_recorder")));
+    }
+
+    #[test]
+    fn cognitive_runtime_snapshot_uses_waiting_state_without_mocked_admission() {
+        let snapshot = build_cognitive_runtime_snapshot(&[], &[], &[], false);
+
+        assert_eq!(snapshot.status, "waiting");
+        assert_eq!(snapshot.goal_count, 0);
+        assert_eq!(snapshot.average_quality, 0);
+        assert_eq!(snapshot.trace[0].kind, "Waiting");
+        assert!(snapshot.summary.contains("No agent route files"));
+    }
+}
+
 fn main() {
     let updater_builder = tauri_plugin_updater::Builder::new();
     let updater_builder = match option_env!("JAWS_TAURI_UPDATER_PUBLIC_KEY") {
@@ -2851,6 +3339,7 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(updater_builder.build())

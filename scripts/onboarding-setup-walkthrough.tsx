@@ -19,6 +19,8 @@ import {
   WALKTHROUGH_TIMEOUT_MS,
 } from './interactiveWalkthroughHarness.js'
 
+const LIVE_PROBE_TIMEOUT_MS = Math.max(WALKTHROUGH_TIMEOUT_MS, 60_000)
+
 async function startHarnessServer(): Promise<{
   url: string
   close: () => Promise<void>
@@ -243,7 +245,7 @@ async function main(): Promise<void> {
     const themeFrame = await waitForFrame(
       readFrame,
       frame =>
-        frame.includes('Choose the text style that looks best with your terminal'),
+        frame.includes('Choose the text style that looks best in your terminal'),
       WALKTHROUGH_TIMEOUT_MS,
       'Onboarding walkthrough did not render the theme step',
     )
@@ -303,7 +305,7 @@ async function main(): Promise<void> {
         frame.includes('reachability') &&
         frame.includes('reachable') &&
         (frame.includes('/responses') || frame.includes('/models')),
-      WALKTHROUGH_TIMEOUT_MS,
+      LIVE_PROBE_TIMEOUT_MS,
       'Onboarding walkthrough did not confirm provider reachability',
     )
     recordStep('provider-reachability', providerProbeFrame)
@@ -315,7 +317,7 @@ async function main(): Promise<void> {
         frame =>
           frame.includes('Immaculate reachability') &&
           frame.includes('immaculate online'),
-        WALKTHROUGH_TIMEOUT_MS,
+        LIVE_PROBE_TIMEOUT_MS,
         'Onboarding walkthrough did not confirm Immaculate reachability',
       )
     recordStep('immaculate', immaculateFrame)
