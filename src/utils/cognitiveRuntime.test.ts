@@ -92,6 +92,36 @@ describe('cognitive runtime policy foundation', () => {
     expect(decision.ledgerRecord.proofSummary).toContain('policy checks passed')
   })
 
+  test('denies malformed goals before bounded execution can start', () => {
+    const decision = evaluateCognitiveRuntimeAction({
+      goal: baseGoal({
+        objective: '',
+        successCriteria: [],
+        allowedTools: ['workspace.apply_patch'],
+      }),
+      actor: { id: 'executor-1', role: 'executor' },
+      actionKind: 'execute',
+      tool: baseTool(),
+      confidence: 0.9,
+      recentFailureCount: 0,
+      approvals: [
+        {
+          kind: 'policy_governor',
+          actorId: 'governor-1',
+          approvedAt: now,
+        },
+      ],
+      now,
+    })
+
+    expect(decision.status).toBe('deny')
+    expect(decision.reasons).toContain('goal objective is required')
+    expect(decision.reasons).toContain('goal success criteria are required')
+    expect(decision.ledgerRecord.proofSummary).toContain(
+      'goal objective is required',
+    )
+  })
+
   test('blocks high-risk execution when the same actor owns planning and execution', () => {
     const decision = evaluateCognitiveRuntimeAction({
       goal: baseGoal({
