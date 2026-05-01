@@ -61,6 +61,7 @@
     "q:receipt:sign": "bun scripts/sign-benchmark-receipt.ts",
     "roundtable:runtime": "bun scripts/roundtable-runtime.ts --json",
     "runtime:coherence": "bun scripts/runtime-coherence.ts --json",
+    "personaplex:bootstrap": "bun scripts/personaplex-launcher-bootstrap.ts --json",
     "personaplex:probe": "bun scripts/personaplex-probe.ts --json",
     "orchestration:guardrails": "bun scripts/agentic-orchestration-guardrails.ts --json",
     "service:routes": "bun scripts/service-route-health.ts --json",

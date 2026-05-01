@@ -35,10 +35,13 @@ export type PersonaPlexRepairHint = {
   summary: string
   command: string
   args: string[]
+  bootstrapCommand: string
+  bootstrapArgs: string[]
   stationRoot: string
   launcherPath: string
   missing: string[]
   warnings: string[]
+  nextActions: string[]
 }
 
 export type PersonaPlexProbeResult = {
@@ -434,6 +437,10 @@ function withRuntimeStateDiagnostic(
   return diagnostic ? `${message} (${diagnostic})` : message
 }
 
+function renderArgvForHint(command: string, args: string[]): string {
+  return JSON.stringify([command, ...args])
+}
+
 function readSmallScriptForInspection(path: string): string | null {
   if (!existsSync(path)) {
     return null
@@ -501,6 +508,15 @@ export function buildPersonaPlexRepairHint(args: {
     stationRoot,
     launcherPath,
   })
+  const bootstrapArgs = [
+    'scripts/personaplex-launcher-bootstrap.ts',
+    '--json',
+    '--station-root',
+    stationRoot,
+  ]
+  if (args.launcherPath) {
+    bootstrapArgs.push('--launcher-path', launcherPath)
+  }
   const failedWithoutHealthyRuntime = hasFailedWithoutHealthyRuntime(args.state)
   const status = args.ready
     ? 'ready'
@@ -511,17 +527,33 @@ export function buildPersonaPlexRepairHint(args: {
     ? 'PersonaPlex bridge is ready; no repair action is required.'
     : failedWithoutHealthyRuntime
       ? 'PersonaPlex runtime failed after launch; restart it with the local voice launcher and inspect personaplex-runtime logs if it fails again.'
-      : 'PersonaPlex runtime is not answering the voice WebSocket; start it with the local voice launcher on the operator machine.'
+      : missing.length > 0
+        ? 'PersonaPlex runtime is not answering because the local voice launcher has not been generated yet.'
+        : 'PersonaPlex runtime is not answering the voice WebSocket; start it with the local voice launcher on the operator machine.'
+  const nextActions = args.ready
+    ? []
+    : [
+        ...(missing.length > 0
+          ? [
+              `Generate the local voice launcher argv: ${renderArgvForHint('bun', bootstrapArgs)}`,
+            ]
+          : []),
+        `Start the local voice launcher argv: ${renderArgvForHint('pwsh', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', launcherPath])}`,
+        'Run bun run personaplex:probe after the local runtime starts.',
+      ]
 
   return {
     status,
     summary,
     command: 'pwsh',
     args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', launcherPath],
+    bootstrapCommand: 'bun',
+    bootstrapArgs,
     stationRoot,
     launcherPath,
     missing,
     warnings,
+    nextActions,
   }
 }
 

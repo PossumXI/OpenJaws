@@ -73,10 +73,13 @@ describe('runtime-coherence PersonaPlex mapping', () => {
           summary: 'PersonaPlex bridge is ready; no repair action is required.',
           command: 'pwsh',
           args: ['-NoProfile'],
+          bootstrapCommand: 'bun',
+          bootstrapArgs: [],
           stationRoot: 'station',
           launcherPath: 'launcher',
           missing: [],
           warnings: [],
+          nextActions: [],
         },
       }),
     ).toEqual({
@@ -110,10 +113,13 @@ describe('runtime-coherence PersonaPlex mapping', () => {
           'PersonaPlex runtime is not answering the voice WebSocket; start it with the local voice launcher on the operator machine.',
         command: 'pwsh',
         args: ['-NoProfile'],
+        bootstrapCommand: 'bun',
+        bootstrapArgs: ['scripts/personaplex-launcher-bootstrap.ts', '--json'],
         stationRoot: 'station',
         launcherPath: 'launcher',
         missing: [],
         warnings: ['inline secret assignment detected in start-personaplex-wsl.sh'],
+        nextActions: ['Start the local voice launcher.'],
       },
     })
 
@@ -122,5 +128,6 @@ describe('runtime-coherence PersonaPlex mapping', () => {
     expect(probe.detail).toContain('PersonaPlex WebSocket error')
     expect(probe.detail).toContain('start it with the local voice launcher')
     expect(probe.detail).toContain('inline secret assignment detected')
+    expect(probe.detail).toContain('next action')
   })
 })

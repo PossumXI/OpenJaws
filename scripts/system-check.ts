@@ -58,6 +58,8 @@ const operatorReleaseSurfaceFiles = [
   'scripts/discord-agent-supervisor.test.ts',
   'scripts/hosted-q-provisioning-preflight.ts',
   'scripts/hosted-q-provisioning-preflight.test.ts',
+  'scripts/personaplex-launcher-bootstrap.ts',
+  'scripts/personaplex-launcher-bootstrap.test.ts',
   'scripts/personaplex-probe.ts',
   'scripts/personaplex-probe.test.ts',
 ] as const
