@@ -800,8 +800,8 @@ export function evaluateCognitiveRuntimeAction(
   policy: CognitiveRuntimePolicy = DEFAULT_COGNITIVE_RUNTIME_POLICY,
 ): CognitiveRuntimeDecision {
   const now = request.now ?? new Date().toISOString()
-  const reasons = validateCognitiveGoal(request.goal)
-  const hardBlocks: string[] = []
+  const goalValidationIssues = validateCognitiveGoal(request.goal)
+  const hardBlocks: string[] = [...goalValidationIssues]
   const reviewReasons: string[] = []
 
   if (request.goal.status !== 'active') {
@@ -898,7 +898,6 @@ export function evaluateCognitiveRuntimeAction(
   }
 
   const allReasons = [
-    ...reasons,
     ...hardBlocks,
     ...reviewReasons,
     ...pacing.reasons,
