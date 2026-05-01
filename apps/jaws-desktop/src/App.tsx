@@ -78,6 +78,16 @@ import {
   type ChatWindowState
 } from "./chatSessions";
 import {
+  clearJawsNotifications,
+  countUnreadJawsNotifications,
+  createJawsNotification,
+  dismissJawsNotification,
+  markAllJawsNotificationsRead,
+  normalizeStoredNotifications,
+  pushJawsNotification,
+  type JawsNotification
+} from "./notifications";
+import {
   buildInferenceStatusFromError,
   buildInferenceStatusFromNative,
   buildInferenceTuningPrompt,
@@ -164,14 +174,6 @@ interface AccountSession {
   savedAt: string;
   source: string;
   displayName: string;
-}
-
-interface JawsNotification {
-  id: string;
-  title: string;
-  detail: string;
-  tone: "complete" | "input" | "update";
-  time: string;
 }
 
 interface ChangePreview {
@@ -442,16 +444,6 @@ const jawFrames = [
      \/`
 ];
 
-const initialNotifications: JawsNotification[] = [
-  {
-    id: "update-coming",
-    title: "Update incoming",
-    detail: "A JAWS update is being prepared for later. Keep notifications armed for the release prompt.",
-    tone: "update",
-    time: "now"
-  }
-];
-
 const changePreview: ChangePreview[] = [
   {
     file: "src/orchestrator/dispatch.ts",
@@ -607,6 +599,10 @@ function loadClosedChatWindows(): ChatWindowState[] {
   return normalizeStoredChatWindows(loadStoredValue<unknown>("jaws.closedChatWindows", null), true);
 }
 
+function loadNotifications(): JawsNotification[] {
+  return normalizeStoredNotifications(loadStoredValue<unknown>("jaws.notifications", null));
+}
+
 function loadSlowGuyState(): SlowGuyState {
   const bestScore = Number(localStorage.getItem("jaws.slowGuyBest") ?? "0") || 0;
   const fallback = createSlowGuyState(bestScore);
@@ -734,7 +730,7 @@ export function App() {
   );
   const [chatBusy, setChatBusy] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [notifications, setNotifications] = useState<JawsNotification[]>(initialNotifications);
+  const [notifications, setNotifications] = useState<JawsNotification[]>(() => loadNotifications());
   const [firework, setFirework] = useState<JawsNotification | null>(null);
   const [compareMode, setCompareMode] = useState(() => localStorage.getItem("jaws.compareMode") === "true");
   const [fastRunMode, setFastRunMode] = useState(
@@ -952,10 +948,16 @@ export function App() {
   const contextBudgetPercent = projectContext.contextBudgetTokens
     ? Math.min(100, Math.round((projectContext.estimatedTokens / projectContext.contextBudgetTokens) * 100))
     : 0;
+  const unreadNotificationCount = useMemo(() => countUnreadJawsNotifications(notifications), [notifications]);
+  const visibleNotificationCount = unreadNotificationCount || notifications.length;
 
   useEffect(() => {
     localStorage.setItem("jaws.previewUrl", previewUrl);
   }, [previewUrl]);
+
+  useEffect(() => {
+    localStorage.setItem("jaws.notifications", JSON.stringify(notifications));
+  }, [notifications]);
 
   useEffect(() => {
     localStorage.setItem("jaws.previewDevCommand", previewDevCommand);
@@ -1471,18 +1473,22 @@ export function App() {
     }
   }
 
-  function triggerJawsNotification(notification: Omit<JawsNotification, "id" | "time">) {
-    const entry: JawsNotification = {
-      ...notification,
-      id: `notice-${Date.now()}`,
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    };
-    setNotifications((items) => [entry, ...items].slice(0, 8));
+  function triggerJawsNotification(notification: Omit<JawsNotification, "id" | "time" | "createdAt" | "readAt">) {
+    const entry = createJawsNotification(notification);
+    setNotifications((items) => pushJawsNotification(items, entry));
     if (notificationsArmed) {
       setFirework(entry);
       playNotificationSound(entry.tone);
       window.setTimeout(() => setFirework((current) => (current?.id === entry.id ? null : current)), 1800);
     }
+  }
+
+  function toggleNotificationsTray() {
+    setNotificationsOpen((open) => !open);
+  }
+
+  function markNotificationsRead() {
+    setNotifications((items) => markAllJawsNotificationsRead(items));
   }
 
   function updateChatWindow(windowId: string, update: (windowState: ChatWindowState) => ChatWindowState) {
@@ -1558,12 +1564,12 @@ export function App() {
   }
 
   function clearNotifications() {
-    setNotifications([]);
+    setNotifications(clearJawsNotifications());
     setFirework(null);
   }
 
   function dismissNotification(id: string) {
-    setNotifications((items) => items.filter((item) => item.id !== id));
+    setNotifications((items) => dismissJawsNotification(items, id));
   }
 
   function updateInferenceProfile(patch: Partial<InferenceProfile>) {
@@ -1925,21 +1931,23 @@ export function App() {
               <button
                 className={notificationsOpen ? "text-button notification-button active" : notificationsArmed ? "text-button notification-button armed" : "text-button notification-button"}
                 type="button"
-                onClick={() => setNotificationsOpen((value) => !value)}
+                onClick={toggleNotificationsTray}
                 aria-expanded={notificationsOpen}
                 aria-label="Open notifications"
               >
                 <BellRing size={16} />
-                {notifications.length}
+                {visibleNotificationCount}
               </button>
               {notificationsOpen && (
                 <NotificationList
                   notifications={notifications}
                   armed={notificationsArmed}
+                  unreadCount={unreadNotificationCount}
                   compact
                   onToggleArmed={() => setNotificationsArmed((value) => !value)}
                   onClear={clearNotifications}
                   onDismiss={dismissNotification}
+                  onMarkRead={markNotificationsRead}
                   onTest={() =>
                     triggerJawsNotification({
                       title: "Fireworks test",
@@ -3248,9 +3256,11 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                   <NotificationList
                     notifications={notifications}
                     armed={notificationsArmed}
+                    unreadCount={unreadNotificationCount}
                     onToggleArmed={() => setNotificationsArmed((value) => !value)}
                     onClear={clearNotifications}
                     onDismiss={dismissNotification}
+                    onMarkRead={markNotificationsRead}
                     onTest={() =>
                       triggerJawsNotification({
                         title: "Fireworks test",
@@ -3400,18 +3410,22 @@ function FireworkNotice({ notification }: { notification: JawsNotification }) {
 function NotificationList({
   notifications,
   armed,
+  unreadCount,
   compact = false,
   onToggleArmed,
   onClear,
   onDismiss,
+  onMarkRead,
   onTest
 }: {
   notifications: JawsNotification[];
   armed: boolean;
+  unreadCount: number;
   compact?: boolean;
   onToggleArmed?: () => void;
   onClear?: () => void;
   onDismiss?: (id: string) => void;
+  onMarkRead?: () => void;
   onTest: () => void;
 }) {
   return (
@@ -3434,16 +3448,22 @@ function NotificationList({
               Clear
             </button>
           )}
+          {onMarkRead && (
+            <button className="text-button" type="button" onClick={onMarkRead} disabled={unreadCount === 0}>
+              Mark Read
+            </button>
+          )}
         </div>
       </div>
       <StatusLine label="Sound and fireworks" value={armed ? "Armed" : "Muted"} />
+      <StatusLine label="History" value={`${notifications.length} saved · ${unreadCount} unread`} />
       <div className="notification-list">
         {notifications.length > 0 ? (
           notifications.map((notification) => (
-            <article className={`notification-card ${notification.tone}`} key={notification.id}>
+            <article className={`notification-card ${notification.tone} ${notification.readAt ? "read" : "unread"}`} key={notification.id}>
               <header>
                 <strong>{notification.title}</strong>
-                <span>{notification.time}</span>
+                <span>{notification.readAt ? notification.time : `Unread · ${notification.time}`}</span>
                 {onDismiss && (
                   <button className="icon-button mini" type="button" onClick={() => onDismiss(notification.id)} aria-label={`Dismiss ${notification.title}`}>
                     <XCircle size={14} />
