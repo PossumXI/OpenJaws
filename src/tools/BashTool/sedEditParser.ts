@@ -6,19 +6,7 @@
 import { randomBytes } from 'crypto'
 import { tryParseShellCommand } from '../../utils/bash/shellQuote.js'
 
-// BRE→ERE conversion placeholders (null-byte sentinels, never appear in user input)
-const BACKSLASH_PLACEHOLDER = '\x00BACKSLASH\x00'
-const PLUS_PLACEHOLDER = '\x00PLUS\x00'
-const QUESTION_PLACEHOLDER = '\x00QUESTION\x00'
-const PIPE_PLACEHOLDER = '\x00PIPE\x00'
-const LPAREN_PLACEHOLDER = '\x00LPAREN\x00'
-const RPAREN_PLACEHOLDER = '\x00RPAREN\x00'
-const BACKSLASH_PLACEHOLDER_RE = new RegExp(BACKSLASH_PLACEHOLDER, 'g')
-const PLUS_PLACEHOLDER_RE = new RegExp(PLUS_PLACEHOLDER, 'g')
-const QUESTION_PLACEHOLDER_RE = new RegExp(QUESTION_PLACEHOLDER, 'g')
-const PIPE_PLACEHOLDER_RE = new RegExp(PIPE_PLACEHOLDER, 'g')
-const LPAREN_PLACEHOLDER_RE = new RegExp(LPAREN_PLACEHOLDER, 'g')
-const RPAREN_PLACEHOLDER_RE = new RegExp(RPAREN_PLACEHOLDER, 'g')
+const BRE_ESCAPED_META_CHARS = new Set(['+', '?', '|', '(', ')'])
 
 export type SedEditInfo = {
   /** The file path being edited */
@@ -237,6 +225,32 @@ export function parseSedEditCommand(command: string): SedEditInfo | null {
   }
 }
 
+function convertBasicRegexToJsRegex(pattern: string): string {
+  let converted = ''
+
+  for (let i = 0; i < pattern.length; i++) {
+    const char = pattern[i]!
+
+    if (char === '\\' && i + 1 < pattern.length) {
+      const next = pattern[++i]!
+
+      if (next === '\\') {
+        converted += '\\\\'
+      } else if (BRE_ESCAPED_META_CHARS.has(next)) {
+        converted += next
+      } else {
+        converted += `\\${next}`
+      }
+
+      continue
+    }
+
+    converted += BRE_ESCAPED_META_CHARS.has(char) ? `\\${char}` : char
+  }
+
+  return converted
+}
+
 /**
  * Apply a sed substitution to file content
  * Returns the new content after applying the substitution
@@ -273,28 +287,7 @@ export function applySedSubstitution(
   // ERE/JS: + means "one or more", \+ is literal
   // We need to convert BRE escaping to ERE for JavaScript regex
   if (!sedInfo.extendedRegex) {
-    jsPattern = jsPattern
-      // Step 1: Protect literal backslashes (\\) first - in both BRE and ERE, \\ is literal backslash
-      .replace(/\\\\/g, BACKSLASH_PLACEHOLDER)
-      // Step 2: Replace escaped metacharacters with placeholders (these should become unescaped in JS)
-      .replace(/\\\+/g, PLUS_PLACEHOLDER)
-      .replace(/\\\?/g, QUESTION_PLACEHOLDER)
-      .replace(/\\\|/g, PIPE_PLACEHOLDER)
-      .replace(/\\\(/g, LPAREN_PLACEHOLDER)
-      .replace(/\\\)/g, RPAREN_PLACEHOLDER)
-      // Step 3: Escape unescaped metacharacters (these are literal in BRE)
-      .replace(/\+/g, '\\+')
-      .replace(/\?/g, '\\?')
-      .replace(/\|/g, '\\|')
-      .replace(/\(/g, '\\(')
-      .replace(/\)/g, '\\)')
-      // Step 4: Replace placeholders with their JS equivalents
-      .replace(BACKSLASH_PLACEHOLDER_RE, '\\\\')
-      .replace(PLUS_PLACEHOLDER_RE, '+')
-      .replace(QUESTION_PLACEHOLDER_RE, '?')
-      .replace(PIPE_PLACEHOLDER_RE, '|')
-      .replace(LPAREN_PLACEHOLDER_RE, '(')
-      .replace(RPAREN_PLACEHOLDER_RE, ')')
+    jsPattern = convertBasicRegexToJsRegex(jsPattern)
   }
 
   // Unescape sed-specific escapes in replacement
