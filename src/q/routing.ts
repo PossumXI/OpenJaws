@@ -60,9 +60,11 @@ import {
 } from '../immaculate/policies.js'
 import {
   DEFAULT_COGNITIVE_RUNTIME_POLICY,
+  deriveMemoryUpdatesFromAssessment,
   evaluateCognitiveRuntimeAction,
   type CognitiveApproval,
   type CognitiveAuthorityScope,
+  type CognitiveGoal,
   type CognitiveToolDefinition,
   type CognitiveToolRiskTier,
 } from '../utils/cognitiveRuntime.js'
@@ -228,57 +230,58 @@ export function evaluateQRouteCognitiveAdmission(args: {
     args.queueEntry.status === 'claimed',
   ].filter(Boolean).length
   const confidence = confidenceParts / 4
+  const goal: CognitiveGoal = {
+    id: `q-route:${args.manifest.runId}`,
+    objective: `Dispatch Q route ${args.manifest.runId} for ${args.manifest.training.baseModel}.`,
+    owner: args.workerId,
+    constraints: [
+      'run only signed and integrity-verified route manifests',
+      'release or reject the route claim on admission failure',
+      'preserve route receipts for the operator ledger',
+    ],
+    authorityScope,
+    successCriteria: [
+      'route manifest is verified',
+      'worker claim remains health-gated',
+      'dispatch result is recorded in the route queue',
+    ],
+    allowedTools: [tool.name],
+    rollbackPlan:
+      'Reject or release the route queue claim before worker dispatch, then preserve the manifest and logs for operator review.',
+    auditRequirements: [
+      'route manifest verification',
+      'route integrity verification',
+      'queue claim record',
+      'cognitive admission record',
+    ],
+    status: 'active',
+    createdAt: now,
+    roleAssignments: {
+      planner: {
+        id: 'q-route-planner',
+        role: 'planner',
+      },
+      executor: {
+        id: args.workerId,
+        role: 'executor',
+      },
+      critic: {
+        id: 'q-route-verifier',
+        role: 'critic',
+      },
+      governor: {
+        id: 'q-route-governor',
+        role: 'policy_governor',
+      },
+      recorder: {
+        id: 'q-route-ledger',
+        role: 'ledger_recorder',
+      },
+    },
+  }
   const decision = evaluateCognitiveRuntimeAction(
     {
-      goal: {
-        id: `q-route:${args.manifest.runId}`,
-        objective: `Dispatch Q route ${args.manifest.runId} for ${args.manifest.training.baseModel}.`,
-        owner: args.workerId,
-        constraints: [
-          'run only signed and integrity-verified route manifests',
-          'release or reject the route claim on admission failure',
-          'preserve route receipts for the operator ledger',
-        ],
-        authorityScope,
-        successCriteria: [
-          'route manifest is verified',
-          'worker claim remains health-gated',
-          'dispatch result is recorded in the route queue',
-        ],
-        allowedTools: [tool.name],
-        rollbackPlan:
-          'Reject or release the route queue claim before worker dispatch, then preserve the manifest and logs for operator review.',
-        auditRequirements: [
-          'route manifest verification',
-          'route integrity verification',
-          'queue claim record',
-          'cognitive admission record',
-        ],
-        status: 'active',
-        createdAt: now,
-        roleAssignments: {
-          planner: {
-            id: 'q-route-planner',
-            role: 'planner',
-          },
-          executor: {
-            id: args.workerId,
-            role: 'executor',
-          },
-          critic: {
-            id: 'q-route-verifier',
-            role: 'critic',
-          },
-          governor: {
-            id: 'q-route-governor',
-            role: 'policy_governor',
-          },
-          recorder: {
-            id: 'q-route-ledger',
-            role: 'ledger_recorder',
-          },
-        },
-      },
+      goal,
       actor: {
         id: args.workerId,
         role: 'executor',
@@ -298,6 +301,16 @@ export function evaluateQRouteCognitiveAdmission(args: {
     },
     DEFAULT_COGNITIVE_RUNTIME_POLICY,
   )
+  const memoryUpdates = deriveMemoryUpdatesFromAssessment({
+    goal,
+    scorecard: decision.scorecardSeed,
+    trace: decision.trace,
+    now,
+    stableFacts: [
+      `Q route ${args.manifest.runId} targets ${args.manifest.training.baseModel}.`,
+      `Dispatch transport ${args.dispatchTransport} was evaluated at risk tier ${riskTier}.`,
+    ],
+  })
 
   return {
     status: decision.status,
@@ -308,8 +321,14 @@ export function evaluateQRouteCognitiveAdmission(args: {
     requiredApprovals: decision.requiredApprovals,
     missingApprovals: decision.missingApprovals,
     delayMs: decision.delayMs,
+    nextStep: decision.nextStep,
+    pacingStatus: decision.pacing.status,
+    pacingReasons: decision.pacing.reasons,
     scorecardStatus: decision.scorecardSeed.status,
     scorecardQuality: decision.scorecardSeed.qualityScore,
+    scorecardMetrics: decision.scorecardSeed.metrics,
+    trace: decision.trace,
+    memoryUpdates,
     ledgerRecordId: decision.ledgerRecord.id,
   }
 }

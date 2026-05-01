@@ -277,7 +277,13 @@ describe('q routing helpers', () => {
       toolName: 'q.route.dispatch',
       riskTier: 2,
       missingApprovals: [],
+      pacingStatus: 'clear',
     })
+    expect(admission.trace.nodes.map(node => node.kind)).toContain('goal')
+    expect(admission.memoryUpdates.map(update => update.layer)).toContain(
+      'working',
+    )
+    expect(admission.scorecardMetrics.policyCompliance).toBeGreaterThan(0.9)
   })
 
   test('blocks remote Q route dispatch when ledger approval is absent', () => {
@@ -303,5 +309,9 @@ describe('q routing helpers', () => {
     expect(admission.status).toBe('review')
     expect(admission.riskTier).toBe(3)
     expect(admission.missingApprovals).toEqual(['ledger_recorder'])
+    expect(admission.nextStep).toContain('collect missing approvals')
+    expect(admission.memoryUpdates.some(update => update.layer === 'procedural')).toBe(
+      true,
+    )
   })
 })

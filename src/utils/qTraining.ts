@@ -17,7 +17,11 @@ import {
   resolveQRouteClaimTtlMs,
 } from '../immaculate/policies.js'
 import type {
+  CausalTraceGraph,
+  CognitiveMemoryEntry,
   CognitiveRuntimeDecisionStatus,
+  CognitiveRunScorecard,
+  CognitivePacingDecision,
   CognitiveToolRiskTier,
 } from './cognitiveRuntime.js'
 
@@ -270,8 +274,14 @@ export type QTrainingRouteCognitiveAdmission = {
   requiredApprovals: string[]
   missingApprovals: string[]
   delayMs: number
+  nextStep: string
+  pacingStatus: CognitivePacingDecision['status']
+  pacingReasons: string[]
   scorecardStatus: string
   scorecardQuality: number
+  scorecardMetrics: CognitiveRunScorecard['metrics']
+  trace: CausalTraceGraph
+  memoryUpdates: CognitiveMemoryEntry[]
   ledgerRecordId: string
 }
 
