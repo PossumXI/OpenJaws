@@ -160,7 +160,7 @@ function shellQuote(value: string): string {
   if (/^[A-Za-z0-9_./:\\-]+$/.test(value)) {
     return value
   }
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  return `'${value.split("'").join("''")}'`
 }
 
 export function formatSupervisorCommand(plan: DiscordAgentSupervisorPlan): string {

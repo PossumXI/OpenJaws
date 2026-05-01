@@ -7,10 +7,14 @@ coverage/
 # Runtime state and generated artifacts
 artifacts/
 jobs/
+local-command-station/
 wandb/
 latest
+.netlify/
+.next/
 .tmp-config/
 .tmp-config-*/
+.tmp-governance-check/
 .claude/
 .runtime/
 .runtime-*/
@@ -52,6 +56,8 @@ data/web-datasets/
 data/sft/
 training/q/__pycache__/
 scripts/__pycache__/
+benchmarks/__pycache__/
+benchmarks/**/__pycache__/
 tmp-probe.h5
 website/.data/
 website/.netlify/
