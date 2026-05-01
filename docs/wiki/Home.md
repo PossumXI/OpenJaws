@@ -155,6 +155,7 @@ OpenJaws now also has a local `Q` comparison lane for day-to-day model work:
 - that shared roundtable execution classifier now fails mixed code-plus-artifact outputs closed, so only verified code-bearing branches without generated audit or artifact spillover enter the approval lane
 - that same operator lane can now hand off bounded work to the hosted `@openjaws` GitHub App by opening a prepared issue against the target repo, which lets supervised work continue remotely when the local machine goes offline
 - the Discord operator parser now routes plain-English real-world requests for browser previews, web research, external communication drafts, chrono planning, document delivery, and Apex workspace actions into the bounded `ask-openjaws` lane with approval gates for external side effects
+- those real-world Discord requests now fall back to the approved `OpenJaws` workspace alias when no project is named, so plain-English work does not enter the operator lane with an empty workspace
 
 Honest boundary:
 

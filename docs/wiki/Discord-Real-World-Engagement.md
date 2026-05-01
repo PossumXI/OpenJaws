@@ -19,6 +19,8 @@ Q could already run governed OpenJaws operator jobs, and OpenJaws already had Ap
 
 Every classified request becomes an `ask-openjaws` operator job with a guardrail prefix. The prefix tells the worker which tools to prefer, requires receipts, and fails closed when a bridge or service is missing.
 
+If the request does not name a project or path, the parser routes it to the approved `OpenJaws` workspace alias. This avoids a brittle `cwd: null` operator job while still going through the same workspace allowlist used by explicit operator commands. Operators should keep an `OpenJaws ...` workspace label in `openjaws-operator-workspaces.json`.
+
 ## Side-Effect Boundary
 
 External communication, scheduling mutation, forms, purchases, account changes, publishing, infrastructure mutation, and money movement require a separate explicit operator approval command after the agent provides:
@@ -44,4 +46,3 @@ bun run audit:knip
 bun run test
 bun run build
 ```
-

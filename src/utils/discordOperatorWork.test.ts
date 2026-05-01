@@ -4,6 +4,7 @@ import { spawnSync } from 'child_process'
 import { basename, join } from 'path'
 import { tmpdir } from 'os'
 import {
+  REAL_WORLD_ENGAGEMENT_DEFAULT_WORKSPACE,
   createOperatorRunContext,
   parseDirectOperatorChatCommand,
   resolveOperatorWorkspacePath,
@@ -108,10 +109,11 @@ describe('discordOperatorWork', () => {
 
     expect(parsed).toMatchObject({
       action: 'ask-openjaws',
-      cwd: null,
+      cwd: REAL_WORLD_ENGAGEMENT_DEFAULT_WORKSPACE,
     })
     expect(parsed?.text).toContain('Real-world engagement lane: web research')
     expect(parsed?.text).toContain('cite live sources')
+    expect(parsed?.text).toContain('Workspace routing: no explicit approved project')
     expect(parsed?.text).toContain(
       'Operator request: compare hosted Q durable backend options',
     )
@@ -124,7 +126,7 @@ describe('discordOperatorWork', () => {
 
     expect(parsed).toMatchObject({
       action: 'ask-openjaws',
-      cwd: null,
+      cwd: REAL_WORLD_ENGAGEMENT_DEFAULT_WORKSPACE,
     })
     expect(parsed?.text).toContain(
       'Real-world engagement lane: Apex workspace action (apex_workspace).',
@@ -132,6 +134,28 @@ describe('discordOperatorWork', () => {
     expect(parsed?.text).toContain(
       'Operator request: continue the real-world engagement behavior in OpenJaws',
     )
+  })
+
+  it('resolves the default real-world engagement workspace through existing aliases', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-default-engagement-root-'))
+    tempDirs.push(root)
+    const workspacePath = join(root, 'OpenJaws')
+    mkdirSync(workspacePath, { recursive: true })
+    const workspaces: DiscordOperatorWorkspace[] = [
+      {
+        id: 'openjaws-main',
+        label: 'OpenJaws Repo',
+        path: workspacePath,
+      },
+    ]
+
+    expect(
+      resolveOperatorWorkspacePath({
+        input: REAL_WORLD_ENGAGEMENT_DEFAULT_WORKSPACE,
+        workspaces,
+        allowedRoots: [root],
+      }),
+    ).toBe(workspacePath)
   })
 
   it('parses plain-English workspace and status requests', () => {
