@@ -57,6 +57,18 @@ failures block the release check. Missing private/admin/infra config remains
 visible as a warning so operators cannot accidentally claim a service is live
 without the route, database, or mail engine being configured.
 
+Before deploying the hosted-Q Cloudflare backend, run:
+
+```powershell
+bun run services:backend:preflight
+```
+
+That preflight is stricter than package presence. It blocks on missing
+Cloudflare auth, placeholder D1 ids, commented/missing worker routes, missing
+worker secrets, or missing public-site proxy env keys while keeping all secret
+values out of the receipt. It exits nonzero until ready; use
+`--allow-blocked` only for report-only automation.
+
 Run stricter local/admin validation with:
 
 ```powershell
