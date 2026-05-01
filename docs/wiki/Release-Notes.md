@@ -145,7 +145,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - rollout stays fail-closed when policy, manifest, or published assets are unhealthy
 - remote `Q` execution uses signed request and signed terminal result envelopes
 - worker registration, worker heartbeat, and route assignment now fail closed instead of degrading silently
-- shared process execution now validates the executable field as one executable name/path and forces no-shell argv execution, closing the CodeQL #10 root cause where a dynamic executable string could look like a shell command line even though arguments were already passed separately
+- shared process execution now rejects arbitrary executable selection at the common spawn boundary, dispatches only known executable names through literal no-shell argv launchers, and keeps current-runtime self relaunch on the `bun` / `node` / `openjaws` command lane instead of executing `process.execPath`. This closes the CodeQL #10 root cause instead of relying on string escaping.
 
 ## Live Benchmark Story
 

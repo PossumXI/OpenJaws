@@ -46,8 +46,7 @@ export async function openBrowser(url: string): Promise<boolean> {
 
     if (platform === 'win32') {
       if (browserEnv) {
-        // browsers require shell, else they will treat this as a file:/// handle
-        const { code } = await execFileNoThrow(browserEnv, [`"${url}"`])
+        const { code } = await execFileNoThrow(browserEnv, [url])
         return code === 0
       }
       const { code } = await execFileNoThrow(

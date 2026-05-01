@@ -20,7 +20,6 @@ import {
 } from './git/gitFilesystem.js'
 import { logError } from './log.js'
 import { memoizeWithLRU } from './memoize.js'
-import { whichSync } from './which.js'
 
 const GIT_ROOT_NOT_FOUND = Symbol('git-root-not-found')
 
@@ -210,9 +209,10 @@ function createFindCanonicalGitRoot(): {
 }
 
 export const gitExe = memoize((): string => {
-  // Every time we spawn a process, we have to lookup the path.
-  // Let's instead avoid that lookup so we only do it once.
-  return whichSync('git') || 'git'
+  // Keep git execution on the shared known-executable lane. Resolving this to
+  // an absolute path reintroduces arbitrary executable selection at the spawn
+  // boundary and defeats the exec wrapper's CodeQL-hardened trust model.
+  return 'git'
 })
 
 export const getIsGit = memoize(async (): Promise<boolean> => {

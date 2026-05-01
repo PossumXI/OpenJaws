@@ -127,8 +127,11 @@ export async function playAnimation(skillDir: string): Promise<{
   const htmlPath = join(skillDir, 'year_in_review.html');
   if (await pathExists(htmlPath)) {
     const platform = getPlatform();
-    const openCmd = platform === 'macos' ? 'open' : platform === 'windows' ? 'start' : 'xdg-open';
-    void execFileNoThrow(openCmd, [htmlPath]);
+    if (platform === 'windows') {
+      void execFileNoThrow('cmd.exe', ['/d', '/c', 'start', '', htmlPath]);
+    } else {
+      void execFileNoThrow(platform === 'macos' ? 'open' : 'xdg-open', [htmlPath]);
+    }
   }
   return {
     success: true,
