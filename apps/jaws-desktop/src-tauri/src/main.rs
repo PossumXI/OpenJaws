@@ -235,6 +235,20 @@ struct QAgentsCoworkControl {
     status: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InferenceCommandResult {
+    ok: bool,
+    code: Option<i32>,
+    stdout: String,
+    stderr: String,
+    summary: String,
+    provider: String,
+    model: String,
+    base_url: String,
+    auth_label: String,
+}
+
 fn clean_workspace_input(input: &str) -> String {
     input
         .trim()
@@ -1917,6 +1931,237 @@ fn truncate_text(value: &str, max_chars: usize) -> String {
     output.trim().to_string()
 }
 
+fn clean_provider_arg(value: Option<String>) -> String {
+    let candidate = value
+        .unwrap_or_else(|| "oci".to_string())
+        .trim()
+        .to_ascii_lowercase();
+    let safe = candidate
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || character == '_' || character == '-');
+
+    if safe && !candidate.is_empty() && candidate.len() <= 40 {
+        candidate
+    } else {
+        "oci".to_string()
+    }
+}
+
+fn clean_model_arg(value: Option<String>) -> String {
+    let candidate = value.unwrap_or_else(|| "Q".to_string()).trim().to_string();
+    let safe = candidate.chars().all(|character| {
+        character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-' | ':' | '/' | '@')
+    });
+
+    if safe && !candidate.is_empty() && candidate.len() <= 120 {
+        candidate
+    } else {
+        "Q".to_string()
+    }
+}
+
+fn env_value(names: &[&str]) -> Option<(String, String)> {
+    for name in names {
+        if let Ok(value) = env::var(name) {
+            if !value.trim().is_empty() {
+                return Some((name.to_string(), value.trim().to_string()));
+            }
+        }
+    }
+
+    None
+}
+
+fn default_oci_base_url() -> String {
+    if let Some((_, value)) = env_value(&["Q_BASE_URL", "OCI_BASE_URL"]) {
+        return value.trim_end_matches('/').to_string();
+    }
+
+    if let Some((_, region)) = env_value(&["OCI_REGION"]) {
+        return format!(
+            "https://inference.generativeai.{}.oci.oraclecloud.com/openai/v1",
+            region
+        );
+    }
+
+    "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1".to_string()
+}
+
+fn inference_auth_label(provider: &str) -> String {
+    if provider == "oci" {
+        if let Some((name, _)) = env_value(&["Q_API_KEY", "OCI_API_KEY", "OCI_GENAI_API_KEY"]) {
+            return format!("environment key ({name})");
+        }
+
+        let has_config = env_value(&["OCI_CONFIG_FILE"]).is_some()
+            || env::var("USERPROFILE")
+                .ok()
+                .map(|home| PathBuf::from(home).join(".oci").join("config").exists())
+                .unwrap_or(false)
+            || env::var("HOME")
+                .ok()
+                .map(|home| PathBuf::from(home).join(".oci").join("config").exists())
+                .unwrap_or(false);
+        let has_compartment = env_value(&["OCI_COMPARTMENT_ID"]).is_some();
+        let has_project = env_value(&["OCI_GENAI_PROJECT_ID"]).is_some();
+        if has_config && has_compartment && has_project {
+            let profile = env::var("OCI_PROFILE")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "DEFAULT".to_string());
+            return format!("OCI IAM ({profile})");
+        }
+
+        if has_config || has_compartment || has_project {
+            let mut missing = Vec::new();
+            if !has_config {
+                missing.push("OCI_CONFIG_FILE");
+            }
+            if !has_compartment {
+                missing.push("OCI_COMPARTMENT_ID");
+            }
+            if !has_project {
+                missing.push("OCI_GENAI_PROJECT_ID");
+            }
+            return format!("OCI IAM incomplete: missing {}", missing.join(", "));
+        }
+    }
+
+    "not configured".to_string()
+}
+
+fn redact_inference_output(value: &str) -> String {
+    value
+        .lines()
+        .map(|line| {
+            line.split_whitespace()
+                .map(|word| {
+                    let lower = word.to_ascii_lowercase();
+                    if lower.starts_with("sk-")
+                        || lower.starts_with("rk-")
+                        || lower.starts_with("pk-")
+                        || (word.len() > 36 && lower.contains("token"))
+                    {
+                        "[redacted]".to_string()
+                    } else {
+                        word.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn fallback_inference_result(
+    provider: String,
+    model: String,
+    summary: String,
+    stderr: String,
+) -> InferenceCommandResult {
+    let base_url = if provider == "oci" {
+        default_oci_base_url()
+    } else {
+        String::new()
+    };
+    let auth_label = inference_auth_label(&provider);
+    InferenceCommandResult {
+        ok: !auth_label.contains("not configured") && !auth_label.contains("incomplete"),
+        code: None,
+        stdout: format!(
+            "- {provider}: model {provider}:{model} · key {auth_label} · base URL {base_url}"
+        ),
+        stderr,
+        summary,
+        provider,
+        model,
+        base_url,
+        auth_label,
+    }
+}
+
+#[tauri::command]
+async fn openjaws_inference_status(
+    app: tauri::AppHandle,
+    provider: Option<String>,
+    model: Option<String>,
+    run_probe: bool,
+) -> InferenceCommandResult {
+    let provider = clean_provider_arg(provider);
+    let model = clean_model_arg(model);
+    let base_url = if provider == "oci" {
+        default_oci_base_url()
+    } else {
+        String::new()
+    };
+    let auth_label = inference_auth_label(&provider);
+    let command = match app.shell().sidecar("openjaws") {
+        Ok(command) => {
+            let command = command.arg("provider");
+            if run_probe {
+                command.arg("test").arg(provider.clone()).arg(model.clone())
+            } else {
+                command.arg("status")
+            }
+        }
+        Err(error) => {
+            return fallback_inference_result(
+                provider,
+                model,
+                "OpenJaws sidecar is unavailable; showing local inference preflight only."
+                    .to_string(),
+                format!("OpenJaws sidecar unavailable: {error}"),
+            );
+        }
+    };
+
+    match tokio::time::timeout(Duration::from_secs(45), command.output()).await {
+        Ok(Ok(output)) => {
+            let stdout = truncate_text(
+                &redact_inference_output(&String::from_utf8_lossy(&output.stdout)),
+                4_000,
+            );
+            let stderr = truncate_text(
+                &redact_inference_output(&String::from_utf8_lossy(&output.stderr)),
+                2_000,
+            );
+            let ok = output.status.success();
+            InferenceCommandResult {
+                ok,
+                code: output.status.code(),
+                summary: if ok {
+                    if run_probe {
+                        "Provider route probe completed.".to_string()
+                    } else {
+                        "Provider route status loaded.".to_string()
+                    }
+                } else {
+                    "Provider route command returned a non-zero exit code.".to_string()
+                },
+                stdout,
+                stderr,
+                provider,
+                model,
+                base_url,
+                auth_label,
+            }
+        }
+        Ok(Err(error)) => fallback_inference_result(
+            provider,
+            model,
+            "Provider route command failed before output.".to_string(),
+            format!("OpenJaws provider command failed: {error}"),
+        ),
+        Err(_) => fallback_inference_result(
+            provider,
+            model,
+            "Provider route command timed out before output.".to_string(),
+            "OpenJaws provider command timed out after 45 seconds.".to_string(),
+        ),
+    }
+}
+
 #[tauri::command]
 async fn run_openjaws_chat(
     app: tauri::AppHandle,
@@ -2058,6 +2303,7 @@ fn main() {
             account_session,
             browser_preview_snapshot,
             enrollment_links,
+            openjaws_inference_status,
             openjaws_smoke,
             openjaws_workspace_smoke,
             probe_release_update_pipeline,

@@ -86,7 +86,8 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/grow
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
 import { initializeAnalyticsGates } from 'src/services/analytics/sink.js';
 import { getOriginalCwd, setAdditionalDirectoriesForOpenJawsMd, setIsRemoteMode, setMainLoopModelOverride, setMainThreadAgentType, setTeleportedSessionInfo } from './bootstrap/state.js';
-import { filterCommandsForRemoteMode, getCommands } from './commands.js';
+import { filterCommandsForRemoteMode, getCommands, type LocalJSXCommandContext } from './commands.js';
+import { call as providerCommand } from './commands/provider/provider.js';
 import type { StatsStore } from './context/stats.js';
 import { launchAssistantInstallWizard, launchAssistantSessionChooser, launchInvalidSettingsDialog, launchResumeChooser, launchSnapshotUpdateDialog, launchTeleportRepoMismatchDialog, launchTeleportResumeWrapper } from './dialogLaunchers.js';
 import { SHOW_CURSOR } from './ink/termio/dec.js';
@@ -817,6 +818,21 @@ export async function main() {
     }
   }
 
+  const providerCliArgs = process.argv.slice(2);
+  if (providerCliArgs[0] === 'provider') {
+    stopCapturingEarlyInput();
+    await Promise.all([ensureMdmSettingsLoaded(), ensureKeychainPrefetchCompleted()]);
+    await init();
+    const {
+      initSinks
+    } = await import('./utils/sinks.js');
+    initSinks();
+    runMigrations();
+    await runProviderCli(providerCliArgs.slice(1).map(arg => arg === '--help' || arg === '-h' ? 'help' : arg));
+    gracefulShutdownSync(0);
+    return;
+  }
+
   // Check for -p/--print and --init-only flags early to set isInteractiveSession before init()
   // This is needed because telemetry initialization calls auth functions that need this flag
   const cliArgs = process.argv.slice(2);
@@ -904,6 +920,30 @@ async function getInputPrompt(prompt: string, inputFormat: 'text' | 'stream-json
   }
   return prompt;
 }
+
+async function runProviderCli(rawArgs: string[]): Promise<void> {
+  let appState: AppState = getDefaultAppState();
+  const messages: string[] = [];
+  const onDone = (message: unknown) => {
+    messages.push(typeof message === 'string' ? message : String(message));
+  };
+  const context = {
+    getAppState: () => appState,
+    setAppState: (updater: (prev: AppState) => AppState) => {
+      appState = updater(appState);
+    },
+    setMessages: () => {},
+    onChangeAPIKey: () => {},
+    options: {},
+  } as unknown as LocalJSXCommandContext;
+
+  await providerCommand(onDone, context, rawArgs.join(' '));
+  const output = messages.filter(Boolean).join('\n\n').trim();
+  if (output) {
+    process.stdout.write(`${output}\n`);
+  }
+}
+
 async function run(): Promise<CommanderCommand> {
   profileCheckpoint('run_function_start');
 
@@ -3980,6 +4020,10 @@ async function run(): Promise<CommanderCommand> {
       mcpResetChoicesHandler
     } = await import('./cli/handlers/mcp.js');
     await mcpResetChoicesHandler();
+  });
+
+  program.command('provider [args...]').description('Inspect, switch, and test OpenJaws model provider routes').action(async (args: string[] = []) => {
+    await runProviderCli(args);
   });
 
   // claude server

@@ -175,6 +175,13 @@ Native capability integration pass, run on 2026-04-30:
 - The Co-work tab exposes Q planner, Q_agent implementer, Q_agent verifier, and co-work room controls with explicit pooled-credit consent.
 - Slow Guy now has lives, shield frames, level progression, and token tracking so the game loop has recoverability and objectives instead of one-hit failure.
 
+Inference customization pass, run on 2026-05-01:
+
+- Settings now has an `Inference` panel for provider, model, base URL, route policy, temperature, max-output-token tuning, native route checks, live route probes, and staged provider commands.
+- OpenJaws now has a direct `openjaws provider ...` CLI route for provider status/test commands, so desktop Settings does not send provider diagnostics through the long-running chat/model turn path.
+- The native Tauri bridge exposes `openjaws_inference_status`, calls the bundled sidecar as `openjaws provider status` or `openjaws provider test <provider> <model>`, caps execution at 45 seconds, redacts token-shaped output, and falls back to a local environment preflight if the sidecar is unavailable.
+- The operator-facing root cause is documented here: `/provider status` should not be routed through `openjaws --print` from the desktop bridge because that path can wait on a full model turn and leave Settings looking hung.
+
 0.1.3 release and update-pipeline pass, run on 2026-04-30:
 
 - Desktop package, Tauri app config, Cargo metadata, Cargo lockfile package entry, and generated release index now align on `0.1.3`.
