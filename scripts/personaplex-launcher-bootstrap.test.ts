@@ -80,7 +80,9 @@ describe('personaplex-launcher-bootstrap', () => {
     const runtimeScript = readFileSync(receipt.runtimeScriptPath, 'utf8')
     expect(launcher).toContain('PERSONAPLEX_RUNTIME_COMMAND')
     expect(launcher).toContain('Write-PersonaPlexState')
+    expect(launcher).toContain('@("bash", $WslPath, $RuntimeUrl)')
     expect(runtimeScript).toContain('PERSONAPLEX_RUNTIME_COMMAND is not set')
+    expect(runtimeScript).toContain('export PERSONAPLEX_RUNTIME_URL="$1"')
     expect(`${launcher}\n${runtimeScript}`).not.toMatch(/hf_[A-Za-z0-9_]{12,}/)
     expect(
       buildPersonaPlexLauncherWarnings({
