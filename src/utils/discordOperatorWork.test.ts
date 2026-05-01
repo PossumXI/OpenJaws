@@ -68,6 +68,42 @@ describe('discordOperatorWork', () => {
     })
   })
 
+  it('guards plain-English OpenJaws work requests that carry real-world side effects', () => {
+    const parsed = parseDirectOperatorChatCommand(
+      'use openjaws in Asgard to draft a LinkedIn marketing line for the public ledger',
+    )
+
+    expect(parsed).toMatchObject({
+      action: 'ask-openjaws',
+      cwd: 'Asgard',
+    })
+    expect(parsed?.text).toContain(
+      'Real-world engagement lane: external communication draft (external_communication_draft).',
+    )
+    expect(parsed?.text).toContain('Do not send, post, purchase, submit forms')
+    expect(parsed?.text).toContain(
+      'Operator request: draft a LinkedIn marketing line for the public ledger',
+    )
+  })
+
+  it('guards explicit OpenJaws ask prompts with real-world browser work', () => {
+    const parsed = parseDirectOperatorChatCommand(
+      'openjaws ask qline :: use the browser previewer to make a product demo with screenshots',
+    )
+
+    expect(parsed).toMatchObject({
+      action: 'ask-openjaws',
+      cwd: 'qline',
+    })
+    expect(parsed?.text).toContain(
+      'Real-world engagement lane: browser preview and demo (browser_preview).',
+    )
+    expect(parsed?.text).toContain('native Apex browser bridge')
+    expect(parsed?.text).toContain(
+      'Operator request: use the browser previewer to make a product demo with screenshots',
+    )
+  })
+
   it('routes plain-English browser preview requests through the governed OpenJaws lane', () => {
     const parsed = parseDirectOperatorChatCommand(
       'use the browser in D:\\sites\\qline to build a product demo with screenshots',

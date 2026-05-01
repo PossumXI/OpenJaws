@@ -329,6 +329,25 @@ export function parseRealWorldEngagementOperatorCommand(
   }
 }
 
+function guardRealWorldEngagementPrompt(args: {
+  cwd: string | null
+  text: string | null
+}): string | null {
+  const task = args.text?.trim()
+  if (!task) {
+    return args.text
+  }
+  const engagement = classifyRealWorldEngagementText(task)
+  if (!engagement) {
+    return args.text
+  }
+  return buildRealWorldEngagementPrompt({
+    engagement,
+    task,
+    defaultWorkspaceApplied: args.cwd === null,
+  })
+}
+
 export function parseDirectOperatorChatCommand(
   content: string,
 ): DiscordOperatorParsedCommand | null {
@@ -344,7 +363,10 @@ export function parseDirectOperatorChatCommand(
       return {
         action: 'ask-openjaws',
         cwd: workspace,
-        text: followUp,
+        text: guardRealWorldEngagementPrompt({
+          cwd: workspace,
+          text: followUp,
+        }),
       }
     }
     if (workspace) {
@@ -359,10 +381,12 @@ export function parseDirectOperatorChatCommand(
     /^(?:use|run)\s+openjaws(?:\s+in|\s+on|\s+for(?: project)?)?\s+(.+?)\s+(?:to|and)\s+(.+)$/i,
   )
   if (naturalAskMatch) {
+    const cwd = naturalAskMatch[1]?.trim() || null
+    const text = naturalAskMatch[2]?.trim() || null
     return {
       action: 'ask-openjaws',
-      cwd: naturalAskMatch[1]?.trim() || null,
-      text: naturalAskMatch[2]?.trim() || null,
+      cwd,
+      text: guardRealWorldEngagementPrompt({ cwd, text }),
     }
   }
   if (
@@ -495,17 +519,21 @@ export function parseDirectOperatorChatCommand(
       }
       if (askTail.includes('::')) {
         const [workspace, prompt] = askTail.split('::', 2)
+        const cwd = workspace?.trim() || null
+        const text = prompt?.trim() || null
         return {
           action: 'ask-openjaws',
-          cwd: workspace?.trim() || null,
-          text: prompt?.trim() || null,
+          cwd,
+          text: guardRealWorldEngagementPrompt({ cwd, text }),
         }
       }
       const askTokens = tokenizeDirectOperatorCommand(askTail)
+      const cwd = askTokens[0]?.trim() || null
+      const text = askTokens.slice(1).join(' ').trim() || null
       return {
         action: 'ask-openjaws',
-        cwd: askTokens[0]?.trim() || null,
-        text: askTokens.slice(1).join(' ').trim() || null,
+        cwd,
+        text: guardRealWorldEngagementPrompt({ cwd, text }),
       }
     }
     default:

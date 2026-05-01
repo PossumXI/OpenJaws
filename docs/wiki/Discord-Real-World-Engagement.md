@@ -4,7 +4,7 @@ This note documents the Discord operator handoff added on 2026-05-01.
 
 ## Root Cause
 
-Q could already run governed OpenJaws operator jobs, and OpenJaws already had Apex browser, mail, chrono, and artifact guardrails. The missing link was intent recognition. Plain-English Discord requests such as "use the browser to make a demo" or "draft LinkedIn outreach" were not promoted into the bounded OpenJaws work lane unless they used narrow OpenJaws command phrasing.
+Q could already run governed OpenJaws operator jobs, and OpenJaws already had Apex browser, mail, chrono, and artifact guardrails. The missing link was intent recognition. Plain-English Discord requests such as "use the browser to make a demo" or "draft LinkedIn outreach" were not promoted into the bounded OpenJaws work lane unless they used narrow OpenJaws command phrasing. A second gap was explicit `ask-openjaws` wording: it could resolve the right workspace but pass a real-world side-effect prompt through without the same approval and receipt prefix.
 
 ## Current Contract
 
@@ -17,7 +17,7 @@ Q could already run governed OpenJaws operator jobs, and OpenJaws already had Ap
 - `document_delivery`: PDF, DOCX, Markdown, and artifact-package delivery
 - `apex_workspace`: bounded Apex bridge and workspace actions
 
-Every classified request becomes an `ask-openjaws` operator job with a guardrail prefix. The prefix tells the worker which tools to prefer, requires receipts, and fails closed when a bridge or service is missing.
+Every classified request becomes an `ask-openjaws` operator job with a guardrail prefix. The prefix tells the worker which tools to prefer, requires receipts, and fails closed when a bridge or service is missing. Explicit OpenJaws ask prompts are classified too, so `use openjaws in Asgard to draft LinkedIn copy` and `openjaws ask qline :: use the browser previewer` follow the same side-effect boundary as direct plain-English requests.
 
 If the request does not name a project or path, the parser routes it to the approved `OpenJaws` workspace alias. This avoids a brittle `cwd: null` operator job while still going through the same workspace allowlist used by explicit operator commands. Operators should keep an `OpenJaws ...` workspace label in `openjaws-operator-workspaces.json`.
 
