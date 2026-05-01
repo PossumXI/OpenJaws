@@ -168,6 +168,13 @@ describe('immaculate harness config', () => {
       'x-immaculate-purpose': 'operator-control',
       'x-immaculate-policy-id': 'operator-control-default',
       'x-immaculate-consent-scope': 'operator:test-user',
+      'x-immaculate-receipt-target': 'harness:control:openjaws-test',
+      'x-immaculate-operator-summary':
+        'OpenJaws requested a bounded Immaculate operator-control pulse.',
+      'x-immaculate-operator-confirmed': 'true',
+      'x-immaculate-rollback-plan':
+        'Apply the inverse control command or restore the last persisted Immaculate snapshot.',
+      'x-immaculate-budget-cents': '0',
     })
   })
 

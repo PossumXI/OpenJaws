@@ -167,6 +167,27 @@ function isTransportRouteFailure(
   ].some(token => detail.includes(token))
 }
 
+export function buildQRouteControlEngagement(args: {
+  runId: string
+  runName: string | null
+}): {
+  receiptTarget: string
+  operatorSummary: string
+  operatorConfirmed: true
+  rollbackPlan: string
+  budgetCents: 0
+} {
+  const label = args.runName?.trim() || args.runId
+  return {
+    receiptTarget: `harness:q-route:${args.runId}`,
+    operatorSummary: `Request Immaculate routing control for Q training run ${label}.`,
+    operatorConfirmed: true,
+    rollbackPlan:
+      'Cancel or retry the recorded Q route manifest, then fall back to the local preflight decision.',
+    budgetCents: 0,
+  }
+}
+
 export async function requestImmaculateQRoute(args: {
   root: string
   runId: string
@@ -232,6 +253,10 @@ export async function requestImmaculateQRoute(args: {
   const controlResult = await callImmaculateHarness(
     {
       action: 'control',
+      ...buildQRouteControlEngagement({
+        runId: args.runId,
+        runName: args.runName,
+      }),
       control: {
         action: 'pulse',
         target,
