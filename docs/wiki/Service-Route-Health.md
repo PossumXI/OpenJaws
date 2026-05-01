@@ -10,6 +10,8 @@ The check is intentionally honest:
 - missing OCI, Cloudflare, production database, Stripe billing, Resend/mail, hosted-Q backend, or AROBI LAAS config is reported as `not_configured`
 - repo-owned deployable backend packages are recognized separately from live remote secrets, so operators can tell whether a service is absent from code or only waiting on account binding/deploy
 - package presence never marks production database, Cloudflare Worker/D1, hosted-Q, mail, or LAAS as provisioned
+- Qline Netlify env metadata can satisfy Stripe and Resend/mail configuration checks when Netlify auth is available; the receipt records only env key names and booleans, never secret values
+- AROBI LAAS can be marked configured only from a concrete URL+token pair or from the local `~/.arobi/edge-secrets.json` edge binding plus the live public health route; raw token values are never printed
 - secrets are never printed; the receipt only names the missing config class
 
 ## Current Route Classes
@@ -32,17 +34,20 @@ The check is intentionally honest:
   - hosted-Q backend base URL and live `/health` route
   - production SQL/D1/OCI database route or concrete D1 database id
   - Cloudflare account auth plus concrete D1 binding when Cloudflare is the target host
-  - Netlify auth for deploy metadata checks
-  - Stripe checkout/webhook config
-  - Resend/SMTP mail engine config
-  - AROBI ledger / LAAS API route config
+  - Netlify auth for deploy metadata checks and qline.site env-key verification
+  - Stripe checkout/webhook config from local env or qline.site Netlify env metadata
+  - Resend/SMTP mail engine config from local env or qline.site Netlify env metadata
+  - AROBI ledger / LAAS API route config or local edge-secret binding
 
 The Cloudflare backend package lives at `services/cloudflare-hosted-q`. It adds
 the worker, D1 schema, hosted-Q account/key/usage routes, Stripe checkout and
 verified webhook sync routes, Resend notification route, and AROBI LAAS ledger
 route. The health receipt can prove that package is present, but only a deployed
-worker URL plus real Cloudflare/D1/Stripe/Resend/LAAS configuration can prove
-the remote service is live. Placeholder values such as `replace_me` and
+worker URL plus real Cloudflare/D1 configuration can prove those remote hosted-Q
+dependencies are live. Stripe and Resend can be checked from local env first,
+then from live qline.site Netlify env metadata when auth is available.
+AROBI/LAAS is checked independently from either a concrete route+token env pair
+or the local edge-secret binding and public health route. Placeholder values such as `replace_me` and
 `REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID` are treated as missing.
 
 ## Release Use

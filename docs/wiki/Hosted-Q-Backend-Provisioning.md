@@ -62,7 +62,12 @@ bun run service:routes
 ```
 
 `bun run service:routes` reports the worker package as present from the repo,
-then keeps hosted-Q, Cloudflare/D1, production database, mail, and LAAS in
+then keeps hosted-Q, Cloudflare/D1, production database, and mail in
 `not_configured` until real non-placeholder account bindings and route env are
-present. It cannot claim the remote route is live until the deployed base URL is
-configured and `/health` is reachable.
+present. AROBI/LAAS is checked separately from either a concrete URL+token pair
+or the local `~/.arobi/edge-secrets.json` edge binding plus the public health
+route. The hosted-Q worker route cannot be claimed live until the deployed base
+URL is configured and `/health` is reachable. Stripe checkout and Resend/mail can
+pass from the live qline.site Netlify environment when Netlify auth is available;
+the health receipt records only which env keys exist and never prints secret
+values.

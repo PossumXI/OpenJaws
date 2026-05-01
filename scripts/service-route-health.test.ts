@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import {
   JAWS_RELEASE_API_URL,
   JAWS_RELEASE_PREVIOUS_PATCH_VERSION,
@@ -42,6 +45,12 @@ function makeFetch(overrides: Record<string, Response> = {}) {
     if (url === 'https://api.qline.site/health') {
       return response(200, '{"ok":true,"service":"openjaws-hosted-q"}')
     }
+    if (url === 'https://api.qline.site/laas/health') {
+      return response(200, '{"ok":true,"service":"arobi-laas"}')
+    }
+    if (url === 'https://arobi.aura-genesis.org/health') {
+      return response(200, '{"ok":true,"service":"arobi-edge"}')
+    }
     if (url === 'https://iorch.net/downloads/jaws') {
       return response(200, '<html>JAWS</html>')
     }
@@ -53,6 +62,15 @@ function makeFetch(overrides: Record<string, Response> = {}) {
     }
     throw new Error(`offline: ${url}`)
   }
+}
+
+function netlifyEnvPayload(keys: string[]): string {
+  return JSON.stringify(
+    keys.map(key => ({
+      key,
+      values: [{ context: 'all', value: `${key.toLowerCase()}-configured` }],
+    })),
+  )
 }
 
 const EMPTY_ENV = {
@@ -91,6 +109,59 @@ describe('service-route-health', () => {
     expect(
       report.checks.find(check => check.id === 'arobi-laas-config'),
     ).toMatchObject({ status: 'not_configured' })
+    expect(report.checks.some(check => check.id === 'arobi-laas-live')).toBe(false)
+  })
+
+  test('uses qline Netlify env metadata for deployed Stripe and mail configuration', async () => {
+    const report = await runServiceRouteHealth({
+      fetchImpl: makeFetch({
+        'https://api.netlify.com/api/v1/sites/edde15e1-bf1f-4986-aef3-5803fdce7406':
+          response(200, JSON.stringify({
+            name: 'qline-site-20260415022202',
+            account_slug: 'possumxi',
+          })),
+        'https://api.netlify.com/api/v1/accounts/possumxi/env?site_id=edde15e1-bf1f-4986-aef3-5803fdce7406':
+          response(200, netlifyEnvPayload([
+            'STRIPE_SECRET_KEY',
+            'STRIPE_PRICE_BUILDER',
+            'STRIPE_SUCCESS_URL',
+            'STRIPE_CANCEL_URL',
+            'RESEND_API_KEY',
+            'RESEND_FROM_EMAIL',
+          ])),
+      }),
+      env: {
+        ...EMPTY_ENV,
+        NETLIFY_AUTH_TOKEN: 'netlify-token',
+      },
+      timeoutMs: 1,
+    })
+
+    expect(
+      report.checks.find(check => check.id === 'stripe-billing-config'),
+    ).toMatchObject({
+      status: 'passed',
+      details: {
+        secretConfigured: true,
+        priceConfigured: true,
+        returnUrlsConfigured: true,
+        configSource: 'qline-netlify-env',
+      },
+    })
+    expect(
+      report.checks.find(check => check.id === 'netlify-auth-config'),
+    ).toMatchObject({ status: 'passed' })
+    expect(
+      report.checks.find(check => check.id === 'mail-engine-config'),
+    ).toMatchObject({
+      status: 'passed',
+      details: {
+        resendConfigured: true,
+        smtpConfigured: false,
+      },
+    })
+    expect(JSON.stringify(report)).not.toContain('stripe_secret_key-configured')
+    expect(JSON.stringify(report)).not.toContain('resend_api_key-configured')
   })
 
   test('treats next JAWS updater payload as not configured before the tag is public', async () => {
@@ -172,6 +243,51 @@ describe('service-route-health', () => {
     expect(
       report.checks.find(check => check.id === 'arobi-laas-config'),
     ).toMatchObject({ status: 'passed' })
+    expect(
+      report.checks.find(check => check.id === 'arobi-laas-live'),
+    ).toMatchObject({
+      status: 'passed',
+      url: 'https://api.qline.site/laas/health',
+    })
+  })
+
+  test('recognizes a local AROBI edge secret without leaking the token value', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'openjaws-arobi-edge-'))
+    mkdirSync(join(home, '.arobi'), { recursive: true })
+    writeFileSync(
+      join(home, '.arobi', 'edge-secrets.json'),
+      JSON.stringify({ AROBI_API_TOKEN: 'local-arobi-secret-token' }),
+    )
+
+    try {
+      const report = await runServiceRouteHealth({
+        fetchImpl: makeFetch(),
+        env: {
+          ...EMPTY_ENV,
+          USERPROFILE: home,
+        },
+        timeoutMs: 1,
+      })
+
+      const laasConfig = report.checks.find(check => check.id === 'arobi-laas-config')
+      const laasLive = report.checks.find(check => check.id === 'arobi-laas-live')
+      expect(laasConfig).toMatchObject({
+        status: 'passed',
+        details: {
+          baseURL: 'https://arobi.aura-genesis.org',
+          source: 'local_edge_secret',
+          tokenConfigured: true,
+        },
+      })
+      expect(laasLive).toMatchObject({
+        status: 'passed',
+        url: 'https://arobi.aura-genesis.org/health',
+      })
+      expect(JSON.stringify(laasConfig)).not.toContain('local-arobi-secret-token')
+      expect(JSON.stringify(laasLive)).not.toContain('local-arobi-secret-token')
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
   })
 
   test('fails closed when a required public route is unhealthy', async () => {
