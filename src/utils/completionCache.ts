@@ -8,7 +8,7 @@ import { supportsHyperlinks } from '../ink/supports-hyperlinks.js'
 import { LEGACY_CLI_NAME } from '../constants/legacyCompat.js'
 import { logForDebugging } from './debug.js'
 import { isENOENT } from './errors.js'
-import { execFileNoThrow } from './execFileNoThrow.js'
+import { execOpenJawsSelfNoThrow } from './execFileNoThrow.js'
 import { logError } from './log.js'
 import type { ThemeName } from './theme.js'
 
@@ -90,8 +90,7 @@ export async function setupShellCompletion(theme: ThemeName): Promise<string> {
   // Generate the completion script by writing directly to the cache file.
   // Using --output avoids piping through stdout where process.exit() can
   // truncate output before the pipe buffer drains.
-  const openjawsBin = process.argv[1] || 'openjaws'
-  const result = await execFileNoThrow(openjawsBin, [
+  const result = await execOpenJawsSelfNoThrow([
     'completion',
     shell.shellFlag,
     '--output',
@@ -146,8 +145,7 @@ export async function regenerateCompletionCache(): Promise<void> {
 
   logForDebugging(`update: Regenerating ${shell.name} completion cache`)
 
-  const openjawsBin = process.argv[1] || 'openjaws'
-  const result = await execFileNoThrow(openjawsBin, [
+  const result = await execOpenJawsSelfNoThrow([
     'completion',
     shell.shellFlag,
     '--output',

@@ -163,7 +163,7 @@ MimeType=x-scheme-handler/${DEEP_LINK_PROTOCOL};
   const xdgMime = await which('xdg-mime')
   if (xdgMime) {
     const { code } = await execFileNoThrow(
-      xdgMime,
+      'xdg-mime',
       ['default', DESKTOP_FILE_NAME, `x-scheme-handler/${DEEP_LINK_PROTOCOL}`],
       { useCwd: false },
     )

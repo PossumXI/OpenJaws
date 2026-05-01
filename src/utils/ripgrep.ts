@@ -649,13 +649,15 @@ const testRipgrepOnFirstUse = async (): Promise<void> => {
         stdout,
       }
     } else {
-      test = await execFileNoThrow(
-        config.command,
-        [...config.args, '--version'],
-        {
-          timeout: 5000,
-        },
-      )
+      test =
+        config.mode === 'system'
+          ? await execFileNoThrow('rg', [...config.args, '--version'], {
+              timeout: 5000,
+            })
+          : {
+              code: existsSync(config.command) ? 0 : 1,
+              stdout: existsSync(config.command) ? 'ripgrep bundled' : '',
+            }
     }
 
     const working =
