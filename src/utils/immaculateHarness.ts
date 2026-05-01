@@ -11,6 +11,7 @@ export const IMMACULATE_HARNESS_ACTIONS = [
   'snapshot',
   'topology',
   'governance_status',
+  'intelligence_status',
   'intelligence',
   'executions',
   'workers',
@@ -123,6 +124,57 @@ export type ImmaculateHarnessDeckReceipt = {
   layerCount: number
   executionCount: number
   recommendedLayerId?: string
+}
+
+export type ImmaculateHarnessIntelligenceStatus = {
+  status?: 'ready' | 'degraded' | 'blocked'
+  service?: string
+  visibility?: string
+  summary?: string
+  reasons: string[]
+  recommendedLayerId?: string
+  layerPlane: {
+    layerCount?: number
+    readyLayerCount?: number
+    busyLayerCount?: number
+    degradedLayerCount?: number
+    offlineLayerCount?: number
+  }
+  workerPlane: {
+    workerCount?: number
+    healthyWorkerCount?: number
+    staleWorkerCount?: number
+    faultedWorkerCount?: number
+    eligibleWorkerCount?: number
+    blockedWorkerCount?: number
+    localWorkerCount?: number
+    remoteWorkerCount?: number
+    unverifiedWorkerCount?: number
+    readiness?: 'ready' | 'no_workers' | 'no_healthy_workers' | 'degraded_workers'
+  }
+  executionPlane: {
+    executionCount?: number
+    completedExecutionCount?: number
+    failedExecutionCount?: number
+    localExecutionCount?: number
+    remoteExecutionCount?: number
+    scheduledCognitionCount?: number
+    heldScheduleCount?: number
+  }
+  governor: {
+    queueDepth?: number
+    cognitiveQueueDepth?: number
+    benchmarkQueueDepth?: number
+    activeWeight?: number
+    maxActiveWeight?: number
+    queuedWeight?: number
+  }
+  persistence: {
+    recoveryMode?: string
+    persistedEventCount?: number
+    integrityStatus?: string
+    integrityFindingCount?: number
+  }
 }
 
 export type ImmaculateHarnessWorkerExecutionProfile = 'local' | 'remote'
@@ -421,6 +473,8 @@ function getImmaculateHarnessRoute(
       return { method: 'GET', route: '/api/topology' }
     case 'governance_status':
       return { method: 'GET', route: '/api/governance/status' }
+    case 'intelligence_status':
+      return { method: 'GET', route: '/api/intelligence/status' }
     case 'intelligence':
       return { method: 'GET', route: '/api/intelligence' }
     case 'executions':
@@ -489,6 +543,21 @@ function summarizeImmaculateHarnessResponse(
       return `${String(data?.nodes ?? '?')} nodes · ${String(data?.edges ?? '?')} edges · cycle ${String(data?.cycle ?? '?')}`
     case 'governance_status':
       return `${String(data?.mode ?? 'enforced')} · ${String(data?.policyCount ?? '?')} policies · ${String(data?.decisionCount ?? '?')} decisions`
+    case 'intelligence_status': {
+      const layerPlane =
+        data?.layerPlane && typeof data.layerPlane === 'object'
+          ? (data.layerPlane as Record<string, unknown>)
+          : null
+      const workerPlane =
+        data?.workerPlane && typeof data.workerPlane === 'object'
+          ? (data.workerPlane as Record<string, unknown>)
+          : null
+      const governor =
+        data?.governor && typeof data.governor === 'object'
+          ? (data.governor as Record<string, unknown>)
+          : null
+      return `${String(data?.status ?? 'unknown')} · ${String(layerPlane?.readyLayerCount ?? '?')} ready layers · ${String(workerPlane?.readiness ?? 'workers unknown')} · queue ${String(governor?.queueDepth ?? '?')}`
+    }
     case 'intelligence':
       return `${Array.isArray(data?.layers) ? data.layers.length : 0} layers · ${Array.isArray(data?.executions) ? data.executions.length : 0} executions`
     case 'executions':
@@ -541,6 +610,122 @@ function parsePositiveNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? value
     : undefined
+}
+
+function parseStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : []
+}
+
+function parseRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function parseImmaculateHarnessIntelligenceStatus(
+  value: unknown,
+): ImmaculateHarnessIntelligenceStatus | null {
+  const data = parseRecord(value)
+  if (!data || data.visibility !== 'public-redacted') {
+    return null
+  }
+
+  const layerPlane = parseRecord(data.layerPlane)
+  const workerPlane = parseRecord(data.workerPlane)
+  const executionPlane = parseRecord(data.executionPlane)
+  const governor = parseRecord(data.governor)
+  const persistence = parseRecord(data.persistence)
+  const status =
+    data.status === 'ready' ||
+    data.status === 'degraded' ||
+    data.status === 'blocked'
+      ? data.status
+      : undefined
+  const readiness =
+    workerPlane?.readiness === 'ready' ||
+    workerPlane?.readiness === 'no_workers' ||
+    workerPlane?.readiness === 'no_healthy_workers' ||
+    workerPlane?.readiness === 'degraded_workers'
+      ? workerPlane.readiness
+      : undefined
+
+  return {
+    status,
+    service: typeof data.service === 'string' ? data.service : undefined,
+    visibility: data.visibility,
+    summary: typeof data.summary === 'string' ? data.summary : undefined,
+    reasons: parseStringArray(data.reasons),
+    recommendedLayerId:
+      typeof data.recommendedLayerId === 'string'
+        ? data.recommendedLayerId
+        : undefined,
+    layerPlane: {
+      layerCount: parsePositiveNumber(layerPlane?.layerCount),
+      readyLayerCount: parsePositiveNumber(layerPlane?.readyLayerCount),
+      busyLayerCount: parsePositiveNumber(layerPlane?.busyLayerCount),
+      degradedLayerCount: parsePositiveNumber(layerPlane?.degradedLayerCount),
+      offlineLayerCount: parsePositiveNumber(layerPlane?.offlineLayerCount),
+    },
+    workerPlane: {
+      workerCount: parsePositiveNumber(workerPlane?.workerCount),
+      healthyWorkerCount: parsePositiveNumber(workerPlane?.healthyWorkerCount),
+      staleWorkerCount: parsePositiveNumber(workerPlane?.staleWorkerCount),
+      faultedWorkerCount: parsePositiveNumber(workerPlane?.faultedWorkerCount),
+      eligibleWorkerCount: parsePositiveNumber(workerPlane?.eligibleWorkerCount),
+      blockedWorkerCount: parsePositiveNumber(workerPlane?.blockedWorkerCount),
+      localWorkerCount: parsePositiveNumber(workerPlane?.localWorkerCount),
+      remoteWorkerCount: parsePositiveNumber(workerPlane?.remoteWorkerCount),
+      unverifiedWorkerCount: parsePositiveNumber(
+        workerPlane?.unverifiedWorkerCount,
+      ),
+      readiness,
+    },
+    executionPlane: {
+      executionCount: parsePositiveNumber(executionPlane?.executionCount),
+      completedExecutionCount: parsePositiveNumber(
+        executionPlane?.completedExecutionCount,
+      ),
+      failedExecutionCount: parsePositiveNumber(
+        executionPlane?.failedExecutionCount,
+      ),
+      localExecutionCount: parsePositiveNumber(
+        executionPlane?.localExecutionCount,
+      ),
+      remoteExecutionCount: parsePositiveNumber(
+        executionPlane?.remoteExecutionCount,
+      ),
+      scheduledCognitionCount: parsePositiveNumber(
+        executionPlane?.scheduledCognitionCount,
+      ),
+      heldScheduleCount: parsePositiveNumber(executionPlane?.heldScheduleCount),
+    },
+    governor: {
+      queueDepth: parsePositiveNumber(governor?.queueDepth),
+      cognitiveQueueDepth: parsePositiveNumber(governor?.cognitiveQueueDepth),
+      benchmarkQueueDepth: parsePositiveNumber(governor?.benchmarkQueueDepth),
+      activeWeight: parsePositiveNumber(governor?.activeWeight),
+      maxActiveWeight: parsePositiveNumber(governor?.maxActiveWeight),
+      queuedWeight: parsePositiveNumber(governor?.queuedWeight),
+    },
+    persistence: {
+      recoveryMode:
+        typeof persistence?.recoveryMode === 'string'
+          ? persistence.recoveryMode
+          : undefined,
+      persistedEventCount: parsePositiveNumber(
+        persistence?.persistedEventCount,
+      ),
+      integrityStatus:
+        typeof persistence?.integrityStatus === 'string'
+          ? persistence.integrityStatus
+          : undefined,
+      integrityFindingCount: parsePositiveNumber(
+        persistence?.integrityFindingCount,
+      ),
+    },
+  }
 }
 
 function parseWorkerHealthCounts(data: Record<string, unknown> | null): Pick<
@@ -917,8 +1102,8 @@ export async function getImmaculateHarnessDeckReceipt(
     return null
   }
 
-  try {
-    const [topologyResult, intelligenceResult] = await Promise.all([
+  const [topologySettled, intelligenceSettled, publicStatusSettled] =
+    await Promise.allSettled([
       callImmaculateHarness(
         { action: 'topology' },
         { settings, timeoutMs: HEALTH_TIMEOUT_MS },
@@ -927,34 +1112,73 @@ export async function getImmaculateHarnessDeckReceipt(
         { action: 'intelligence' },
         { settings, timeoutMs: HEALTH_TIMEOUT_MS },
       ),
+      callImmaculateHarness(
+        { action: 'intelligence_status' },
+        { settings, timeoutMs: HEALTH_TIMEOUT_MS },
+      ),
     ])
 
-    const topology = parseJsonRecord(topologyResult.json)
-    const intelligence = parseJsonRecord(intelligenceResult.json)
-    return {
-      cycle:
-        typeof topology?.cycle === 'number' ? topology.cycle : undefined,
-      nodes:
-        typeof topology?.nodes === 'number' ? topology.nodes : undefined,
-      edges:
-        typeof topology?.edges === 'number' ? topology.edges : undefined,
-      profile:
-        typeof topology?.profile === 'string' ? topology.profile : undefined,
-      objective:
-        typeof topology?.objective === 'string'
-          ? topology.objective
-          : undefined,
-      layerCount: Array.isArray(intelligence?.layers)
-        ? intelligence.layers.length
-        : 0,
-      executionCount: Array.isArray(intelligence?.executions)
-        ? intelligence.executions.length
-        : 0,
-      recommendedLayerId:
-        typeof intelligence?.recommendedLayerId === 'string'
-          ? intelligence.recommendedLayerId
-          : undefined,
+  const topology =
+    topologySettled.status === 'fulfilled' && topologySettled.value.status < 400
+      ? parseJsonRecord(topologySettled.value.json)
+      : null
+  const intelligence =
+    intelligenceSettled.status === 'fulfilled' &&
+    intelligenceSettled.value.status < 400
+      ? parseJsonRecord(intelligenceSettled.value.json)
+      : null
+  const publicStatus =
+    publicStatusSettled.status === 'fulfilled' &&
+    publicStatusSettled.value.status < 400
+      ? parseImmaculateHarnessIntelligenceStatus(
+          parseJsonRecord(publicStatusSettled.value.json),
+        )
+      : null
+
+  if (!topology && !intelligence && !publicStatus) {
+    return null
+  }
+
+  return {
+    cycle: typeof topology?.cycle === 'number' ? topology.cycle : undefined,
+    nodes: typeof topology?.nodes === 'number' ? topology.nodes : undefined,
+    edges: typeof topology?.edges === 'number' ? topology.edges : undefined,
+    profile:
+      typeof topology?.profile === 'string' ? topology.profile : undefined,
+    objective:
+      typeof topology?.objective === 'string' ? topology.objective : undefined,
+    layerCount: Array.isArray(intelligence?.layers)
+      ? intelligence.layers.length
+      : publicStatus?.layerPlane.layerCount ?? 0,
+    executionCount: Array.isArray(intelligence?.executions)
+      ? intelligence.executions.length
+      : publicStatus?.executionPlane.executionCount ?? 0,
+    recommendedLayerId:
+      typeof intelligence?.recommendedLayerId === 'string'
+        ? intelligence.recommendedLayerId
+        : publicStatus?.recommendedLayerId,
+  }
+}
+
+export async function getImmaculateHarnessIntelligenceStatus(
+  settings: ImmaculateHarnessSettingsLike = getSettings_DEPRECATED(),
+): Promise<ImmaculateHarnessIntelligenceStatus | null> {
+  const status = await getImmaculateHarnessStatus(settings)
+  if (!status.enabled || !status.reachable) {
+    return null
+  }
+
+  try {
+    const result = await callImmaculateHarness(
+      { action: 'intelligence_status' },
+      { settings, timeoutMs: HEALTH_TIMEOUT_MS },
+    )
+    if (result.status >= 400) {
+      return null
     }
+    return parseImmaculateHarnessIntelligenceStatus(
+      parseJsonRecord(result.json),
+    )
   } catch {
     return null
   }

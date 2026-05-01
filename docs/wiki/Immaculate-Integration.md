@@ -36,7 +36,8 @@ OpenJaws shows Immaculate through normal operator paths, not hidden internal con
 - `/status` shows route queue state, worker health, runtime mode, routed execution details, and the active Immaculate trace when a run is in flight
 - flight-deck notices surface pending assignment and routed `Q` state
 - background task surfaces reflect burst budgets, deferred launches, and crew pressure
-- `/immaculate` exposes topology and control state directly for operators who want a deeper view
+- `/immaculate readiness` reads the public-redacted `/api/intelligence/status` aggregate for Discord-safe and broad operator checks
+- `/immaculate` exposes topology and control state directly for operators who want a deeper authorized view
 - `/status` and `/immaculate` prefer the current active Immaculate trace, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
 
 ## Shared Policy Layer
@@ -54,6 +55,7 @@ That keeps the decision surface easier to audit and reduces the chance that laun
 OpenJaws now has a read-only runtime coherence check that compares the current live state instead of trusting one receipt in isolation.
 
 - live Immaculate reachability
+- public-redacted Immaculate intelligence readiness from `/api/intelligence/status`
 - Discord `Q` runtime receipt state
 - patrol snapshot vs. live harness reachability
 - route queue depth

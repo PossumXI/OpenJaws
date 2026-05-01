@@ -28,6 +28,15 @@ describe('/immaculate command parsing', () => {
     })
   })
 
+  test('parses public readiness aliases', () => {
+    expect(parseImmaculateCommand('readiness')).toEqual({
+      type: 'intelligence_status',
+    })
+    expect(parseImmaculateCommand('intelligence-status')).toEqual({
+      type: 'intelligence_status',
+    })
+  })
+
   test('rejects unknown register roles', () => {
     expect(parseImmaculateCommand('register captain')).toEqual({
       type: 'error',
