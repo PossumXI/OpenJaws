@@ -121,6 +121,15 @@ function traceSummaryPathExists(path: string | null | undefined): boolean {
   return existsSync(path)
 }
 
+function normalizeProbeCheckId(label: string): string {
+  return (
+    label
+      .trim()
+      .replace(/[^A-Za-z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'runtime-probe'
+  )
+}
+
 function readTraceSessionStartedPath(path: string): string | null {
   try {
     const firstLine = readFileSync(path, 'utf8')
@@ -370,7 +379,7 @@ export function buildRuntimeCoherenceReport(args: {
 
   for (const probe of args.probes ?? []) {
     checks.push({
-      id: `probe-${probe.label}`,
+      id: `probe-${normalizeProbeCheckId(probe.label)}`,
       status: probe.reachable ? 'ok' : 'warning',
       summary: `${probe.label} ${probe.reachable ? 'reachable' : 'unreachable'} at ${probe.url}`,
       detail: probe.detail ?? probe.status ?? null,

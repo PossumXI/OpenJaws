@@ -61,6 +61,7 @@ OpenJaws now has a read-only runtime coherence check that compares the current l
 - roundtable runtime state
 - loopback health for `Q`, `Viola`, and `Blackbeak`
 - PersonaPlex/Moshi WebSocket readiness plus a non-secret local repair hint
+- Apex workspace, Chrono, and browser bridge health, so `/preview`, `/apex`, and local demo workflows are visible in the same readiness audit instead of only in the separate bridge repair script
 
 Current fail-closed posture:
 
@@ -68,12 +69,14 @@ Current fail-closed posture:
 - active-trace/live-harness disagreement is a failure
 - Discord patrol and queue-depth drift are surfaced as mismatches instead of being silently ignored
 - PersonaPlex failures stay warnings in the audit command, but the output now tells the operator which local launcher is missing or should be run before voice can be called production-ready
+- Apex bridge failures stay warnings in the audit command, with a concrete `bun run apex:bridges:start` repair path, because a missing local bridge should block preview readiness without falsely claiming the entire harness is down
 
 Use:
 
 ```powershell
 bun run runtime:coherence
 bun run personaplex:probe
+bun run apex:bridges
 ```
 
 That command is an audit surface, not a repair action.

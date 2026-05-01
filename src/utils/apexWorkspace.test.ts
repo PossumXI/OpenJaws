@@ -21,10 +21,12 @@ import {
   getApexTenantGovernanceSummary,
   getApexTenantGovernanceMirrorPath,
   readApexTenantGovernanceMirror,
+  resolveDefaultAsgardRoot,
   summarizeApexBrowser,
   getApexLaunchTarget,
   getApexLaunchTargets,
   summarizePublicApexTenantGovernance,
+  normalizeApexWorkspaceHealthPayload,
   summarizeApexChrono,
   summarizeApexTenantGovernance,
   summarizeApexWorkspace,
@@ -38,6 +40,54 @@ describe('apexWorkspace', () => {
     expect(targets.some(target => target.id === 'browser_bridge')).toBe(true)
     expect(targets.some(target => target.id === 'browser')).toBe(true)
     expect(targets.some(target => target.id === 'notifications')).toBe(true)
+  })
+
+  it('normalizes raw and enveloped Apex health payloads', () => {
+    const health = {
+      status: 'ok',
+      service: 'chrono-bridge',
+      version: '5.0.0',
+      timestamp: '2026-05-01T00:45:00.000Z',
+    }
+
+    expect(normalizeApexWorkspaceHealthPayload(health)).toEqual(health)
+    expect(
+      normalizeApexWorkspaceHealthPayload({
+        success: true,
+        data: health,
+      }),
+    ).toEqual(health)
+    expect(
+      normalizeApexWorkspaceHealthPayload({
+        success: true,
+        data: { status: 'ok' },
+      }),
+    ).toBeNull()
+  })
+
+  it('discovers an Asgard root on the current Windows drive before falling back to Desktop', () => {
+    expect(
+      resolveDefaultAsgardRoot({
+        env: {
+          USERPROFILE: 'C:\\Users\\Knight',
+        },
+        cwd: 'D:\\codex-worktrees\\OpenJaws',
+        pathExists: path =>
+          path === 'C:\\Users\\Knight\\Desktop\\cheeks\\Asgard' ||
+          path === 'D:\\cheeks\\Asgard' ||
+          path === 'D:\\cheeks\\Asgard\\ignite\\apex-os-project',
+      }),
+    ).toBe('D:\\cheeks\\Asgard')
+
+    expect(
+      resolveDefaultAsgardRoot({
+        env: {
+          OPENJAWS_APEX_ASGARD_ROOT: 'E:\\custom\\Asgard',
+        },
+        cwd: 'D:\\codex-worktrees\\OpenJaws',
+        pathExists: () => false,
+      }),
+    ).toBe('E:\\custom\\Asgard')
   })
 
   it('builds a visible Windows launch command for native cargo apps', () => {

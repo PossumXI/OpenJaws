@@ -44,6 +44,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - `services/cloudflare-hosted-q` now provides the repo-owned Cloudflare Worker/D1 backend package for hosted-Q signup, Stripe checkout/webhook entitlement sync, key issuance, usage, JAWS profile fields, code-token wallets/ledger events, promotion campaign/contact capture, Resend notifications, and AROBI LAAS ledger events, with tests and service-route health recognition.
 - `bun run service:routes` now separates backend package presence from real provisioning, so hosted-Q, production database, Cloudflare/D1, Stripe billing, mail, and AROBI LAAS stay `not_configured` until concrete non-placeholder bindings or live routes exist.
 - `bun run apex:bridges` and `bun run apex:bridges:start` now give operators a direct local repair lane for Apex workspace, Chrono, and browser bridge health instead of leaving 8798/8799 warnings without a bounded launch command.
+- `bun run runtime:coherence` now includes Apex workspace, Chrono, and browser bridge probes too, so browser preview and Playwright demo readiness are visible in the same release audit as Immaculate, Q, Discord agents, roundtable, and PersonaPlex.
 - FIGlet-style `OPENJAWS` banner now uses a six-row ANSI-shadow treatment with the `OPENCHEEKS // ANSI-SHADOW FLIGHT DECK // IMMACULATE` deck line across the startup TUI
 - ocean-blue flight-deck styling is used across the cockpit, footer, task surfaces, and wiki/repo entry pages
 - shark mascot animation now breaches through the waterline instead of acting as a static icon
@@ -121,7 +122,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - the tracing lane now has a typed `src/immaculate/events.ts` schema plus structured session-trace writing, and benchmark lanes now emit deterministic trace-backed receipt files with signature blocks when a signing key is configured
 - `/status` and `/immaculate` now prefer the active typed trace for the run in flight, and `/status` applies the same active-run-first selection to Q benchmark traces before falling back to the newest completed receipt
 - routed `Q` fallback thresholds, route lease timing, worker lease duration, and Immaculate crew pressure delays now come from one shared policy layer instead of drifting across launch, routing, and worker helpers
-- `bun run runtime:coherence` now audits live harness reachability against Discord receipts, route queue depth, trace summaries, roundtable state, and local bot health
+- `bun run runtime:coherence` now audits live harness reachability against Discord receipts, route queue depth, trace summaries, roundtable state, local bot health, PersonaPlex voice readiness, and Apex bridge readiness
 - `system:check` now includes that live runtime coherence pass as an allow-failure audit instead of leaving the live-control surface unverified
 - `bun run personaplex:probe` is now a tracked release command, and runtime coherence includes PersonaPlex WebSocket readiness with a non-secret local repair hint for the voice launcher
 - Discord runtime receipts now normalize older payloads on read so `/status` can keep rendering a stable gateway/voice view across older local receipt files

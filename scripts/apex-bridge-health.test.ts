@@ -24,6 +24,11 @@ describe('apex-bridge-health', () => {
           chrono: async () => health('chrono'),
           browser: async () => health('browser'),
         },
+        getListenerHealth: {
+          workspace: async () => health('workspace'),
+          chrono: async () => health('chrono'),
+          browser: async () => health('browser'),
+        },
         start: {
           workspace: async () => startResult(true, 'unused'),
           chrono: async () => startResult(true, 'unused'),
@@ -44,6 +49,11 @@ describe('apex-bridge-health', () => {
           chrono: async () => null,
           browser: async () => null,
         },
+        getListenerHealth: {
+          workspace: async () => health('workspace'),
+          chrono: async () => null,
+          browser: async () => null,
+        },
         start: {
           workspace: async () => startResult(true, 'unused'),
           chrono: async () => startResult(false, 'cargo missing'),
@@ -54,6 +64,39 @@ describe('apex-bridge-health', () => {
 
     expect(report.status).toBe('warning')
     expect(report.checks.filter(check => check.status === 'warning')).toHaveLength(2)
+  })
+
+  test('distinguishes untrusted local listeners from missing bridges', async () => {
+    const report = await runApexBridgeHealth({
+      deps: {
+        getHealth: {
+          workspace: async () => health('workspace'),
+          chrono: async () => health('chrono'),
+          browser: async () => null,
+        },
+        getListenerHealth: {
+          workspace: async () => health('workspace'),
+          chrono: async () => health('chrono'),
+          browser: async () => health('browser-bridge'),
+        },
+        start: {
+          workspace: async () => startResult(true, 'unused'),
+          chrono: async () => startResult(true, 'unused'),
+          browser: async () => startResult(true, 'unused'),
+        },
+      },
+    })
+
+    expect(report.status).toBe('warning')
+    expect(report.checks.find(check => check.id === 'browser')).toMatchObject({
+      status: 'warning',
+      listenerHealth: {
+        service: 'browser-bridge',
+      },
+    })
+    expect(report.checks.find(check => check.id === 'browser')?.summary).toContain(
+      'not trusted',
+    )
   })
 
   test('fails when start-missing cannot recover a bridge', async () => {
@@ -67,6 +110,11 @@ describe('apex-bridge-health', () => {
             chronoChecks += 1
             return null
           },
+          browser: async () => health('browser'),
+        },
+        getListenerHealth: {
+          workspace: async () => health('workspace'),
+          chrono: async () => null,
           browser: async () => health('browser'),
         },
         start: {

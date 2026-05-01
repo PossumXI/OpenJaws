@@ -1,7 +1,57 @@
 import { describe, expect, test } from 'bun:test'
-import { buildPersonaPlexCoherenceProbe } from './runtime-coherence.ts'
+import {
+  buildApexBridgeCoherenceProbe,
+  buildPersonaPlexCoherenceProbe,
+} from './runtime-coherence.ts'
 
 describe('runtime-coherence PersonaPlex mapping', () => {
+  test('maps Apex bridge health into the shared coherence probe contract', () => {
+    expect(
+      buildApexBridgeCoherenceProbe('Apex browser bridge', 'http://127.0.0.1:8799', {
+        status: 'healthy',
+        service: 'browser-bridge',
+        version: '5.0.0',
+        timestamp: '2026-05-01T00:45:00.000Z',
+      }),
+    ).toEqual({
+      label: 'Apex browser bridge',
+      url: 'http://127.0.0.1:8799',
+      reachable: true,
+      status: 'healthy',
+      detail: 'browser-bridge 5.0.0 · 2026-05-01T00:45:00.000Z',
+    })
+  })
+
+  test('keeps missing Apex bridges actionable from runtime coherence', () => {
+    const probe = buildApexBridgeCoherenceProbe(
+      'Apex Chrono bridge',
+      'http://127.0.0.1:8798',
+      null,
+    )
+
+    expect(probe.reachable).toBe(false)
+    expect(probe.status).toBeNull()
+    expect(probe.detail).toContain('bun run apex:bridges:start')
+  })
+
+  test('explains untrusted Apex bridge listeners separately from missing bridges', () => {
+    const probe = buildApexBridgeCoherenceProbe(
+      'Apex browser bridge',
+      'http://127.0.0.1:8799',
+      null,
+      {
+        status: 'ok',
+        service: 'browser-bridge',
+        version: '5.0.0',
+        timestamp: '2026-05-01T00:48:00.000Z',
+      },
+    )
+
+    expect(probe.reachable).toBe(false)
+    expect(probe.detail).toContain('answered locally')
+    expect(probe.detail).toContain('OPENJAWS_APEX_TRUST_LOCALHOST=1')
+  })
+
   test('maps a ready PersonaPlex probe into a reachable coherence probe', () => {
     expect(
       buildPersonaPlexCoherenceProbe({
