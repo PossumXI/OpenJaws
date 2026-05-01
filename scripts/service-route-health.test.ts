@@ -112,7 +112,7 @@ describe('service-route-health', () => {
     expect(report.checks.some(check => check.id === 'arobi-laas-live')).toBe(false)
   })
 
-  test('uses qline Netlify env metadata for deployed Stripe configuration', async () => {
+  test('uses qline Netlify env metadata for deployed Stripe and mail configuration', async () => {
     const report = await runServiceRouteHealth({
       fetchImpl: makeFetch({
         'https://api.netlify.com/api/v1/sites/edde15e1-bf1f-4986-aef3-5803fdce7406':
@@ -126,6 +126,8 @@ describe('service-route-health', () => {
             'STRIPE_PRICE_BUILDER',
             'STRIPE_SUCCESS_URL',
             'STRIPE_CANCEL_URL',
+            'RESEND_API_KEY',
+            'RESEND_FROM_EMAIL',
           ])),
       }),
       env: {
@@ -149,6 +151,17 @@ describe('service-route-health', () => {
     expect(
       report.checks.find(check => check.id === 'netlify-auth-config'),
     ).toMatchObject({ status: 'passed' })
+    expect(
+      report.checks.find(check => check.id === 'mail-engine-config'),
+    ).toMatchObject({
+      status: 'passed',
+      details: {
+        resendConfigured: true,
+        smtpConfigured: false,
+      },
+    })
+    expect(JSON.stringify(report)).not.toContain('stripe_secret_key-configured')
+    expect(JSON.stringify(report)).not.toContain('resend_api_key-configured')
   })
 
   test('treats next JAWS updater payload as not configured before the tag is public', async () => {
