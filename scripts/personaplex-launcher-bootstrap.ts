@@ -216,7 +216,7 @@ if ($LASTEXITCODE -ne 0 -or -not $WslPath) {
   Fail-PersonaPlexLaunch "wsl_path_failed" "Could not convert $ResolvedWslScript to a WSL path."
 }
 
-$Process = Start-Process -FilePath "wsl.exe" -ArgumentList @("bash", $WslPath) -PassThru -WindowStyle Hidden
+$Process = Start-Process -FilePath "wsl.exe" -ArgumentList @("bash", $WslPath, $RuntimeUrl) -PassThru -WindowStyle Hidden
 Write-PersonaPlexState @{
   status = "started"
   runtimeMode = "wsl"
@@ -239,7 +239,9 @@ function buildWslLauncherTemplate(runtimeUrl: string): string {
 # Keep tokens in your shell environment. Do not write HF_TOKEN or other secrets into this file.
 set -euo pipefail
 
-if [[ -z "\${PERSONAPLEX_RUNTIME_URL:-}" ]]; then
+if [[ -n "\${1:-}" ]]; then
+  export PERSONAPLEX_RUNTIME_URL="$1"
+elif [[ -z "\${PERSONAPLEX_RUNTIME_URL:-}" ]]; then
   export PERSONAPLEX_RUNTIME_URL=${shellQuote(runtimeUrl)}
 fi
 
