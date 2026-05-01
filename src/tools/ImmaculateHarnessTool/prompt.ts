@@ -12,6 +12,7 @@ Actions:
 - snapshot: GET /api/snapshot
 - topology: GET /api/topology
 - governance_status: GET /api/governance/status
+- intelligence_status: GET /api/intelligence/status
 - intelligence: GET /api/intelligence
 - executions: GET /api/intelligence/executions
 - ollama_models: GET /api/intelligence/ollama/models

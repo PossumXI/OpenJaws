@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+import { createServer, type IncomingMessage, type ServerResponse } from 'http'
+import type { AddressInfo } from 'net'
 import {
   createImmaculateCrewBurstBudget,
   buildImmaculateActuationReceipt,
@@ -11,7 +13,9 @@ import {
   buildImmaculateHarnessHeaders,
   formatImmaculateHarnessInlineStatus,
   getImmaculateHarnessConfig,
+  getImmaculateHarnessDeckReceipt,
   getImmaculateHarnessGovernanceProfile,
+  getImmaculateHarnessIntelligenceStatus,
   isImmaculateCrewBurstBudgetActive,
   isImmaculateCrewWaveActive,
   isLoopbackHarnessUrl,
@@ -36,6 +40,33 @@ afterEach(() => {
   process.env.IMMACULATE_API_KEY = ORIGINAL_ENV.IMMACULATE_API_KEY
   process.env.IMMACULATE_ACTOR = ORIGINAL_ENV.IMMACULATE_ACTOR
 })
+
+async function withImmaculateTestServer<T>(
+  handler: (req: IncomingMessage, res: ServerResponse) => void,
+  callback: (url: string) => Promise<T>,
+): Promise<T> {
+  const server = createServer(handler)
+  await new Promise<void>(resolve => {
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  const address = server.address() as AddressInfo
+  try {
+    return await callback(`http://127.0.0.1:${address.port}`)
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close(error => (error ? reject(error) : resolve()))
+    })
+  }
+}
+
+function writeJson(
+  response: ServerResponse,
+  statusCode: number,
+  body: Record<string, unknown>,
+): void {
+  response.writeHead(statusCode, { 'content-type': 'application/json' })
+  response.end(JSON.stringify(body))
+}
 
 describe('immaculate harness config', () => {
   test('normalizes default harness URL and loopback detection', () => {
@@ -175,6 +206,85 @@ describe('immaculate harness config', () => {
         recommendedLayerId: 'router-core',
       }),
     ).toContain('Immaculate is the default orchestration substrate')
+  })
+
+  test('uses public intelligence status when topology and private intelligence are protected', async () => {
+    await withImmaculateTestServer(
+      (request, response) => {
+        if (request.url === '/api/health') {
+          writeJson(response, 200, {
+            status: 'ok',
+            service: 'immaculate-harness',
+          })
+          return
+        }
+        if (
+          request.url === '/api/topology' ||
+          request.url === '/api/intelligence'
+        ) {
+          writeJson(response, 401, { message: 'protected' })
+          return
+        }
+        if (request.url === '/api/intelligence/status') {
+          writeJson(response, 200, {
+            status: 'ready',
+            service: 'immaculate-harness',
+            visibility: 'public-redacted',
+            recommendedLayerId: 'router-core',
+            summary:
+              'ready: intelligence layer, worker plane, integrity, and governor queue are clear',
+            reasons: [],
+            layerPlane: {
+              layerCount: 2,
+              readyLayerCount: 1,
+            },
+            workerPlane: {
+              workerCount: 4,
+              healthyWorkerCount: 4,
+              staleWorkerCount: 0,
+              faultedWorkerCount: 0,
+              readiness: 'ready',
+            },
+            executionPlane: {
+              executionCount: 7,
+              completedExecutionCount: 6,
+            },
+            governor: {
+              queueDepth: 0,
+            },
+            persistence: {
+              recoveryMode: 'snapshot',
+              persistedEventCount: 9774,
+              integrityStatus: 'verified',
+              integrityFindingCount: 0,
+            },
+          })
+          return
+        }
+        writeJson(response, 404, { message: 'not found' })
+      },
+      async url => {
+        process.env.IMMACULATE_HARNESS_URL = url
+
+        const deck = await getImmaculateHarnessDeckReceipt()
+        const intelligence = await getImmaculateHarnessIntelligenceStatus()
+
+        expect(deck).toEqual({
+          cycle: undefined,
+          nodes: undefined,
+          edges: undefined,
+          profile: undefined,
+          objective: undefined,
+          layerCount: 2,
+          executionCount: 7,
+          recommendedLayerId: 'router-core',
+        })
+        expect(intelligence?.status).toBe('ready')
+        expect(intelligence?.visibility).toBe('public-redacted')
+        expect(intelligence?.workerPlane.readiness).toBe('ready')
+        expect(intelligence?.persistence.integrityStatus).toBe('verified')
+      },
+    )
   })
 
   test('normalizes actuation objectives and receipts', () => {

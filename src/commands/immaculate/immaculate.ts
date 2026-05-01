@@ -23,6 +23,7 @@ type ParsedImmaculateCommand =
         | 'snapshot'
         | 'topology'
         | 'governance_status'
+        | 'intelligence_status'
         | 'intelligence'
         | 'executions'
         | 'workers'
@@ -61,13 +62,14 @@ function parseJsonRecord(json: string): Record<string, unknown> | null {
 
 function buildHelpMessage(): string {
   return [
-    'Usage: /immaculate [status|health|topology|intelligence|executions|workers|models|register|run|control] ...',
+    'Usage: /immaculate [status|health|topology|readiness|intelligence|executions|workers|models|register|run|control] ...',
     '',
     'Commands:',
     '- /immaculate',
     '- /immaculate status',
     '- /immaculate health',
     '- /immaculate topology',
+    '- /immaculate readiness',
     '- /immaculate intelligence',
     '- /immaculate executions',
     '- /immaculate workers',
@@ -114,12 +116,19 @@ export function parseImmaculateCommand(
       'health',
       'snapshot',
       'topology',
+      'intelligence-status',
+      'readiness',
       'intelligence',
       'executions',
       'workers',
     ].includes(head)
   ) {
-    return { type: head as ParsedImmaculateCommand['type'] }
+    return {
+      type:
+        head === 'intelligence-status' || head === 'readiness'
+          ? 'intelligence_status'
+          : (head as ParsedImmaculateCommand['type']),
+    }
   }
 
   if (head === 'governance' || head === 'governance-status') {
@@ -263,6 +272,34 @@ function formatImmaculateResult(result: ImmaculateHarnessResult): string {
     }
     if (typeof data.objective === 'string') {
       lines.push(`Objective: ${data.objective}`)
+    }
+    return lines.join('\n')
+  }
+
+  if (result.route === '/api/intelligence/status' && data) {
+    const layerPlane =
+      data.layerPlane &&
+      typeof data.layerPlane === 'object' &&
+      data.layerPlane !== null
+        ? (data.layerPlane as Record<string, unknown>)
+        : null
+    const workerPlane =
+      data.workerPlane &&
+      typeof data.workerPlane === 'object' &&
+      data.workerPlane !== null
+        ? (data.workerPlane as Record<string, unknown>)
+        : null
+    const governor =
+      data.governor &&
+      typeof data.governor === 'object' &&
+      data.governor !== null
+        ? (data.governor as Record<string, unknown>)
+        : null
+    lines.push(
+      `Readiness: ${String(data.status ?? 'unknown')} · ${String(layerPlane?.readyLayerCount ?? '?')}/${String(layerPlane?.layerCount ?? '?')} ready layers · workers ${String(workerPlane?.readiness ?? 'unknown')} · queue ${String(governor?.queueDepth ?? '?')}`,
+    )
+    if (typeof data.summary === 'string') {
+      lines.push(`Summary: ${data.summary}`)
     }
     return lines.join('\n')
   }

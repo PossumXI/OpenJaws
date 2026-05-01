@@ -116,6 +116,7 @@ const READ_ONLY_ACTIONS = new Set([
   'snapshot',
   'topology',
   'governance_status',
+  'intelligence_status',
   'intelligence',
   'executions',
   'workers',

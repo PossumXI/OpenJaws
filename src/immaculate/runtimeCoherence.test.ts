@@ -5,6 +5,58 @@ import { tmpdir } from 'os'
 import { buildRuntimeCoherenceReport } from './runtimeCoherence.js'
 
 describe('runtimeCoherence', () => {
+  test('scores public Immaculate intelligence readiness separately from topology reachability', () => {
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      immaculateIntelligenceStatus: {
+        status: 'degraded',
+        service: 'immaculate-harness',
+        visibility: 'public-redacted',
+        summary: 'degraded: 3 governed work items are queued',
+        reasons: ['3 governed work items are queued'],
+        recommendedLayerId: 'router-core',
+        layerPlane: {
+          layerCount: 2,
+          readyLayerCount: 2,
+        },
+        workerPlane: {
+          workerCount: 4,
+          healthyWorkerCount: 4,
+          readiness: 'ready',
+        },
+        executionPlane: {
+          executionCount: 7,
+        },
+        governor: {
+          queueDepth: 3,
+        },
+        persistence: {
+          recoveryMode: 'snapshot',
+          persistedEventCount: 9774,
+          integrityStatus: 'verified',
+          integrityFindingCount: 0,
+        },
+      },
+      qAgentReceipt: null,
+      immaculateTrace: null,
+      qTrace: null,
+    })
+
+    const check = report.checks.find(
+      item => item.id === 'harness-intelligence-status',
+    )
+
+    expect(check?.status).toBe('warning')
+    expect(check?.summary).toContain(
+      '2/2 ready layers and worker readiness ready',
+    )
+    expect(check?.detail).toBe('degraded: 3 governed work items are queued')
+  })
+
   test('reports an ok fail-closed state when the harness is down and traces are not active', () => {
     const report = buildRuntimeCoherenceReport({
       harnessStatus: {

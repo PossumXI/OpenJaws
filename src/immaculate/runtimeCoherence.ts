@@ -1,6 +1,9 @@
 import { existsSync, readFileSync } from 'fs'
 import type { DiscordQAgentReceipt } from '../utils/discordQAgentRuntime.js'
-import type { ImmaculateHarnessStatus } from '../utils/immaculateHarness.js'
+import type {
+  ImmaculateHarnessIntelligenceStatus,
+  ImmaculateHarnessStatus,
+} from '../utils/immaculateHarness.js'
 import type { QTraceSummary } from '../q/traceSummary.js'
 import type { ImmaculateTraceSummary } from './traceSummary.js'
 
@@ -158,6 +161,7 @@ function readTraceSessionStartedPath(path: string): string | null {
 
 export function buildRuntimeCoherenceReport(args: {
   harnessStatus: ImmaculateHarnessStatus
+  immaculateIntelligenceStatus?: ImmaculateHarnessIntelligenceStatus | null
   qAgentReceipt: DiscordQAgentReceipt | null
   immaculateTrace: ImmaculateTraceSummary | null
   qTrace: QTraceSummary | null
@@ -179,6 +183,36 @@ export function buildRuntimeCoherenceReport(args: {
       : `Immaculate unreachable at ${args.harnessStatus.harnessUrl}`,
     detail: args.harnessStatus.error ?? null,
   })
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      args,
+      'immaculateIntelligenceStatus',
+    )
+  ) {
+    const intelligenceStatus = args.immaculateIntelligenceStatus ?? null
+    checks.push({
+      id: 'harness-intelligence-status',
+      status: !intelligenceStatus
+        ? harnessReachable
+          ? 'warning'
+          : 'ok'
+        : intelligenceStatus.status === 'blocked'
+          ? 'failed'
+          : intelligenceStatus.status === 'degraded'
+            ? 'warning'
+            : 'ok',
+      summary: !intelligenceStatus
+        ? harnessReachable
+          ? 'Immaculate public intelligence status is unavailable.'
+          : 'Immaculate public intelligence status is unavailable while the harness is offline.'
+        : `Immaculate public intelligence status is ${intelligenceStatus.status ?? 'unknown'} with ${intelligenceStatus.layerPlane.readyLayerCount ?? 0}/${intelligenceStatus.layerPlane.layerCount ?? 0} ready layers and worker readiness ${intelligenceStatus.workerPlane.readiness ?? 'unknown'}.`,
+      detail:
+        intelligenceStatus?.summary ??
+        intelligenceStatus?.reasons.join(' | ') ??
+        null,
+    })
+  }
 
   if (!qReceipt) {
     checks.push({

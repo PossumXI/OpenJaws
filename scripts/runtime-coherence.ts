@@ -5,7 +5,10 @@ import { readLatestImmaculateTraceSummary } from '../src/immaculate/traceSummary
 import { readLatestQTraceSummary } from '../src/q/traceSummary.js'
 import { readDiscordQAgentReceipt } from '../src/utils/discordQAgentRuntime.js'
 import { readDiscordRoundtableSessionSnapshot } from '../src/utils/discordRoundtableRuntime.js'
-import { getImmaculateHarnessStatus } from '../src/utils/immaculateHarness.js'
+import {
+  getImmaculateHarnessIntelligenceStatus,
+  getImmaculateHarnessStatus,
+} from '../src/utils/immaculateHarness.js'
 import {
   APEX_BROWSER_API_URL,
   APEX_CHRONO_API_URL,
@@ -248,7 +251,10 @@ function readRoundtableState(root: string) {
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   const options = parseArgs(argv)
   const root = process.cwd()
-  const harnessStatus = await getImmaculateHarnessStatus()
+  const [harnessStatus, publicIntelligenceStatus] = await Promise.all([
+    getImmaculateHarnessStatus(),
+    getImmaculateHarnessIntelligenceStatus(),
+  ])
   const [agentProbes, personaPlexProbe, apexBridgeProbes] = await Promise.all([
     Promise.all([
       probeJsonHealth('Q', 'http://127.0.0.1:8788/health'),
@@ -260,6 +266,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   ])
   const report = buildRuntimeCoherenceReport({
     harnessStatus,
+    immaculateIntelligenceStatus: publicIntelligenceStatus,
     qAgentReceipt: readDiscordQAgentReceipt(root),
     immaculateTrace: readLatestImmaculateTraceSummary(root),
     qTrace: readLatestQTraceSummary(root),
