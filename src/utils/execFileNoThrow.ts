@@ -10,6 +10,7 @@ export { execSyncWithDefaults_DEPRECATED } from './execFileNoThrowPortable.js'
 
 const MS_IN_SECOND = 1000
 const SECONDS_IN_MINUTE = 60
+const SAFE_EXECUTABLE_FILE_PATTERN = /^[A-Za-z0-9_@.+:\/\\ -]+$/
 
 type ExecFileOptions = {
   abortSignal?: AbortSignal
@@ -88,6 +89,18 @@ function assertNoNulByte(value: string, label: string): void {
   }
 }
 
+function assertSafeExecutableFile(file: string): void {
+  if (!file.trim()) {
+    throw new Error('Executable path must not be empty')
+  }
+  assertNoNulByte(file, 'Executable path')
+  if (!SAFE_EXECUTABLE_FILE_PATTERN.test(file)) {
+    throw new Error(
+      'Executable path must be a single executable name or path, not a shell command',
+    )
+  }
+}
+
 /**
  * execFile, but always resolves (never throws)
  */
@@ -111,7 +124,7 @@ export function execFileNoThrowWithCwd(
 ): Promise<{ stdout: string; stderr: string; code: number; error?: string }> {
   return new Promise(resolve => {
     try {
-      assertNoNulByte(file, 'Executable path')
+      assertSafeExecutableFile(file)
       for (const [index, arg] of args.entries()) {
         assertNoNulByte(arg, `Argument ${index}`)
       }
@@ -132,6 +145,7 @@ export function execFileNoThrowWithCwd(
       env: finalEnv,
       stdin: finalStdin,
       input: finalInput,
+      shell: false,
       reject: false, // Don't throw on non-zero exit codes
     })
       .then(result => {
