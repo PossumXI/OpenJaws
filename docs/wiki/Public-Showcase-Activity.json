@@ -1,92 +1,57 @@
 {
-  "updatedAt": "2026-04-29T02:45:07.319Z",
+  "updatedAt": "2026-05-01T23:06:13.533Z",
   "entries": [
     {
-      "id": "apex-governed-spend-current",
-      "timestamp": "2026-04-29T02:45:07.319Z",
-      "title": "Apex governed spend lane",
-      "summary": "Apex governed spend review is active. No spend actions were published in this public snapshot. Protected approval and audit paths remain available through ApexOS and OpenJaws.",
-      "kind": "tenant_governed_spend",
-      "status": "info",
-      "source": "Apex governed spend",
-      "operatorActions": [],
-      "subsystems": [
-        "apex",
-        "openjaws"
-      ],
-      "artifacts": [
-        "apex:tenant-governance",
-        "apex:governed-spend"
-      ],
-      "tags": [
-        "apex",
-        "spend",
-        "supervised",
-        "public",
-        "commercial"
-      ]
-    },
-    {
-      "id": "immaculate-benchmark-current",
-      "timestamp": "2026-04-26T20:08:23.445Z",
-      "title": "Immaculate benchmark board",
-      "summary": "Durability Recovery. all assertions passing. reflex p50 14.09 ms · cognitive p50 50.31 ms · event throughput 51.62 events/s.",
-      "kind": "benchmark",
+      "id": "real-world-engagement-2026-05-01T23:06:13.533Z",
+      "timestamp": "2026-05-01T23:06:13.533Z",
+      "title": "Real-world engagement behavior",
+      "summary": "Real use is active: 4 public signals, 23 observed actions, 9 systems, and 6 receipt surfaces. 1 item still needs review.",
+      "kind": "engagement_behavior",
       "status": "ok",
-      "source": "Immaculate benchmark board",
+      "source": "OpenJaws engagement profiler",
       "operatorActions": [
-        "immaculate_benchmark_publication",
-        "orchestration_benchmark"
+        "real_world_engagement",
+        "system_tuning",
+        "operator_runtime",
+        "security_review",
+        "chat_session_create",
+        "supervised_apex_action",
+        "create_session",
+        "chat_operator_activity",
+        "apex_operator_activity",
+        "control_plane_coordination"
       ],
       "subsystems": [
+        "openjaws",
+        "apex",
+        "nysus",
+        "control_fabric",
+        "arobi",
         "immaculate",
-        "openjaws"
+        "Immaculate",
+        "OpenJaws"
       ],
       "artifacts": [
-        "immaculate:benchmark-report"
+        "showcase:engagement-profile",
+        "roundtable:actionability",
+        "apex:tenant-governance",
+        "nysus:agent-events",
+        "apex:chat-session",
+        "apex:chat-session:11e5112d-4aad-48b4-a72a-9ab4b…",
+        "apex:chat-create_session"
       ],
       "tags": [
-        "benchmark",
+        "real_world",
+        "engagement",
         "public",
-        "immaculate",
-        "orchestration"
+        "active"
       ]
     },
     {
-      "id": "q-benchmark-board-current",
-      "timestamp": "2026-04-26T20:08:23.445Z",
-      "title": "Q public benchmark board",
-      "summary": "Q benchmark transparency is live. BridgeBench completed in dry-run mode. Public TerminalBench circuit-fibsqrt completed 5 trials with 0 execution errors, 5 benchmark failures, and reward 0.0. W&B remains local-receipt only on this host.",
-      "kind": "benchmark",
-      "status": "info",
-      "source": "Q public benchmark board",
-      "operatorActions": [
-        "q_benchmark_publication",
-        "bridgebench_publication",
-        "terminalbench_publication",
-        "wandb_publication"
-      ],
-      "subsystems": [
-        "q",
-        "openjaws"
-      ],
-      "artifacts": [
-        "q:benchmark-snapshot"
-      ],
-      "tags": [
-        "benchmark",
-        "public",
-        "q",
-        "bridgebench",
-        "terminalbench",
-        "wandb"
-      ]
-    },
-    {
-      "id": "runtime-audit-current",
-      "timestamp": "2026-04-26T20:08:23.445Z",
+      "id": "runtime-audit-2026-05-01T23:06:13.533Z",
+      "timestamp": "2026-05-01T23:06:13.533Z",
       "title": "Supervised runtime activity refreshed",
-      "summary": "OpenJaws, Q, Immaculate, Apex, and Discord are visible as public-safe activity summaries. Follow-ups stay tracked without exposing sensitive details.",
+      "summary": "Supervised OpenJaws audit surfaces are live but still show bounded warnings or incomplete runtime coverage.",
       "kind": "runtime_audit",
       "status": "info",
       "source": "OpenJaws public showcase sync",
@@ -98,8 +63,6 @@
         "openjaws",
         "apex",
         "nysus",
-        "q",
-        "roundtable",
         "immaculate",
         "discord"
       ],
@@ -109,116 +72,14 @@
       "tags": [
         "public",
         "audit",
-        "supervised"
+        "bounded"
       ]
     },
     {
-      "id": "roundtable-review-current",
-      "timestamp": "2026-04-26T20:07:54.546Z",
-      "title": "Roundtable runtime",
-      "summary": "Roundtable coordination is active and still under review. Viola passed turn 14.",
-      "kind": "roundtable_runtime",
-      "status": "info",
-      "source": "OpenJaws roundtable lane",
-      "operatorActions": [
-        "roundtable_runtime",
-        "immaculate_handoff"
-      ],
-      "subsystems": [
-        "openjaws",
-        "immaculate",
-        "discord"
-      ],
-      "artifacts": [
-        "roundtable:session"
-      ],
-      "tags": [
-        "roundtable",
-        "supervised",
-        "needs-review"
-      ]
-    },
-    {
-      "id": "discord-blackbeak-current",
-      "timestamp": "2026-04-26T19:54:08.942Z",
-      "title": "Supervised Blackbeak patrol update",
-      "summary": "Blackbeak Discord runtime is online through the supervised bounded operator lane.",
-      "kind": "patrol",
-      "status": "ok",
-      "source": "OpenJaws Discord lane",
-      "operatorActions": [
-        "blackbeak_operator_patrol"
-      ],
-      "subsystems": [
-        "openjaws",
-        "discord",
-        "blackbeak"
-      ],
-      "artifacts": [
-        "discord:blackbeak-agent-receipt"
-      ],
-      "tags": [
-        "blackbeak",
-        "discord",
-        "openjaws",
-        "supervised"
-      ]
-    },
-    {
-      "id": "immaculate-trace-current",
-      "timestamp": "2026-04-25T03:43:09.232Z",
-      "title": "Immaculate orchestration trace",
-      "summary": "Immaculate session 081d23cb-f56e-4723-b16d-6aeef9219ede is completed with 5 trace events.",
-      "kind": "orchestration_trace",
-      "status": "ok",
-      "source": "Immaculate trace",
-      "operatorActions": [
-        "immaculate_trace",
-        "orchestration_trace"
-      ],
-      "subsystems": [
-        "immaculate",
-        "openjaws"
-      ],
-      "artifacts": [
-        "immaculate:trace-summary"
-      ],
-      "tags": [
-        "immaculate",
-        "trace",
-        "supervised"
-      ]
-    },
-    {
-      "id": "q-trace-current",
-      "timestamp": "2026-04-24T01:39:30.017Z",
-      "title": "Q readiness summary",
-      "summary": "Q session q-terminalbench-20260424T013520 is completed with 5 trace events.",
-      "kind": "q_readiness",
-      "status": "ok",
-      "source": "Q readiness",
-      "operatorActions": [
-        "q_readiness_summary",
-        "model_activity_summary"
-      ],
-      "subsystems": [
-        "q",
-        "openjaws"
-      ],
-      "artifacts": [
-        "q:readiness-summary"
-      ],
-      "tags": [
-        "q",
-        "readiness",
-        "supervised"
-      ]
-    },
-    {
-      "id": "apex-tenant-governance-2026-04-22t12-14-20-125761800-00-00",
-      "timestamp": "2026-04-22T12:14:20.125Z",
+      "id": "apex-tenant-governance-2026-05-01T17:00:25.526840200+00:00",
+      "timestamp": "2026-05-01T17:00:25.526Z",
       "title": "Apex tenant governance",
-      "summary": "Apex tenant governance is publishing a public-safe summary for supervised policy and risk review.",
+      "summary": "Governed tenant actions 6 · pending 5 · high risk 4. Confidence 0.80 · avg risk 1.0 · detections 0. Top operator action system tuning · top signal antivirus enabled · review pending review. Ethics passed 4 · failed 2 · telemetry scopes 4. Latest activity 2026-05-01T17:00:25.526840200+00:00",
       "kind": "tenant_governance",
       "status": "info",
       "source": "Apex tenant governance",
@@ -237,7 +98,7 @@
       "tags": [
         "apex",
         "governance",
-        "supervised",
+        "bounded",
         "public",
         "antivirus_enabled",
         "firewall_enabled",
@@ -246,17 +107,17 @@
       ]
     },
     {
-      "id": "apex-operator-session-start-d44aae02-7379-4dec-8f22-8ff98dcd46cd",
+      "id": "apex-operator-create_session-d44aae02-7379-4dec-8f22-8ff98dcd46cd",
       "timestamp": "2026-04-22T12:06:55.771Z",
       "title": "Apex Shadow Chat operator activity",
-      "summary": "Apex is publishing a public-safe activity summary for supervised app actions. Sensitive records stay private.",
+      "summary": "Shadow Chat is create session through the bounded /apex operator lane. Created bounded Shadow Chat session 11e5112d-4aad-48b4-a72a-9ab4b3d104ff through the supervised Apex operator lane.",
       "kind": "apex_operator_activity",
       "status": "ok",
       "source": "OpenJaws Apex lane",
       "operatorActions": [
         "chat_session_create",
         "supervised_apex_action",
-        "session start",
+        "create_session",
         "chat_operator_activity",
         "apex_operator_activity"
       ],
@@ -266,14 +127,86 @@
       ],
       "artifacts": [
         "apex:chat-session",
-        "apex:chat-",
-        "apex:chat-session start"
+        "apex:chat-session:11e5112d-4aad-48b4-a72a-9ab4b…",
+        "apex:chat-create_session"
       ],
       "tags": [
         "apex",
         "chat",
-        "supervised",
+        "bounded",
         "operator"
+      ]
+    },
+    {
+      "id": "8dc1cc39-e964-44d1-8f4a-686edf6f80e8",
+      "timestamp": "2026-04-22T03:35:37.838Z",
+      "title": "Nysus operator activity: Coordinator Agent",
+      "summary": "Task coordinate completed by Coordinator Agent 24 bounded lifecycle events across 0 governed tasks and 5 agent lanes are mirrored into the public showcase lane. Recent governed task lanes: coordinate, secure, emergency, analyze, autonomous. Public action surfaces: control plane coordination, coordinate, subsystem comm…",
+      "kind": "nysus_operator_activity",
+      "status": "ok",
+      "source": "nysus-agent-coordinator",
+      "operatorActions": [
+        "control_plane_coordination",
+        "coordinate",
+        "subsystem_command",
+        "access_action",
+        "secure",
+        "security_response",
+        "browser_action",
+        "emergency",
+        "emergency_response",
+        "analyze",
+        "email_action",
+        "telemetry_analysis",
+        "autonomous",
+        "autonomous_execution",
+        "nysus_agent_summary"
+      ],
+      "subsystems": [
+        "nysus",
+        "control_fabric",
+        "arobi"
+      ],
+      "artifacts": [
+        "nysus:agent-events"
+      ],
+      "tags": [
+        "nysus",
+        "bounded",
+        "public",
+        "audit",
+        "boundary_scoped",
+        "execution_recorded",
+        "high_priority",
+        "human_review_required",
+        "policy_guarded",
+        "critical_priority",
+        "execution_active"
+      ]
+    },
+    {
+      "id": "immaculate-actionability-2026-04-20T02:38:44.879Z",
+      "timestamp": "2026-04-20T02:38:44.879Z",
+      "title": "Immaculate roundtable actionability plan",
+      "summary": "hybrid quorum planner covers 3 repos with 3 isolated actions 3 ready. Repos: Immaculate, OpenJaws, Asgard. Isolation: worktree, branch. Authority: agent-branch-only. Roundtable hybrid-quorum plan across 3 repo(s) with 3 isolated agent action(s); 3 ready for immediate worktree materialization..",
+      "kind": "roundtable_actionability",
+      "status": "ok",
+      "source": "Immaculate planner",
+      "operatorActions": [],
+      "subsystems": [
+        "immaculate",
+        "Immaculate",
+        "OpenJaws",
+        "Asgard"
+      ],
+      "artifacts": [
+        "roundtable:actionability"
+      ],
+      "tags": [
+        "immaculate",
+        "planner",
+        "bounded",
+        "public"
       ]
     }
   ]
