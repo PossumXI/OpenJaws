@@ -32,7 +32,11 @@ type PublicShowcaseCopyCheckOptions = {
 }
 
 export const PUBLIC_SHOWCASE_COPY_BANNED_PATTERNS: RegExp[] = [
-  /#dev_support/i,
+  /(^|[^\w/])#[A-Za-z][A-Za-z0-9_-]*/i,
+  /<#\d+>/i,
+  /<@!?\d+>/i,
+  /<@&\d+>/i,
+  /@(?:everyone|here)\b/i,
   /[A-Za-z]:[\\/](?:Users|cheeks|openjaws|Windows|ProgramData)[\\/]/i,
   /\/(?:Users|home|mnt|var|etc|root)\//i,
   /\b(?:manifestPath|deliveryArtifactManifestPath|latestJobReceiptPath|latestJobDeliveryArtifacts|deliveryArtifacts|receiptPath|sourcePath|runSummaryPath|metricsSummaryPath|outputDir|workspacePath|worktreePath|branchName|commitSha|latestJobBranchName|latestJobCommitSha|latestJobId|jobId|job_id|taskId|task_id|agentId|agent_id|repoPath|queuePath|specPath|trainFile|evalFile|runStatePath|manifestVersion|manifestUrl|manifest_url|metadata)\b/i,

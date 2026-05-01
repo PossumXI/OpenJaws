@@ -1365,7 +1365,11 @@ function publicSafeShowcaseText(value: string | null): string | null {
     return value
   }
   return value
-    .replace(/#[A-Za-z0-9_-]+/g, 'the Discord channel')
+    .replace(/<#\d+>/g, 'the Discord channel')
+    .replace(/<@&\d+>/g, 'a Discord role')
+    .replace(/<@!?\d+>/g, 'a Discord user')
+    .replace(/@(?:everyone|here)\b/gi, 'the Discord audience')
+    .replace(/(^|[^\w/])#[A-Za-z][A-Za-z0-9_-]*/g, '$1the Discord channel')
     .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, 'the session')
     .replace(/\breceipt surfaces?\b/gi, 'activity sources')
     .replace(/\breceipts?\b/gi, 'activity records')

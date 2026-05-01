@@ -6,6 +6,7 @@ import {
   buildPublicShowcaseActivityFeed,
   getPublicShowcaseLedgerSyncScriptPath,
   getPublicShowcaseActivityPath,
+  preparePublicShowcaseActivityFeedForPublication,
   queuePublicShowcaseActivitySync,
   readPublicShowcaseActivityFeed,
   syncPublicShowcaseActivityFromRoot,
@@ -282,6 +283,35 @@ describe('publicShowcaseActivity', () => {
       }
       rmSync(root, { recursive: true, force: true })
     }
+  })
+
+  it('scrubs raw Discord mention syntax before publication', () => {
+    const feed = preparePublicShowcaseActivityFeedForPublication({
+      updatedAt: '2026-05-01T23:30:00.000Z',
+      entries: [
+        {
+          id: 'discord-mention-fixture',
+          timestamp: '2026-05-01T23:29:00.000Z',
+          title: 'Roundtable live in #dev_support',
+          summary:
+            'Posted in <#1490000000000000000> for <@123456789012345678> and <@&987654321098765432>; @everyone should not be public.',
+          kind: 'roundtable_runtime',
+          status: 'failed',
+          source: '#dev_support',
+          artifacts: [],
+          operatorActions: [],
+        },
+      ],
+    })
+
+    expect(feed.entries[0]).toMatchObject({
+      title: 'Roundtable live in the Discord channel',
+      summary:
+        'Posted in the Discord channel for a Discord user and a Discord role; the Discord audience should not be public.',
+      status: 'info',
+      source: 'the Discord channel',
+    })
+    expect(JSON.stringify(feed)).not.toMatch(/<#|<@|@everyone|#dev_support|failed/)
   })
 
   it('prefers the repo mirror when reading the bounded public showcase feed', () => {
