@@ -75,7 +75,7 @@ describe('discord-agent-supervisor', () => {
     expect(plan.missing.some(item => item.endsWith('discord-q-agent.env.ps1'))).toBe(true)
   })
 
-  test('escapes backslashes and quotes in rendered display commands', () => {
+  test('quotes rendered display commands with PowerShell-safe single quotes', () => {
     const root = createStation([
       'repair-q-agent.ps1',
       'discord-q-agent.env.ps1',
@@ -85,8 +85,11 @@ describe('discord-agent-supervisor', () => {
     )
 
     plan.args.push('D:\\agent station\\"quoted"')
+    plan.args.push("D:\\operator's station")
 
-    expect(formatSupervisorCommand(plan)).toContain('"D:\\\\agent station\\\\\\"quoted\\""')
+    const command = formatSupervisorCommand(plan)
+    expect(command).toContain("'D:\\agent station\\\"quoted\"'")
+    expect(command).toContain("'D:\\operator''s station'")
   })
 
   test('rejects unknown agent labels', () => {
