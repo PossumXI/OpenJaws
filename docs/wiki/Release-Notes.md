@@ -146,6 +146,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - remote `Q` execution uses signed request and signed terminal result envelopes
 - worker registration, worker heartbeat, and route assignment now fail closed instead of degrading silently
 - shared process execution now rejects arbitrary executable selection at the common spawn boundary, dispatches only known executable names through literal no-shell argv launchers, and keeps current-runtime self relaunch on the `bun` / `node` / `openjaws` command lane instead of executing `process.execPath`. This closes the CodeQL #10 root cause instead of relying on string escaping.
+- OAuth PKCE challenge generation now uses WebCrypto `SHA-256` digest with an RFC 7636 test vector instead of the password-hash-shaped `createHash(...).update(...)` pattern that kept CodeQL #1 open despite PKCE requiring S256.
 
 ## Live Benchmark Story
 
