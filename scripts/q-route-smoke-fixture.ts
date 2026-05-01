@@ -5,6 +5,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'fs'
+import { createHash } from 'crypto'
 import { dirname, resolve } from 'path'
 import {
   buildOpenJawsSftBundleManifest,
@@ -22,12 +23,67 @@ import {
   filterCleanPreparedOpenJawsSftSamples,
 } from '../src/utils/openjawsSftQuality.js'
 
-const SMOKE_FIXTURE_PATH = resolve(
-  process.cwd(),
-  'fixtures',
-  'sft',
-  'openjaws-q-sample.jsonl',
-)
+function smokeFixturePath(root: string): string {
+  return resolve(root, 'fixtures', 'sft', 'openjaws-q-sample.jsonl')
+}
+
+function sha256File(path: string): string {
+  return createHash('sha256').update(readFileSync(path)).digest('hex')
+}
+
+function readExistingIntegrity(path: string): {
+  sourcePath?: string
+  sourceSha256?: string
+} | null {
+  if (!existsSync(path)) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as {
+      sourcePath?: unknown
+      sourceSha256?: unknown
+    }
+    return {
+      sourcePath:
+        typeof parsed.sourcePath === 'string' ? parsed.sourcePath : undefined,
+      sourceSha256:
+        typeof parsed.sourceSha256 === 'string' ? parsed.sourceSha256 : undefined,
+    }
+  } catch {
+    return null
+  }
+}
+
+function shouldReuseExistingSmokeBundle({
+  bundleManifestPath,
+  integrityPath,
+  trainPath,
+  evalPath,
+  sourcePath,
+  sourceSha256,
+}: {
+  bundleManifestPath: string
+  integrityPath: string
+  trainPath: string
+  evalPath: string
+  sourcePath: string
+  sourceSha256: string
+}): boolean {
+  if (
+    !existsSync(bundleManifestPath) ||
+    !existsSync(trainPath) ||
+    !existsSync(evalPath)
+  ) {
+    return false
+  }
+
+  const integrity = readExistingIntegrity(integrityPath)
+  return (
+    integrity?.sourcePath === sourcePath &&
+    integrity.sourceSha256 === sourceSha256
+  )
+}
 
 function loadSamples(path: string): OpenJawsSftSample[] {
   return readFileSync(path, 'utf8')
@@ -45,16 +101,28 @@ function writeJsonl(path: string, rows: PreparedOpenJawsSftSample[]): void {
 }
 
 export function ensureQRouteSmokeBundleDir(root = process.cwd()): string {
+  const sourcePath = smokeFixturePath(root)
+  const sourceSha256 = sha256File(sourcePath)
   const outDir = resolve(root, 'artifacts', 'q-route-smoke-fixture', 'audited-v2')
   const bundleManifestPath = resolve(outDir, 'bundle-manifest.json')
+  const integrityPath = resolve(outDir, 'fixture-integrity.json')
   const trainPath = resolve(outDir, 'train.jsonl')
   const evalPath = resolve(outDir, 'eval.jsonl')
 
-  if (existsSync(bundleManifestPath) && existsSync(trainPath) && existsSync(evalPath)) {
+  if (
+    shouldReuseExistingSmokeBundle({
+      bundleManifestPath,
+      integrityPath,
+      trainPath,
+      evalPath,
+      sourcePath,
+      sourceSha256,
+    })
+  ) {
     return outDir
   }
 
-  const samples = loadSamples(SMOKE_FIXTURE_PATH)
+  const samples = loadSamples(sourcePath)
   const prepared = prepareOpenJawsSftDataset(samples, { evalRatio: 0.2 })
   const audit = auditOpenJawsSftSamples(prepared.samples)
   if (audit.summary.droppedSamples > 0) {
@@ -98,11 +166,24 @@ export function ensureQRouteSmokeBundleDir(root = process.cwd()): string {
     `${JSON.stringify(
       buildOpenJawsSftBundleManifest({
         bundleId: 'q-route-smoke-fixture',
-        sourcePath: SMOKE_FIXTURE_PATH,
+        sourcePath,
         outDir,
         preparedManifest: cleanManifest,
         samples: cleanSamples,
       }),
+      null,
+      2,
+    )}\n`,
+    'utf8',
+  )
+  writeFileSync(
+    integrityPath,
+    `${JSON.stringify(
+      {
+        sourcePath,
+        sourceSha256,
+        generatedAt: new Date().toISOString(),
+      },
       null,
       2,
     )}\n`,
