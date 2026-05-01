@@ -67,6 +67,12 @@ export type ImmaculateHarnessInputLike = {
   purpose?: string[]
   policyId?: string
   consentScope?: string
+  receiptTarget?: string
+  operatorSummary?: string
+  operatorConfirmed?: boolean
+  rollbackPlan?: string
+  sanitizationProof?: string
+  budgetCents?: number
 }
 
 export type ImmaculateHarnessConfig = {
@@ -91,6 +97,12 @@ export type ImmaculateHarnessResolvedGovernance = {
   policyId: string
   consentScope: string
   actor: string
+  receiptTarget?: string
+  operatorSummary?: string
+  operatorConfirmed?: boolean
+  rollbackPlan?: string
+  sanitizationProof?: string
+  budgetCents?: number
 }
 
 export type ImmaculateHarnessResult = {
@@ -407,6 +419,52 @@ export function getImmaculateHarnessGovernanceProfile(
   return GOVERNANCE_PROFILES[action] ?? null
 }
 
+function sanitizeImmaculateReceiptSegment(value: string): string {
+  return value.trim().replace(/[^A-Za-z0-9._:-]+/g, '_') || 'openjaws'
+}
+
+function resolveImmaculateEngagementEvidence(
+  input: ImmaculateHarnessInputLike,
+  actor: string,
+): Pick<
+  ImmaculateHarnessResolvedGovernance,
+  | 'receiptTarget'
+  | 'operatorSummary'
+  | 'operatorConfirmed'
+  | 'rollbackPlan'
+  | 'sanitizationProof'
+  | 'budgetCents'
+> {
+  const isOperatorControl = input.action === 'control'
+  const hasExplicitEvidence =
+    Boolean(input.receiptTarget?.trim()) ||
+    Boolean(input.operatorSummary?.trim()) ||
+    input.operatorConfirmed !== undefined ||
+    Boolean(input.rollbackPlan?.trim()) ||
+    Boolean(input.sanitizationProof?.trim()) ||
+    input.budgetCents !== undefined
+
+  if (!isOperatorControl && !hasExplicitEvidence) {
+    return {}
+  }
+
+  return {
+    receiptTarget:
+      input.receiptTarget?.trim() ||
+      `harness:control:${sanitizeImmaculateReceiptSegment(actor)}`,
+    operatorSummary:
+      input.operatorSummary?.trim() ||
+      'OpenJaws requested a bounded Immaculate operator-control pulse.',
+    operatorConfirmed:
+      input.operatorConfirmed ?? (isOperatorControl ? true : undefined),
+    rollbackPlan:
+      input.rollbackPlan?.trim() ||
+      'Apply the inverse control command or restore the last persisted Immaculate snapshot.',
+    sanitizationProof: input.sanitizationProof?.trim() || undefined,
+    budgetCents: input.budgetCents ?? (isOperatorControl ? 0 : undefined),
+  }
+}
+
 export function resolveImmaculateHarnessGovernance(
   input: ImmaculateHarnessInputLike,
   config: ImmaculateHarnessConfig = getImmaculateHarnessConfig(),
@@ -420,6 +478,7 @@ export function resolveImmaculateHarnessGovernance(
   const consentScope =
     input.consentScope?.trim() ||
     (input.action === 'control' ? `operator:${actor}` : profile.consentScope)
+  const engagement = resolveImmaculateEngagementEvidence(input, actor)
 
   return {
     action: profile.action,
@@ -430,6 +489,7 @@ export function resolveImmaculateHarnessGovernance(
     policyId: input.policyId?.trim() || profile.policyId,
     consentScope,
     actor,
+    ...engagement,
   }
 }
 
@@ -453,6 +513,26 @@ export function buildImmaculateHarnessHeaders(
   headers['x-immaculate-purpose'] = governance.purpose.join(',')
   headers['x-immaculate-policy-id'] = governance.policyId
   headers['x-immaculate-consent-scope'] = governance.consentScope
+  if (governance.receiptTarget) {
+    headers['x-immaculate-receipt-target'] = governance.receiptTarget
+  }
+  if (governance.operatorSummary) {
+    headers['x-immaculate-operator-summary'] = governance.operatorSummary
+  }
+  if (governance.operatorConfirmed !== undefined) {
+    headers['x-immaculate-operator-confirmed'] = String(
+      governance.operatorConfirmed,
+    )
+  }
+  if (governance.rollbackPlan) {
+    headers['x-immaculate-rollback-plan'] = governance.rollbackPlan
+  }
+  if (governance.sanitizationProof) {
+    headers['x-immaculate-sanitization-proof'] = governance.sanitizationProof
+  }
+  if (governance.budgetCents !== undefined) {
+    headers['x-immaculate-budget-cents'] = String(governance.budgetCents)
+  }
   return headers
 }
 

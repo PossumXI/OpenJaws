@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { buildPythonTrainArgs, buildQRouteTarget } from './trainLaunch.js'
+import {
+  buildPythonTrainArgs,
+  buildQRouteControlEngagement,
+  buildQRouteTarget,
+} from './trainLaunch.js'
 
 describe('q train launch helpers', () => {
   test('builds a normalized immaculate route target', () => {
@@ -61,5 +65,22 @@ describe('q train launch helpers', () => {
       '--language',
       'ts',
     ])
+  })
+
+  test('builds engagement evidence for Immaculate route control', () => {
+    expect(
+      buildQRouteControlEngagement({
+        runId: 'q-20260501T120000-abcd12',
+        runName: 'nightly-agentic',
+      }),
+    ).toEqual({
+      receiptTarget: 'harness:q-route:q-20260501T120000-abcd12',
+      operatorSummary:
+        'Request Immaculate routing control for Q training run nightly-agentic.',
+      operatorConfirmed: true,
+      rollbackPlan:
+        'Cancel or retry the recorded Q route manifest, then fall back to the local preflight decision.',
+      budgetCents: 0,
+    })
   })
 })
