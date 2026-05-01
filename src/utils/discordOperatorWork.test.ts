@@ -67,6 +67,73 @@ describe('discordOperatorWork', () => {
     })
   })
 
+  it('routes plain-English browser preview requests through the governed OpenJaws lane', () => {
+    const parsed = parseDirectOperatorChatCommand(
+      'use the browser in D:\\sites\\qline to build a product demo with screenshots',
+    )
+
+    expect(parsed).toMatchObject({
+      action: 'ask-openjaws',
+      cwd: 'D:\\sites\\qline',
+    })
+    expect(parsed?.text).toContain(
+      'Real-world engagement lane: browser preview and demo (browser_preview).',
+    )
+    expect(parsed?.text).toContain('native Apex browser bridge')
+    expect(parsed?.text).toContain(
+      'Operator request: build a product demo with screenshots',
+    )
+  })
+
+  it('keeps external communication requests in draft-and-approve mode', () => {
+    const parsed = parseDirectOperatorChatCommand(
+      'draft a LinkedIn marketing line for "D:\\cheeks\\Asgard\\Websites" to announce the public ledger',
+    )
+
+    expect(parsed).toMatchObject({
+      action: 'ask-openjaws',
+      cwd: 'D:\\cheeks\\Asgard\\Websites',
+    })
+    expect(parsed?.text).toContain(
+      'Real-world engagement lane: external communication draft (external_communication_draft).',
+    )
+    expect(parsed?.text).toContain('Do not send, post, purchase, submit forms')
+    expect(parsed?.text).toContain('Operator request: announce the public ledger')
+  })
+
+  it('routes live research requests without inventing an external side effect', () => {
+    const parsed = parseDirectOperatorChatCommand(
+      'research online to compare hosted Q durable backend options',
+    )
+
+    expect(parsed).toMatchObject({
+      action: 'ask-openjaws',
+      cwd: null,
+    })
+    expect(parsed?.text).toContain('Real-world engagement lane: web research')
+    expect(parsed?.text).toContain('cite live sources')
+    expect(parsed?.text).toContain(
+      'Operator request: compare hosted Q durable backend options',
+    )
+  })
+
+  it('recognizes operator requests to continue real-world engagement behavior', () => {
+    const parsed = parseDirectOperatorChatCommand(
+      'continue the real-world engagement behavior in OpenJaws',
+    )
+
+    expect(parsed).toMatchObject({
+      action: 'ask-openjaws',
+      cwd: null,
+    })
+    expect(parsed?.text).toContain(
+      'Real-world engagement lane: Apex workspace action (apex_workspace).',
+    )
+    expect(parsed?.text).toContain(
+      'Operator request: continue the real-world engagement behavior in OpenJaws',
+    )
+  })
+
   it('parses plain-English workspace and status requests', () => {
     expect(parseDirectOperatorChatCommand('show the openjaws workspaces')).toEqual({
       action: 'workspaces',
