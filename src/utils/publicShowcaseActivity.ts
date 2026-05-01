@@ -785,7 +785,8 @@ function buildApexTenantGovernanceEntry(
     id: `apex-tenant-governance-${governance.latestActivityAt ?? 'latest'}`,
     timestamp: governance.latestActivityAt,
     title: 'Apex tenant governance',
-    summary: [governance.headline, ...governance.details].join('. '),
+    summary:
+      'Apex tenant governance published a public-safe rollup for supervised policy review, risk handling, and audit readiness. Detailed tenant counts stay in the private audit lane.',
     kind: 'tenant_governance',
     status: governance.status,
     source: 'Apex tenant governance',
@@ -1332,7 +1333,29 @@ function publicSafeShowcaseText(value: string | null): string | null {
   if (!value) {
     return value
   }
-  return value.replace(/#[A-Za-z0-9_-]+/g, 'the Discord channel')
+  return sanitizeInlineText(
+    value
+      .replace(/#[A-Za-z0-9_-]+/g, 'the Discord channel')
+      .replace(
+        /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,
+        'public activity id',
+      )
+      .replace(/\b[0-9a-f]{8}-[0-9a-f-]{4,}…/gi, 'public activity id')
+      .replace(/\b[0-9a-f]{24,}\b/gi, 'public activity id')
+      .replace(/\bpending\s+\d+\b/gi, 'pending review items')
+      .replace(/\bhigh risk\s+\d+\b/gi, 'risk-reviewed items')
+      .replace(/\bfailed\s+\d+\b/gi, 'reviewed items')
+      .replace(/\bpending review\b/gi, 'governance review')
+      .replace(/\b(?:high|critical)_priority\b/gi, 'governance_priority')
+      .replace(/\b(?:human_review_required|pending_review)\b/gi, 'governance_review'),
+    320,
+  )
+}
+
+function publicSafeShowcaseStrings(values: string[]): string[] {
+  return uniqueStrings(
+    values.map(value => publicSafeShowcaseText(value)),
+  )
 }
 
 export function preparePublicShowcaseActivityFeedForPublication(
@@ -1342,10 +1365,16 @@ export function preparePublicShowcaseActivityFeedForPublication(
     updatedAt: feed.updatedAt,
     entries: feed.entries.map(entry => ({
       ...entry,
+      id: publicSafeShowcaseText(entry.id) ?? entry.id,
       title: publicSafeShowcaseText(entry.title) ?? entry.title,
       summary: publicSafeShowcaseText(entry.summary),
+      kind: publicSafeShowcaseText(entry.kind),
       source: publicSafeShowcaseText(entry.source),
       status: publicSafeShowcaseStatus(entry.status),
+      operatorActions: publicSafeShowcaseStrings(entry.operatorActions),
+      subsystems: publicSafeShowcaseStrings(entry.subsystems),
+      artifacts: publicSafeShowcaseStrings(entry.artifacts),
+      tags: publicSafeShowcaseStrings(entry.tags),
     })),
   }
 }
