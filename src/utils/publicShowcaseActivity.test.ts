@@ -300,6 +300,8 @@ describe('publicShowcaseActivity', () => {
           source: '#dev_support',
           artifacts: [],
           operatorActions: [],
+          subsystems: [],
+          tags: [],
         },
       ],
     })
@@ -312,6 +314,42 @@ describe('publicShowcaseActivity', () => {
       source: 'the Discord channel',
     })
     expect(JSON.stringify(feed)).not.toMatch(/<#|<@|@everyone|#dev_support|failed/)
+  })
+
+  it('cleans every public publication field before writing showcase activity', () => {
+    const publicFeed = preparePublicShowcaseActivityFeedForPublication({
+      updatedAt: '2026-05-01T23:20:00.000Z',
+      entries: [
+        {
+          id: 'apex-operator-11e5112d-4aad-48b4-a72a-9ab4b3d104ff',
+          timestamp: '2026-05-01T23:20:00.000Z',
+          title: 'Action in #dev-channel',
+          summary:
+            'Created session 11e5112d-4aad-48b4-a72a-9ab4b3d104ff from #ops with pending_review.',
+          kind: 'apex_operator_activity',
+          status: 'failed',
+          source: '#ops-coordinator',
+          operatorActions: ['ask_openjaws', 'human_review_required'],
+          subsystems: ['openjaws', '#discord-dev'],
+          artifacts: [
+            'apex:chat-session:11e5112d-4aad-48b4-a72a-9ab4b3d104ff',
+          ],
+          tags: ['critical_priority', 'public'],
+        },
+      ],
+    })
+
+    const serialized = JSON.stringify(publicFeed)
+    expect(serialized).not.toContain('#')
+    expect(serialized).not.toContain('11e5112d-4aad-48b4-a72a-9ab4b3d104ff')
+    expect(publicFeed.entries[0]?.status).toBe('info')
+    expect(publicFeed.entries[0]?.source).toBe('the Discord channel')
+    expect(publicFeed.entries[0]?.operatorActions).toEqual(
+      expect.arrayContaining(['ask_openjaws', 'governance_review']),
+    )
+    expect(publicFeed.entries[0]?.tags).toEqual(
+      expect.arrayContaining(['governance_priority', 'public']),
+    )
   })
 
   it('prefers the repo mirror when reading the bounded public showcase feed', () => {
