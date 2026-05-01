@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'Q',
     short_name: 'Q',
     description:
-      'OCI-backed Q with OpenJaws, Q_agents, Agent Co-Work, hosted access, and benchmark receipts.',
+      'Qline gives you Q, OpenJaws, Q_agents, co-work, benchmark history, and hosted access.',
     start_url: '/',
     display: 'standalone',
     background_color: '#020507',

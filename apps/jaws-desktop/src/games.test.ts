@@ -6,6 +6,8 @@ import {
   applyHoldemAction,
   createHoldemTable,
   createSlowGuyState,
+  describeHoldemMode,
+  describeHoldemTransport,
   evaluateHoldemWinners,
   holdemCodeTokenPrize
 } from "./games";
@@ -59,6 +61,15 @@ describe("Slow Guy mechanics", () => {
 });
 
 describe("Hold'em roundtable foundation", () => {
+  test("keeps multiplayer status user-facing", () => {
+    const table = createHoldemTable("Founder");
+
+    expect(table.multiplayer.transport).toBe("local-room");
+    expect(table.chat[0]?.body).not.toMatch(/mock/i);
+    expect(describeHoldemTransport(table.multiplayer.transport)).toBe("Local table");
+    expect(describeHoldemMode(table.multiplayer.mode)).toBe("Local play");
+  });
+
   test("deals seats, community cards, and reaches showdown with winners", () => {
     let table = createHoldemTable("Gaetano", "test-seed");
     table = advanceHoldemRound(table);

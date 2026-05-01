@@ -51,7 +51,7 @@ describe("JAWS update workflow", () => {
       expect.objectContaining({ id: "runtime", status: "ready" }),
       expect.objectContaining({ id: "qline", detail: "https://qline.site/downloads/jaws/latest.json" }),
       expect.objectContaining({ id: "iorch", detail: "https://iorch.net/downloads/jaws/latest.json" }),
-      expect.objectContaining({ id: "github", detail: "jaws-v0.1.5 signed assets" })
+      expect.objectContaining({ id: "github", detail: "jaws-v0.1.5 downloads" })
     ]);
 
     expect(createPreviewUpdatePipeline(releaseIndex)).toContainEqual(
@@ -76,9 +76,9 @@ describe("JAWS update workflow", () => {
     });
     expect(workflow.pipeline[0]).toEqual({
       id: "runtime",
-      label: "Tauri updater",
+      label: "Update check",
       status: "ok",
-      detail: "Signed update 0.1.5 is ready."
+      detail: "JAWS 0.1.5 is ready to install."
     });
   });
 
@@ -98,7 +98,7 @@ describe("JAWS update workflow", () => {
 
     expect(markUpdatePipelineChecking(probeEntries)[0]).toMatchObject({
       status: "checking",
-      detail: "Native runtime is probing the live release surface."
+      detail: "Checking this download source."
     });
 
     expect(resolveUpdateFailure(new Error("network down"), probeEntries)).toMatchObject({
@@ -106,7 +106,7 @@ describe("JAWS update workflow", () => {
       pipeline: [
         {
           id: "runtime",
-          label: "Tauri updater",
+          label: "Update check",
           status: "error",
           detail: "Error: network down"
         },

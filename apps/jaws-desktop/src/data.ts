@@ -102,37 +102,37 @@ export const navItems: NavItem[] = [
 ];
 
 export const systemLanes: SystemLane[] = [
-  { label: "OpenJaws", value: "Sidecar boundary", tone: "good", icon: TerminalSquare },
-  { label: "Q", value: "Default route", tone: "good", icon: Sparkles },
-  { label: "Immaculate", value: "Crew pacing", tone: "good", icon: CircuitBoard },
-  { label: "Co-work", value: "Pairing lane", tone: "neutral", icon: Handshake },
-  { label: "Arobi", value: "Enrollment", tone: "neutral", icon: ReceiptText },
-  { label: "Security", value: "Signed releases", tone: "good", icon: LockKeyhole }
+  { label: "OpenJaws", value: "Project tools", tone: "good", icon: TerminalSquare },
+  { label: "Q", value: "Ready to help", tone: "good", icon: Sparkles },
+  { label: "Immaculate", value: "Final checks", tone: "good", icon: CircuitBoard },
+  { label: "Co-work", value: "Invite ready", tone: "neutral", icon: Handshake },
+  { label: "Arobi", value: "Account setup", tone: "neutral", icon: ReceiptText },
+  { label: "Security", value: "Safe updates", tone: "good", icon: LockKeyhole }
 ];
 
 export const agentEvents: AgentEvent[] = [
   {
     time: "00:00",
     lane: "Q",
-    detail: "Workspace route ready for prompt dispatch",
+    detail: "Ready to read your project when you start a task.",
     state: "active"
   },
   {
     time: "00:02",
     lane: "Q_agents",
-    detail: "Health-gated dispatch lane waiting for worker heartbeat",
+    detail: "Waiting for a worker to join.",
     state: "waiting"
   },
   {
     time: "00:04",
     lane: "OpenCheek",
-    detail: "Shared phase memory attached to the session",
+    detail: "Shared notes are ready for this workspace.",
     state: "active"
   },
   {
     time: "00:06",
     lane: "Immaculate",
-    detail: "Crew pacing policy loaded from OpenJaws",
+    detail: "Safety checks are ready.",
     state: "active"
   }
 ];
@@ -142,25 +142,25 @@ export const marketplaceItems: MarketplaceItem[] = [
     title: "Q Agent Pack",
     kind: "Skill preset",
     trust: "Signed",
-    description: "Default route workers, verifier loops, and background check lanes."
+    description: "Workers that can inspect, code, test, and double-check a project."
   },
   {
     title: "OpenCheek Co-work",
     kind: "Workflow",
     trust: "Reviewed",
-    description: "Pair-programming agents with shared phase memory and handoff receipts."
+    description: "Invite agents or teammates to work from the same project notes."
   },
   {
     title: "Retro Arcade Kit",
     kind: "Game",
     trust: "Sandboxed",
-    description: "Small idle-safe games for long-running agent sessions."
+    description: "Small games to play while longer agent jobs run."
   },
   {
     title: "Studio Render Hooks",
     kind: "Tool",
     trust: "Provider gated",
-    description: "Image, storyboard, and video render queues behind explicit credentials."
+    description: "Image and video jobs using the provider account you connect."
   }
 ];
 
@@ -169,42 +169,42 @@ export const layoutThemes: LayoutTheme[] = [
     id: "default",
     label: "Default",
     icon: Sun,
-    description: "Quiet command cockpit with balanced release, chat, and agent contrast.",
+    description: "Clean, balanced workspace for daily use.",
     accent: "#78d6a3"
   },
   {
     id: "spy",
     label: "Spy",
     icon: LockKeyhole,
-    description: "Low-light operations board with brass alerts and calm surveillance greens.",
+    description: "Low-light theme with sharp alerts.",
     accent: "#9fd174"
   },
   {
     id: "scifi",
     label: "Sci-Fi",
     icon: Boxes,
-    description: "Cool station glass, cyan telemetry, and violet route accents.",
+    description: "Bright blue panels with a futuristic feel.",
     accent: "#67e8f9"
   },
   {
     id: "halloween",
     label: "Halloween",
     icon: Moon,
-    description: "Midnight panels with hot pumpkin controls and spectral violet markers.",
+    description: "Dark panels with orange and violet accents.",
     accent: "#ff8a3d"
   },
   {
     id: "hacking",
     label: "Hacking",
     icon: TerminalSquare,
-    description: "Dense terminal energy with bright green actions and amber warnings.",
+    description: "Terminal style with green actions.",
     accent: "#3df278"
   },
   {
     id: "coding",
     label: "Coding",
     icon: Code2,
-    description: "Readable editor-inspired work mode with blue focus and soft green success.",
+    description: "Editor-style colors for focused coding.",
     accent: "#7aa7ff"
   }
 ];

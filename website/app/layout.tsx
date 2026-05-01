@@ -23,7 +23,7 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: 'Q // OpenJaws // Q_agents',
   description:
-    'OCI-backed Q with OpenJaws, Q_agents, Agent Co-Work, benchmark receipts, and hosted access on one cinematic surface.',
+    'Qline gives you Q, OpenJaws, Q_agents, co-work, benchmark history, and hosted access from one clean surface.',
   metadataBase: new URL(siteUrl),
   keywords: [
     'Q',
@@ -52,7 +52,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Q // OpenJaws // Q_agents',
     description:
-      'OCI-backed Q with OpenJaws, Q_agents, Agent Co-Work, benchmark receipts, and hosted access on one cinematic surface.',
+      'Qline gives you Q, OpenJaws, Q_agents, co-work, benchmark history, and hosted access from one clean surface.',
     url: siteUrl,
     siteName: 'Q',
     type: 'website',
@@ -69,7 +69,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Q // OpenJaws // Q_agents',
     description:
-      'OCI-backed Q with OpenJaws, Q_agents, Agent Co-Work, benchmark receipts, and hosted access on one cinematic surface.',
+      'Qline gives you Q, OpenJaws, Q_agents, co-work, benchmark history, and hosted access from one clean surface.',
     images: ['/assets/images/q-share-card.png'],
   },
 }

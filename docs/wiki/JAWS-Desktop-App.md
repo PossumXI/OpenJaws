@@ -10,11 +10,11 @@ Brand line:
 
 - Collapsible side menu for focused workspace viewing.
 - Control dashboard for OpenJaws, Q, Q_agents, OpenCheek, Immaculate, Arobi, and security lanes.
-- Chat window for command entry, live agent/work transcript, per-message shark-jaw activity markers, Q thinking animation, command starter tools, project-scoped chat windows, minimize/expand/collapse controls, a real Tauri-to-OpenJaws sidecar command bridge, review-first or fast audited queue mode, notification state, and optional change comparison.
+- Chat window for command entry, live agent/work transcript, per-message shark-jaw activity markers, Q thinking animation, command starter tools, project-scoped chat windows, minimize/expand/collapse controls, a real desktop-to-OpenJaws command bridge, review-first or fast mode, notification state, and optional change comparison.
 - Terminal workspace tab that can open a native folder picker, validates the selected project folder, stores the workspace locally, shows the exact OpenJaws TUI launch command, and can run the bundled OpenJaws sidecar from that folder.
-- Browser Preview tab for embedded local/web preview, `.openjaws/launch.json` authoring, accountable `/preview` receipt inspection, native Playwright demo harness generation, and browser-control task staging that stops for explicit approval before forms, email, purchases, account changes, or other irreversible actions.
-- Context Brain tab for a visible, aggregate-only project context receipt. It shows workspace coverage, priority files, skipped sensitive/generated paths, estimated context weight, and which Q/Q_agent/OpenCheek/Immaculate lanes receive the context pack without exposing raw file contents. Non-native preview mode no longer displays fake file counts; it reports that a native scan is required.
-- Agent Watch timeline and orchestration board for live queue/worker events, so users can see what agent lanes are doing instead of trusting static copy.
+- Browser Preview tab for embedded local/web preview, `.openjaws/launch.json` authoring, preview history, native Playwright website-test generation, and browser-control task staging that stops for explicit approval before forms, email, purchases, account changes, or other irreversible actions.
+- Context tab for a visible, aggregate-only project scan. It shows workspace coverage, priority files, skipped sensitive/generated paths, estimated context weight, and which Q/Q_agent/OpenCheek/Immaculate lanes receive the scan without exposing raw file contents. Non-desktop preview mode no longer displays fake file counts; it reports that a desktop scan is required.
+- Agent Watch timeline and activity board for live queue/worker events, so users can see what agent lanes are doing instead of trusting static copy.
 - Image Studio and Video Studio panels for provider-gated creative work.
 - Arcade Bar with `Slow Guy`, a scored runner with lane controls, jump/duck/dash mechanics, lives, shield recovery, level speed, stamina, code-token collection, objective state, best-score persistence, and Cyber Frog rewards.
 - Texas Hold'em Dealer Roundtable foundation with deterministic local dealing, hold/check/pass/bet/raise controls, table-token accounting, profile code-token prizes, Q/OpenCheek seats, showdown evaluation, secure scope chips, and multiplayer room metadata ready for a signed websocket transport.
@@ -22,11 +22,11 @@ Brand line:
 - Animated Cyber Frog companion with code-token rewards, feeding, training, gear, decorations, egg progress, naming, and profile persistence.
 - User profile and agent profile surfaces for workspace identity, profile-linked code-token wallet state, marketing follow-up consent, agent lane status, and pet/code-token state.
 - Arobi ledger and enrollment links.
-- Q_agents Co-work controls for stacked/paired/solo modes, worker-lane toggles, shared phase memory, explicit pooled-credit consent, OpenCheek handoff state, and Immaculate pacing.
+- Q_agents Co-work controls for stacked/paired/solo modes, worker-lane toggles, shared notes, explicit pooled-credit consent, OpenCheek handoff state, and Immaculate pacing.
 - Marketplace cards for skills, tools, workflows, games, and third-party integrations.
 - Billing copy for a 14-day trial and flat `$12.99/mo` IDE subscription, with Q credits separate.
 - Docs page with in-app Terms, final-sale billing policy qualified by applicable law, security/privacy notes, community content rules, AI output notice, developer verification commands, and release links.
-- Settings page with release status, signed update checks, install action, native mirror/update-pipeline diagnostics, durable in-app notification history, unread/dismiss/clear controls, testable fireworks/sound alerts, appearance mode, and theme controls. The native app also performs a startup update check and shows an Install Now / Later prompt when a signed release is available.
+- Settings page with release status, safe update checks, install action, download-source checks, durable in-app notification history, unread/dismiss/clear controls, testable fireworks/sound alerts, appearance mode, and theme controls. The native app also performs a startup update check and shows an Install Now / Later prompt when a signed release is available.
 - Layout themes: default, spy, sci-fi, halloween, hacking, and coding, now with stronger palettes, descriptions, and visible accent swatches.
 
 ## Release Boundary

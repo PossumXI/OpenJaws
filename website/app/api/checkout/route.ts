@@ -32,7 +32,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         ok: false,
         code: 'stripe_not_configured',
         message:
-          'Stripe checkout is not configured yet. Set STRIPE_SECRET_KEY, STRIPE_SUCCESS_URL, and STRIPE_CANCEL_URL.',
+          'Checkout is temporarily unavailable. Please try again later.',
       },
       { status: 503 },
     )

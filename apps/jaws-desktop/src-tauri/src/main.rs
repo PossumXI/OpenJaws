@@ -397,7 +397,7 @@ async fn probe_mirror_page(
                 format!("{} mirror", mirror.label),
                 "ok",
                 format!(
-                    "{} is reachable; download routes are rooted at {}.",
+                    "{} is reachable. Downloads start at {}.",
                     mirror.page_url, mirror.route_base_url
                 ),
             )
@@ -426,9 +426,9 @@ async fn probe_github_release(
             if !status.is_success() {
                 return update_entry(
                     "github",
-                    "GitHub release",
+                    "GitHub download",
                     "error",
-                    format!("GitHub release API returned HTTP {}.", status.as_u16()),
+                    format!("GitHub returned HTTP {}.", status.as_u16()),
                 );
             }
             let body = response
@@ -446,10 +446,10 @@ async fn probe_github_release(
             if tag != index.tag || draft {
                 return update_entry(
                     "github",
-                    "GitHub release",
+                    "GitHub download",
                     "error",
                     format!(
-                        "Expected {} draft=false, got {tag} draft={draft}.",
+                        "Expected public release {}, got {tag} draft={draft}.",
                         index.tag
                     ),
                 );
@@ -475,10 +475,10 @@ async fn probe_github_release(
             if !missing.is_empty() {
                 return update_entry(
                     "github",
-                    "GitHub release",
+                    "GitHub download",
                     "error",
                     format!(
-                        "{} is missing release assets: {}.",
+                        "{} is missing downloads: {}.",
                         index.tag,
                         missing.join(", ")
                     ),
@@ -491,19 +491,16 @@ async fn probe_github_release(
                 .count();
             update_entry(
                 "github",
-                "GitHub release",
+                "GitHub download",
                 "ok",
-                format!(
-                    "{} is published with required signed assets and {routed_assets} routed downloads.",
-                    index.tag
-                ),
+                format!("{} is published with {routed_assets} downloads.", index.tag),
             )
         }
         Err(error) => update_entry(
             "github",
-            "GitHub release",
+            "GitHub download",
             "error",
-            format!("GitHub release probe failed: {error}"),
+            format!("GitHub check failed: {error}"),
         ),
     }
 }
@@ -524,9 +521,9 @@ async fn probe_updater_manifest(
             if !status.is_success() {
                 return update_entry(
                     "manifest",
-                    "Signed manifest",
+                    "Update file",
                     "error",
-                    format!("Updater manifest returned HTTP {}.", status.as_u16()),
+                    format!("Update file returned HTTP {}.", status.as_u16()),
                 );
             }
             let body = response
@@ -540,10 +537,10 @@ async fn probe_updater_manifest(
             if version != index.version {
                 return update_entry(
                     "manifest",
-                    "Signed manifest",
+                    "Update file",
                     "error",
                     format!(
-                        "Manifest version mismatch: expected {}, got {version}.",
+                        "Update version mismatch: expected {}, got {version}.",
                         index.version
                     ),
                 );
@@ -571,26 +568,26 @@ async fn probe_updater_manifest(
             if !missing.is_empty() {
                 return update_entry(
                     "manifest",
-                    "Signed manifest",
+                    "Update file",
                     "error",
                     format!(
-                        "Manifest is missing signed platform entries: {}.",
+                        "Update file is missing downloads for: {}.",
                         missing.join(", ")
                     ),
                 );
             }
             update_entry(
                 "manifest",
-                "Signed manifest",
+                "Update file",
                 "ok",
-                format!("latest.json is signed for {}.", index.version),
+                format!("Update file is ready for {}.", index.version),
             )
         }
         Err(error) => update_entry(
             "manifest",
-            "Signed manifest",
+            "Update file",
             "error",
-            format!("Updater manifest probe failed: {error}"),
+            format!("Update file check failed: {error}"),
         ),
     }
 }
@@ -809,7 +806,7 @@ fn route_queue_event(entry: &serde_json::Value) -> AgentRuntimeEvent {
     ]);
 
     let mut parts = vec![format!(
-        "Route {} is {}.",
+        "Task {} is {}.",
         if run_id.is_empty() {
             "pending"
         } else {
@@ -818,16 +815,16 @@ fn route_queue_event(entry: &serde_json::Value) -> AgentRuntimeEvent {
         status_label
     )];
     if !base_model.is_empty() {
-        parts.push(format!("Base {base_model}."));
+        parts.push(format!("Model {base_model}."));
     }
     if !layer.is_empty() {
-        parts.push(format!("Layer {layer}."));
+        parts.push(format!("Work area {layer}."));
     }
     if !worker.is_empty() {
         parts.push(format!("Worker {worker}."));
     }
     if !transport.is_empty() {
-        parts.push(format!("Transport {transport}."));
+        parts.push(format!("Run mode {transport}."));
     }
     if !remote_summary.is_empty() {
         parts.push(remote_summary);
@@ -838,7 +835,7 @@ fn route_queue_event(entry: &serde_json::Value) -> AgentRuntimeEvent {
             best_event_time(entry, &["updatedAt", "queuedAt"]),
             now_unix_label(),
         ]),
-        lane: "Q route".to_string(),
+        lane: "Q task".to_string(),
         detail: shorten(&parts.join(" "), 240),
         state: queue_event_state(&status_label),
     }
@@ -855,15 +852,10 @@ fn route_worker_event(worker: &serde_json::Value) -> AgentRuntimeEvent {
     let lease = json_field_string(worker, "leaseExpiresAt");
     let models = json_string_array_summary(worker, "supportedBaseModels", 3);
     let watch = json_bool_field(worker, "watch");
-    let mut parts = vec![format!(
-        "{} worker {} is registered.",
-        if profile.is_empty() {
-            "route"
-        } else {
-            profile.as_str()
-        },
-        label
-    )];
+    let mut parts = vec![format!("Worker {label} is ready.")];
+    if !profile.is_empty() {
+        parts.push(format!("Mode {profile}."));
+    }
     if !heartbeat.is_empty() {
         parts.push(format!("Heartbeat {heartbeat}."));
     }
@@ -887,16 +879,16 @@ fn worker_runtime_event(runtime: &serde_json::Value) -> AgentRuntimeEvent {
     let label = first_non_empty(vec![
         json_field_string(runtime, "workerLabel"),
         json_field_string(runtime, "workerId"),
-        "worker runtime".to_string(),
+        "worker".to_string(),
     ]);
     let profile = json_field_string(runtime, "executionProfile");
     let summary = first_non_empty(vec![
         json_field_string(runtime, "summary"),
         json_field_string(runtime, "detail"),
     ]);
-    let harness = json_field_string(runtime, "harnessUrl");
+    let preview = json_field_string(runtime, "harnessUrl");
     let mut parts = vec![format!(
-        "{} runtime {} is {}.",
+        "{} worker {} is {}.",
         if profile.is_empty() {
             "worker"
         } else {
@@ -912,8 +904,8 @@ fn worker_runtime_event(runtime: &serde_json::Value) -> AgentRuntimeEvent {
     if !summary.is_empty() {
         parts.push(summary);
     }
-    if !harness.is_empty() {
-        parts.push(format!("Harness {harness}."));
+    if !preview.is_empty() {
+        parts.push(format!("Preview {preview}."));
     }
 
     AgentRuntimeEvent {
@@ -942,11 +934,11 @@ fn build_agent_runtime_events(
         let now = now_unix_label();
         events.push(AgentRuntimeEvent {
             time: now,
-            lane: "Q route".to_string(),
+            lane: "Q task".to_string(),
             detail: if source_exists {
-                "OpenJaws route runtime files are present and currently idle.".to_string()
+                "OpenJaws found agent activity files and is waiting for new work.".to_string()
             } else {
-                "No OpenJaws route runtime files were found for this workspace yet.".to_string()
+                "No agent activity has been recorded for this workspace yet.".to_string()
             },
             state: "waiting".to_string(),
         });
@@ -965,14 +957,13 @@ fn agent_runtime_snapshot(workspace_path: Option<String>) -> AgentRuntimeSnapsho
     let events = build_agent_runtime_events(&queue, &workers, &runtime, source_exists);
     let summary = if source_exists {
         format!(
-            "Loaded {} route entries, {} worker registrations, and {} runtime statuses.",
+            "Loaded {} waiting tasks, {} workers, and {} running updates.",
             queue.len(),
             workers.len(),
             runtime.len()
         )
     } else {
-        "No artifacts/q-runs runtime files were found from the selected workspace or repo ancestors."
-            .to_string()
+        "No agent activity files were found for this workspace yet.".to_string()
     };
 
     AgentRuntimeSnapshot {
@@ -1138,7 +1129,7 @@ fn deterministic_receipt_hash(parts: &[&str]) -> String {
 fn sanitize_demo_name(name: &str) -> String {
     let trimmed = name.trim();
     if trimmed.is_empty() {
-        "OpenJaws web app demo".to_string()
+        "OpenJaws website test".to_string()
     } else {
         trimmed.chars().take(80).collect()
     }
@@ -1167,7 +1158,7 @@ fn sanitize_demo_slug(name: &str) -> String {
     }
 
     if slug.is_empty() {
-        "openjaws-web-app-demo".to_string()
+        "openjaws-website-test".to_string()
     } else {
         slug
     }
@@ -1228,7 +1219,7 @@ export default defineConfig({
 
 fn build_demo_spec(name: &str, url: &str) -> String {
     let name_json =
-        serde_json::to_string(name).unwrap_or_else(|_| "\"OpenJaws web app demo\"".to_string());
+        serde_json::to_string(name).unwrap_or_else(|_| "\"OpenJaws website test\"".to_string());
     let url_json =
         serde_json::to_string(url).unwrap_or_else(|_| "\"http://127.0.0.1:5173\"".to_string());
 
@@ -1239,7 +1230,7 @@ const DEMO_NAME = __DEMO_NAME__
 const DEMO_URL = __DEMO_URL__
 
 test.describe(DEMO_NAME, () => {
-  test('loads, renders meaningful content, and captures demo evidence', async ({ page }, testInfo) => {
+  test('loads, renders meaningful content, and captures evidence', async ({ page }, testInfo) => {
     const pageErrors: string[] = []
     const consoleErrors: string[] = []
 
@@ -1261,13 +1252,13 @@ test.describe(DEMO_NAME, () => {
 
     const title = await page.title()
     const finalUrl = page.url()
-    const screenshotPath = testInfo.outputPath('demo-full-page.png')
+    const screenshotPath = testInfo.outputPath('full-page.png')
     await page.screenshot({ path: screenshotPath, fullPage: true })
 
     await writeFile(
-      testInfo.outputPath('demo-summary.json'),
+      testInfo.outputPath('summary.json'),
       JSON.stringify({
-        demoName: DEMO_NAME,
+        name: DEMO_NAME,
         requestedUrl: DEMO_URL,
         finalUrl,
         title,
@@ -1298,7 +1289,7 @@ fn build_demo_readme(
     codegen: &str,
 ) -> String {
     format!(
-        "# {name}\n\nThis OpenJaws preview harness turns a web app, product page, service, or game URL into reusable Playwright demo evidence.\n\n- URL: {url}\n- Dev command: {dev_command}\n\n## Commands\n\n```powershell\n{install}\n{test}\n{headed}\n{codegen}\n```\n\n## What It Captures\n\n- desktop and mobile Chromium runs\n- full-page screenshot artifacts\n- Playwright trace/video on failure\n- a JSON summary with title, final URL, text preview, console errors, and page errors\n\nUse the OpenJaws preview lane while building:\n\n```text\n{preview}\n```\n"
+        "# {name}\n\nThis JAWS website test checks a web app, product page, service, or game URL and saves a reusable browser record.\n\n- URL: {url}\n- Start command: {dev_command}\n\n## Commands\n\n```powershell\n{install}\n{test}\n{headed}\n{codegen}\n```\n\n## What It Captures\n\n- desktop and mobile Chromium checks\n- full-page screenshots\n- Playwright trace/video on failure\n- a JSON summary with title, final URL, visible text, console errors, and page errors\n\nUse the OpenJaws preview command while building:\n\n```text\n{preview}\n```\n"
     )
 }
 
@@ -1355,15 +1346,14 @@ fn browser_preview_snapshot(workspace_path: Option<String>) -> BrowserPreviewSna
     let receipt_exists = receipt_path.exists();
     let receipt_summary = if sessions.is_empty() {
         if receipt_exists {
-            "Browser preview receipts exist but no accountable agent/operator sessions were recorded."
-                .to_string()
+            "Browser preview history exists, but no sessions were recorded.".to_string()
         } else {
-            "No browser preview receipt exists yet. OpenJaws will create one when Q, an agent, or an operator records a preview handoff."
+            "No browser preview history yet. JAWS creates it when you or an agent records a preview."
                 .to_string()
         }
     } else {
         format!(
-            "Loaded {} accountable browser preview session{}.",
+            "Loaded {} browser preview session{}.",
             sessions.len(),
             if sessions.len() == 1 { "" } else { "s" }
         )
@@ -1515,7 +1505,7 @@ fn write_browser_preview_demo_harness(
 
     if let Err(error) = fs::create_dir_all(&tests_dir) {
         return preview_demo_error(
-            format!("Could not create Playwright demo harness directory: {error}"),
+            format!("Could not create the website test folder: {error}"),
             cleaned_url,
             cleaned_command,
             clean_name,
@@ -1599,7 +1589,7 @@ fn write_browser_preview_demo_harness(
         if let Err(error) = fs::write(path, content) {
             return preview_demo_error(
                 format!(
-                    "Could not write Playwright demo harness file {}: {error}",
+                    "Could not write website test file {}: {error}",
                     path.display()
                 ),
                 cleaned_url,
@@ -1612,7 +1602,7 @@ fn write_browser_preview_demo_harness(
     PreviewDemoHarnessResult {
         ok: true,
         output_dir: output_dir.display().to_string(),
-        message: "Playwright demo harness written for this workspace.".to_string(),
+        message: "Website test files were created for this workspace.".to_string(),
         name: clean_name,
         slug,
         url: cleaned_url,
@@ -1638,35 +1628,33 @@ fn q_agents_cowork_plan() -> QAgentsCoworkPlan {
         room_code: "JWS-QAGENTS".to_string(),
         shared_phase_memory: true,
         pooled_credits: false,
-        route_policy: "health-gated dispatch with explicit user approval for shared credits"
+        route_policy: "Start workers only when the room is ready and you approve shared credits."
             .to_string(),
         controls: vec![
             QAgentsCoworkControl {
                 id: "planner".to_string(),
                 label: "Q planner".to_string(),
-                detail: "Owns task decomposition, route policy, and final synthesis.".to_string(),
+                detail: "Breaks the request into clear jobs.".to_string(),
                 status: "ready".to_string(),
             },
             QAgentsCoworkControl {
                 id: "implementer".to_string(),
                 label: "Q_agent implementer".to_string(),
-                detail: "Takes bounded code-change lanes with workspace-scoped permissions."
-                    .to_string(),
-                status: "health gated".to_string(),
+                detail: "Works on approved project files.".to_string(),
+                status: "ready check".to_string(),
             },
             QAgentsCoworkControl {
                 id: "verifier".to_string(),
                 label: "Q_agent verifier".to_string(),
-                detail: "Runs tests, browser checks, and release gates before handoff.".to_string(),
-                status: "health gated".to_string(),
+                detail: "Runs tests and checks before you ship.".to_string(),
+                status: "ready check".to_string(),
             },
             QAgentsCoworkControl {
                 id: "cowork".to_string(),
                 label: "Co-work room".to_string(),
-                detail:
-                    "Pairs another JAWS user into the same workspace with explicit code exchange."
-                        .to_string(),
-                status: "local foundation".to_string(),
+                detail: "Pairs another JAWS user into the same workspace with a shared code."
+                    .to_string(),
+                status: "local ready".to_string(),
             },
         ],
     }
@@ -1848,7 +1836,7 @@ fn category_detail(id: &str) -> &'static str {
         "code" => "Source files that explain behavior and implementation.",
         "tests" => "Verifier files that define expected behavior.",
         "docs" => "Project memory, release notes, and operator docs.",
-        "config" => "Build, package, runtime, and deployment configuration.",
+        "config" => "Build, package, and app settings.",
         "assets" => "Binary or media assets tracked as metadata only.",
         _ => "Other lightweight project files considered as metadata.",
     }
@@ -1946,32 +1934,32 @@ fn context_brain_lanes(confidence_score: u8, scanned_files: usize) -> Vec<Contex
     vec![
         ContextBrainLane {
             label: "Q planner".to_string(),
-            receives: "workspace map, priority files, test/config/docs coverage".to_string(),
+            receives: "project map and important files".to_string(),
             status: status.to_string(),
-            detail: "Uses the context pack before task decomposition.".to_string(),
+            detail: "Uses the Context view before planning.".to_string(),
         },
         ContextBrainLane {
             label: "Q_agents".to_string(),
-            receives: "bounded file lists, skipped reasons, verifier targets".to_string(),
+            receives: "files to work on and files to avoid".to_string(),
             status: status.to_string(),
-            detail: "Worker lanes inherit this same visible context receipt.".to_string(),
+            detail: "Workers share the same project scan.".to_string(),
         },
         ContextBrainLane {
             label: "OpenCheek".to_string(),
-            receives: "shared phase memory plus context coverage receipt".to_string(),
+            receives: "shared notes and project coverage".to_string(),
             status: if scanned_files == 0 {
                 "blocked"
             } else {
                 "ready"
             }
             .to_string(),
-            detail: "Keeps cowork handoffs attached to the same workspace evidence.".to_string(),
+            detail: "Keeps co-work notes tied to this project.".to_string(),
         },
         ContextBrainLane {
             label: "Immaculate".to_string(),
-            receives: "verification scope, release gates, privacy guard notes".to_string(),
+            receives: "test scope, release checks, and privacy notes".to_string(),
             status: status.to_string(),
-            detail: "Uses the pack to pace verifier and safety checks.".to_string(),
+            detail: "Uses the scan for final checks.".to_string(),
         },
     ]
 }
@@ -1991,8 +1979,7 @@ fn project_context_snapshot(workspace_path: Option<String>) -> ProjectContextSna
             valid: false,
             source: "workspace not selected".to_string(),
             confidence_score: 0,
-            summary: "Select a valid project folder before building a visible context pack."
-                .to_string(),
+            summary: "Select a valid project folder before building the Context view.".to_string(),
             total_files: 0,
             scanned_files: 0,
             skipped_files: 0,
@@ -2152,7 +2139,7 @@ fn project_context_snapshot(workspace_path: Option<String>) -> ProjectContextSna
 
     let categories = build_context_categories(categories);
     let summary = format!(
-        "Context pack scanned {scanned_files} of {total_files} files with {confidence}% confidence. Sensitive, generated, binary, and oversized paths are summarized as skips instead of shown as content."
+        "JAWS scanned {scanned_files} of {total_files} files with {confidence}% confidence. Sensitive, generated, binary, and large files are counted as skipped instead of shown."
     );
 
     ProjectContextSnapshot {
@@ -2173,9 +2160,9 @@ fn project_context_snapshot(workspace_path: Option<String>) -> ProjectContextSna
         skipped: build_context_skips(skipped),
         brain_lanes: context_brain_lanes(confidence, scanned_files),
         notes: vec![
-            "This view shows aggregate context evidence only; raw source, secrets, env files, and private prompts are not displayed.".to_string(),
-            "Q and Q_agents should use this pack as a visible receipt before claiming project understanding.".to_string(),
-            "Skipped files are still visible as counts and examples so users can spot missing context without exposing contents.".to_string(),
+            "This view shows counts and file names, not raw source, secrets, env files, or private prompts.".to_string(),
+            "Q and Q_agents should use this scan before claiming they understand the project.".to_string(),
+            "Skipped files are shown as counts and examples so you can spot missing context without exposing contents.".to_string(),
         ],
     }
 }
@@ -2335,7 +2322,7 @@ fn validate_workspace(path: String) -> WorkspaceStatus {
             path: cleaned,
             name: "Relative path".to_string(),
             valid: false,
-            message: "Use an absolute project folder path so JAWS can route work safely."
+            message: "Use an absolute project folder path so JAWS can start work safely."
                 .to_string(),
             tui_command: "openjaws".to_string(),
         };
@@ -2380,9 +2367,9 @@ fn backend_status(app: tauri::AppHandle) -> BackendStatus {
         sidecar_name: "openjaws".to_string(),
         sidecar_ready,
         sidecar_message: if sidecar_ready {
-            "Bundled OpenJaws sidecar is addressable.".to_string()
+            "OpenJaws is connected.".to_string()
         } else {
-            "Run prepare:sidecar before building the desktop bundle.".to_string()
+            "OpenJaws is not bundled in this build.".to_string()
         },
         update_channel: "stable".to_string(),
         release_sites: index
@@ -2410,7 +2397,7 @@ async fn probe_release_update_pipeline() -> Vec<UpdatePipelineEntry> {
         Err(error) => {
             return vec![update_entry(
                 "native-probe",
-                "Native release probe",
+                "Release check",
                 "error",
                 format!("HTTP client could not be created: {error}"),
             )];
@@ -2463,7 +2450,7 @@ async fn openjaws_smoke(app: tauri::AppHandle, workspace_path: Option<String>) -
                 ok: false,
                 code: None,
                 stdout: String::new(),
-                stderr: format!("OpenJaws sidecar unavailable: {error}"),
+                stderr: format!("OpenJaws is unavailable: {error}"),
             };
         }
     };
@@ -2479,7 +2466,7 @@ async fn openjaws_smoke(app: tauri::AppHandle, workspace_path: Option<String>) -
             ok: false,
             code: None,
             stdout: String::new(),
-            stderr: format!("OpenJaws sidecar check failed: {error}"),
+            stderr: format!("OpenJaws check failed: {error}"),
         },
     }
 }
@@ -2680,9 +2667,8 @@ async fn openjaws_inference_status(
             return fallback_inference_result(
                 provider,
                 model,
-                "OpenJaws sidecar is unavailable; showing local inference preflight only."
-                    .to_string(),
-                format!("OpenJaws sidecar unavailable: {error}"),
+                "OpenJaws is unavailable; showing local AI settings only.".to_string(),
+                format!("OpenJaws is unavailable: {error}"),
             );
         }
     };
@@ -2703,12 +2689,12 @@ async fn openjaws_inference_status(
                 code: output.status.code(),
                 summary: if ok {
                     if run_probe {
-                        "Provider route probe completed.".to_string()
+                        "AI connection checked.".to_string()
                     } else {
-                        "Provider route status loaded.".to_string()
+                        "AI settings loaded.".to_string()
                     }
                 } else {
-                    "Provider route command returned a non-zero exit code.".to_string()
+                    "AI check returned an error.".to_string()
                 },
                 stdout,
                 stderr,
@@ -2721,13 +2707,13 @@ async fn openjaws_inference_status(
         Ok(Err(error)) => fallback_inference_result(
             provider,
             model,
-            "Provider route command failed before output.".to_string(),
+            "AI check failed before output.".to_string(),
             format!("OpenJaws provider command failed: {error}"),
         ),
         Err(_) => fallback_inference_result(
             provider,
             model,
-            "Provider route command timed out before output.".to_string(),
+            "AI check timed out before output.".to_string(),
             "OpenJaws provider command timed out after 45 seconds.".to_string(),
         ),
     }
@@ -2806,8 +2792,8 @@ async fn run_openjaws_chat(
                 ok: false,
                 code: None,
                 stdout: String::new(),
-                stderr: format!("OpenJaws sidecar unavailable: {error}"),
-                summary: "Sidecar unavailable.".to_string(),
+                stderr: format!("OpenJaws is unavailable: {error}"),
+                summary: "OpenJaws unavailable.".to_string(),
                 permission_mode: permission_mode.to_string(),
                 workspace_path: workspace.path,
             };
@@ -2838,7 +2824,7 @@ async fn run_openjaws_chat(
             code: None,
             stdout: String::new(),
             stderr: format!("OpenJaws Chat command failed: {error}"),
-            summary: "Sidecar execution failed.".to_string(),
+            summary: "OpenJaws execution failed.".to_string(),
             permission_mode: permission_mode.to_string(),
             workspace_path: workspace.path,
         },
@@ -2847,7 +2833,7 @@ async fn run_openjaws_chat(
             code: None,
             stdout: String::new(),
             stderr: "OpenJaws Chat command timed out after 120 seconds.".to_string(),
-            summary: "Sidecar command timed out.".to_string(),
+            summary: "OpenJaws command timed out.".to_string(),
             permission_mode: permission_mode.to_string(),
             workspace_path: workspace.path,
         },

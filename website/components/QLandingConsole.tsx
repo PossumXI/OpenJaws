@@ -86,7 +86,7 @@ export function QLandingConsole(): React.ReactNode {
         loading: false,
         message:
           payload.message ??
-          'Website shell is live. Connect your billing and entitlement service next.',
+          'Your request was received. Finish setup to start using Q.',
         snapshot: {
           storage: typeof payload.storage === 'string' ? payload.storage : null,
           plan: typeof payload.user?.plan === 'string' ? payload.user.plan : null,
@@ -213,7 +213,7 @@ export function QLandingConsole(): React.ReactNode {
 
         <p className="console-message">
           {state.message ??
-            'Frontend is ready. Attach the real service when you are ready to issue keys and charge for the heavy lane.'}
+            'Enter your email and choose a plan to continue.'}
         </p>
 
         {state.snapshot ? (
@@ -273,7 +273,7 @@ export function QLandingConsole(): React.ReactNode {
             <p>Longer sessions and real traffic.</p>
           </article>
           <article className="metric-card">
-            <span className="metric-label">Discord exception</span>
+            <span className="metric-label">Community access</span>
             <strong>No-charge surface</strong>
             <p>Free if you want it. Still moderated.</p>
           </article>
@@ -288,9 +288,9 @@ export function QLandingConsole(): React.ReactNode {
             <span style={{ width: `${usagePercent}%` }} />
           </div>
           <div className="usage-meta">
-            <span>API keys: service-owned</span>
+            <span>Access keys managed by Q</span>
             <span>Reset: monthly</span>
-            <span>Rate limits: enforced server-side</span>
+            <span>Usage limits are enforced automatically</span>
           </div>
         </div>
       </div>

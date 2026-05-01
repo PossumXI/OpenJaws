@@ -47,9 +47,9 @@ export function createInitialUpdatePipeline(index: JawsReleaseIndex): UpdatePipe
   return [
     {
       id: "runtime",
-      label: "Tauri updater",
+      label: "Update check",
       status: "ready",
-      detail: "Waiting for a signed update check from the native runtime."
+      detail: "Ready to check for a safe JAWS update."
     },
     ...index.mirrors.map((mirror) => ({
       id: mirror.id,
@@ -59,9 +59,9 @@ export function createInitialUpdatePipeline(index: JawsReleaseIndex): UpdatePipe
     })),
     {
       id: "github",
-      label: "GitHub release",
+      label: "GitHub download",
       status: "ready",
-      detail: `${index.tag} signed assets`
+      detail: `${index.tag} downloads`
     }
   ];
 }
@@ -70,9 +70,9 @@ export function createPreviewUpdatePipeline(index: JawsReleaseIndex): UpdatePipe
   return [
     {
       id: "runtime",
-      label: "Tauri updater",
+      label: "Update check",
       status: "error",
-      detail: "The signed updater only runs inside the native JAWS desktop shell."
+      detail: "Open the JAWS desktop app to check for updates."
     },
     ...index.mirrors.map((mirror) => ({
       id: mirror.id,
@@ -82,13 +82,13 @@ export function createPreviewUpdatePipeline(index: JawsReleaseIndex): UpdatePipe
     })),
     {
       id: "github",
-      label: "GitHub release",
+      label: "GitHub download",
       status: "info",
       detail: index.github.releaseUrl
     },
     {
       id: "manifest",
-      label: "Signed manifest",
+      label: "Update file",
       status: "info",
       detail: `${index.github.baseAssetUrl}/latest.json`
     }
@@ -101,8 +101,8 @@ export function markUpdatePipelineChecking(entries: UpdatePipelineEntry[]): Upda
     status: "checking",
     detail:
       entry.id === "runtime"
-        ? "Calling Tauri updater.check() against signed endpoints."
-        : "Native runtime is probing the live release surface."
+        ? "Checking for a safe update."
+        : "Checking this download source."
   }));
 }
 
@@ -119,9 +119,9 @@ export function resolveUpdateSuccess(
       pipeline: [
         {
           id: "runtime",
-          label: "Tauri updater",
+          label: "Update check",
           status: "ok",
-          detail: "No newer signed release was offered by the updater."
+          detail: "You are already on the newest JAWS release."
         },
         ...releaseEntries
       ]
@@ -140,9 +140,9 @@ export function resolveUpdateSuccess(
     pipeline: [
       {
         id: "runtime",
-        label: "Tauri updater",
+        label: "Update check",
         status: "ok",
-        detail: `Signed update ${updateVersion} is ready.`
+        detail: `JAWS ${updateVersion} is ready to install.`
       },
       ...releaseEntries
     ]
@@ -156,7 +156,7 @@ export function resolveUpdateFailure(error: unknown, releaseEntries: UpdatePipel
     pipeline: [
       {
         id: "runtime",
-        label: "Tauri updater",
+        label: "Update check",
         status: "error",
         detail
       },

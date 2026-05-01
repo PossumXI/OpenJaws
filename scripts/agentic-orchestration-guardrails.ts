@@ -69,7 +69,7 @@ export function buildAgenticOrchestrationGuardrailRules(): GuardrailRule[] {
           fragments: [
             'fn project_context_snapshot',
             'secret-like file',
-            'raw source, secrets, env files, and private prompts are not displayed',
+            'raw source, secrets, env files, or private prompts',
           ],
         },
         {
@@ -78,7 +78,7 @@ export function buildAgenticOrchestrationGuardrailRules(): GuardrailRule[] {
         },
         {
           path: 'docs/wiki/JAWS-Desktop-App.md',
-          fragments: ['aggregate-only project context receipt'],
+          fragments: ['aggregate-only project scan'],
         },
       ],
     },

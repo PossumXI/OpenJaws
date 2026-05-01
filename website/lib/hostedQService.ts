@@ -78,7 +78,7 @@ export function buildHostedQServiceUnavailableResponse(args: {
       action: args.action,
       mode: args.mode ?? resolveHostedQServiceMode(),
       message:
-        'Hosted Q access is not available on this site until the production hosted-Q backend is configured.',
+        'Q access is temporarily unavailable. Please try again later.',
       requiredEnv: ['Q_HOSTED_SERVICE_BASE_URL'],
     },
     {
