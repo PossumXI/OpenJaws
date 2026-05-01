@@ -845,6 +845,13 @@ export async function dispatchClaimedRoute(args: {
     heartbeat = setInterval(() => {
       void (async () => {
         const heartbeatAt = new Date().toISOString()
+        renewQTrainingRouteQueueClaim({
+          runId: args.target.queueEntry.runId,
+          workerId: args.options.workerId,
+          claimTtlMs: args.options.claimTtlMs ?? undefined,
+          root: args.options.root ?? process.cwd(),
+          renewedAt: heartbeatAt,
+        })
         const sync = await syncImmaculateWorkerRegistration(
           args.options,
           'heartbeat',
@@ -859,13 +866,6 @@ export async function dispatchClaimedRoute(args: {
           }
           return
         }
-        renewQTrainingRouteQueueClaim({
-          runId: args.target.queueEntry.runId,
-          workerId: args.options.workerId,
-          claimTtlMs: args.options.claimTtlMs ?? undefined,
-          root: args.options.root ?? process.cwd(),
-          renewedAt: heartbeatAt,
-        })
         upsertWorkerRegistration(args.options, heartbeatAt)
       })()
     }, args.options.heartbeatMs)
