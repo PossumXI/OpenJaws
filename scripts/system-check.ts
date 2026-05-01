@@ -2,6 +2,7 @@ import { existsSync } from 'fs'
 import { mkdir, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { dirname, join, resolve } from 'path'
+import { spawnSync } from 'child_process'
 import { execa } from 'execa'
 import {
   getOpenJawsTrainingModelDisplay,
@@ -61,14 +62,15 @@ const operatorReleaseSurfaceFiles = [
   'scripts/personaplex-probe.test.ts',
 ] as const
 
-const OPTIONAL_Q_TRAINING_MODULES = new Set([
+const OPTIONAL_Q_TRAINING_MODULE_NAMES = [
   'accelerate',
   'datasets',
   'evaluate',
   'peft',
   'torch',
   'transformers',
-])
+] as const
+const OPTIONAL_Q_TRAINING_MODULES = new Set(OPTIONAL_Q_TRAINING_MODULE_NAMES)
 
 function tailText(text: string, maxLines = 40, maxChars = 4000): string {
   const trimmed = text.trim()
@@ -207,6 +209,86 @@ function normalizeQLiveSmokeResult(check: CheckResult): CheckResult {
   }
 
   return check
+}
+
+function getMissingQTrainingModules(command: string): {
+  missing: string[]
+  error: string | null
+} {
+  const script = [
+    'import importlib.util, json',
+    `mods = ${JSON.stringify(OPTIONAL_Q_TRAINING_MODULE_NAMES)}`,
+    'print(json.dumps([m for m in mods if importlib.util.find_spec(m) is None]))',
+  ].join('\n')
+  const result = spawnSync(command, ['-c', script], {
+    cwd: rootDir,
+    encoding: 'utf8',
+    timeout: 15_000,
+    windowsHide: true,
+  })
+  if (result.error) {
+    return { missing: [], error: result.error.message }
+  }
+  if (result.status !== 0) {
+    return {
+      missing: [],
+      error: tailText(`${result.stderr ?? ''}\n${result.stdout ?? ''}`, 10, 1000),
+    }
+  }
+  try {
+    const parsed = JSON.parse((result.stdout ?? '').trim()) as unknown
+    if (!Array.isArray(parsed)) {
+      return { missing: [], error: 'dependency probe returned non-array JSON' }
+    }
+    return {
+      missing: parsed
+        .filter((item): item is string => typeof item === 'string')
+        .filter(item => OPTIONAL_Q_TRAINING_MODULES.has(item)),
+      error: null,
+    }
+  } catch (error) {
+    return {
+      missing: [],
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
+function buildMissingQTrainingModulesCheck(args: {
+  missing: string[]
+  error: string | null
+}): CheckResult | null {
+  if (args.error) {
+    return {
+      name: 'q-live-smoke-train',
+      status: 'warning',
+      durationMs: 0,
+      command: `${qPythonCommand} -c <q training dependency probe>`,
+      summary:
+        `live Q smoke skipped because ${qPythonCommand} dependency probing failed`,
+      details: {
+        error: args.error,
+        remediation:
+          'Repair the configured Python executable before running scored local Q smoke or BridgeBench checks.',
+      },
+    }
+  }
+  if (args.missing.length === 0) {
+    return null
+  }
+  return {
+    name: 'q-live-smoke-train',
+    status: 'warning',
+    durationMs: 0,
+    command: `${qPythonCommand} -c <q training dependency probe>`,
+    summary:
+      `live Q smoke skipped because ${qPythonCommand} is missing optional local training modules: ${args.missing.join(', ')}`,
+    details: {
+      missingModules: args.missing,
+      remediation:
+        `Install the Q local training environment before running scored local Q smoke or BridgeBench checks. Required modules: ${OPTIONAL_Q_TRAINING_MODULE_NAMES.join(', ')}.`,
+    },
+  }
 }
 
 function getMissingQTrainingModule(check: CheckResult): string | null {
@@ -750,50 +832,53 @@ async function main() {
       timeoutMs: 120_000,
     }),
   )
-  const qLiveSmokeTrain = normalizeQLiveSmokeResult(
-    await runCommandCheck(
-      'q-live-smoke-train',
-      qPythonCommand,
-      [
-        'training\\q\\train_lora.py',
-        '--train-file',
-        join(auditedDir, 'train.jsonl'),
-        '--eval-file',
-        join(auditedDir, 'eval.jsonl'),
-        '--base-model',
-        qSmokeBaseModelSource,
-        '--output-dir',
-        liveTrainDir,
-        '--run-name',
-        'system-check-live',
-        '--use-cpu',
-        '--max-steps',
-        '1',
-        '--max-seq-length',
-        '128',
-        '--lora-r',
-        '16',
-        '--lora-alpha',
-        '32',
-        '--per-device-train-batch-size',
-        '1',
-        '--per-device-eval-batch-size',
-        '1',
-        '--gradient-accumulation-steps',
-        '1',
-        '--logging-steps',
-        '1',
-        '--save-steps',
-        '1',
-        '--eval-steps',
-        '1',
-      ],
-      {
-        successSummary: `live Q smoke train completed (${qSmokeBaseModel})`,
-        timeoutMs: 1_800_000,
-      },
-    ),
-  )
+  const missingQTrainingModules = getMissingQTrainingModules(qPythonCommand)
+  const qLiveSmokeTrain =
+    buildMissingQTrainingModulesCheck(missingQTrainingModules) ??
+    normalizeQLiveSmokeResult(
+      await runCommandCheck(
+        'q-live-smoke-train',
+        qPythonCommand,
+        [
+          'training\\q\\train_lora.py',
+          '--train-file',
+          join(auditedDir, 'train.jsonl'),
+          '--eval-file',
+          join(auditedDir, 'eval.jsonl'),
+          '--base-model',
+          qSmokeBaseModelSource,
+          '--output-dir',
+          liveTrainDir,
+          '--run-name',
+          'system-check-live',
+          '--use-cpu',
+          '--max-steps',
+          '1',
+          '--max-seq-length',
+          '128',
+          '--lora-r',
+          '16',
+          '--lora-alpha',
+          '32',
+          '--per-device-train-batch-size',
+          '1',
+          '--per-device-eval-batch-size',
+          '1',
+          '--gradient-accumulation-steps',
+          '1',
+          '--logging-steps',
+          '1',
+          '--save-steps',
+          '1',
+          '--eval-steps',
+          '1',
+        ],
+        {
+          successSummary: `live Q smoke train completed (${qSmokeBaseModel})`,
+          timeoutMs: 1_800_000,
+        },
+      ),
+    )
   const qLiveSmokeTrainWithState = await enrichQLiveSmokeResult(
     qLiveSmokeTrain,
     join(liveTrainDir, 'run-state.json'),

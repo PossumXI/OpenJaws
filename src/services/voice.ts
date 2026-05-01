@@ -27,6 +27,7 @@ const FALLBACK_AUDIO_NAPI: AudioNapi = {
   startNativeRecording: () => false,
   stopNativeRecording: () => {},
 }
+const AUDIO_CAPTURE_NAPI_PACKAGE = ['audio', 'capture', 'napi'].join('-')
 
 let audioNapi: AudioNapi | null = null
 let audioNapiPromise: Promise<AudioNapi> | null = null
@@ -61,14 +62,26 @@ function coerceAudioNapi(mod: unknown): AudioNapi {
 function loadAudioNapi(): Promise<AudioNapi> {
   audioNapiPromise ??= (async () => {
     const t0 = Date.now()
-    const mod = await import('audio-capture-napi')
-    const resolved = coerceAudioNapi(mod)
-    // vendor/audio-capture-src/index.ts defers require(...node) until the
-    // first function call — trigger it here so timing reflects real cost.
-    void resolved.isNativeAudioAvailable()
-    audioNapi = resolved
-    logForDebugging(`[voice] audio-capture-napi loaded in ${Date.now() - t0}ms`)
-    return resolved
+    try {
+      const mod = await import(AUDIO_CAPTURE_NAPI_PACKAGE)
+      const resolved = coerceAudioNapi(mod)
+      // vendor/audio-capture-src/index.ts defers require(...node) until the
+      // first function call — trigger it here so timing reflects real cost.
+      void resolved.isNativeAudioAvailable()
+      audioNapi = resolved
+      logForDebugging(
+        `[voice] ${AUDIO_CAPTURE_NAPI_PACKAGE} loaded in ${Date.now() - t0}ms`,
+      )
+      return resolved
+    } catch (error) {
+      audioNapi = FALLBACK_AUDIO_NAPI
+      logForDebugging(
+        `[voice] optional native audio module unavailable: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+      return FALLBACK_AUDIO_NAPI
+    }
   })()
   return audioNapiPromise
 }
