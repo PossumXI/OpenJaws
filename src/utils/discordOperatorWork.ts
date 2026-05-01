@@ -31,6 +31,8 @@ export type DiscordOperatorRealWorldEngagement = {
   toolHints: string[]
 }
 
+export const REAL_WORLD_ENGAGEMENT_DEFAULT_WORKSPACE = 'OpenJaws'
+
 export type DiscordOperatorRunContext = {
   jobId: string
   requestedWorkspace: string
@@ -270,6 +272,7 @@ function extractRealWorldEngagementWorkspaceAndTask(content: string): {
 export function buildRealWorldEngagementPrompt(args: {
   engagement: DiscordOperatorRealWorldEngagement
   task: string
+  defaultWorkspaceApplied?: boolean
 }): string {
   const guardrails = [
     `Real-world engagement lane: ${args.engagement.label} (${args.engagement.lane}).`,
@@ -298,6 +301,11 @@ export function buildRealWorldEngagementPrompt(args: {
       'For scheduling work, create or update drafts only unless the operator explicitly approves a calendar, reminder, or cron mutation.',
     )
   }
+  if (args.defaultWorkspaceApplied) {
+    guardrails.push(
+      `Workspace routing: no explicit approved project was named, so execute from the approved ${REAL_WORLD_ENGAGEMENT_DEFAULT_WORKSPACE} workspace alias and keep receipts/artifacts there.`,
+    )
+  }
   return [...guardrails, `Operator request: ${args.task.trim()}`].join('\n')
 }
 
@@ -309,10 +317,15 @@ export function parseRealWorldEngagementOperatorCommand(
     return null
   }
   const { cwd, task } = extractRealWorldEngagementWorkspaceAndTask(content)
+  const defaultWorkspaceApplied = cwd === null
   return {
     action: 'ask-openjaws',
-    cwd,
-    text: buildRealWorldEngagementPrompt({ engagement, task }),
+    cwd: cwd ?? REAL_WORLD_ENGAGEMENT_DEFAULT_WORKSPACE,
+    text: buildRealWorldEngagementPrompt({
+      engagement,
+      task,
+      defaultWorkspaceApplied,
+    }),
   }
 }
 
