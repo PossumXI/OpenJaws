@@ -2,6 +2,7 @@
 
 ## 2.1.88 - 2026-04-22
 
+- Prepared JAWS Desktop 0.1.6 as the next signed update lane so the merged real-world Discord workspace default and desktop release artifact guard can ship through the tag workflow instead of staying only on `main`.
 - Added a JAWS desktop artifact guard to the tagged update pipeline so signed installers, required signatures, `latest.json`, and updater platform URLs are verified against `release-index.json` before a GitHub release is promoted publicly.
 - Explicit `ask-openjaws` Discord prompts now reuse the real-world engagement classifier after workspace resolution, keeping browser previews, live research, mail/LinkedIn drafts, chrono plans, and artifact-delivery work inside the same approval and receipt boundary as plain-English requests.
 - The bounded public showcase feed now aggregates `Q`, `Viola`, `Blackbeak`, roundtable runtime, sanitized Immaculate actionability summaries, and typed trace summaries into one mirrored overlay, which gives the Arobi public showcase lane a current operator/activity snapshot without exposing private control receipts.
