@@ -1046,6 +1046,161 @@ function buildRuntimeSummaryEntry(args: {
   })
 }
 
+type RealWorldEngagementBehavior = 'active' | 'warming' | 'blocked' | 'quiet'
+
+function classifyRealWorldEngagement(args: {
+  signalCount: number
+  actionCount: number
+  subsystemCount: number
+  artifactCount: number
+  criticalFailureCount: number
+}): { behavior: RealWorldEngagementBehavior; status: string } {
+  if (args.criticalFailureCount > 0) {
+    return { behavior: 'blocked', status: 'info' }
+  }
+
+  if (
+    args.actionCount >= 3 &&
+    args.subsystemCount >= 3 &&
+    args.artifactCount >= 2
+  ) {
+    return { behavior: 'active', status: 'ok' }
+  }
+
+  if (args.signalCount > 0 || args.actionCount > 0 || args.artifactCount > 0) {
+    return { behavior: 'warming', status: 'info' }
+  }
+
+  return { behavior: 'quiet', status: 'info' }
+}
+
+function pluralizePublicCount(
+  count: number,
+  singular: string,
+  plural = `${singular}s`,
+): string {
+  return `${count.toLocaleString()} ${count === 1 ? singular : plural}`
+}
+
+function isCriticalRuntimeFailure(
+  entry: PublicShowcaseActivityEntry,
+): boolean {
+  if (entry.status !== 'failed') {
+    return false
+  }
+
+  // Public mirrors can show a failed bounded task without meaning the public
+  // network route or message bus is unavailable.
+  return !new Set([
+    'roundtable_runtime',
+    'tenant_governed_spend',
+    'benchmark',
+  ]).has(entry.kind ?? '')
+}
+
+function buildRealWorldEngagementEntry(args: {
+  generatedAt: string
+  entries: PublicShowcaseActivityEntry[]
+}): PublicShowcaseActivityEntry {
+  const observedEntries = args.entries.filter(entry => entry.kind !== 'runtime_audit')
+  const signalEntries = observedEntries.filter(entry =>
+    Boolean(entry.timestamp) ||
+    entry.operatorActions.length > 0 ||
+    entry.subsystems.length > 0 ||
+    entry.artifacts.length > 0,
+  )
+  const operatorActions = uniqueStrings(
+    observedEntries.flatMap(entry => entry.operatorActions),
+  )
+  const subsystems = uniqueStrings(
+    observedEntries.flatMap(entry => entry.subsystems),
+  )
+  const artifacts = uniqueStrings(
+    observedEntries.flatMap(entry => entry.artifacts),
+  )
+  const reviewCount = observedEntries.filter(entry =>
+    entry.status === 'warning' || entry.status === 'failed',
+  ).length
+  const criticalFailureCount = observedEntries.filter(entry =>
+    isCriticalRuntimeFailure(entry),
+  ).length
+  const classification = classifyRealWorldEngagement({
+    signalCount: signalEntries.length,
+    actionCount: operatorActions.length,
+    subsystemCount: subsystems.length,
+    artifactCount: artifacts.length,
+    criticalFailureCount,
+  })
+
+  const headline =
+    classification.behavior === 'active'
+      ? 'Real use is active'
+      : classification.behavior === 'warming'
+        ? 'Real use is starting'
+        : classification.behavior === 'blocked'
+          ? 'Real use needs attention'
+          : 'Real use is waiting for the first live signal'
+
+  const activitySummary =
+    signalEntries.length > 0
+      ? `${pluralizePublicCount(signalEntries.length, 'public signal')}, ${pluralizePublicCount(operatorActions.length, 'observed action')}, ${pluralizePublicCount(subsystems.length, 'system')}, and ${pluralizePublicCount(artifacts.length, 'receipt surface')}`
+      : 'no public activity receipts yet'
+  const reviewSummary =
+    reviewCount > 0
+      ? `${pluralizePublicCount(reviewCount, 'item')} still ${reviewCount === 1 ? 'needs' : 'need'} review`
+      : 'no public review blockers'
+  const coreOperatorActions = uniqueStrings([
+    ...[
+      'ask_openjaws',
+      'q_operator_runtime',
+      'roundtable_runtime',
+      'immaculate_handoff',
+      'q_agents_cowork',
+      'opencheek_agents',
+      'public_showcase_sync',
+    ].filter(action => operatorActions.includes(action)),
+    ...operatorActions,
+  ]).slice(0, 9)
+  const coreArtifacts = uniqueStrings([
+    ...[
+      'discord:q-agent-receipt',
+      'roundtable:session',
+      'roundtable:actionability',
+      'showcase:activity',
+      'q:readiness-summary',
+      'immaculate:trace-summary',
+      'apex:tenant-governance',
+      'nysus:agent-events',
+    ].filter(artifact => artifacts.includes(artifact)),
+    ...artifacts,
+  ]).slice(0, 9)
+
+  return createEntry({
+    id: `real-world-engagement-${args.generatedAt}`,
+    timestamp: args.generatedAt,
+    title: 'Real-world engagement behavior',
+    summary: `${headline}: ${activitySummary}. ${reviewSummary}.`,
+    kind: 'engagement_behavior',
+    status: classification.status,
+    source: 'OpenJaws engagement profiler',
+    operatorActions: uniqueStrings([
+      'real_world_engagement',
+      ...coreOperatorActions,
+    ]),
+    subsystems: uniqueStrings(['openjaws', ...subsystems.slice(0, 8)]),
+    artifacts: uniqueStrings([
+      'showcase:engagement-profile',
+      ...coreArtifacts,
+    ]),
+    tags: uniqueStrings([
+      'real_world',
+      'engagement',
+      'public',
+      classification.behavior,
+    ]),
+  })
+}
+
 export function buildPublicShowcaseActivityFeed(args: {
   generatedAt?: string | null
   qAgentReceipt?: DiscordQAgentReceipt | null
@@ -1144,8 +1299,12 @@ export function buildPublicShowcaseActivityFeed(args: {
     qReceipt,
     roundtableEntry,
   })
+  const engagementEntry = buildRealWorldEngagementEntry({
+    generatedAt,
+    entries,
+  })
 
-  const sortedEntries = [summaryEntry, ...entries]
+  const sortedEntries = [summaryEntry, engagementEntry, ...entries]
     .sort((left, right) => {
       const leftTime = left.timestamp ? Date.parse(left.timestamp) : 0
       const rightTime = right.timestamp ? Date.parse(right.timestamp) : 0
