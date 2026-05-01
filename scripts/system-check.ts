@@ -55,6 +55,8 @@ const operatorReleaseSurfaceFiles = [
   'scripts/agentic-orchestration-guardrails.test.ts',
   'scripts/discord-agent-supervisor.ts',
   'scripts/discord-agent-supervisor.test.ts',
+  'scripts/hosted-q-provisioning-preflight.ts',
+  'scripts/hosted-q-provisioning-preflight.test.ts',
   'scripts/personaplex-probe.ts',
   'scripts/personaplex-probe.test.ts',
 ] as const
@@ -409,6 +411,19 @@ async function main() {
       failureSummary:
         'service route health found a required public route failure',
       timeoutMs: 180_000,
+    }),
+  )
+  results.push(
+    await runJsonCommandCheck('hosted-q-provisioning-preflight', 'bun', [
+      'run',
+      'services:backend:preflight',
+    ], {
+      successSummary:
+        'hosted-Q provisioning preflight found deploy-ready Cloudflare/D1, worker secret, and public site bindings',
+      failureSummary:
+        'hosted-Q provisioning preflight found missing Cloudflare/D1, worker secret, or public site bindings',
+      timeoutMs: 60_000,
+      allowFailure: true,
     }),
   )
   results.push(

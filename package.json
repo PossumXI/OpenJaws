@@ -67,6 +67,7 @@
     "apex:bridges": "bun scripts/apex-bridge-health.ts --json",
     "apex:bridges:start": "bun scripts/apex-bridge-health.ts --json --start-missing",
     "services:backend:test": "bun test services/cloudflare-hosted-q/worker.test.ts",
+    "services:backend:preflight": "bun scripts/hosted-q-provisioning-preflight.ts --json",
     "services:backend:deploy": "bunx wrangler deploy --config services/cloudflare-hosted-q/wrangler.toml",
     "discord:q:repair": "bun scripts/discord-agent-supervisor.ts repair --agent Q",
     "discord:viola:repair": "bun scripts/discord-agent-supervisor.ts repair --agent Viola",

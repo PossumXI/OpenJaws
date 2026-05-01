@@ -40,8 +40,20 @@ contact intent for an existing campaign.
 
 ## Deploy
 
+0. Run the provisioning preflight:
+
+```powershell
+bun run services:backend:preflight
+```
+
+The preflight is intentionally no-secret. It reports which Cloudflare auth,
+D1, worker secret, route, and public-site proxy bindings are present or missing,
+but it never prints secret values. It exits nonzero until every required binding
+is ready; use `bun scripts/hosted-q-provisioning-preflight.ts --json --allow-blocked`
+only when you need a receipt without failing the shell step.
+
 1. Create a Cloudflare D1 database.
-2. Replace `database_id` in `wrangler.toml`.
+2. Replace `database_id` in `wrangler.toml` and configure production routes.
 3. Set secrets:
 
 ```powershell
@@ -63,6 +75,16 @@ bunx wrangler deploy --config services/cloudflare-hosted-q/wrangler.toml
 5. Point `Q_HOSTED_SERVICE_BASE_URL` on qline.site and iorch.net to the
 deployed worker origin, and set `Q_HOSTED_SERVICE_TOKEN` to the same service
 token used by the worker.
+6. Rerun:
+
+```powershell
+bun run services:backend:preflight
+bun run service:routes
+```
+
+Only call hosted-Q production-ready when the preflight is `ready` and
+`service:routes` shows the hosted-Q backend, Cloudflare/D1, database, and mail
+checks as configured.
 
 ## Security
 
