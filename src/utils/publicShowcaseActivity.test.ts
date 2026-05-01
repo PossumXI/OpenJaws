@@ -95,6 +95,13 @@ describe('publicShowcaseActivity', () => {
             status: 'warning',
           }),
           expect.objectContaining({
+            title: 'Real-world engagement behavior',
+            kind: 'engagement_behavior',
+            summary: expect.stringContaining('Real use is active'),
+            artifacts: expect.arrayContaining(['showcase:engagement-profile']),
+            operatorActions: expect.arrayContaining(['real_world_engagement']),
+          }),
+          expect.objectContaining({
             title: 'Supervised Q operator activity',
             artifacts: ['discord:q-agent-receipt'],
             operatorActions: expect.arrayContaining([
