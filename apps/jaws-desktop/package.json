@@ -1,6 +1,6 @@
 {
   "name": "@openjaws/jaws-desktop",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "type": "module",
   "description": "JAWS native desktop shell for OpenJaws, Q, Immaculate, and co-work orchestration.",
