@@ -137,7 +137,7 @@ describe('public showcase copy check', () => {
         items: [
           {
             summary:
-              'The #dev_support roundtable is waiting on 2/3 bot receipts.',
+              'The #dev_support roundtable pinged <#1490000000000000000> and @everyone while waiting on 2/3 bot receipts.',
           },
         ],
       })
@@ -157,7 +157,7 @@ describe('public showcase copy check', () => {
         '"summary": "TerminalBench completed with errors and no active bounded task."',
       )
       expect(snippets).toContain(
-        '"summary": "The #dev_support roundtable is waiting on 2/3 bot receipts."',
+        '"summary": "The #dev_support roundtable pinged <#1490000000000000000> and @everyone while waiting on 2/3 bot receipts."',
       )
       expect(snippets).toContain(
         'export const snapshot = {"copy":"No bounded governed spend actions in current window.."}',

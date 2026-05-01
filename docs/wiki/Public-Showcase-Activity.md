@@ -31,6 +31,7 @@ As of 2026-04-21, Asgard can also publish selected bounded entries from this ove
 - branch/worktree metadata
 - operator-only receipts
 - raw ledger events or sealed-lane data
+- raw Discord channel, user, role, `@here`, or `@everyone` mentions
 
 ## Sync Command
 
