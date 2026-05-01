@@ -25,6 +25,26 @@ import type {
   CognitiveToolRiskTier,
 } from './cognitiveRuntime.js'
 
+export const Q_TRAINING_PYTHON_UTF8_ENV = {
+  PYTHONUTF8: '1',
+  PYTHONIOENCODING: 'utf-8',
+} as const
+
+export function buildQTrainingPythonEnv(
+  env: Record<string, string | undefined> = {},
+): Record<string, string> {
+  const merged: Record<string, string> = {}
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value === 'string') {
+      merged[key] = value
+    }
+  }
+  return {
+    ...merged,
+    ...Q_TRAINING_PYTHON_UTF8_ENV,
+  }
+}
+
 export type QTrainingStatus =
   | 'launched'
   | 'initializing'

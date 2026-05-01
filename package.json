@@ -54,6 +54,7 @@
     "q:bridgebench": "bun scripts/q-bridgebench.ts",
     "q:curriculum": "bun scripts/run-q-curriculum.ts",
     "q:hybrid": "bun scripts/run-q-hybrid-session.ts",
+    "q:training:bootstrap": "bun scripts/q-training-env-bootstrap.ts --json",
     "q:preflight": "bun scripts/q-preflight.ts",
     "q:soak": "bun scripts/q-soak-bench.ts",
     "q:terminalbench": "bun scripts/q-terminalbench.ts",

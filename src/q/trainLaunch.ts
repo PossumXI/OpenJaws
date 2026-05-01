@@ -3,6 +3,7 @@ import { spawn } from 'child_process'
 import { join, resolve } from 'path'
 import {
   DEFAULT_Q_BASE_MODEL,
+  buildQTrainingPythonEnv,
   buildQTrainingRouteManifest,
   evaluateQTrainingPreflight,
   getOpenJawsTrainingModelLabel,
@@ -768,6 +769,7 @@ export async function launchQTrainingRun(
       return spawn(options.python, args, {
         cwd: process.cwd(),
         detached: true,
+        env: buildQTrainingPythonEnv(process.env),
         stdio: ['ignore', stdoutFd, stderrFd],
         windowsHide: true,
       })

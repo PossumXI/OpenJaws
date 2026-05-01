@@ -9,6 +9,7 @@ import {
   type QBridgeBenchPack,
 } from '../src/utils/bridgeBench.js'
 import {
+  buildQTrainingPythonEnv,
   DEFAULT_Q_BASE_MODEL,
   resolveQTrainingPythonCommand,
 } from '../src/utils/qTraining.js'
@@ -378,6 +379,7 @@ async function main() {
     })
     const trainResult = await execa(options.python, trainArgs, {
       cwd: root,
+      env: buildQTrainingPythonEnv(),
       reject: false,
       timeout: options.timeoutMs,
       windowsHide: true,
