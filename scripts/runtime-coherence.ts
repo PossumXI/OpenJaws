@@ -6,6 +6,16 @@ import { readLatestQTraceSummary } from '../src/q/traceSummary.js'
 import { readDiscordQAgentReceipt } from '../src/utils/discordQAgentRuntime.js'
 import { readDiscordRoundtableSessionSnapshot } from '../src/utils/discordRoundtableRuntime.js'
 import { getImmaculateHarnessStatus } from '../src/utils/immaculateHarness.js'
+import {
+  APEX_BROWSER_API_URL,
+  APEX_CHRONO_API_URL,
+  APEX_WORKSPACE_API_URL,
+  getApexBrowserHealth,
+  getApexChronoHealth,
+  getApexWorkspaceHealth,
+  probeApexLocalHealth,
+  type ApexWorkspaceHealth,
+} from '../src/utils/apexWorkspace.js'
 import { readQTrainingRouteQueue } from '../src/utils/qTraining.js'
 import {
   type PersonaPlexProbeResult,
@@ -24,6 +34,34 @@ type ProbeResult = {
   status: string | null
   detail?: string | null
 }
+
+type ApexBridgeProbeDefinition = {
+  label: string
+  url: string
+  getHealth: () => Promise<ApexWorkspaceHealth | null>
+  getListenerHealth: () => Promise<ApexWorkspaceHealth | null>
+}
+
+const APEX_BRIDGE_PROBES: ApexBridgeProbeDefinition[] = [
+  {
+    label: 'Apex workspace bridge',
+    url: APEX_WORKSPACE_API_URL,
+    getHealth: getApexWorkspaceHealth,
+    getListenerHealth: () => probeApexLocalHealth(APEX_WORKSPACE_API_URL),
+  },
+  {
+    label: 'Apex Chrono bridge',
+    url: APEX_CHRONO_API_URL,
+    getHealth: getApexChronoHealth,
+    getListenerHealth: () => probeApexLocalHealth(APEX_CHRONO_API_URL),
+  },
+  {
+    label: 'Apex browser bridge',
+    url: APEX_BROWSER_API_URL,
+    getHealth: getApexBrowserHealth,
+    getListenerHealth: () => probeApexLocalHealth(APEX_BROWSER_API_URL),
+  },
+]
 
 const PERSONAPLEX_COHERENCE_TIMEOUT_MS = Math.max(
   1_000,
@@ -80,6 +118,27 @@ async function probeJsonHealth(
       status: null,
       detail: error instanceof Error ? error.message : String(error),
     }
+  }
+}
+
+export function buildApexBridgeCoherenceProbe(
+  label: string,
+  url: string,
+  health: ApexWorkspaceHealth | null,
+  listenerHealth: ApexWorkspaceHealth | null = null,
+): ProbeResult {
+  const healthDetail = (value: ApexWorkspaceHealth) =>
+    `${value.service} ${value.version} · ${value.timestamp}`
+  return {
+    label,
+    url,
+    reachable: Boolean(health),
+    status: health?.status ?? null,
+    detail: health
+      ? healthDetail(health)
+      : listenerHealth
+        ? `${healthDetail(listenerHealth)} answered locally, but it is not trusted by this OpenJaws session. Stop the listener or set OPENJAWS_APEX_TRUST_LOCALHOST=1 when you intentionally want to trust an already-running local bridge.`
+        : 'Bridge did not answer its local health contract. Run `bun run apex:bridges:start` from a current OpenJaws checkout to attempt a guarded launch.',
   }
 }
 
@@ -150,6 +209,19 @@ async function probePersonaPlexCoherence(): Promise<ProbeResult> {
   }
 }
 
+async function probeApexBridgeCoherence(): Promise<ProbeResult[]> {
+  return Promise.all(
+    APEX_BRIDGE_PROBES.map(async probe =>
+      buildApexBridgeCoherenceProbe(
+        probe.label,
+        probe.url,
+        await probe.getHealth(),
+        await probe.getListenerHealth(),
+      ),
+    ),
+  )
+}
+
 function readRoundtableState(root: string) {
   const runtimeDir = resolve(root, 'local-command-station', 'roundtable-runtime')
   if (!existsSync(runtimeDir)) {
@@ -172,13 +244,14 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   const options = parseArgs(argv)
   const root = process.cwd()
   const harnessStatus = await getImmaculateHarnessStatus()
-  const [agentProbes, personaPlexProbe] = await Promise.all([
+  const [agentProbes, personaPlexProbe, apexBridgeProbes] = await Promise.all([
     Promise.all([
       probeJsonHealth('Q', 'http://127.0.0.1:8788/health'),
       probeJsonHealth('Viola', 'http://127.0.0.1:8789/health'),
       probeJsonHealth('Blackbeak', 'http://127.0.0.1:8790/health'),
     ]),
     probePersonaPlexCoherence(),
+    probeApexBridgeCoherence(),
   ])
   const report = buildRuntimeCoherenceReport({
     harnessStatus,
@@ -187,7 +260,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     qTrace: readLatestQTraceSummary(root),
     routeQueueDepth: readQTrainingRouteQueue(root).length,
     roundtable: readRoundtableState(root),
-    probes: [...agentProbes, personaPlexProbe],
+    probes: [...agentProbes, personaPlexProbe, ...apexBridgeProbes],
   })
 
   const output = options.json

@@ -760,4 +760,29 @@ describe('runtimeCoherence', () => {
       'PersonaPlex WebSocket error | start it with the local voice launcher',
     )
   })
+
+  test('normalizes probe labels into stable check ids', () => {
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: null,
+      immaculateTrace: null,
+      qTrace: null,
+      probes: [
+        {
+          label: 'Apex browser bridge',
+          url: 'http://127.0.0.1:8799',
+          reachable: true,
+          status: 'healthy',
+        },
+      ],
+    })
+
+    expect(report.checks.some(check => check.id === 'probe-Apex-browser-bridge')).toBe(
+      true,
+    )
+  })
 })

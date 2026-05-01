@@ -5,6 +5,7 @@ import {
   getApexBrowserHealth,
   getApexChronoHealth,
   getApexWorkspaceHealth,
+  probeApexLocalHealth,
   startApexBrowserBridge,
   startApexChronoBridge,
   startApexWorkspaceApi,
@@ -25,6 +26,7 @@ type ApexBridgeCheck = ApexBridgeDefinition & {
   status: ApexBridgeStatus
   summary: string
   health: ApexWorkspaceHealth | null
+  listenerHealth?: ApexWorkspaceHealth | null
   start?: ApexActionResult | null
 }
 
@@ -36,6 +38,7 @@ export type ApexBridgeHealthReport = {
 
 type ApexBridgeDeps = {
   getHealth: Record<ApexBridgeId, () => Promise<ApexWorkspaceHealth | null>>
+  getListenerHealth: Record<ApexBridgeId, () => Promise<ApexWorkspaceHealth | null>>
   start: Record<ApexBridgeId, () => Promise<ApexActionResult>>
 }
 
@@ -69,6 +72,11 @@ function defaultDeps(): ApexBridgeDeps {
       workspace: getApexWorkspaceHealth,
       chrono: getApexChronoHealth,
       browser: getApexBrowserHealth,
+    },
+    getListenerHealth: {
+      workspace: () => probeApexLocalHealth(APEX_WORKSPACE_API_URL),
+      chrono: () => probeApexLocalHealth(APEX_CHRONO_API_URL),
+      browser: () => probeApexLocalHealth(APEX_BROWSER_API_URL),
     },
     start: {
       workspace: startApexWorkspaceApi,
@@ -106,6 +114,18 @@ export async function runApexBridgeHealth(
       continue
     }
 
+    const listenerHealth = await deps.getListenerHealth[bridge.id]()
+    if (listenerHealth && !options.startMissing) {
+      checks.push({
+        ...bridge,
+        status: options.strict ? 'failed' : 'warning',
+        summary: `${bridge.service} has a local listener, but it is not trusted by this OpenJaws session. Stop it or set OPENJAWS_APEX_TRUST_LOCALHOST=1 to trust that listener explicitly.`,
+        health: null,
+        listenerHealth,
+      })
+      continue
+    }
+
     let start: ApexActionResult | null = null
     let followupHealth: ApexWorkspaceHealth | null = null
     if (options.startMissing) {
@@ -123,6 +143,7 @@ export async function runApexBridgeHealth(
           ? `${bridge.service} is still unreachable after start attempt: ${start.message}`
           : `${bridge.service} is unreachable. Run bun scripts/apex-bridge-health.ts --json --start-missing from the operator machine to attempt a guarded launch.`,
       health: followupHealth,
+      listenerHealth,
       start,
     })
   }

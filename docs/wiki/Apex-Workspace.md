@@ -126,7 +126,12 @@ bun run apex:bridges:start
 The first command only reports the three local bridge health states. The second
 uses the existing guarded launchers for missing bridges and reports whether the
 ports recovered.
-6. use `/status` to confirm both bridges are visible
+If a port answers but was not launched by the current OpenJaws session, the
+health report calls it out as an untrusted local listener instead of treating it
+as a missing bridge. Stop that listener or set `OPENJAWS_APEX_TRUST_LOCALHOST=1`
+only when you intentionally want to trust an already-running local bridge.
+6. use `bun run runtime:coherence` to confirm the same three bridges are part of the full Immaculate/Q/operator readiness audit
+7. use `/status` to confirm both bridges are visible
 
 If you need deeper browser control, keep ownership with `/preview`.
 

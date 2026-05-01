@@ -19,10 +19,54 @@ import { which } from './which.js'
 
 const DEFAULT_WINDOWS_HOME =
   process.env.USERPROFILE?.trim() || process.env.HOME?.trim() || process.cwd()
-const DEFAULT_ASGARD_ROOT = resolve(
-  process.env.OPENJAWS_APEX_ASGARD_ROOT?.trim() ||
-    join(DEFAULT_WINDOWS_HOME, 'Desktop', 'cheeks', 'Asgard'),
-)
+
+function getWindowsDriveRoot(path: string): string | null {
+  const resolved = resolve(path)
+  const match = /^[A-Za-z]:[\\/]/.exec(resolved)
+  return match ? `${match[0][0].toUpperCase()}:\\` : null
+}
+
+function getWindowsDriveAsgardCandidates(): string[] {
+  if (process.platform !== 'win32') {
+    return []
+  }
+  return 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    .split('')
+    .map(letter => `${letter}:\\cheeks\\Asgard`)
+}
+
+export function resolveDefaultAsgardRoot(options: {
+  env?: NodeJS.ProcessEnv
+  cwd?: string
+  pathExists?: (path: string) => boolean
+} = {}): string {
+  const env = options.env ?? process.env
+  const configured = env.OPENJAWS_APEX_ASGARD_ROOT?.trim()
+  if (configured) {
+    return resolve(configured)
+  }
+
+  const cwd = options.cwd ?? process.cwd()
+  const pathExists = options.pathExists ?? existsSync
+  const defaultWindowsHome =
+    env.USERPROFILE?.trim() || env.HOME?.trim() || DEFAULT_WINDOWS_HOME
+  const cwdDriveRoot = getWindowsDriveRoot(cwd)
+  const candidates = [
+    join(defaultWindowsHome, 'Desktop', 'cheeks', 'Asgard'),
+    cwdDriveRoot ? join(cwdDriveRoot, 'cheeks', 'Asgard') : null,
+    ...getWindowsDriveAsgardCandidates(),
+  ].filter((candidate): candidate is string => Boolean(candidate))
+
+  const apexReadyRoot = candidates.find(candidate =>
+    pathExists(join(candidate, 'ignite', 'apex-os-project')),
+  )
+  if (apexReadyRoot) {
+    return resolve(apexReadyRoot)
+  }
+  return resolve(candidates.find(candidate => pathExists(candidate)) ?? candidates[0]!)
+}
+
+const DEFAULT_ASGARD_ROOT = resolveDefaultAsgardRoot()
 export const APEX_PROJECT_ROOT = resolve(
   process.env.OPENJAWS_APEX_ROOT?.trim() ||
     join(DEFAULT_ASGARD_ROOT, 'ignite', 'apex-os-project'),
@@ -722,6 +766,34 @@ function readApexSidecarState(statePath: string): ApexWorkspaceApiState | null {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function isApexWorkspaceHealth(value: unknown): value is ApexWorkspaceHealth {
+  if (!isRecord(value)) {
+    return false
+  }
+  return (
+    typeof value.status === 'string' &&
+    typeof value.service === 'string' &&
+    typeof value.version === 'string' &&
+    typeof value.timestamp === 'string'
+  )
+}
+
+export function normalizeApexWorkspaceHealthPayload(
+  payload: unknown,
+): ApexWorkspaceHealth | null {
+  if (isApexWorkspaceHealth(payload)) {
+    return payload
+  }
+  if (!isRecord(payload) || payload.success !== true) {
+    return null
+  }
+  return isApexWorkspaceHealth(payload.data) ? payload.data : null
+}
+
 function writeApexSidecarState(statePath: string, state: ApexWorkspaceApiState): void {
   mkdirSync(APEX_RUNTIME_DIR, { recursive: true })
   writeFileSync(statePath, JSON.stringify(state, null, 2), 'utf8')
@@ -904,6 +976,40 @@ async function fetchApexJson<T>(
   }
 }
 
+function isLoopbackApexUrl(baseUrl: string): boolean {
+  try {
+    const url = new URL(baseUrl)
+    const hostname = url.hostname.toLowerCase()
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+  } catch {
+    return false
+  }
+}
+
+export async function probeApexLocalHealth(
+  baseUrl: string,
+  timeoutMs = 1000,
+): Promise<ApexWorkspaceHealth | null> {
+  if (!isLoopbackApexUrl(baseUrl)) {
+    return null
+  }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(new URL('/health', `${baseUrl}/`), {
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      return null
+    }
+    return normalizeApexWorkspaceHealthPayload(await response.json())
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function fetchSessionIngressJson<T>(
   baseUrl: string,
   pathname: string,
@@ -1054,12 +1160,12 @@ export function getApexWorkspaceAvailability(): ApexWorkspaceAvailability {
 }
 
 export async function getApexWorkspaceHealth(): Promise<ApexWorkspaceHealth | null> {
-  return fetchApexJson<ApexWorkspaceHealth>(
+  return normalizeApexWorkspaceHealthPayload(await fetchApexJson<unknown>(
     APEX_WORKSPACE_API_URL,
     APEX_WORKSPACE_API_STATE,
     '/health',
     1500,
-  )
+  ))
 }
 
 export async function getApexWorkspaceSummary(): Promise<ApexWorkspaceSummary | null> {
@@ -1461,12 +1567,12 @@ export async function installApexStoreAppWithReceipt(input: {
 }
 
 export async function getApexChronoHealth(): Promise<ApexWorkspaceHealth | null> {
-  return fetchApexJson<ApexWorkspaceHealth>(
+  return normalizeApexWorkspaceHealthPayload(await fetchApexJson<unknown>(
     APEX_CHRONO_API_URL,
     APEX_CHRONO_API_STATE,
     '/health',
     1500,
-  )
+  ))
 }
 
 export async function getApexChronoSummary(): Promise<ApexChronoSummary | null> {
@@ -1483,12 +1589,12 @@ export async function getApexChronoSummary(): Promise<ApexChronoSummary | null> 
 }
 
 export async function getApexBrowserHealth(): Promise<ApexWorkspaceHealth | null> {
-  return fetchApexJson<ApexWorkspaceHealth>(
+  return normalizeApexWorkspaceHealthPayload(await fetchApexJson<unknown>(
     APEX_BROWSER_API_URL,
     APEX_BROWSER_API_STATE,
     '/health',
     1500,
-  )
+  ))
 }
 
 export async function getApexBrowserSummary(): Promise<ApexBrowserSummary | null> {
