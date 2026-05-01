@@ -67,6 +67,8 @@ type StoredDiscordAgentReceipt = {
 }
 
 const MAX_PUBLIC_SHOWCASE_ACTIVITY_ENTRIES = 8
+const REAL_WORLD_ENGAGEMENT_FRESH_SIGNAL_MS = 72 * 60 * 60 * 1000
+const REAL_WORLD_ENGAGEMENT_FUTURE_SKEW_MS = 5 * 60 * 1000
 const pendingSyncs = new Map<string, PublicShowcaseActivitySyncArgs>()
 const pendingLedgerSyncs = new Map<string, string>()
 const activeLedgerSyncRoots = new Set<string>()
@@ -1018,10 +1020,10 @@ function buildRuntimeSummaryEntry(args: {
 
   const status = hasFailure ? 'failed' : hasWarning ? 'warning' : 'ok'
   const summary = hasFailure
-    ? 'Supervised OpenJaws audit surfaces currently show at least one failed runtime signal. Public status remains redacted and bounded.'
+    ? 'One connected area needs repair before public promotion. Public details remain redacted.'
     : hasWarning
-      ? 'Supervised OpenJaws audit surfaces are live but still show bounded warnings or incomplete runtime coverage.'
-      : 'Supervised OpenJaws audit surfaces are live and bounded across Discord, Q, roundtable, and orchestration traces.'
+      ? 'Some connected areas still need a final check, but the public activity feed is safe to publish.'
+      : 'JAWS activity is live across Discord, Q, roundtable, and orchestration traces.'
 
   return createEntry({
     id: `runtime-audit-${args.generatedAt}`,
@@ -1082,6 +1084,24 @@ function pluralizePublicCount(
   return `${count.toLocaleString()} ${count === 1 ? singular : plural}`
 }
 
+function isFreshRealWorldEngagementSignal(
+  entry: PublicShowcaseActivityEntry,
+  generatedAtMs: number,
+): boolean {
+  if (!entry.timestamp || !Number.isFinite(generatedAtMs)) {
+    return false
+  }
+  const timestampMs = Date.parse(entry.timestamp)
+  if (!Number.isFinite(timestampMs)) {
+    return false
+  }
+  const ageMs = generatedAtMs - timestampMs
+  return (
+    ageMs >= -REAL_WORLD_ENGAGEMENT_FUTURE_SKEW_MS &&
+    ageMs <= REAL_WORLD_ENGAGEMENT_FRESH_SIGNAL_MS
+  )
+}
+
 function isCriticalRuntimeFailure(
   entry: PublicShowcaseActivityEntry,
 ): boolean {
@@ -1102,26 +1122,33 @@ function buildRealWorldEngagementEntry(args: {
   generatedAt: string
   entries: PublicShowcaseActivityEntry[]
 }): PublicShowcaseActivityEntry {
+  const generatedAtMs = Date.parse(args.generatedAt)
   const observedEntries = args.entries.filter(entry => entry.kind !== 'runtime_audit')
-  const signalEntries = observedEntries.filter(entry =>
-    Boolean(entry.timestamp) ||
-    entry.operatorActions.length > 0 ||
-    entry.subsystems.length > 0 ||
-    entry.artifacts.length > 0,
+  const allSignalEntries = observedEntries.filter(entry =>
+    Boolean(entry.timestamp) &&
+    (
+      entry.operatorActions.length > 0 ||
+      entry.subsystems.length > 0 ||
+      entry.artifacts.length > 0
+    ),
   )
+  const signalEntries = allSignalEntries.filter(entry =>
+    isFreshRealWorldEngagementSignal(entry, generatedAtMs),
+  )
+  const staleSignalCount = Math.max(0, allSignalEntries.length - signalEntries.length)
   const operatorActions = uniqueStrings(
-    observedEntries.flatMap(entry => entry.operatorActions),
+    signalEntries.flatMap(entry => entry.operatorActions),
   )
   const subsystems = uniqueStrings(
-    observedEntries.flatMap(entry => entry.subsystems),
+    signalEntries.flatMap(entry => entry.subsystems),
   )
   const artifacts = uniqueStrings(
-    observedEntries.flatMap(entry => entry.artifacts),
+    signalEntries.flatMap(entry => entry.artifacts),
   )
-  const reviewCount = observedEntries.filter(entry =>
+  const reviewCount = signalEntries.filter(entry =>
     entry.status === 'warning' || entry.status === 'failed',
   ).length
-  const criticalFailureCount = observedEntries.filter(entry =>
+  const criticalFailureCount = signalEntries.filter(entry =>
     isCriticalRuntimeFailure(entry),
   ).length
   const classification = classifyRealWorldEngagement({
@@ -1134,21 +1161,26 @@ function buildRealWorldEngagementEntry(args: {
 
   const headline =
     classification.behavior === 'active'
-      ? 'Real use is active'
+      ? 'People are using JAWS now'
       : classification.behavior === 'warming'
-        ? 'Real use is starting'
+        ? 'JAWS has fresh activity'
         : classification.behavior === 'blocked'
-          ? 'Real use needs attention'
-          : 'Real use is waiting for the first live signal'
+          ? 'JAWS needs review before promotion'
+          : 'No fresh JAWS activity is showing yet'
 
-  const activitySummary =
-    signalEntries.length > 0
-      ? `${pluralizePublicCount(signalEntries.length, 'public signal')}, ${pluralizePublicCount(operatorActions.length, 'observed action')}, ${pluralizePublicCount(subsystems.length, 'system')}, and ${pluralizePublicCount(artifacts.length, 'receipt surface')}`
-      : 'no public activity receipts yet'
+  const activitySummary = signalEntries.length > 0
+    ? `Recent work touched ${pluralizePublicCount(subsystems.length, 'connected area')} with ${pluralizePublicCount(operatorActions.length, 'visible action')}.`
+    : staleSignalCount > 0
+      ? `${pluralizePublicCount(staleSignalCount, 'older activity item')} ${staleSignalCount === 1 ? 'remains' : 'remain'} in history.`
+      : 'No public activity has been recorded yet.'
   const reviewSummary =
     reviewCount > 0
-      ? `${pluralizePublicCount(reviewCount, 'item')} still ${reviewCount === 1 ? 'needs' : 'need'} review`
-      : 'no public review blockers'
+      ? `${pluralizePublicCount(reviewCount, 'item')} still ${reviewCount === 1 ? 'needs' : 'need'} review.`
+      : 'Nothing needs review right now.'
+  const historySummary =
+    signalEntries.length > 0 && staleSignalCount > 0
+      ? ` ${pluralizePublicCount(staleSignalCount, 'older activity item')} ${staleSignalCount === 1 ? 'stays' : 'stay'} in history.`
+      : ''
   const coreOperatorActions = uniqueStrings([
     ...[
       'ask_openjaws',
@@ -1178,11 +1210,11 @@ function buildRealWorldEngagementEntry(args: {
   return createEntry({
     id: `real-world-engagement-${args.generatedAt}`,
     timestamp: args.generatedAt,
-    title: 'Real-world engagement behavior',
-    summary: `${headline}: ${activitySummary}. ${reviewSummary}.`,
+    title: 'Live JAWS activity',
+    summary: `${headline}. ${activitySummary} ${reviewSummary}${historySummary}`,
     kind: 'engagement_behavior',
     status: classification.status,
-    source: 'OpenJaws engagement profiler',
+    source: 'JAWS activity monitor',
     operatorActions: uniqueStrings([
       'real_world_engagement',
       ...coreOperatorActions,
@@ -1332,7 +1364,24 @@ function publicSafeShowcaseText(value: string | null): string | null {
   if (!value) {
     return value
   }
-  return value.replace(/#[A-Za-z0-9_-]+/g, 'the Discord channel')
+  return value
+    .replace(/#[A-Za-z0-9_-]+/g, 'the Discord channel')
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, 'the session')
+    .replace(/\breceipt surfaces?\b/gi, 'activity sources')
+    .replace(/\breceipts?\b/gi, 'activity records')
+    .replace(/\bbounded\b/gi, 'supervised')
+    .replace(/\bgoverned\b/gi, 'supervised')
+    .replace(/\boperator lane\b/gi, 'workspace')
+    .replace(/\boperator activity\b/gi, 'user activity')
+    .replace(/\boperator action\b/gi, 'user action')
+    .replace(/\boperator\b/gi, 'user')
+    .replace(/\bagent lanes\b/gi, 'agent workspaces')
+    .replace(/\blanes\b/gi, 'workspaces')
+    .replace(/\blane\b/gi, 'workspace')
+    .replace(/\bfailed\s+(\d+)\b/gi, '$1 need review')
+    .replace(/\bsession the session\b/gi, 'session')
+    .replace(/\breview pending review\b/gi, 'review pending')
+    .replace(/\/apex\b/gi, 'Apex')
 }
 
 export function preparePublicShowcaseActivityFeedForPublication(

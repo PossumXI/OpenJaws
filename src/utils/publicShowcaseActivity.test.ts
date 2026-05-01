@@ -95,9 +95,9 @@ describe('publicShowcaseActivity', () => {
             status: 'warning',
           }),
           expect.objectContaining({
-            title: 'Real-world engagement behavior',
+            title: 'Live JAWS activity',
             kind: 'engagement_behavior',
-            summary: expect.stringContaining('Real use is active'),
+            summary: expect.stringContaining('People are using JAWS now'),
             artifacts: expect.arrayContaining(['showcase:engagement-profile']),
             operatorActions: expect.arrayContaining(['real_world_engagement']),
           }),
@@ -119,6 +119,56 @@ describe('publicShowcaseActivity', () => {
           }),
         ]),
       )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not call stale historical activity live engagement', () => {
+    const root = mkdtempSync(join(tmpdir(), 'openjaws-public-showcase-stale-engagement-'))
+    try {
+      const feed = buildPublicShowcaseActivityFeed({
+        root,
+        generatedAt: '2026-05-01T12:00:00.000Z',
+        qEntry: {
+          id: 'old-q-work',
+          timestamp: '2026-04-22T12:00:00.000Z',
+          title: 'Old Q work',
+          summary: 'Old work completed successfully.',
+          kind: 'q_operator_activity',
+          status: 'ok',
+          source: 'Q',
+          operatorActions: [
+            'ask_openjaws',
+            'q_operator_runtime',
+            'roundtable_runtime',
+            'public_showcase_sync',
+          ],
+          subsystems: ['q', 'discord', 'openjaws', 'roundtable'],
+          artifacts: [
+            'discord:q-agent-receipt',
+            'roundtable:session',
+            'showcase:activity',
+          ],
+          tags: ['old'],
+        },
+      })
+
+      expect(feed.entries).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: 'Live JAWS activity',
+            kind: 'engagement_behavior',
+            summary: expect.stringContaining('No fresh JAWS activity is showing yet'),
+            status: 'info',
+            tags: expect.arrayContaining(['quiet']),
+          }),
+        ]),
+      )
+      const engagement = feed.entries.find(entry => entry.kind === 'engagement_behavior')
+      expect(engagement?.summary).not.toContain('People are using JAWS now')
+      expect(engagement?.summary).toContain('older activity item')
+      expect(engagement?.summary).toContain('in history')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -178,6 +228,18 @@ describe('publicShowcaseActivity', () => {
         overlay.entries.some(entry => entry.status === 'warning' || entry.status === 'failed'),
       ).toBe(false)
       expect(overlay.entries.some(entry => entry.summary?.includes('#'))).toBe(false)
+      expect(
+        overlay.entries.some(entry =>
+          /\bbounded\b|receipt surface|operator lane/i.test(entry.summary ?? ''),
+        ),
+      ).toBe(false)
+      expect(
+        overlay.entries.some(entry =>
+          /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(
+            entry.summary ?? '',
+          ),
+        ),
+      ).toBe(false)
       expect(overlay).toMatchObject({
         entries: expect.arrayContaining([
           expect.objectContaining({
@@ -193,6 +255,18 @@ describe('publicShowcaseActivity', () => {
         mirror.entries.some(entry => entry.status === 'warning' || entry.status === 'failed'),
       ).toBe(false)
       expect(mirror.entries.some(entry => entry.summary?.includes('#'))).toBe(false)
+      expect(
+        mirror.entries.some(entry =>
+          /\bbounded\b|receipt surface|operator lane/i.test(entry.summary ?? ''),
+        ),
+      ).toBe(false)
+      expect(
+        mirror.entries.some(entry =>
+          /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(
+            entry.summary ?? '',
+          ),
+        ),
+      ).toBe(false)
       expect(mirror).toMatchObject({
         entries: expect.arrayContaining([
           expect.objectContaining({
@@ -335,7 +409,7 @@ describe('publicShowcaseActivity', () => {
             subsystems: expect.arrayContaining(['viola', 'discord']),
           }),
           expect.objectContaining({
-            title: 'Supervised Blackbeak operator activity',
+            title: 'Supervised Blackbeak user activity',
             artifacts: ['discord:blackbeak-agent-receipt'],
             operatorActions: expect.arrayContaining([
               'ask_openjaws',
@@ -350,7 +424,7 @@ describe('publicShowcaseActivity', () => {
             title: 'Supervised Viola patrol update',
           }),
           expect.objectContaining({
-            title: 'Supervised Blackbeak operator activity',
+            title: 'Supervised Blackbeak user activity',
           }),
         ]),
       })
