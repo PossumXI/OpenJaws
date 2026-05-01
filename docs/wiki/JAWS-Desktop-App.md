@@ -185,6 +185,14 @@ Context trust and notification pass, run on 2026-04-30:
 - Settings now includes a notification center with history and a test button.
 - Agent completion, human-input-required, and update-prep events trigger an in-app fireworks toast and generated audio cue when notifications are armed.
 
+Inference customization pass, run on 2026-05-01:
+
+- Settings now has an `Inference` panel for provider, model, base URL, route policy, temperature, max-output-token tuning, native route checks, live route probes, and staged provider commands.
+- OpenJaws now has a direct `openjaws provider ...` CLI route for provider status/test commands, so desktop Settings does not send provider diagnostics through the long-running chat/model turn path.
+- The native Tauri bridge exposes `openjaws_inference_status`, calls the bundled sidecar as `openjaws provider status` or `openjaws provider test <provider> <model>`, caps execution at 45 seconds, redacts token-shaped output, and falls back to a local environment preflight if the sidecar is unavailable.
+- Root cause for the JAWS inference hang: diagnostics were being routed through the normal chat/runtime startup path. The direct `openjaws provider ...` route now skips full session bootstrap and returns a bounded route receipt for native Settings checks.
+- The operator-facing root cause is documented here: `/provider status` should not be routed through `openjaws --print` from the desktop bridge because that path can wait on a full model turn and leave Settings looking hung.
+
 0.1.4 release and update-pipeline pass, prepared on 2026-04-30:
 
 - Desktop package, Tauri app config, Cargo metadata, Cargo lockfile package entry, and generated release index now align on `0.1.4`.

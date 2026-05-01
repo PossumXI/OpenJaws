@@ -34,7 +34,7 @@ import {
 
 const HELP_ARGS = new Set(['help', '-h', '--help'])
 const STATUS_ARGS = new Set(['', 'status', 'list', 'current'])
-type ProviderBrowserConnectTarget = ExternalModelProvider | 'anthropic'
+type ProviderBrowserConnectTarget = ExternalModelProvider
 
 function formatProviderStatus(
   provider: ExternalModelProvider,
@@ -95,7 +95,6 @@ function buildStatusMessage(context: LocalJSXCommandContext): string {
     '- /provider key oci <api-key>',
     '- /provider use openai gpt-5.4',
     '- /provider connect openai',
-    '- /provider connect anthropic',
     '- /login',
     '- /provider model gemini gemini-3.1-pro-preview',
     '- /provider base-url oci <url>',
@@ -125,7 +124,7 @@ function buildHelpMessage(): string {
     '- /provider key stores the key in user settings.json. It is convenient, but it is still plaintext on disk.',
     '- /provider model remembers a model option for the picker without switching immediately.',
     '- OCI can also use IAM for internal operator surfaces; public installs should still bring their own key or a hosted key issued separately.',
-    '- OpenAI browser setup is a portal-to-key flow. Anthropic/OpenJaws browser login stays on /login. OpenJaws does not mint third-party provider OAuth tokens for those API paths.',
+    '- OpenAI browser setup is a portal-to-key flow. OpenJaws account login stays on /login. OpenJaws does not mint third-party provider OAuth tokens for those API paths.',
   ].join('\n')
 }
 
@@ -135,9 +134,6 @@ function resolveProviderBrowserConnectTarget(
   const normalized = input.trim().toLowerCase()
   if (!normalized) {
     return null
-  }
-  if (normalized === 'anthropic' || normalized === 'claude') {
-    return 'anthropic'
   }
   return normalizeExternalProvider(normalized)
 }
@@ -167,15 +163,6 @@ function getProviderBrowserConnectInfo(
         nextStep: '/provider key openai <api-key> then /provider use openai gpt-5.4',
         summary:
           'OpenAI browser setup here is a provider-portal key flow. OpenJaws does not receive an OpenAI OAuth token for the API path.',
-      }
-    case 'anthropic':
-      return {
-        label: 'Anthropic / OpenJaws account',
-        url: 'https://platform.claude.com/settings/keys',
-        nextStep:
-          'Run /login for the built-in browser OAuth lane, or use an Anthropic console key for direct Anthropic API tooling outside the external-provider path.',
-        summary:
-          'The managed Anthropic/OpenJaws account lane is already browser-based through /login. The console keys page is opened here for direct key management.',
       }
     default: {
       const defaults = getExternalProviderDefaults(target)
