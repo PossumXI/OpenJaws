@@ -68,6 +68,16 @@ import {
   formatTokenEstimate
 } from "./context";
 import {
+  MAX_CLOSED_CHAT_WINDOWS,
+  MAX_OPEN_CHAT_WINDOWS,
+  closeChatWindow,
+  createChatWindow,
+  normalizeStoredChatWindows,
+  resumeChatWindow,
+  type ChatMessage,
+  type ChatWindowState
+} from "./chatSessions";
+import {
   buildInferenceStatusFromError,
   buildInferenceStatusFromNative,
   buildInferenceTuningPrompt,
@@ -154,29 +164,6 @@ interface AccountSession {
   savedAt: string;
   source: string;
   displayName: string;
-}
-
-interface ChatMessage {
-  id: string;
-  speaker: string;
-  role: "user" | "agent" | "system";
-  body: string;
-  time: string;
-  state: "done" | "thinking" | "queued";
-  lane: string;
-}
-
-interface ChatWindowState {
-  id: string;
-  title: string;
-  workspacePath: string;
-  workspaceName: string;
-  input: string;
-  messages: ChatMessage[];
-  minimized: boolean;
-  expanded: boolean;
-  sideCollapsed: boolean;
-  createdAt: string;
 }
 
 interface JawsNotification {
@@ -455,27 +442,6 @@ const jawFrames = [
      \/`
 ];
 
-const initialMessages: ChatMessage[] = [
-  {
-    id: "system-ready",
-    speaker: "JAWS",
-    role: "system",
-    body: "Chat lane ready. Commands route through OpenJaws with Q, Q_agents, OpenCheek, and Immaculate visible in the work stream.",
-    time: "now",
-    state: "done",
-    lane: "system"
-  },
-  {
-    id: "agent-watch",
-    speaker: "Q_agents",
-    role: "agent",
-    body: "Workspace watcher armed. Turn on compare mode to inspect file deltas while agents work.",
-    time: "now",
-    state: "queued",
-    lane: "agents"
-  }
-];
-
 const initialNotifications: JawsNotification[] = [
   {
     id: "update-coming",
@@ -633,71 +599,12 @@ function loadStoredValue<T>(key: string, fallback: T): T {
   }
 }
 
-function withWindowMessageIds(messages: ChatMessage[], suffix: string): ChatMessage[] {
-  return messages.map((message) => ({
-    ...message,
-    id: `${message.id}-${suffix}`
-  }));
-}
-
-function createChatWindow(
-  workspacePath = "",
-  workspaceName = "No workspace",
-  title = workspaceName || "JAWS Chat"
-): ChatWindowState {
-  const id = `chat-window-${Date.now()}-${Math.round(Math.random() * 10000)}`;
-  const createdAt = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  return {
-    id,
-    title: title || "JAWS Chat",
-    workspacePath,
-    workspaceName: workspaceName || "No workspace",
-    input: "",
-    messages: [
-      ...withWindowMessageIds(initialMessages, id),
-      {
-        id: `workspace-bound-${id}`,
-        speaker: "JAWS",
-        role: "system",
-        body: workspacePath
-          ? `This chat window is pinned to ${workspacePath}. Commands launched here use that project folder.`
-          : "This chat window is not pinned yet. Open a folder or start a project window before running agents.",
-        time: createdAt,
-        state: workspacePath ? "done" : "queued",
-        lane: "workspace"
-      }
-    ],
-    minimized: false,
-    expanded: false,
-    sideCollapsed: false,
-    createdAt
-  };
-}
-
-function normalizeStoredChatWindows(value: unknown): ChatWindowState[] {
-  if (!Array.isArray(value)) return [createChatWindow()];
-  const windows = value
-    .filter((entry): entry is Partial<ChatWindowState> => Boolean(entry) && typeof entry === "object")
-    .slice(0, 6)
-    .map((entry, index) => ({
-      ...createChatWindow(),
-      ...entry,
-      id: typeof entry.id === "string" && entry.id ? entry.id : `chat-window-restored-${index}`,
-      title: typeof entry.title === "string" && entry.title ? entry.title : entry.workspaceName || "JAWS Chat",
-      workspacePath: typeof entry.workspacePath === "string" ? entry.workspacePath : "",
-      workspaceName: typeof entry.workspaceName === "string" && entry.workspaceName ? entry.workspaceName : "No workspace",
-      input: typeof entry.input === "string" ? entry.input : "",
-      messages: Array.isArray(entry.messages) && entry.messages.length > 0 ? entry.messages : initialMessages,
-      minimized: Boolean(entry.minimized),
-      expanded: Boolean(entry.expanded),
-      sideCollapsed: Boolean(entry.sideCollapsed),
-      createdAt: typeof entry.createdAt === "string" ? entry.createdAt : "restored"
-    }));
-  return windows.length > 0 ? windows : [createChatWindow()];
-}
-
 function loadChatWindows(): ChatWindowState[] {
   return normalizeStoredChatWindows(loadStoredValue<unknown>("jaws.chatWindows", null));
+}
+
+function loadClosedChatWindows(): ChatWindowState[] {
+  return normalizeStoredChatWindows(loadStoredValue<unknown>("jaws.closedChatWindows", null), true);
 }
 
 function loadSlowGuyState(): SlowGuyState {
@@ -821,6 +728,7 @@ export function App() {
   const [inferenceChecking, setInferenceChecking] = useState(false);
   const [account, setAccount] = useState<AccountSession | null>(() => loadStoredAccountSession());
   const [chatWindows, setChatWindows] = useState<ChatWindowState[]>(() => loadChatWindows());
+  const [closedChatWindows, setClosedChatWindows] = useState<ChatWindowState[]>(() => loadClosedChatWindows());
   const [activeChatWindowId, setActiveChatWindowId] = useState(
     () => localStorage.getItem("jaws.activeChatWindowId") ?? ""
   );
@@ -935,11 +843,18 @@ export function App() {
   }, [userProfile]);
 
   useEffect(() => {
-    localStorage.setItem("jaws.chatWindows", JSON.stringify(chatWindows.slice(0, 6)));
+    localStorage.setItem("jaws.chatWindows", JSON.stringify(chatWindows.slice(0, MAX_OPEN_CHAT_WINDOWS)));
     if (activeChatWindowId) {
       localStorage.setItem("jaws.activeChatWindowId", activeChatWindowId);
     }
   }, [activeChatWindowId, chatWindows]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "jaws.closedChatWindows",
+      JSON.stringify(closedChatWindows.slice(0, MAX_CLOSED_CHAT_WINDOWS))
+    );
+  }, [closedChatWindows]);
 
   useEffect(() => {
     if (chatWindows.length === 0) {
@@ -1622,6 +1537,26 @@ export function App() {
     }));
   }
 
+  function closeActiveChatWindow() {
+    const result = closeChatWindow(chatWindows, activeChatWindow.id, closedChatWindows);
+    setChatWindows(result.open);
+    setClosedChatWindows(result.closed);
+    setActiveChatWindowId(result.activeId);
+    triggerJawsNotification({
+      title: "Chat archived",
+      detail: `${activeChatWindow.title} moved out of the active workspace strip. Resume it from Chat Sessions when needed.`,
+      tone: "complete"
+    });
+  }
+
+  function resumeChatWindowById(windowId: string) {
+    const result = resumeChatWindow(chatWindows, closedChatWindows, windowId);
+    setChatWindows(result.open);
+    setClosedChatWindows(result.closed);
+    setActiveChatWindowId(result.activeId);
+    setActive("chat");
+  }
+
   function clearNotifications() {
     setNotifications([]);
     setFirework(null);
@@ -2132,6 +2067,10 @@ export function App() {
                     {activeChatWindow.minimized ? <Maximize2 size={16} /> : <Minimize2 size={16} />}
                     {activeChatWindow.minimized ? "Restore" : "Minimize"}
                   </button>
+                  <button className="text-button danger" type="button" onClick={closeActiveChatWindow}>
+                    <XCircle size={16} />
+                    Close
+                  </button>
                 </div>
               </div>
 
@@ -2258,6 +2197,47 @@ export function App() {
                       <BellRing size={16} />
                       {notificationsArmed ? "Notify On" : "Notify Off"}
                     </button>
+                  </div>
+
+                  <div className="side-module chat-session-manager">
+                    <div className="session-manager-header">
+                      <div>
+                        <span>Chat sessions</span>
+                        <strong>{chatWindows.length} active</strong>
+                      </div>
+                      <small>{closedChatWindows.length} archived</small>
+                    </div>
+                    <div className="session-list" aria-label="Resume chat sessions">
+                      {chatWindows.map((windowState) => (
+                        <button
+                          className={windowState.id === activeChatWindow.id ? "session-row active" : "session-row"}
+                          key={windowState.id}
+                          type="button"
+                          onClick={() => resumeChatWindowById(windowState.id)}
+                        >
+                          <span>{windowState.title}</span>
+                          <small>{windowState.workspacePath || "no folder pinned"}</small>
+                        </button>
+                      ))}
+                      {closedChatWindows.length > 0 ? (
+                        closedChatWindows.slice(0, 4).map((windowState) => (
+                          <button
+                            className="session-row archived"
+                            key={windowState.id}
+                            type="button"
+                            onClick={() => resumeChatWindowById(windowState.id)}
+                          >
+                            <span>{windowState.title}</span>
+                            <small>{windowState.closedAt ? `closed ${windowState.closedAt}` : windowState.workspacePath || "archived"}</small>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="session-empty">
+                          <span>No archived chats</span>
+                          <small>Closed project chats will stay resumable here.</small>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <CyberPet pet={pet} compact onFeed={feedPet} onTrain={trainPet} onEquip={equipPet} onDecorate={decoratePet} />

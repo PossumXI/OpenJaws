@@ -283,6 +283,11 @@ p {
   font-weight: 800;
 }
 
+.text-button.danger {
+  border-color: color-mix(in srgb, var(--danger) 46%, var(--line));
+  color: var(--danger);
+}
+
 .notification-button.armed {
   border-color: rgba(120, 214, 163, 0.42);
   color: var(--accent);
@@ -1128,6 +1133,83 @@ p {
 
 .tool-grid .text-button:last-child {
   grid-column: 1 / -1;
+}
+
+.chat-session-manager {
+  display: grid;
+  gap: 10px;
+}
+
+.session-manager-header {
+  align-items: start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.session-manager-header span,
+.session-manager-header small,
+.session-empty span,
+.session-empty small {
+  color: var(--muted);
+  display: block;
+  font-size: 0.76rem;
+}
+
+.session-manager-header strong {
+  display: block;
+  font-size: 0.94rem;
+  margin-top: 2px;
+}
+
+.session-list {
+  display: grid;
+  gap: 7px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.session-row {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+  min-height: 48px;
+  min-width: 0;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.session-row.active {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--line));
+}
+
+.session-row.archived {
+  border-style: dashed;
+  opacity: 0.82;
+}
+
+.session-row span,
+.session-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-row small {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.session-empty {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  padding: 10px;
 }
 
 .agent-mini-list {

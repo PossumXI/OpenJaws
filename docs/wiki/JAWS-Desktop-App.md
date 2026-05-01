@@ -193,6 +193,13 @@ Inference customization pass, run on 2026-05-01:
 - Root cause for the JAWS inference hang: diagnostics were being routed through the normal chat/runtime startup path. The direct `openjaws provider ...` route now skips full session bootstrap and returns a bounded route receipt for native Settings checks.
 - The operator-facing root cause is documented here: `/provider status` should not be routed through `openjaws --print` from the desktop bridge because that path can wait on a full model turn and leave Settings looking hung.
 
+Chat session lifecycle pass, run on 2026-05-01:
+
+- Chat windows now have an explicit Close control that removes stale project chats from the active workspace strip without deleting the transcript.
+- Closed chats move to a bounded local resume archive stored separately from active chats, preserving workspace path, title, messages, and close time.
+- The Chat side tools now include a Chat Sessions panel so operators can resume active or archived project chats from the same control surface used for folder, TUI, compare, fast queue, and notifications.
+- Root cause for the missing resume/close workflow: project chats were only selectable while open; closing semantics were absent, so users had no safe way to declutter active workspaces while retaining context.
+
 0.1.4 release and update-pipeline pass, prepared on 2026-04-30:
 
 - Desktop package, Tauri app config, Cargo metadata, Cargo lockfile package entry, and generated release index now align on `0.1.4`.
