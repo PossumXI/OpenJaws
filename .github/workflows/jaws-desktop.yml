@@ -170,6 +170,9 @@ jobs:
         env:
           TAG_NAME: ${{ github.ref_name }}
 
+      - name: Verify release artifact set
+        run: bun scripts/jaws-release-artifact-guard.ts --bundle-root jaws-desktop-artifacts --json
+
       - name: Publish draft GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
