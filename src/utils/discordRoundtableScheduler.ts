@@ -280,8 +280,15 @@ export function chooseFallbackRoundtableRoot(args: {
   roundtableMemory: DiscordRoundtableMemorySnapshot | null
   recentActions: DiscordRoundtableRecentAction[]
   nowMs?: number
+  rootIsExecutable?: (root: DiscordRoundtableSchedulerRoot) => boolean
 }): DiscordRoundtableSchedulerRoot | null {
-  const ranked = [...args.roots].sort((left, right) => {
+  const candidateRoots = args.rootIsExecutable
+    ? args.roots.filter(root => args.rootIsExecutable?.(root) ?? false)
+    : args.roots
+  if (candidateRoots.length === 0) {
+    return null
+  }
+  const ranked = [...candidateRoots].sort((left, right) => {
     const scoreDelta =
       scoreRoundtableRoot({
         root: right,

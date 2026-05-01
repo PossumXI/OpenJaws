@@ -24,6 +24,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - No-diff output is marked `skipped` and kept out of the approval lane.
 - Verification must pass before a branch is eligible for approval.
 - Fallback root scoring, approval TTL resolution, and reply/PASS inspection live in tracked shared scheduler code so the private Discord loop does not have to carry its own drifting policy copy.
+- The fallback planner only selects roots that can materialize an isolated git worktree inside the approved root. If an approved path resolves to an ancestor checkout outside that path, the planner skips it instead of staging a handoff that the governed worktree lane will reject.
 - Repo-root handoffs are narrowed onto a preferred code-bearing path such as `src/utils`, `src/commands`, `apps/harness/src`, or `apps/dashboard/app` before the tracked worktree lane materializes the job, so the queue stops defaulting to whole-repo no-diff audits when a planner only names the project root.
 - Recent weak outcomes keep contribution forcing active, so one early diff-bearing action does not immediately let the loop relax back into PASS turns.
 
@@ -41,6 +42,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 ## Runtime Notes
 
 - `src/utils/discordRoundtableScheduler.ts` is the tracked policy source for fallback root selection, approval TTL, and reply/PASS reduction heuristics.
+- On 2026-04-30, the live Asgard parent path `D:\cheeks\Asgard` resolved to the ancestor Git root `D:\` because `D:\cheeks\Asgard\.git` was absent and `D:\.git` existed. Keep Asgard available as read/knowledge context, but autonomous roundtable writes must target a specific git-backed Asgard child checkout or another approved root whose Git root is inside the approved path.
 - `scripts/roundtable-runtime.ts` is the tracked CLI wrapper around the shared runtime path.
 - The tracked CLI now resolves the repo root from the script location instead of ambient `cwd`, so it stops writing queue/session state into accidental nested station directories.
 - The tracked CLI now targets `local-command-station/run-openjaws-visible.ps1` for bounded prompt jobs; `launch-openjaws-visible.ps1` stays reserved for interactive visible shell launches.

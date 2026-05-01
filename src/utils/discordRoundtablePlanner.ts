@@ -8,7 +8,11 @@ import {
 } from 'fs'
 import { basename, join } from 'path'
 
-import { normalizeAbsolutePath } from './discordOperatorWork.js'
+import {
+  findGitRoot,
+  normalizeAbsolutePath,
+  relativeWithinRoot,
+} from './discordOperatorWork.js'
 import {
   getDiscordRoundtableInboxDir,
   getDiscordRoundtableRuntimeDir,
@@ -221,6 +225,11 @@ function looksPassHeavy(args: {
     .filter(Boolean)
     .join('\n')
   return /\bpass(?:ed)? turn\b/i.test(combined) || /\bPASS\b/.test(combined)
+}
+
+function isPlannerRootExecutable(root: DiscordRoundtableSchedulerRoot): boolean {
+  const gitRoot = findGitRoot(root.path)
+  return Boolean(gitRoot && relativeWithinRoot(root.path, gitRoot) !== null)
 }
 
 function normalizePlannerRoots(allowedRoots: string[]): DiscordRoundtableSchedulerRoot[] {
@@ -442,7 +451,19 @@ export function planDiscordRoundtableFollowThrough(args: {
       roundtableMemory,
       recentActions,
       nowMs,
-    }) ?? roots[0]!
+      rootIsExecutable: isPlannerRootExecutable,
+    }) ?? null
+  if (!selectedRoot) {
+    return {
+      staged: false,
+      reason: 'no git-backed roundtable root is executable',
+      handoffPath: null,
+      targetPath: null,
+      workKey: null,
+      repoLabel: null,
+      personaName: null,
+    }
+  }
   const scope = resolveRoundtableExecutionScope({
     targetPath: selectedRoot.path,
     repoId: selectedRoot.label,

@@ -136,6 +136,43 @@ describe('discordRoundtableScheduler', () => {
     expect(selected?.label).toBe('Immaculate')
   })
 
+  it('skips fallback roots that cannot materialize an isolated git worktree', () => {
+    const selected = chooseFallbackRoundtableRoot({
+      roots: [
+        {
+          label: 'Asgard',
+          path: 'D:\\cheeks\\Asgard',
+          aliases: ['asgard', 'arobi'],
+        },
+        ...roots,
+      ],
+      roundtableMemory: {
+        summary: 'Asgard needs the next public telemetry pass.',
+        currentFocus: 'Asgard roundtable action recovery',
+      },
+      recentActions: [],
+      nowMs: Date.parse('2026-04-30T23:45:00.000Z'),
+      rootIsExecutable: root => root.label !== 'Asgard',
+    })
+
+    expect(selected?.label).toBe('Immaculate')
+
+    expect(
+      chooseFallbackRoundtableRoot({
+        roots: [
+          {
+            label: 'Asgard',
+            path: 'D:\\cheeks\\Asgard',
+            aliases: ['asgard', 'arobi'],
+          },
+        ],
+        roundtableMemory: null,
+        recentActions: [],
+        rootIsExecutable: () => false,
+      }),
+    ).toBeNull()
+  })
+
   it('forces contribution when the queue is active and relaxes only after sustained recent concrete work exists', () => {
     expect(
       shouldForceRoundtableContribution({

@@ -147,6 +147,90 @@ describe('discordRoundtablePlanner', () => {
     ).toBe(true)
   })
 
+  it('does not stage against an approved root that resolves to an ancestor git checkout', () => {
+    const root = createRoot('oj-roundtable-planner-parent-git-')
+    mkdirSync(join(root, '.git'), { recursive: true })
+    const asgardRoot = join(root, 'Asgard')
+    mkdirSync(join(asgardRoot, 'src'), { recursive: true })
+
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    mkdirSync(runtimeDir, { recursive: true })
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-30T23:45:00.000Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'Q passed turn 3',
+          lastError: null,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.session.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-04-30T23:45:00.000Z',
+          startedAt: '2026-04-30T23:00:00.000Z',
+          endsAt: '2026-05-01T03:00:00.000Z',
+          guildId: 'guild',
+          roundtableChannelId: 'channel',
+          roundtableChannelName: 'dev_support',
+          generalChannelId: 'general',
+          generalChannelName: 'general-chat',
+          violaVoiceChannelId: 'voice',
+          violaVoiceChannelName: 'viola-lounge',
+          turnCount: 3,
+          nextPersona: 'q',
+          lastSpeaker: 'blackbeak',
+          lastSummary: 'Q passed turn 3',
+          lastError: null,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable-memory.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          updatedAt: '2026-04-30T23:44:00.000Z',
+          summary: 'Asgard needs the next public telemetry pass.',
+          currentFocus: 'Asgard roundtable action recovery',
+          lastHumanQuestion: null,
+          openThreads: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const result = planDiscordRoundtableFollowThrough({
+      root,
+      allowedRoots: [asgardRoot],
+      now: new Date('2026-04-30T23:45:30.000Z'),
+    })
+
+    expect(result.staged).toBe(false)
+    expect(result.reason).toBe('no git-backed roundtable root is executable')
+    expect(result.targetPath).toBeNull()
+    expect(result.handoffPath).toBeNull()
+  })
+
   it('does not stage a synthetic handoff while tracked governed work is already active', () => {
     const root = createRoot('oj-roundtable-planner-active-')
     const repoRoot = join(root, 'openjaws')
