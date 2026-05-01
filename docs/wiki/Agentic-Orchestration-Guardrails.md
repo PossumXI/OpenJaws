@@ -46,6 +46,20 @@ Q route and Immaculate dispatch must remain health-gated dispatch:
 
 No route should silently fall back to a local or remote process when the selected worker is not eligible.
 
+## Cognitive Runtime Admission
+
+OpenJaws now treats risky agent work as a governed runtime admission problem before dispatch. The core backend model lives in `src/utils/cognitiveRuntime.ts` and gives Q, Q_agents, OpenCheek, Immaculate, and JAWS shared primitives instead of one-off checks:
+
+- persistent memory layers: working, episodic, semantic, and procedural
+- explicit goal objects with owner, constraints, authority scope, success criteria, rollback plan, and audit requirements
+- planner, executor, critic, governor, and recorder role separation
+- risk-tiered tool registry from Tier 0 read-only work through Tier 5 infrastructure or regulated actions
+- rate limiting and pacing by agent, tenant, workspace, mission, tool, risk tier, confidence, and recent failures
+- scorecards for accuracy, latency, tool correctness, policy compliance, hallucination risk, cost, reversibility, security posture, and human escalation rate
+- causal trace graph from goal to plan, step, tool call, output, assessment, ledger record, and final decision
+
+The first production wire point is Q route admission in `src/q/routing.ts`. Before dispatch, OpenJaws creates a `q.route.dispatch` goal, verifies role separation, checks signed route evidence, evaluates risk tier, records cognitive admission on the queue claim, and rejects the dispatch when the governor decision is not allowed. This is the closed loop we want: governed action, measured result, retained lesson, validated improvement, and policy-adjusted future behavior. It is not an uncontrolled self-modifying loop.
+
 ## Prompt-Injection Boundaries
 
 Prompt-injection boundaries apply to browser previews, MCP output, Discord handoffs, PDFs, downloaded assets, and benchmark artifacts. These sources can be summarized and cited, but they cannot request shell commands, credential movement, repository mutation, browser mutation, or worker routing unless the coordinator explicitly promotes the instruction after review.

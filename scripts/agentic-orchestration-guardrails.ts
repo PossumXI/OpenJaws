@@ -269,6 +269,46 @@ export function buildAgenticOrchestrationGuardrailRules(): GuardrailRule[] {
         },
       ],
     },
+    {
+      id: 'cognitive-runtime-admission-loop',
+      title: 'Cognitive runtime admission gates risky route execution',
+      category: 'runtime',
+      why:
+        'A self-improving runtime must retain lessons and adjust future behavior through governed admission, not uncontrolled self-rewrite.',
+      files: [
+        {
+          path: 'src/utils/cognitiveRuntime.ts',
+          fragments: [
+            'MemoryLayer',
+            'ToolRiskTier',
+            'CognitiveGoal',
+            'CognitiveRunScorecard',
+            'CausalTraceGraph',
+            'evaluateCognitiveRatePacing',
+            'deriveMemoryUpdatesFromAssessment',
+            'evaluateCognitiveRuntimeAction',
+          ],
+        },
+        {
+          path: 'src/q/routing.ts',
+          fragments: [
+            'evaluateQRouteCognitiveAdmission',
+            'q.route.dispatch',
+            'cognitiveAdmission',
+          ],
+        },
+        {
+          path: 'docs/wiki/Agentic-Orchestration-Guardrails.md',
+          fragments: [
+            'Cognitive Runtime Admission',
+            'persistent memory layers',
+            'risk-tiered tool registry',
+            'causal trace graph',
+            'policy-adjusted future behavior',
+          ],
+        },
+      ],
+    },
   ]
 }
 

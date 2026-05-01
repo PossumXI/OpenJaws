@@ -33,6 +33,7 @@ import {
   type QTrainingPreflight,
   type QTrainingRouteDispatchTransport,
   type QTrainingRouteManifest,
+  type QTrainingRouteCognitiveAdmission,
   type QTrainingRouteQueueEntry,
   type QTrainingRouteResultEnvelope,
   type QTrainingRouteWorkerExecutionProfile,
@@ -55,6 +56,14 @@ import {
   resolveQRouteDispatchTransport,
   resolveQWorkerLeaseDurationMs,
 } from '../immaculate/policies.js'
+import {
+  DEFAULT_COGNITIVE_RUNTIME_POLICY,
+  evaluateCognitiveRuntimeAction,
+  type CognitiveApproval,
+  type CognitiveAuthorityScope,
+  type CognitiveToolDefinition,
+  type CognitiveToolRiskTier,
+} from '../utils/cognitiveRuntime.js'
 
 export type QRouteDispatchCliOptions = {
   root: string | null
@@ -128,8 +137,179 @@ export type QCliOutcome<T = unknown> = {
   payload: T
 }
 
+type RouteManifestSecurityVerification = ReturnType<
+  typeof verifyQTrainingRouteManifest
+>
+type RouteManifestIntegrityVerification = ReturnType<
+  typeof verifyQTrainingRouteManifestIntegrity
+>
+
 export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function getQRouteCognitiveToolRiskTier(args: {
+  dispatchTransport: QTrainingRouteDispatchTransport
+  remoteExecution: boolean
+}): CognitiveToolRiskTier {
+  return args.dispatchTransport === 'remote_http' || args.remoteExecution ? 3 : 2
+}
+
+function buildQRouteCognitiveApprovals(args: {
+  routeSecurity: RouteManifestSecurityVerification
+  routeIntegrity: RouteManifestIntegrityVerification
+  manifest: QTrainingRouteManifest
+  now: string
+}): CognitiveApproval[] {
+  const approvals: CognitiveApproval[] = []
+  if (args.routeSecurity.valid && args.routeIntegrity.valid) {
+    approvals.push({
+      kind: 'policy_governor',
+      actorId: 'q-route-signed-manifest',
+      approvedAt: args.now,
+      summary: `manifest ${args.routeSecurity.payloadSha256}`,
+    })
+  }
+  if (
+    args.manifest.routeRequest.controlAccepted === true ||
+    args.manifest.routeRequest.security?.signature
+  ) {
+    approvals.push({
+      kind: 'ledger_recorder',
+      actorId: 'q-route-ledger-receipt',
+      approvedAt: args.now,
+      summary: args.manifest.routeRequest.controlSummary ?? 'route receipt',
+    })
+  }
+  return approvals
+}
+
+export function evaluateQRouteCognitiveAdmission(args: {
+  manifest: QTrainingRouteManifest
+  manifestPath: string
+  workerId: string
+  dispatchTransport: QTrainingRouteDispatchTransport
+  remoteExecution: boolean
+  routeSecurity: RouteManifestSecurityVerification
+  routeIntegrity: RouteManifestIntegrityVerification
+  preflight: QTrainingPreflight
+  queueEntry: QTrainingRouteQueueEntry
+  now?: string
+}): QTrainingRouteCognitiveAdmission {
+  const now = args.now ?? new Date().toISOString()
+  const riskTier = getQRouteCognitiveToolRiskTier({
+    dispatchTransport: args.dispatchTransport,
+    remoteExecution: args.remoteExecution,
+  })
+  const authorityScope: CognitiveAuthorityScope =
+    riskTier >= 3 ? 'external_communication' : 'workspace_write'
+  const tool: CognitiveToolDefinition = {
+    name: 'q.route.dispatch',
+    summary:
+      'Dispatch a signed Q route through the governed OpenJaws worker lane.',
+    riskTier,
+    authorityScopes: ['workspace_write', 'external_communication'],
+    allowedActionKinds: ['execute'],
+    allowedRoles: ['operator', 'executor'],
+    requiredApprovals:
+      riskTier >= 3
+        ? ['policy_governor', 'ledger_recorder']
+        : ['policy_governor'],
+    requiresRollbackPlan: true,
+    requiresLedgerRecord: true,
+  }
+  const confidenceParts = [
+    args.routeSecurity.valid,
+    args.routeIntegrity.valid,
+    args.preflight.decision === 'allow_local' ||
+      args.dispatchTransport === 'remote_http',
+    args.queueEntry.status === 'claimed',
+  ].filter(Boolean).length
+  const confidence = confidenceParts / 4
+  const decision = evaluateCognitiveRuntimeAction(
+    {
+      goal: {
+        id: `q-route:${args.manifest.runId}`,
+        objective: `Dispatch Q route ${args.manifest.runId} for ${args.manifest.training.baseModel}.`,
+        owner: args.workerId,
+        constraints: [
+          'run only signed and integrity-verified route manifests',
+          'release or reject the route claim on admission failure',
+          'preserve route receipts for the operator ledger',
+        ],
+        authorityScope,
+        successCriteria: [
+          'route manifest is verified',
+          'worker claim remains health-gated',
+          'dispatch result is recorded in the route queue',
+        ],
+        allowedTools: [tool.name],
+        rollbackPlan:
+          'Reject or release the route queue claim before worker dispatch, then preserve the manifest and logs for operator review.',
+        auditRequirements: [
+          'route manifest verification',
+          'route integrity verification',
+          'queue claim record',
+          'cognitive admission record',
+        ],
+        status: 'active',
+        createdAt: now,
+        roleAssignments: {
+          planner: {
+            id: 'q-route-planner',
+            role: 'planner',
+          },
+          executor: {
+            id: args.workerId,
+            role: 'executor',
+          },
+          critic: {
+            id: 'q-route-verifier',
+            role: 'critic',
+          },
+          governor: {
+            id: 'q-route-governor',
+            role: 'policy_governor',
+          },
+          recorder: {
+            id: 'q-route-ledger',
+            role: 'ledger_recorder',
+          },
+        },
+      },
+      actor: {
+        id: args.workerId,
+        role: 'executor',
+      },
+      actionKind: 'execute',
+      tool,
+      confidence,
+      recentFailureCount:
+        args.preflight.decision === 'preflight_blocked' ? 1 : 0,
+      approvals: buildQRouteCognitiveApprovals({
+        routeSecurity: args.routeSecurity,
+        routeIntegrity: args.routeIntegrity,
+        manifest: args.manifest,
+        now,
+      }),
+      now,
+    },
+    DEFAULT_COGNITIVE_RUNTIME_POLICY,
+  )
+
+  return {
+    status: decision.status,
+    goalId: decision.goalId,
+    toolName: decision.toolName,
+    riskTier: decision.riskTier,
+    reasons: decision.reasons,
+    requiredApprovals: decision.requiredApprovals,
+    missingApprovals: decision.missingApprovals,
+    delayMs: decision.delayMs,
+    scorecardStatus: decision.scorecardSeed.status,
+    scorecardQuality: decision.scorecardSeed.qualityScore,
+    ledgerRecordId: decision.ledgerRecord.id,
+  }
 }
 
 function isTrustedRouteExecutionHost(hostname: string): boolean {
@@ -823,6 +1003,18 @@ export async function dispatchQTrainingRoute(
   const claimedRouteDisplayStatus =
     getQTrainingRouteQueueDisplayStatus(claimedRoute)
   const claimedRouteSummary = getQTrainingRouteQueueStatusSummary(claimedRoute)
+  const cognitiveAdmission = evaluateQRouteCognitiveAdmission({
+    manifest,
+    manifestPath,
+    workerId: options.workerId,
+    dispatchTransport,
+    remoteExecution,
+    routeSecurity,
+    routeIntegrity,
+    preflight: localPreflight,
+    queueEntry: claimedRoute,
+  })
+  const cognitiveBlocked = cognitiveAdmission.status !== 'allow'
 
   const blocked =
     !routeSecurity.valid ||
@@ -831,7 +1023,8 @@ export async function dispatchQTrainingRoute(
     (dispatchTransport === 'remote_http' && !executionEndpoint) ||
     (dispatchTransport === 'local_process' &&
       localPreflight.decision !== 'allow_local' &&
-      !options.allowHostRisk)
+      !options.allowHostRisk) ||
+    cognitiveBlocked
   updateQTrainingRouteQueueClaim({
     runId: manifest.runId,
     workerId: options.workerId,
@@ -839,6 +1032,7 @@ export async function dispatchQTrainingRoute(
     updatedAt: new Date().toISOString(),
     signatureVerified: routeSecurity.valid,
     integrityVerified: routeIntegrity.valid,
+    cognitiveAdmission,
     preflight: localPreflight,
     status: blocked ? 'rejected' : 'claimed',
     rejectionReason: blocked
@@ -855,6 +1049,9 @@ export async function dispatchQTrainingRoute(
           localPreflight.decision !== 'allow_local' &&
           !options.allowHostRisk
             ? `preflight ${localPreflight.decision}`
+            : null,
+          cognitiveBlocked
+            ? `cognitive admission ${cognitiveAdmission.status}: ${cognitiveAdmission.reasons.join(' · ')}`
             : null,
         ]
           .filter(Boolean)
@@ -890,6 +1087,9 @@ export async function dispatchQTrainingRoute(
               !options.allowHostRisk
                 ? `preflight ${localPreflight.decision}`
                 : null,
+              cognitiveBlocked
+                ? `cognitive admission ${cognitiveAdmission.status}: ${cognitiveAdmission.reasons.join(' · ')}`
+                : null,
             ]
               .filter(Boolean)
               .join(' · ')
@@ -899,6 +1099,7 @@ export async function dispatchQTrainingRoute(
         routeSecurity,
         routeIntegrity,
         preflight: localPreflight,
+        cognitiveAdmission,
         dispatchTransport,
         executionEndpoint,
         routeQueueDisplayStatus: claimedRouteDisplayStatus,
@@ -944,6 +1145,7 @@ export async function dispatchQTrainingRoute(
         status: 'rejected',
         signatureVerified: routeSecurity.valid,
         integrityVerified: routeIntegrity.valid,
+        cognitiveAdmission,
         preflight: localPreflight,
         rejectionReason: `remote dispatch ${remoteAck.status}${
           remoteAck.summary ? ` · ${remoteAck.summary}` : ''
@@ -962,6 +1164,7 @@ export async function dispatchQTrainingRoute(
           routeSecurity,
           routeIntegrity,
           preflight: localPreflight,
+          cognitiveAdmission,
           dispatchTransport,
           executionEndpoint,
           remoteDispatch: remoteAck,
@@ -1053,6 +1256,7 @@ export async function dispatchQTrainingRoute(
       routeSecurity,
       routeIntegrity,
       preflight: localPreflight,
+      cognitiveAdmission,
       dispatchTransport,
       executionEndpoint,
       remoteDispatch: remoteAck,

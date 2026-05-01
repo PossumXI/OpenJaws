@@ -16,6 +16,10 @@ import {
   resolveQFastPathPolicy,
   resolveQRouteClaimTtlMs,
 } from '../immaculate/policies.js'
+import type {
+  CognitiveRuntimeDecisionStatus,
+  CognitiveToolRiskTier,
+} from './cognitiveRuntime.js'
 
 export type QTrainingStatus =
   | 'launched'
@@ -254,6 +258,21 @@ export type QTrainingRouteQueueClaim = {
   integrityVerified?: boolean | null
   preflightDecision?: QTrainingPreflightDecision | null
   preflightReasonCode?: QTrainingPreflight['reasonCode'] | null
+  cognitiveAdmission?: QTrainingRouteCognitiveAdmission | null
+}
+
+export type QTrainingRouteCognitiveAdmission = {
+  status: CognitiveRuntimeDecisionStatus
+  goalId: string
+  toolName: string
+  riskTier: CognitiveToolRiskTier
+  reasons: string[]
+  requiredApprovals: string[]
+  missingApprovals: string[]
+  delayMs: number
+  scorecardStatus: string
+  scorecardQuality: number
+  ledgerRecordId: string
 }
 
 export type QTrainingRouteQueueDispatch = {
@@ -3024,6 +3043,7 @@ export function updateQTrainingRouteQueueClaim(args: {
   preflight: QTrainingPreflight
   signatureVerified: boolean
   integrityVerified: boolean
+  cognitiveAdmission?: QTrainingRouteCognitiveAdmission | null
   rejectionReason?: string | null
   claimTtlMs?: number
   root?: string
@@ -3074,6 +3094,8 @@ export function updateQTrainingRouteQueueClaim(args: {
         integrityVerified: args.integrityVerified,
         preflightDecision: args.preflight.decision,
         preflightReasonCode: args.preflight.reasonCode,
+        cognitiveAdmission:
+          args.cognitiveAdmission ?? target.claim?.cognitiveAdmission ?? null,
       },
     }
     const updated = normalized.entries.map(entry =>
