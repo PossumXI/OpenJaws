@@ -43,6 +43,7 @@ Q route and Immaculate dispatch must remain health-gated dispatch:
 - route manifests and terminal results remain signed
 - stale, faulted, unverified, or unassigned workers stay fail-closed in `pending_assignment` or `blocked`
 - worker heartbeat, lease, and assignment state are preferred over stale completed receipts
+- route smoke fixtures are resolved from the explicit repo root and carry a fixture integrity marker, so CI/live checks do not accidentally reuse stale bundles from a different working directory
 
 No route should silently fall back to a local or remote process when the selected worker is not eligible.
 
