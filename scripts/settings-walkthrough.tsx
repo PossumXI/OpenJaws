@@ -1,4 +1,7 @@
 import React from 'react'
+import { mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { render } from '../src/ink.js'
 import { KeybindingSetup } from '../src/keybindings/KeybindingProviderSetup.js'
 import { AppStateProvider, useAppStateStore } from '../src/state/AppState.js'
@@ -38,8 +41,27 @@ function SettingsWalkthroughApp({
   return <Settings onClose={onClose} context={context} defaultTab="Status" />
 }
 
+function isolateApexTenantGovernanceMirror(): void {
+  if (process.env.OPENJAWS_APEX_TENANT_GOVERNANCE_MIRROR_FILE !== undefined) {
+    return
+  }
+
+  const tempGovernanceMirrorDir = mkdtempSync(
+    join(tmpdir(), 'openjaws-settings-governance-'),
+  )
+  process.env.OPENJAWS_APEX_TENANT_GOVERNANCE_MIRROR_FILE = join(
+    tempGovernanceMirrorDir,
+    'Apex-Tenant-Governance.json',
+  )
+  process.once('exit', () => {
+    delete process.env.OPENJAWS_APEX_TENANT_GOVERNANCE_MIRROR_FILE
+    rmSync(tempGovernanceMirrorDir, { recursive: true, force: true })
+  })
+}
+
 async function main(): Promise<void> {
   await setMacroVersionFromPackageJson()
+  isolateApexTenantGovernanceMirror()
   await enableConfigs()
 
   const stdin = new FakeTTYInput()
