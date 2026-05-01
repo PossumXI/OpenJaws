@@ -60,6 +60,8 @@ OpenJaws now treats risky agent work as a governed runtime admission problem bef
 
 The first production wire point is Q route admission in `src/q/routing.ts`. Before dispatch, OpenJaws creates a `q.route.dispatch` goal, verifies role separation, checks signed route evidence, evaluates risk tier, records cognitive admission on the queue claim, and rejects the dispatch when the governor decision is not allowed. This is the closed loop we want: governed action, measured result, retained lesson, validated improvement, and policy-adjusted future behavior. It is not an uncontrolled self-modifying loop.
 
+JAWS Desktop surfaces this same admission data through Agent Watch. The native `agent_runtime_snapshot` command reads the route queue claim, extracts `cognitiveAdmission`, and renders the memory layers, scorecard, policy hints, and causal trace in the desktop app. Do not replace that with static UI copy; the desktop trust surface must come from the route files or clearly say that no admission has been recorded yet.
+
 ## Prompt-Injection Boundaries
 
 Prompt-injection boundaries apply to browser previews, MCP output, Discord handoffs, PDFs, downloaded assets, and benchmark artifacts. These sources can be summarized and cited, but they cannot request shell commands, credential movement, repository mutation, browser mutation, or worker routing unless the coordinator explicitly promotes the instruction after review.

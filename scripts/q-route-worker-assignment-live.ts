@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
-import { join, resolve } from 'path'
+import { join } from 'path'
 import { execa } from 'execa'
 import {
   getImmaculateHarnessStatus,
@@ -11,6 +11,7 @@ import {
   getQTrainingRouteQueueEntry,
   readQTrainingRouteWorkers,
 } from '../src/utils/qTraining.js'
+import { ensureQRouteSmokeBundleDir } from './q-route-smoke-fixture.js'
 
 function makeRoot(): string {
   return mkdtempSync(join(tmpdir(), 'openjaws-q-route-worker-'))
@@ -40,7 +41,7 @@ async function main() {
   const workerLabel = `gpu-assignment-live-${runSuffix}`
   const hostLabel = 'remote-gpu-box'
   const executionEndpoint = 'https://remote-gpu-box.example/execute'
-  const bundleDir = resolve(repoRoot, 'data', 'sft', 'audited-v2')
+  const bundleDir = ensureQRouteSmokeBundleDir(repoRoot)
   const harnessStatus = await getImmaculateHarnessStatus().catch(() => null)
   const isRunWorker = (workerIdToCheck: string): boolean =>
     workerIdToCheck.includes(runSuffix)

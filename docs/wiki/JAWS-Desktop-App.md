@@ -185,6 +185,16 @@ Context trust and notification pass, run on 2026-04-30:
 - Settings now includes a notification center with history and a test button.
 - Agent completion, human-input-required, and update-prep events trigger an in-app fireworks toast and generated audio cue when notifications are armed.
 
+Native notification and cognitive runtime pass, run on 2026-05-01:
+
+- Added the Tauri notification plugin and `notification:default` capability so the existing JAWS bell center can also send real desktop notifications after OS permission is granted.
+- Notification permission is checked on native startup, requested only when a user arms notifications, and kept separate from the in-app bell history so denied OS permission cannot hide in-app alerts.
+- The Agent Watch bridge now includes a `cognitive` snapshot derived from real `artifacts/q-runs/route-queue.json`, `route-workers.json`, and `route-worker-runtime.json` data.
+- Cognitive Runtime shows governed route decisions, memory layers, scorecards, policy hints, and a causal trace from goal to decision to ledger record instead of a static explanation panel.
+- Root cause for the prior trust gap: JAWS could show route/worker events, but it did not expose the admission record created by `src/q/routing.ts`, so users could not see the planner/executor/critic/governor/recorder loop from the desktop app.
+- Verification: `bun test src`, `bun run build`, `bun run verify`, `cargo test --manifest-path apps/jaws-desktop/src-tauri/Cargo.toml`, `cargo check --manifest-path apps/jaws-desktop/src-tauri/Cargo.toml`, `bun test src/utils/cognitiveRuntime.test.ts src/q/routing.test.ts`, and `bun run jaws:release:check`.
+- TerminalBench preflight repair: Docker Desktop was stopped on this host and Harbor was missing. Docker was started, Harbor was installed into the repo-local `.tools/harbor-venv`, and `bun run q:preflight` now passes Harbor, Docker, and clock checks while still warning on the provider preflight.
+
 Inference customization pass, run on 2026-05-01:
 
 - Settings now has an `Inference` panel for provider, model, base URL, route policy, temperature, max-output-token tuning, native route checks, live route probes, and staged provider commands.

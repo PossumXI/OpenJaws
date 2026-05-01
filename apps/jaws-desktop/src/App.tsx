@@ -4,6 +4,11 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification
+} from "@tauri-apps/plugin-notification";
+import {
   Activity,
   BellRing,
   Bot,
@@ -79,13 +84,17 @@ import {
   type ChatWindowState
 } from "./chatSessions";
 import {
+  buildNativeNotificationPayload,
   clearJawsNotifications,
   countUnreadJawsNotifications,
   createJawsNotification,
   dismissJawsNotification,
   markAllJawsNotificationsRead,
+  normalizeNativeNotificationPermission,
   normalizeStoredNotifications,
   pushJawsNotification,
+  shouldSendNativeNotification,
+  type NativeNotificationPermission,
   type JawsNotification
 } from "./notifications";
 import {
@@ -211,6 +220,45 @@ interface AgentProfile {
   load: number;
 }
 
+interface CognitiveMemoryLayer {
+  layer: string;
+  count: number;
+  status: "active" | "waiting" | "blocked" | string;
+  detail: string;
+}
+
+interface CognitiveTraceNode {
+  kind: string;
+  label: string;
+  state: "active" | "waiting" | "blocked" | string;
+  detail: string;
+}
+
+interface CognitiveScorecard {
+  goalId: string;
+  status: string;
+  quality: number;
+  riskTier: number;
+  detail: string;
+}
+
+interface CognitiveRuntimeSnapshot {
+  status: "ready" | "review" | "blocked" | "waiting" | string;
+  summary: string;
+  goalCount: number;
+  decisionCount: number;
+  allowCount: number;
+  reviewCount: number;
+  delayCount: number;
+  denyCount: number;
+  highestRiskTier: number;
+  averageQuality: number;
+  memoryLayers: CognitiveMemoryLayer[];
+  trace: CognitiveTraceNode[];
+  scorecards: CognitiveScorecard[];
+  policyHints: string[];
+}
+
 interface AgentRuntimeSnapshot {
   checkedAt: string;
   source: string;
@@ -219,6 +267,7 @@ interface AgentRuntimeSnapshot {
   workerCount: number;
   runtimeCount: number;
   events: AgentEvent[];
+  cognitive: CognitiveRuntimeSnapshot;
 }
 
 interface BrowserPreviewSessionSummary {
@@ -637,7 +686,55 @@ function fallbackAgentRuntimeSnapshot(): AgentRuntimeSnapshot {
     queueCount: 0,
     workerCount: 0,
     runtimeCount: 0,
-    events: []
+    events: [],
+    cognitive: {
+      status: "waiting",
+      summary: "Governed route decisions will appear after Q_agents claim work.",
+      goalCount: 0,
+      decisionCount: 0,
+      allowCount: 0,
+      reviewCount: 0,
+      delayCount: 0,
+      denyCount: 0,
+      highestRiskTier: 0,
+      averageQuality: 0,
+      memoryLayers: [
+        {
+          layer: "Working",
+          count: 0,
+          status: "waiting",
+          detail: "Live tasks appear here."
+        },
+        {
+          layer: "Episodic",
+          count: 0,
+          status: "waiting",
+          detail: "Finished route history appears here."
+        },
+        {
+          layer: "Semantic",
+          count: 0,
+          status: "waiting",
+          detail: "Worker capabilities appear here."
+        },
+        {
+          layer: "Procedural",
+          count: 0,
+          status: "waiting",
+          detail: "Handoff patterns appear here."
+        }
+      ],
+      trace: [
+        {
+          kind: "Waiting",
+          label: "No admission yet",
+          state: "waiting",
+          detail: "Start agent work to see the governed trace."
+        }
+      ],
+      scorecards: [],
+      policyHints: ["JAWS shows governed route decisions after worker claims are recorded."]
+    }
   };
 }
 
@@ -724,6 +821,9 @@ export function App() {
   const [notificationsArmed, setNotificationsArmed] = useState(
     () => localStorage.getItem("jaws.notificationsArmed") !== "false"
   );
+  const [nativeNotificationPermission, setNativeNotificationPermission] = useState<NativeNotificationPermission>(
+    hasTauriRuntime() ? "prompt" : "unsupported"
+  );
   const [pet, setPet] = useState<CyberPetState>(() => loadStoredValue("jaws.cyberPet", defaultPet));
   const [userProfile, setUserProfile] = useState<UserProfile>(() =>
     ({ ...defaultUserProfile, ...loadStoredValue<Partial<UserProfile>>("jaws.userProfile", {}) })
@@ -808,6 +908,17 @@ export function App() {
   useEffect(() => {
     localStorage.setItem("jaws.notificationsArmed", String(notificationsArmed));
   }, [notificationsArmed]);
+
+  useEffect(() => {
+    if (!hasTauriRuntime()) {
+      setNativeNotificationPermission("unsupported");
+      return;
+    }
+
+    void isPermissionGranted()
+      .then((granted) => setNativeNotificationPermission(granted ? "granted" : "prompt"))
+      .catch(() => setNativeNotificationPermission("unsupported"));
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("jaws.inferenceProfile", JSON.stringify(inferenceProfile));
@@ -933,6 +1044,7 @@ export function App() {
     : 0;
   const unreadNotificationCount = useMemo(() => countUnreadJawsNotifications(notifications), [notifications]);
   const visibleNotificationCount = unreadNotificationCount || notifications.length;
+  const cognitiveRuntime = agentRuntime.cognitive ?? fallbackAgentRuntimeSnapshot().cognitive;
 
   useEffect(() => {
     localStorage.setItem("jaws.previewUrl", previewUrl);
@@ -1456,14 +1568,74 @@ export function App() {
     }
   }
 
+  async function requestNativeNotificationPermissionState(): Promise<NativeNotificationPermission> {
+    if (!hasTauriRuntime()) return "unsupported";
+    try {
+      const alreadyGranted = await isPermissionGranted();
+      if (alreadyGranted) return "granted";
+      return normalizeNativeNotificationPermission(await requestPermission());
+    } catch {
+      return "unsupported";
+    }
+  }
+
+  async function sendNativeJawsNotification(entry: JawsNotification) {
+    if (!hasTauriRuntime() || !notificationsArmed) return;
+    let permission = nativeNotificationPermission;
+    if (permission !== "granted") {
+      try {
+        permission = (await isPermissionGranted()) ? "granted" : permission;
+        setNativeNotificationPermission(permission);
+      } catch {
+        permission = "unsupported";
+        setNativeNotificationPermission(permission);
+      }
+    }
+
+    if (!shouldSendNativeNotification({ armed: notificationsArmed, permission })) return;
+
+    try {
+      await Promise.resolve(sendNotification(buildNativeNotificationPayload(entry)));
+    } catch {
+      setNativeNotificationPermission("unsupported");
+    }
+  }
+
   function triggerJawsNotification(notification: Omit<JawsNotification, "id" | "time" | "createdAt" | "readAt">) {
     const entry = createJawsNotification(notification);
     setNotifications((items) => pushJawsNotification(items, entry));
     if (notificationsArmed) {
       setFirework(entry);
       playNotificationSound(entry.tone);
+      void sendNativeJawsNotification(entry);
       window.setTimeout(() => setFirework((current) => (current?.id === entry.id ? null : current)), 1800);
     }
+  }
+
+  async function toggleNotificationsArmed() {
+    if (notificationsArmed) {
+      setNotificationsArmed(false);
+      return;
+    }
+
+    const permission = await requestNativeNotificationPermissionState();
+    setNativeNotificationPermission(permission);
+    if (permission === "denied" || permission === "prompt") {
+      setNotificationsArmed(false);
+      setNotifications((items) =>
+        pushJawsNotification(
+          items,
+          createJawsNotification({
+            title: "Notifications blocked",
+            detail: "Allow notifications in your system settings, then arm alerts again.",
+            tone: "input"
+          })
+        )
+      );
+      return;
+    }
+
+    setNotificationsArmed(true);
   }
 
   function toggleNotificationsTray() {
@@ -1925,9 +2097,10 @@ export function App() {
                 <NotificationList
                   notifications={notifications}
                   armed={notificationsArmed}
+                  nativePermission={nativeNotificationPermission}
                   unreadCount={unreadNotificationCount}
                   compact
-                  onToggleArmed={() => setNotificationsArmed((value) => !value)}
+                  onToggleArmed={toggleNotificationsArmed}
                   onClear={clearNotifications}
                   onDismiss={dismissNotification}
                   onMarkRead={markNotificationsRead}
@@ -2183,7 +2356,7 @@ export function App() {
                       {fastRunMode ? <Send size={16} /> : <ShieldCheck size={16} />}
                       {fastRunMode ? "Fast Queue" : "Review"}
                     </button>
-                    <button className="text-button" type="button" onClick={() => setNotificationsArmed((value) => !value)}>
+                    <button className="text-button" type="button" onClick={toggleNotificationsArmed}>
                       <BellRing size={16} />
                       {notificationsArmed ? "Notify On" : "Notify Off"}
                     </button>
@@ -2700,6 +2873,70 @@ JAWS will use this folder for chat, terminal, preview, and agent work.`}
               </div>
             </div>
             <div className="wide-panel">
+              <PanelHeader icon={BrainCircuit} label="Cognitive Runtime" />
+              <div className={`cognitive-runtime-hero ${cognitiveRuntime.status}`}>
+                <div>
+                  <span>{cognitiveRuntime.status}</span>
+                  <strong>{cognitiveRuntime.averageQuality}%</strong>
+                  <small>Average score</small>
+                </div>
+                <p>{cognitiveRuntime.summary}</p>
+              </div>
+              <div className="runtime-source-card cognitive-metrics">
+                <StatusLine label="Goals" value={String(cognitiveRuntime.goalCount)} />
+                <StatusLine label="Decisions" value={String(cognitiveRuntime.decisionCount)} />
+                <StatusLine label="Allowed" value={String(cognitiveRuntime.allowCount)} />
+                <StatusLine label="Review" value={String(cognitiveRuntime.reviewCount)} />
+                <StatusLine label="Delayed" value={String(cognitiveRuntime.delayCount)} />
+                <StatusLine label="Denied" value={String(cognitiveRuntime.denyCount)} />
+                <StatusLine label="Top risk" value={`Tier ${cognitiveRuntime.highestRiskTier}`} />
+                <StatusLine label="Score" value={`${cognitiveRuntime.averageQuality}%`} />
+              </div>
+              <div className="cognitive-memory-grid">
+                {cognitiveRuntime.memoryLayers.map((layer) => (
+                  <article className={`cognitive-memory-card ${layer.status}`} key={layer.layer}>
+                    <span>{layer.count}</span>
+                    <strong>{layer.layer}</strong>
+                    <p>{layer.detail}</p>
+                  </article>
+                ))}
+              </div>
+              <div className="cognitive-scorecards">
+                {cognitiveRuntime.scorecards.length > 0 ? (
+                  cognitiveRuntime.scorecards.map((scorecard) => (
+                    <article className={`cognitive-scorecard ${scorecard.status}`} key={`${scorecard.goalId}-${scorecard.status}`}>
+                      <header>
+                        <strong>{scorecard.goalId}</strong>
+                        <span>{scorecard.quality}%</span>
+                      </header>
+                      <p>{scorecard.detail}</p>
+                      <small>
+                        {scorecard.status} - risk tier {scorecard.riskTier}
+                      </small>
+                    </article>
+                  ))
+                ) : (
+                  <article className="cognitive-scorecard waiting">
+                    <strong>No scorecards yet</strong>
+                    <p>Scorecards appear after governed Q routes are claimed.</p>
+                  </article>
+                )}
+              </div>
+            </div>
+            <div className="wide-panel">
+              <PanelHeader icon={NetworkIcon} label="Causal Trace" />
+              <div className="agent-orchestration-board cognitive-trace-board">
+                {cognitiveRuntime.trace.map((node, index) => (
+                  <article className={`agent-orchestration-node ${node.state}`} key={`${node.kind}-${node.label}-${index}`}>
+                    <span>{node.kind}</span>
+                    <strong>{node.label}</strong>
+                    <p>{node.detail}</p>
+                    <small>{node.state}</small>
+                  </article>
+                ))}
+              </div>
+            </div>
+            <div className="wide-panel">
               <PanelHeader icon={NetworkIcon} label="Agent Activity" />
               <div className="agent-orchestration-board">
                 {agentRuntime.events.map((event, index) => (
@@ -2718,6 +2955,11 @@ JAWS will use this folder for chat, terminal, preview, and agent work.`}
                     <small>blocked</small>
                   </article>
                 )}
+              </div>
+              <div className="policy-hint-list">
+                {cognitiveRuntime.policyHints.map((hint) => (
+                  <span key={hint}>{hint}</span>
+                ))}
               </div>
             </div>
           </section>
@@ -3097,6 +3339,7 @@ JAWS will use this folder for chat, terminal, preview, and agent work.`}
                   <StatusLine label="Channel" value={status.updateChannel} />
                   <StatusLine label="Update" value={updateState} />
                   <StatusLine label="Notifications" value={notificationsArmed ? "Armed" : "Muted"} />
+                  <StatusLine label="Desktop alerts" value={nativeNotificationPermission} />
                   <div className="button-row">
                     <button className="text-button primary" type="button" onClick={() => checkForUpdates()}>
                       <RadioTower size={16} />
@@ -3248,8 +3491,9 @@ JAWS will use this folder for chat, terminal, preview, and agent work.`}
                   <NotificationList
                     notifications={notifications}
                     armed={notificationsArmed}
+                    nativePermission={nativeNotificationPermission}
                     unreadCount={unreadNotificationCount}
-                    onToggleArmed={() => setNotificationsArmed((value) => !value)}
+                    onToggleArmed={toggleNotificationsArmed}
                     onClear={clearNotifications}
                     onDismiss={dismissNotification}
                     onMarkRead={markNotificationsRead}
@@ -3402,6 +3646,7 @@ function FireworkNotice({ notification }: { notification: JawsNotification }) {
 function NotificationList({
   notifications,
   armed,
+  nativePermission,
   unreadCount,
   compact = false,
   onToggleArmed,
@@ -3412,6 +3657,7 @@ function NotificationList({
 }: {
   notifications: JawsNotification[];
   armed: boolean;
+  nativePermission: NativeNotificationPermission;
   unreadCount: number;
   compact?: boolean;
   onToggleArmed?: () => void;
@@ -3448,6 +3694,7 @@ function NotificationList({
         </div>
       </div>
       <StatusLine label="Sound and fireworks" value={armed ? "Armed" : "Muted"} />
+      <StatusLine label="Desktop alerts" value={nativePermission} />
       <StatusLine label="History" value={`${notifications.length} saved · ${unreadCount} unread`} />
       <div className="notification-list">
         {notifications.length > 0 ? (

@@ -1,20 +1,16 @@
 {
-  "totalDecisions": 5,
+  "totalDecisions": 2,
   "ethicsPassed": 2,
-  "ethicsFailed": 3,
-  "avgConfidence": 0.7405136,
-  "avgRiskScore": 1,
+  "ethicsFailed": 0,
+  "avgConfidence": 0.8295056,
+  "avgRiskScore": 0.175,
   "detectionEventCount": 0,
-  "telemetryScopeCount": 4,
-  "latestActivityAt": "2026-04-22T12:14:20.125761800+00:00",
-  "highRiskCalls": 3,
-  "criticalCalls": 3,
-  "pendingReviewCalls": 4,
+  "telemetryScopeCount": 3,
+  "latestActivityAt": "2026-05-01T15:36:22.380628100+00:00",
+  "highRiskCalls": 0,
+  "criticalCalls": 0,
+  "pendingReviewCalls": 1,
   "operatorActionBreakdown": [
-    {
-      "name": "system_tuning",
-      "count": 3
-    },
     {
       "name": "operator_runtime",
       "count": 1
@@ -25,10 +21,6 @@
     }
   ],
   "governedActionBreakdown": [
-    {
-      "name": "host_posture",
-      "count": 3
-    },
     {
       "name": "security_controls",
       "count": 1
@@ -70,23 +62,15 @@
   ],
   "reviewStatusBreakdown": [
     {
+      "name": "approved",
+      "count": 1
+    },
+    {
       "name": "pending_review",
-      "count": 4
-    },
-    {
-      "name": "critical",
-      "count": 3
-    },
-    {
-      "name": "monitoring",
-      "count": 3
+      "count": 1
     }
   ],
   "categoryBreakdown": [
-    {
-      "name": "system",
-      "count": 3
-    },
     {
       "name": "security",
       "count": 1
@@ -96,10 +80,6 @@
     {
       "name": "app_store",
       "count": 4
-    },
-    {
-      "name": "system_monitor",
-      "count": 3
     },
     {
       "name": "security_center",
@@ -113,7 +93,7 @@
   "topModels": [
     {
       "name": "workspace_api_local",
-      "count": 5
+      "count": 2
     }
   ],
   "narrative": "Local workspace_api governance summary derived from security posture, host pressure, bounded mail/store counters, and operator settings while remote tenant analytics is unavailable. 4 installed apps, 0 pending store updates, 0 mail alerts, 0 host alerts."

@@ -93,18 +93,41 @@ async function main(): Promise<void> {
   recordStep('status', initialFrame)
 
   stdin.write('\x1b[C')
-  const configFrame = await waitForFrame(
+  const appearanceFrame = await waitForFrame(
     readFrame,
     frame =>
       frame.includes('Search settings') &&
       frame.includes('Theme') &&
       frame.includes('Output style'),
     WALKTHROUGH_TIMEOUT_MS,
+    'Settings walkthrough did not reach the Appearance tab',
+  )
+  recordStep('appearance', appearanceFrame)
+
+  stdin.write('\x1b[C')
+  const privacyFrame = await waitForFrame(
+    readFrame,
+    frame =>
+      frame.includes('Search settings') &&
+      frame.includes('Privacy mode'),
+    WALKTHROUGH_TIMEOUT_MS,
+    'Settings walkthrough did not reach the Privacy tab',
+  )
+  recordStep('privacy', privacyFrame)
+
+  stdin.write('\x1b[C')
+  const configFrame = await waitForFrame(
+    readFrame,
+    frame =>
+      frame.includes('Search settings') &&
+      frame.includes('Auto-compact') &&
+      frame.includes('Default permission mode'),
+    WALKTHROUGH_TIMEOUT_MS,
     'Settings walkthrough did not reach the Config tab',
   )
   recordStep('config', configFrame)
 
-  stdin.write('\t')
+  stdin.write('\x1b[C')
   const usageFrame = await waitForFrame(
     readFrame,
     frame => includesUsageMarker(frame),
@@ -118,8 +141,8 @@ async function main(): Promise<void> {
     readFrame,
     frame =>
       frame.includes('Search settings') &&
-      frame.includes('Theme') &&
-      frame.includes('Output style'),
+      frame.includes('Auto-compact') &&
+      frame.includes('Default permission mode'),
     WALKTHROUGH_TIMEOUT_MS,
     'Settings walkthrough did not return to the Config tab',
   )

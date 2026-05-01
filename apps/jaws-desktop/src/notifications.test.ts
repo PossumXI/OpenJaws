@@ -1,14 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import {
   MAX_JAWS_NOTIFICATIONS,
+  buildNativeNotificationPayload,
   clearJawsNotifications,
   countUnreadJawsNotifications,
   createJawsNotification,
   dismissJawsNotification,
   initialNotifications,
   markAllJawsNotificationsRead,
+  normalizeNativeNotificationPermission,
   normalizeStoredNotifications,
-  pushJawsNotification
+  pushJawsNotification,
+  shouldSendNativeNotification
 } from "./notifications";
 
 describe("JAWS notification lifecycle", () => {
@@ -84,5 +87,29 @@ describe("JAWS notification lifecycle", () => {
     expect(countUnreadJawsNotifications(read)).toBe(0);
     expect(read.every((item) => item.readAt === "2026-05-01T13:00:00.000Z")).toBe(true);
     expect(clearJawsNotifications()).toEqual([]);
+  });
+
+  test("normalizes native permission and only sends when armed and granted", () => {
+    expect(normalizeNativeNotificationPermission(true)).toBe("granted");
+    expect(normalizeNativeNotificationPermission("default")).toBe("prompt");
+    expect(normalizeNativeNotificationPermission("denied")).toBe("denied");
+    expect(normalizeNativeNotificationPermission("missing")).toBe("unsupported");
+
+    expect(shouldSendNativeNotification({ armed: true, permission: "granted" })).toBe(true);
+    expect(shouldSendNativeNotification({ armed: true, permission: "prompt" })).toBe(false);
+    expect(shouldSendNativeNotification({ armed: false, permission: "granted" })).toBe(false);
+  });
+
+  test("builds a native notification payload without empty title or body", () => {
+    const notification = createJawsNotification({
+      title: "",
+      detail: "",
+      tone: "update"
+    });
+
+    expect(buildNativeNotificationPayload(notification)).toEqual({
+      title: "JAWS",
+      body: "Open JAWS for details."
+    });
   });
 });

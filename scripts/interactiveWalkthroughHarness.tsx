@@ -46,9 +46,14 @@ export async function setMacroVersionFromPackageJson(): Promise<string> {
   const packageJson = JSON.parse(
     await readFile(new URL('../package.json', import.meta.url), 'utf8'),
   ) as { version: string }
-  ;(globalThis as { MACRO?: { VERSION: string } }).MACRO = {
+  const harnessGlobals = globalThis as {
+    MACRO?: { VERSION: string }
+    feature?: (name: string) => boolean
+  }
+  harnessGlobals.MACRO = {
     VERSION: packageJson.version,
   }
+  harnessGlobals.feature ??= () => false
   return packageJson.version
 }
 
