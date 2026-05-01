@@ -1031,7 +1031,11 @@ fn queue_cognitive_admission(entry: &serde_json::Value) -> Option<&serde_json::V
 
 fn cognitive_quality_percent(admission: &serde_json::Value) -> u8 {
     let quality = json_number_field(admission, "scorecardQuality").unwrap_or(0.0);
-    let normalized = if quality <= 1.0 { quality * 100.0 } else { quality };
+    let normalized = if quality <= 1.0 {
+        quality * 100.0
+    } else {
+        quality
+    };
     normalized.round().clamp(0.0, 100.0) as u8
 }
 
@@ -1073,12 +1077,175 @@ fn cognitive_trace_detail(admission: &serde_json::Value) -> String {
     "Admission recorded with no extra operator notes.".to_string()
 }
 
+fn cognitive_memory_update_counts(
+    admissions: &[&serde_json::Value],
+) -> BTreeMap<String, (usize, String)> {
+    let mut counts: BTreeMap<String, (usize, String)> = BTreeMap::new();
+    for admission in admissions {
+        let Some(updates) = admission
+            .get("memoryUpdates")
+            .and_then(|value| value.as_array())
+        else {
+            continue;
+        };
+
+        for update in updates {
+            let layer = json_field_string(update, "layer").to_lowercase();
+            if layer.is_empty() {
+                continue;
+            }
+            let summary = json_field_string(update, "summary");
+            let entry = counts.entry(layer).or_insert((0, summary.clone()));
+            entry.0 += 1;
+            if entry.1.is_empty() && !summary.is_empty() {
+                entry.1 = summary;
+            }
+        }
+    }
+    counts
+}
+
+fn cognitive_memory_count(
+    counts: &BTreeMap<String, (usize, String)>,
+    layer: &str,
+    fallback: usize,
+) -> usize {
+    counts
+        .get(layer)
+        .map(|(count, _)| (*count).max(fallback))
+        .unwrap_or(fallback)
+}
+
+fn cognitive_memory_detail(
+    counts: &BTreeMap<String, (usize, String)>,
+    layer: &str,
+    fallback: &str,
+) -> String {
+    counts
+        .get(layer)
+        .and_then(|(_, summary)| {
+            if summary.trim().is_empty() {
+                None
+            } else {
+                Some(shorten(summary, 140))
+            }
+        })
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn format_cognitive_trace_kind(kind: &str) -> String {
+    let words = kind
+        .split(|ch| ch == '_' || ch == '-')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => {
+                    let mut word = first.to_uppercase().collect::<String>();
+                    word.push_str(chars.as_str());
+                    word
+                }
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<String>>();
+    if words.is_empty() {
+        "Trace".to_string()
+    } else {
+        words.join(" ")
+    }
+}
+
+fn json_scalar_summary(value: &serde_json::Value) -> Option<String> {
+    if let Some(text) = value.as_str() {
+        return Some(text.to_string());
+    }
+    if let Some(number) = value.as_i64() {
+        return Some(number.to_string());
+    }
+    if let Some(number) = value.as_u64() {
+        return Some(number.to_string());
+    }
+    if let Some(number) = value.as_f64() {
+        return Some(format!("{number:.3}"));
+    }
+    if let Some(flag) = value.as_bool() {
+        return Some(flag.to_string());
+    }
+    None
+}
+
+fn cognitive_trace_node_detail(node: &serde_json::Value, admission: &serde_json::Value) -> String {
+    let metadata = node
+        .get("metadata")
+        .and_then(|value| value.as_object())
+        .map(|object| {
+            object
+                .iter()
+                .filter_map(|(key, value)| {
+                    json_scalar_summary(value).map(|summary| format!("{key}: {summary}"))
+                })
+                .take(3)
+                .collect::<Vec<String>>()
+                .join(". ")
+        })
+        .unwrap_or_default();
+    if !metadata.is_empty() {
+        return shorten(&metadata, 180);
+    }
+
+    let node_ref = json_field_string(node, "ref");
+    if !node_ref.is_empty() {
+        return format!("Reference {node_ref}.");
+    }
+
+    let timestamp = json_field_string(node, "timestamp");
+    if !timestamp.is_empty() {
+        return format!("Recorded at {timestamp}.");
+    }
+
+    cognitive_trace_detail(admission)
+}
+
+fn recorded_cognitive_trace_nodes(
+    admission: &serde_json::Value,
+    state: &str,
+) -> Vec<CognitiveTraceNode> {
+    let Some(nodes) = admission
+        .get("trace")
+        .and_then(|trace| trace.get("nodes"))
+        .and_then(|nodes| nodes.as_array())
+    else {
+        return Vec::new();
+    };
+
+    nodes
+        .iter()
+        .filter_map(|node| {
+            let label = first_non_empty(vec![
+                json_field_string(node, "label"),
+                json_field_string(node, "id"),
+            ]);
+            if label.is_empty() {
+                return None;
+            }
+            Some(CognitiveTraceNode {
+                kind: format_cognitive_trace_kind(&json_field_string(node, "kind")),
+                label: shorten(&label, 64),
+                state: state.to_string(),
+                detail: cognitive_trace_node_detail(node, admission),
+            })
+        })
+        .collect()
+}
+
 fn build_cognitive_memory_layers(
     queue: &[serde_json::Value],
     workers: &[serde_json::Value],
     runtime: &[serde_json::Value],
-    admissions_len: usize,
+    admissions: &[&serde_json::Value],
 ) -> Vec<CognitiveMemoryLayer> {
+    let memory_counts = cognitive_memory_update_counts(admissions);
     let live_queue = queue
         .iter()
         .filter(|entry| {
@@ -1105,47 +1272,72 @@ fn build_cognitive_memory_layers(
                 || queue_cognitive_admission(entry).is_some()
         })
         .count();
+    let working_count =
+        cognitive_memory_count(&memory_counts, "working", live_queue + runtime.len());
+    let episodic_count = cognitive_memory_count(&memory_counts, "episodic", episodic);
+    let semantic_count = cognitive_memory_count(&memory_counts, "semantic", workers.len());
+    let procedural_count = cognitive_memory_count(
+        &memory_counts,
+        "procedural",
+        procedural.max(admissions.len()),
+    );
 
     vec![
         CognitiveMemoryLayer {
             layer: "Working".to_string(),
-            count: live_queue + runtime.len(),
-            status: if live_queue + runtime.len() > 0 {
+            count: working_count,
+            status: if working_count > 0 {
                 "active".to_string()
             } else {
                 "waiting".to_string()
             },
-            detail: "Live queued routes and running worker updates.".to_string(),
+            detail: cognitive_memory_detail(
+                &memory_counts,
+                "working",
+                "Live queued routes and running worker updates.",
+            ),
         },
         CognitiveMemoryLayer {
             layer: "Episodic".to_string(),
-            count: episodic,
-            status: if episodic > 0 {
+            count: episodic_count,
+            status: if episodic_count > 0 {
                 "active".to_string()
             } else {
                 "waiting".to_string()
             },
-            detail: "Finished, failed, and rejected route history.".to_string(),
+            detail: cognitive_memory_detail(
+                &memory_counts,
+                "episodic",
+                "Finished, failed, and rejected route history.",
+            ),
         },
         CognitiveMemoryLayer {
             layer: "Semantic".to_string(),
-            count: workers.len(),
-            status: if workers.is_empty() {
-                "waiting".to_string()
-            } else {
+            count: semantic_count,
+            status: if semantic_count > 0 {
                 "active".to_string()
+            } else {
+                "waiting".to_string()
             },
-            detail: "Registered worker capabilities and model lanes.".to_string(),
+            detail: cognitive_memory_detail(
+                &memory_counts,
+                "semantic",
+                "Registered worker capabilities and model lanes.",
+            ),
         },
         CognitiveMemoryLayer {
             layer: "Procedural".to_string(),
-            count: procedural.max(admissions_len),
-            status: if procedural > 0 || admissions_len > 0 {
+            count: procedural_count,
+            status: if procedural_count > 0 {
                 "active".to_string()
             } else {
                 "waiting".to_string()
             },
-            detail: "Layer choices, admission decisions, and route handoff patterns.".to_string(),
+            detail: cognitive_memory_detail(
+                &memory_counts,
+                "procedural",
+                "Layer choices, admission decisions, and route handoff patterns.",
+            ),
         },
     ]
 }
@@ -1167,6 +1359,12 @@ fn build_cognitive_trace(admissions: &[&serde_json::Value]) -> Vec<CognitiveTrac
         let ledger_record = json_field_string(admission, "ledgerRecordId");
         let scorecard_status = json_field_string(admission, "scorecardStatus");
         let quality = cognitive_quality_percent(admission);
+        let recorded_trace = recorded_cognitive_trace_nodes(admission, &state);
+
+        if !recorded_trace.is_empty() {
+            trace.extend(recorded_trace);
+            continue;
+        }
 
         trace.push(CognitiveTraceNode {
             kind: "Goal".to_string(),
@@ -1349,7 +1547,7 @@ fn build_cognitive_runtime_snapshot(
         deny_count,
         highest_risk_tier,
         average_quality,
-        memory_layers: build_cognitive_memory_layers(queue, workers, runtime, admissions.len()),
+        memory_layers: build_cognitive_memory_layers(queue, workers, runtime, &admissions),
         trace: build_cognitive_trace(&admissions),
         scorecards: build_cognitive_scorecards(&admissions),
         policy_hints: build_cognitive_policy_hints(&admissions),
@@ -3275,7 +3473,50 @@ mod tests {
                         "delayMs": 0,
                         "scorecardStatus": "review",
                         "scorecardQuality": 0.812,
-                        "ledgerRecordId": "ledger-record-route-123456789"
+                        "ledgerRecordId": "ledger-record-route-123456789",
+                        "trace": {
+                            "goalId": "q-route:route-123456789",
+                            "nodes": [
+                                {
+                                    "id": "q-route:route-123456789",
+                                    "kind": "goal",
+                                    "label": "Dispatch Q route route-123456789.",
+                                    "timestamp": "2026-05-01T12:00:00Z",
+                                    "metadata": { "owner": "worker-1", "status": "active" }
+                                },
+                                {
+                                    "id": "tool:q-route:route-123456789:q.route.dispatch",
+                                    "kind": "tool_call",
+                                    "label": "Tool call requested.",
+                                    "timestamp": "2026-05-01T12:00:00Z"
+                                }
+                            ],
+                            "edges": []
+                        },
+                        "memoryUpdates": [
+                            {
+                                "id": "mem:q-route:route-123456789:working",
+                                "layer": "working",
+                                "goalId": "q-route:route-123456789",
+                                "summary": "Current goal: Dispatch Q route route-123456789.",
+                                "evidenceNodeIds": ["q-route:route-123456789"],
+                                "createdAt": "2026-05-01T12:00:00Z",
+                                "retention": "session",
+                                "tags": ["goal", "active"],
+                                "policyHints": []
+                            },
+                            {
+                                "id": "mem:q-route:route-123456789:procedural",
+                                "layer": "procedural",
+                                "goalId": "q-route:route-123456789",
+                                "summary": "Route through planner, executor, critic, governor, and recorder roles before release.",
+                                "evidenceNodeIds": ["q-route:route-123456789"],
+                                "createdAt": "2026-05-01T12:00:00Z",
+                                "retention": "durable",
+                                "tags": ["procedure"],
+                                "policyHints": ["raise verifier coverage before repeating this action"]
+                            }
+                        ]
                     }
                 }
             }),
@@ -3305,11 +3546,11 @@ mod tests {
         assert!(snapshot
             .memory_layers
             .iter()
-            .any(|layer| layer.layer == "Working" && layer.count == 2));
+            .any(|layer| layer.layer == "Working" && layer.detail.contains("Current goal")));
         assert!(snapshot
             .trace
             .iter()
-            .any(|node| node.kind == "Ledger" && node.label.contains("ledger-record")));
+            .any(|node| node.kind == "Tool Call" && node.label.contains("Tool call")));
         assert!(snapshot
             .policy_hints
             .iter()

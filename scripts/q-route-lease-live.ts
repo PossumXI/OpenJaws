@@ -10,6 +10,10 @@ import {
   upsertQTrainingRouteQueueEntry,
 } from '../src/utils/qTraining.js'
 
+const LEASE_TTL_MS = 1_000
+const HEARTBEAT_MS = 100
+const DISPATCH_DELAY_MS = 500
+
 function makeRoot(): string {
   return mkdtempSync(join(tmpdir(), 'openjaws-q-route-lease-'))
 }
@@ -20,6 +24,50 @@ function toMillis(timestamp: string | null | undefined): number | null {
   }
   const value = Date.parse(timestamp)
   return Number.isFinite(value) ? value : null
+}
+
+type LeaseRunState = {
+  executionMode?: string
+  routeQueue?: {
+    status?: string
+    claim?: {
+      workerId?: string | null
+      claimedAt?: string | null
+      heartbeatAt?: string | null
+      leaseExpiresAt?: string | null
+    } | null
+  } | null
+  pid?: number | null
+}
+
+async function readLeaseRunState(path: string): Promise<LeaseRunState> {
+  return JSON.parse(await Bun.file(path).text()) as LeaseRunState
+}
+
+async function waitForLeaseRunState(args: {
+  path: string
+  workerId: string
+  timeoutMs?: number
+  pollMs?: number
+}): Promise<LeaseRunState> {
+  const timeoutMs = args.timeoutMs ?? 5_000
+  const pollMs = args.pollMs ?? 100
+  const startedAt = Date.now()
+  let latest = await readLeaseRunState(args.path)
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (
+      latest.executionMode === 'immaculate_routed' &&
+      latest.routeQueue?.status === 'dispatched' &&
+      latest.routeQueue?.claim?.workerId === args.workerId
+    ) {
+      return latest
+    }
+    await Bun.sleep(pollMs)
+    latest = await readLeaseRunState(args.path)
+  }
+
+  return latest
 }
 
 async function main() {
@@ -65,11 +113,11 @@ async function main() {
       '--worker-id',
       'route-worker:lease-live',
       '--claim-ttl-ms',
-      '250',
+      String(LEASE_TTL_MS),
       '--heartbeat-ms',
-      '100',
+      String(HEARTBEAT_MS),
       '--dispatch-delay-ms',
-      '500',
+      String(DISPATCH_DELAY_MS),
     ],
     {
       cwd: process.cwd(),
@@ -90,21 +138,10 @@ async function main() {
     }
   }
 
-  const runState = JSON.parse(
-    await Bun.file(launchJson.runStatePath).text(),
-  ) as {
-    executionMode?: string
-    routeQueue?: {
-      status?: string
-      claim?: {
-        workerId?: string | null
-        claimedAt?: string | null
-        heartbeatAt?: string | null
-        leaseExpiresAt?: string | null
-      } | null
-    } | null
-    pid?: number | null
-  }
+  const runState = await waitForLeaseRunState({
+    path: launchJson.runStatePath,
+    workerId: 'route-worker:lease-live',
+  })
 
   if (runState.pid) {
     try {
@@ -147,7 +184,7 @@ async function main() {
       heartbeatAt !== null &&
       leaseExpiresAt !== null &&
       heartbeatAt > claimedAt &&
-      leaseExpiresAt > claimedAt + 250
+      leaseExpiresAt > claimedAt + LEASE_TTL_MS
 
     const ok =
       launchJson.status === 'route_requested' &&
