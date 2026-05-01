@@ -12,7 +12,9 @@ The check is intentionally honest:
 - package presence never marks production database, Cloudflare Worker/D1, hosted-Q, mail, or LAAS as provisioned
 - Qline Netlify env metadata can satisfy Stripe and Resend/mail configuration checks when Netlify auth is available; the receipt records only env key names and booleans, never secret values
 - AROBI LAAS can be marked configured only from a concrete URL+token pair or from the local `~/.arobi/edge-secrets.json` edge binding plus the live public health route; raw token values are never printed
-- secrets are never printed; the receipt only names the missing config class
+- secrets are never printed; the receipt names missing config keys/classes and
+  `nextActions` for each warning so operators can repair the route without
+  guessing
 
 ## Current Route Classes
 
@@ -68,6 +70,12 @@ Cloudflare auth, placeholder D1 ids, commented/missing worker routes, missing
 worker secrets, or missing public-site proxy env keys while keeping all secret
 values out of the receipt. It exits nonzero until ready; use
 `--allow-blocked` only for report-only automation.
+
+When a route or config class reports `not_configured`, use the check-level
+`missing` and `nextActions` fields in the JSON output as the source of truth.
+For example, hosted-Q now requires both `Q_HOSTED_SERVICE_BASE_URL` and
+`Q_HOSTED_SERVICE_TOKEN`; a reachable `/health` route alone does not prove paid
+key issuance, billing, or usage routes are safe to expose.
 
 Run stricter local/admin validation with:
 

@@ -92,6 +92,18 @@ describe('hosted-q provisioning preflight', () => {
       status: 'blocked',
       missing: ['wrangler routes'],
     })
+    expect(report.missingByCheck).toMatchObject({
+      'd1-binding': ['services/cloudflare-hosted-q/wrangler.toml database_id'],
+      'worker-routes': ['wrangler routes'],
+    })
+    expect(report.blockedActions).toEqual(
+      expect.arrayContaining([
+        'Create the Cloudflare D1 database, then replace REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID in wrangler.toml.',
+        'Uncomment or add Cloudflare routes for the public hosted-Q worker origin before deploy.',
+        'Populate the missing keys locally, then run the generated wrangler secret put commands.',
+        'Set Q_HOSTED_SERVICE_BASE_URL to the deployed worker origin and Q_HOSTED_SERVICE_TOKEN to the worker service token on qline.site and iorch.net.',
+      ]),
+    )
     expect(JSON.stringify(report)).not.toContain('service-token-secret')
   })
 
@@ -106,6 +118,8 @@ describe('hosted-q provisioning preflight', () => {
     expect(report.status).toBe('ready')
     expect(report.counts.blocked).toBe(0)
     expect(report.checks.every(check => check.status === 'passed')).toBe(true)
+    expect(report.missingByCheck).toEqual({})
+    expect(report.blockedActions).toEqual([])
     expect(report.commands).toContain(
       'bunx wrangler d1 migrations apply openjaws-hosted-q --remote --config services/cloudflare-hosted-q/wrangler.toml',
     )

@@ -66,8 +66,10 @@ bun run service:routes
 It verifies the worker package, D1 migration files, concrete `database_id`,
 uncommented Cloudflare route patterns, Cloudflare account auth, worker secret
 key presence, and qline/iorch proxy env key presence. It prints key names and
-missing classes only, never token values. The command exits nonzero while
-blocked. For a report-only receipt, run
+missing classes only, never token values. The JSON receipt includes
+`missingByCheck` and `blockedActions` so the next operator can see the exact
+reason a deploy is blocked and the next safe action to take. The command exits
+nonzero while blocked. For a report-only receipt, run
 `bun scripts/hosted-q-provisioning-preflight.ts --json --allow-blocked`.
 
 `bun run service:routes` reports the worker package as present from the repo,
