@@ -293,6 +293,10 @@ p {
   color: var(--accent);
 }
 
+.notification-button {
+  min-width: 58px;
+}
+
 .notification-button.active {
   background: var(--panel-strong);
   border-color: rgba(119, 185, 217, 0.52);
@@ -427,6 +431,14 @@ p {
   border-left: 3px solid var(--accent);
   border-radius: 8px;
   padding: 10px 12px;
+}
+
+.notification-card.unread {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.notification-card.read {
+  opacity: 0.78;
 }
 
 .notification-card.input {

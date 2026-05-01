@@ -26,7 +26,7 @@ Brand line:
 - Marketplace cards for skills, tools, workflows, games, and third-party integrations.
 - Billing copy for a 14-day trial and flat `$12.99/mo` IDE subscription, with Q credits separate.
 - Docs page with in-app Terms, final-sale billing policy qualified by applicable law, security/privacy notes, community content rules, AI output notice, developer verification commands, and release links.
-- Settings page with release status, signed update checks, install action, native mirror/update-pipeline diagnostics, in-app notification history, testable fireworks/sound alerts, appearance mode, and theme controls. The native app also performs a startup update check and shows an Install Now / Later prompt when a signed release is available.
+- Settings page with release status, signed update checks, install action, native mirror/update-pipeline diagnostics, durable in-app notification history, unread/dismiss/clear controls, testable fireworks/sound alerts, appearance mode, and theme controls. The native app also performs a startup update check and shows an Install Now / Later prompt when a signed release is available.
 - Layout themes: default, spy, sci-fi, halloween, hacking, and coding, now with stronger palettes, descriptions, and visible accent swatches.
 
 ## Release Boundary
@@ -199,6 +199,13 @@ Chat session lifecycle pass, run on 2026-05-01:
 - Closed chats move to a bounded local resume archive stored separately from active chats, preserving workspace path, title, messages, and close time.
 - The Chat side tools now include a Chat Sessions panel so operators can resume active or archived project chats from the same control surface used for folder, TUI, compare, fast queue, and notifications.
 - Root cause for the missing resume/close workflow: project chats were only selectable while open; closing semantics were absent, so users had no safe way to declutter active workspaces while retaining context.
+
+Notification durability pass, run on 2026-05-01:
+
+- Notification state now hydrates from `localStorage` instead of resetting to the seed update notice on every app load.
+- The bell tray and Settings notification center share one bounded notification lifecycle with unread counts, mark-read, dismiss, clear, test, sound, and fireworks behavior.
+- Stored notification payloads are normalized on read, so malformed or older local entries cannot break the tray and the app falls back to the durable seed notice when history is missing.
+- Root cause for the bell appearing empty or stale after interaction: notification entries were owned directly by the React session state, so reloads and malformed local state had no durable normalization layer.
 
 0.1.4 release and update-pipeline pass, prepared on 2026-04-30:
 
