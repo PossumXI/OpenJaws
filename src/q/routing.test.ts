@@ -1,9 +1,122 @@
 import { describe, expect, test } from 'bun:test'
 import {
   buildRouteDispatchPythonArgs,
+  evaluateQRouteCognitiveAdmission,
   getWorkerLeaseDurationMs,
   validateRemoteExecutionEndpoint,
 } from './routing.js'
+import type {
+  QTrainingPreflight,
+  QTrainingRouteManifest,
+  QTrainingRouteQueueEntry,
+} from '../utils/qTraining.js'
+
+const routeNow = '2026-05-01T12:00:00.000Z'
+
+function makeManifest(
+  overrides: Partial<QTrainingRouteManifest> = {},
+): QTrainingRouteManifest {
+  return {
+    runId: 'run-1',
+    routeRequest: {
+      route: 'immaculate',
+      requestedAt: routeNow,
+      target: 'q-train',
+      recommendedLayerId: null,
+      manifestPath: 'D:/out/route-request.json',
+      controlStatus: 200,
+      controlAccepted: true,
+      controlSummary: 'accepted',
+      harnessSnapshot: null,
+      integrity: null,
+      security: null,
+    },
+    training: {
+      baseModel: 'q-lite',
+      runName: 'lane',
+      trainFile: 'bundle/train.jsonl',
+      evalFile: 'bundle/eval.jsonl',
+      selectedTags: ['agentic'],
+      selectedLanguages: ['ts'],
+      outputDir: '.',
+      useCpu: true,
+      lineageId: 'lineage-1',
+      phaseId: 'phase-1',
+      maxSteps: 4,
+      numTrainEpochs: 1,
+    },
+    preflight: {
+      decision: 'allow_local',
+      reasonCode: 'ok',
+      summary: 'ready',
+      baseModel: 'q-lite',
+      useCpu: true,
+    },
+    security: {
+      algorithm: 'hmac-sha256',
+      payloadSha256: 'abc',
+      signature: 'sig',
+      secretSource: 'OPENJAWS_Q_ROUTE_SECRET',
+      signedAt: routeNow,
+    },
+    ...overrides,
+  }
+}
+
+function makePreflight(
+  overrides: Partial<QTrainingPreflight> = {},
+): QTrainingPreflight {
+  return {
+    decision: 'allow_local',
+    reasonCode: 'ok',
+    summary: 'ready',
+    baseModel: 'q-lite',
+    useCpu: true,
+    ...overrides,
+  }
+}
+
+function makeQueueEntry(
+  overrides: Partial<QTrainingRouteQueueEntry> = {},
+): QTrainingRouteQueueEntry {
+  return {
+    runId: 'run-1',
+    manifestPath: 'D:/out/route-request.json',
+    queuedAt: routeNow,
+    updatedAt: routeNow,
+    status: 'claimed',
+    baseModel: 'q-lite',
+    useCpu: true,
+    lineageId: 'lineage-1',
+    phaseId: 'phase-1',
+    requestedExecutionDecision: 'allow_local',
+    claim: {
+      workerId: 'worker-1',
+      claimedAt: routeNow,
+    },
+    ...overrides,
+  }
+}
+
+const validRouteSecurity = {
+  valid: true,
+  reason: 'ok' as const,
+  payloadSha256: 'abc',
+  expectedPayloadSha256: 'abc',
+  actualSignature: 'sig',
+  expectedSignature: 'sig',
+  secretSource: 'OPENJAWS_Q_ROUTE_SECRET' as const,
+}
+
+const validRouteIntegrity = {
+  valid: true,
+  trainPath: 'D:/out/bundle/train.jsonl',
+  trainActualSha256: 'train-sha',
+  trainExpectedSha256: 'train-sha',
+  evalPath: 'D:/out/bundle/eval.jsonl',
+  evalActualSha256: 'eval-sha',
+  evalExpectedSha256: 'eval-sha',
+}
 
 describe('q routing helpers', () => {
   test('computes worker lease duration from ttl and poll interval', () => {
@@ -142,5 +255,53 @@ describe('q routing helpers', () => {
       ok: true,
       endpoint: 'http://127.0.0.1:8787/execute',
     })
+  })
+
+  test('admits signed local Q route dispatch with governor approval from the route receipt', () => {
+    const admission = evaluateQRouteCognitiveAdmission({
+      manifest: makeManifest(),
+      manifestPath: 'D:/out/route-request.json',
+      workerId: 'worker-1',
+      dispatchTransport: 'local_process',
+      remoteExecution: false,
+      routeSecurity: validRouteSecurity,
+      routeIntegrity: validRouteIntegrity,
+      preflight: makePreflight(),
+      queueEntry: makeQueueEntry(),
+      now: routeNow,
+    })
+
+    expect(admission).toMatchObject({
+      status: 'allow',
+      goalId: 'q-route:run-1',
+      toolName: 'q.route.dispatch',
+      riskTier: 2,
+      missingApprovals: [],
+    })
+  })
+
+  test('blocks remote Q route dispatch when ledger approval is absent', () => {
+    const admission = evaluateQRouteCognitiveAdmission({
+      manifest: makeManifest({
+        routeRequest: {
+          ...makeManifest().routeRequest,
+          controlAccepted: false,
+          controlSummary: null,
+        },
+      }),
+      manifestPath: 'D:/out/route-request.json',
+      workerId: 'worker-1',
+      dispatchTransport: 'remote_http',
+      remoteExecution: true,
+      routeSecurity: validRouteSecurity,
+      routeIntegrity: validRouteIntegrity,
+      preflight: makePreflight({ decision: 'remote_required' }),
+      queueEntry: makeQueueEntry(),
+      now: routeNow,
+    })
+
+    expect(admission.status).toBe('review')
+    expect(admission.riskTier).toBe(3)
+    expect(admission.missingApprovals).toEqual(['ledger_recorder'])
   })
 })
