@@ -444,7 +444,7 @@ export async function issueHostedQApiKey(args: {
     headers: buildHeaders(updatedUser),
     body: {
       ok: true,
-      message: 'Hosted Q key issued. Store it now; the plaintext key is shown only once.',
+      message: 'Your Q access key was created. Save it now; it will only be shown once.',
       storage: 'filesystem-demo',
       apiKey: nextKey.plaintext,
       useHint: `/provider key oci ${nextKey.plaintext}`,

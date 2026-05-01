@@ -52,8 +52,8 @@ export default function Page(): React.ReactNode {
           <h1>Q.</h1>
           <p className="hero-kicker">OpenJaws for serious terminals.</p>
           <p className="hero-copy-minimal">
-            Q_agents, co-work memory, routed tools, hosted access. One visible
-            control layer.
+            Work with Q and helpers, keep project context in one place, and
+            manage access from one screen.
           </p>
 
           <div className="hero-actions">
@@ -77,9 +77,9 @@ export default function Page(): React.ReactNode {
             <span>OCI Q default</span>
             <span>Agent Co-Work live</span>
             <span>Release-checked qline.site</span>
-            <span>Public + soak TerminalBench receipts</span>
-            <span>Typed traces + canonical signed receipts</span>
-            <span>Shared preflight + seeded benches</span>
+            <span>Published benchmark results</span>
+            <span>Signed activity records</span>
+            <span>Repeatable release checks</span>
           </div>
         </div>
 
@@ -93,11 +93,11 @@ export default function Page(): React.ReactNode {
         </article>
         <article className="signal-card">
           <span>Q_agents</span>
-          <strong>Helpers that keep phase memory.</strong>
+          <strong>Helpers that keep shared notes.</strong>
         </article>
         <article className="signal-card">
-          <span>Receipts</span>
-          <strong>Benchmark, soak, and route truth stays visible.</strong>
+          <span>Records</span>
+          <strong>Benchmark and release history stays visible.</strong>
         </article>
         <article className="signal-card">
           <span>Release gate</span>
@@ -120,14 +120,14 @@ export default function Page(): React.ReactNode {
           <span className="eyebrow">Public Surface</span>
           <h2>Qline is the front door. OpenJaws is the machine room.</h2>
           <p>
-            Hosted keys and credits on the front end. OpenJaws, Q_agents,
-            Immaculate, and Agent Co-Work behind it.
+            Sign up, manage credits, and connect to OpenJaws, Q_agents,
+            Immaculate, and Agent Co-Work from one place.
           </p>
 
           <div className="asset-mini-grid">
             <article>
               <strong>OpenJaws</strong>
-              <span>Tools, crews, routing, receipts.</span>
+              <span>Tools, helpers, and release checks.</span>
             </article>
             <article>
               <strong>Q_agents</strong>
@@ -144,7 +144,7 @@ export default function Page(): React.ReactNode {
       <section className="feature-band" id="openjaws">
         <div className="section-heading">
           <span className="eyebrow">OpenJaws</span>
-          <h2>The cockpit behind Q.</h2>
+          <h2>The workspace behind Q.</h2>
           <p>
             OpenJaws is the terminal workspace. Q is the default mind. Q_agents
             make it collaborative instead of lonely.
@@ -159,30 +159,25 @@ export default function Page(): React.ReactNode {
           </article>
           <article className="feature-card">
             <span>Agent Co-Work</span>
-            <strong>Reuse terminal, phase, and project context.</strong>
+            <strong>Reuse terminal, notes, and project context.</strong>
             <p>
-              Hot registry plus phase memory so sibling agents stop
-              re-discovering the same work every handoff.
+              Shared notes help agents avoid repeating the same setup work.
             </p>
           </article>
           <article className="feature-card">
             <span>Immaculate</span>
             <strong>Keep orchestration visible.</strong>
             <p>
-              Routing, pacing, worker state, and now typed trace receipts stay
-              inspectable instead of implied. `/status` and `/immaculate` read
-              the latest Immaculate trace summary directly, and `/status` also
-              surfaces the latest Q benchmark trace.
+              See what is running, what finished, and what needs attention in
+              one status view.
             </p>
           </article>
           <article className="feature-card">
             <span>Benchmarks</span>
-            <strong>BridgeBench, soak, and Harbor receipts.</strong>
+            <strong>BridgeBench, soak, and public TerminalBench results.</strong>
             <p>
-              Local tuning plus official public and repeated TerminalBench
-              receipts, all checked against one shared OCI Q preflight lane and
-              one typed Immaculate event contract with trace-backed canonical
-              receipts, declared seeds, and reproducible preflight state.
+              Benchmark runs are recorded with the model, task, result, and
+              date so results can be compared later.
             </p>
           </article>
           <article className="feature-card">
@@ -192,25 +187,25 @@ export default function Page(): React.ReactNode {
               `/apex` can fuse a trusted local workspace bridge for mail,
               chat, store, security, and system actions, plus a dedicated
               Chrono backup bridge for job creation, run, restore, and cleanup
-              without pretending the desktop GUI is a fake embedded pane.
+              without pretending every desktop action can run inside the
+              website.
             </p>
           </article>
           <article className="feature-card">
             <span>Apex guardrails</span>
-            <strong>Bridges where the seams are real.</strong>
+            <strong>Clear approvals for sensitive actions.</strong>
             <p>
               Notifications and Argus stay outside generic agent control until
-              they have their own narrow localhost bridges, confirmation steps,
-              and audit ladders.
+              they have clear approvals, local connections, and activity logs.
             </p>
           </article>
           <article className="feature-card">
             <span>Accountable preview</span>
-            <strong>Real browser preview with a reason trail.</strong>
+            <strong>Real browser preview with history.</strong>
             <p>
               `/preview` opens local apps, research, and supervised watch/music
-              sessions through a real browser path while keeping intent,
-              rationale, requester, and handler visible in one receipt.
+              sessions through a real browser path while keeping the reason and
+              requester visible.
             </p>
           </article>
           <article className="feature-card">
@@ -268,10 +263,9 @@ export default function Page(): React.ReactNode {
       <section className="console-anchor" id="console">
         <div className="section-heading">
           <span className="eyebrow">Hosted lane</span>
-          <h2>Sign up. Checkout. Keys. Usage.</h2>
+          <h2>Sign up, choose a plan, and view usage.</h2>
           <p>
-            Clean public access on the front end. Real entitlements stay
-            server-side.
+            Create access, manage credits, and get your Q key from one place.
           </p>
         </div>
 
@@ -283,19 +277,18 @@ export default function Page(): React.ReactNode {
           <span className="eyebrow">Agent Co-Work</span>
           <h2>One crew. Multiple terminals. Same thread.</h2>
           <p>
-            Active terminals keep their own IDs, but the phase memory stays
-            shared. That means cross-project help can keep the context that
-            matters instead of resetting every handoff.
+            Agents can work in separate terminals while sharing the notes that
+            matter, so they do not reset context at every handoff.
           </p>
         </div>
 
         <div className="cowork-stack">
           <article>
             <strong>Shared terminal registry</strong>
-            <p>Project roots, runtime facts, and context IDs stay reusable.</p>
+            <p>Project folders and chat context stay reusable.</p>
           </article>
           <article>
-            <strong>Phase memory</strong>
+            <strong>Shared notes</strong>
             <p>Requests, handoffs, and delivered outputs stay attached to one thread.</p>
           </article>
           <article>
@@ -308,7 +301,7 @@ export default function Page(): React.ReactNode {
       <section className="service-note">
         <div className="service-note-copy">
           <span className="eyebrow">Still Backend-Owned</span>
-          <h2>The expensive truth belongs server-side.</h2>
+          <h2>Billing and usage are handled securely.</h2>
         </div>
 
         <div className="service-grid">
@@ -322,7 +315,7 @@ export default function Page(): React.ReactNode {
           </article>
           <article>
             <strong>Usage</strong>
-            <p>RPM, TPM, audit receipts, and monthly reporting.</p>
+            <p>Rate limits, usage history, and monthly reports.</p>
           </article>
         </div>
       </section>

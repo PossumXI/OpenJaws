@@ -39,7 +39,6 @@ import {
   Zap
 } from "lucide-react";
 import {
-  agentEvents,
   layoutThemes,
   marketplaceItems,
   navItems,
@@ -55,6 +54,8 @@ import {
   createHoldemTable,
   createSlowGuyState,
   describeCard,
+  describeHoldemMode,
+  describeHoldemTransport,
   holdemCodeTokenPrize,
   type HoldemAction,
   type HoldemTableState,
@@ -355,7 +356,7 @@ const fallbackStatus: BackendStatus = {
   appVersion: jawsReleaseIndex.version,
   sidecarName: "openjaws",
   sidecarReady: false,
-  sidecarMessage: "Desktop preview running outside Tauri",
+  sidecarMessage: "Open the desktop app to connect OpenJaws.",
   updateChannel: "stable",
   releaseSites: jawsReleaseIndex.mirrors.map((mirror) => mirror.pageUrl),
   releaseTag: jawsReleaseIndex.tag,
@@ -375,7 +376,7 @@ const fallbackWorkspace: WorkspaceStatus = {
   path: "",
   name: "No workspace",
   valid: false,
-  message: "Set a project folder to route OpenJaws like a local cd command.",
+  message: "Choose a project folder before starting chat or Terminal View.",
   tuiCommand: "openjaws"
 };
 
@@ -383,7 +384,7 @@ const fallbackPreviewSnapshot: BrowserPreviewSnapshot = {
   checkedAt: "preview",
   receiptPath: "~/.openjaws/browser-preview/receipt.json",
   receiptExists: false,
-  receiptSummary: "Run inside Tauri to inspect OpenJaws browser-preview receipts.",
+  receiptSummary: "No browser sessions yet. Open the desktop app and run Preview to start one.",
   sessionCount: 0,
   launchConfigPath: ".openjaws/launch.json",
   launchConfigExists: false,
@@ -400,25 +401,25 @@ const fallbackCoworkPlan: QAgentsCoworkPlan = {
   roomCode: "JWS-QAGENTS",
   sharedPhaseMemory: true,
   pooledCredits: false,
-  routePolicy: "health-gated dispatch with explicit user approval for shared credits",
+  routePolicy: "Start workers only when the room is ready and you approve shared credits.",
   controls: [
     {
       id: "planner",
       label: "Q planner",
-      detail: "Decomposes work and assigns bounded agent lanes.",
+      detail: "Breaks the request into clear jobs.",
       status: "ready"
     },
     {
       id: "implementer",
       label: "Q_agent implementer",
-      detail: "Owns narrow code-change lanes with scoped workspace access.",
-      status: "health gated"
+      detail: "Works on the approved project files.",
+      status: "ready check"
     },
     {
       id: "verifier",
       label: "Q_agent verifier",
-      detail: "Runs tests, previews, release checks, and security sweeps.",
-      status: "health gated"
+      detail: "Runs tests and checks before you ship.",
+      status: "ready check"
     }
   ]
 };
@@ -444,34 +445,15 @@ const jawFrames = [
      \/`
 ];
 
-const changePreview: ChangePreview[] = [
-  {
-    file: "src/orchestrator/dispatch.ts",
-    status: "proposed",
-    before: "dispatch(worker, task)",
-    after: "dispatch(healthGate(worker), task, sharedPhaseMemory)"
-  },
-  {
-    file: "apps/jaws-desktop/session.json",
-    status: "local",
-    before: "permissions: prompt",
-    after: "permissions: review first or fast queue"
-  },
-  {
-    file: "website/api/jaws/latest.json",
-    status: "release",
-    before: "notification: idle",
-    after: "notification: update pipeline armed"
-  }
-];
+const changePreview: ChangePreview[] = [];
 
 const chatTools = [
-  { label: "Inspect", prompt: "Inspect this workspace and tell me the safest next fix." },
-  { label: "Code", prompt: "Implement the next high-value production change, then verify it." },
-  { label: "Test", prompt: "Run the focused test suite, explain failures, and repair them." },
-  { label: "Agents", prompt: "Spin up Q_agents for parallel review, implementation, and verification lanes." },
-  { label: "Bench", prompt: "Run the benchmark harness once and capture actionable verifier output." },
-  { label: "Ship", prompt: "Prepare release notes, tag the build, and verify updater metadata." }
+  { label: "Inspect", prompt: "Inspect this project and tell me what needs attention." },
+  { label: "Code", prompt: "Make the next useful code fix and check your work." },
+  { label: "Test", prompt: "Run the right tests, explain any failures, and fix them." },
+  { label: "Agents", prompt: "Use Q_agents to review, build, and verify this task." },
+  { label: "Bench", prompt: "Run a benchmark and summarize what changed." },
+  { label: "Ship", prompt: "Prepare this project for release and check the update files." }
 ];
 
 const codeTokenCap = 999_999;
@@ -510,31 +492,31 @@ const complianceDocuments = [
     title: "Terms Of Use",
     tone: "Legal",
     summary:
-      "JAWS is provided as a subscription IDE and orchestration shell. Users must keep credentials private, own or have rights to the workspaces they open, and review agent output before relying on it."
+      "Use JAWS only with projects you own or are allowed to work on. Keep your keys private and review agent work before you rely on it."
   },
   {
     title: "Final Sale Policy",
     tone: "Billing",
     summary:
-      "Subscription fees and delivered services are final sale except where a refund, cancellation right, chargeback right, or remedy is required by applicable law or payment-network rules."
+      "Paid plans and delivered work are final sale unless the law or payment rules require otherwise."
   },
   {
     title: "Security And Privacy",
     tone: "Security",
     summary:
-      "Workspace access is local by default. Signed updates, HTTPS release routes, explicit account enrollment, review-first permissions, and scoped marketplace packages protect users and company assets."
+      "Your workspace stays local by default. Updates are signed, and JAWS asks before higher-risk actions."
   },
   {
     title: "Community Content",
     tone: "Marketplace",
     summary:
-      "Games, skills, tools, widgets, and community agents must be signed, reviewed, capability-scoped, reversible, and free of secrets or prohibited content before public distribution."
+      "Community games, tools, widgets, and agents must be reviewed before they can be shared publicly."
   },
   {
     title: "AI Output Notice",
     tone: "Compliance",
     summary:
-      "Q, Q_agents, OpenCheek, and Immaculate can make mistakes. Users remain responsible for testing, licensing checks, security review, and production approval."
+      "AI can be wrong. Test important work, check licenses, and approve production changes yourself."
   }
 ];
 
@@ -542,22 +524,22 @@ const developerDocuments = [
   {
     label: "Desktop Build",
     command: "bun run jaws:verify",
-    detail: "Runs desktop tests, prepares the OpenJaws sidecar, builds the UI, and runs Tauri cargo check."
+    detail: "Checks the desktop app before a release."
   },
   {
     label: "Release Check",
     command: "bun run jaws:release:check",
-    detail: "Validates signed updater configuration, release index freshness, icons, endpoints, and manifest generation."
+    detail: "Confirms the update files, icons, and release settings are ready."
   },
   {
     label: "Mirror Health",
     command: "bun run jaws:mirror:check --json",
-    detail: "Checks qline.site, iorch.net, GitHub release assets, redirects, and signed updater manifest alignment."
+    detail: "Checks the download pages and GitHub release files."
   },
   {
     label: "Public Guard",
     command: "bun run showcase:copy:check",
-    detail: "Scans public-facing copy for local paths, raw receipts, stale lane wording, and token-shaped leaks."
+    detail: "Checks public text for private paths, secrets, and stale wording."
   }
 ];
 
@@ -635,11 +617,12 @@ function loadHoldemTable(playerName: string): HoldemTableState {
 }
 
 function formatOpenJawsChatResult(result: OpenJawsChatResult) {
-  const output = result.stdout || result.stderr || "OpenJaws returned no text output.";
-  const code = result.code === null ? "unknown" : String(result.code);
+  const output = result.stdout || result.stderr || "OpenJaws finished without a message.";
+  const friendlyMode = result.permissionMode === "acceptEdits" ? "Fast mode" : "Review mode";
+  const status = result.ok ? "Finished" : "Needs review";
   return [
     result.summary,
-    `Mode: ${result.permissionMode} - Exit: ${code}`,
+    `Run mode: ${friendlyMode} - Status: ${status}`,
     `Workspace: ${result.workspacePath || "not attached"}`,
     "",
     output
@@ -649,12 +632,12 @@ function formatOpenJawsChatResult(result: OpenJawsChatResult) {
 function fallbackAgentRuntimeSnapshot(): AgentRuntimeSnapshot {
   return {
     checkedAt: "preview",
-    source: "static preview",
-    summary: "Native Agent Watch snapshots are available inside the JAWS Tauri desktop runtime.",
+    source: "Desktop app",
+    summary: "No live agent activity yet. Start a chat task or refresh after workers run.",
     queueCount: 0,
     workerCount: 0,
     runtimeCount: 0,
-    events: agentEvents
+    events: []
   };
 }
 
@@ -665,11 +648,11 @@ function fallbackProjectContextSnapshot(workspace: WorkspaceStatus = fallbackWor
     workspacePath: workspace.path,
     workspaceName: workspace.name || "No workspace",
     valid: false,
-    source: valid ? "native scan unavailable" : "workspace not selected",
+    source: valid ? "Desktop scan needed" : "workspace not selected",
     confidenceScore: 0,
     summary: valid
-      ? "A project folder is selected, but this preview shell cannot scan it. Open the native JAWS app and refresh Context Brain to build a real file-count, skip, priority-file, and token-budget receipt."
-      : "Open a project folder to show the exact context pack JAWS can route to Q and Q_agents.",
+      ? "A project folder is selected, but this view cannot scan it yet. Open the desktop app and refresh Context to see what JAWS can read."
+      : "Open a project folder to show what JAWS can read before agents start.",
     totalFiles: 0,
     scannedFiles: 0,
     skippedFiles: 0,
@@ -681,20 +664,20 @@ function fallbackProjectContextSnapshot(workspace: WorkspaceStatus = fallbackWor
     brainLanes: [
       {
         label: "Q planner",
-        receives: "workspace map, priority files, test/config/docs coverage",
+        receives: "project map and important files",
         status: "blocked",
-        detail: "Waiting for the native file scanner to produce a real context receipt."
+        detail: "Waiting for a real desktop scan."
       },
       {
         label: "Q_agents",
-        receives: "bounded file lists, skipped reasons, verifier targets",
+        receives: "files to work on and files to avoid",
         status: "blocked",
-        detail: "Workers should not claim project understanding until a native scan is present."
+        detail: "Workers wait until the project scan is ready."
       }
     ],
     notes: [
       "No raw file contents are shown in this view.",
-      "Secret-like files and generated directories are summarized as skips."
+      "Secret-like files and generated folders are shown only as skipped."
     ]
   };
 }
@@ -1003,7 +986,7 @@ export function App() {
         ok: false,
         code: null,
         stdout: "",
-        stderr: "Run inside Tauri to execute the bundled OpenJaws sidecar."
+        stderr: "Open the desktop app to test OpenJaws."
       });
       return;
     }
@@ -1025,7 +1008,7 @@ export function App() {
         name: selection.name,
         valid: selection.ready,
         message: selection.ready
-          ? "Preview mode cannot validate the folder, but the command is ready for Tauri."
+          ? "Preview mode cannot validate the folder, but the command is ready for the desktop app."
           : "Use an absolute project folder path before opening the TUI view.",
         tuiCommand: selection.command
       });
@@ -1053,7 +1036,7 @@ export function App() {
         path: workspaceSelection.cleaned,
         name: workspaceSelection.name,
         valid: false,
-        message: "Open Folder uses the native Tauri desktop picker.",
+        message: "Open Folder uses the desktop file picker.",
         tuiCommand: workspaceSelection.command
       });
       return;
@@ -1084,7 +1067,7 @@ export function App() {
         speaker: "JAWS",
         role: "system",
         body: result.valid
-          ? `Workspace opened: ${result.path}. Chat and TUI routes now use this project folder.`
+          ? `Workspace opened: ${result.path}. Chat and TUI now use this project folder.`
           : result.message,
         time,
         state: result.valid ? "done" : "queued",
@@ -1099,7 +1082,7 @@ export function App() {
         ok: false,
         code: null,
         stdout: "",
-        stderr: "Run inside Tauri to execute OpenJaws from the selected project folder."
+        stderr: "Open the desktop app to run OpenJaws from the selected project folder."
       });
       return;
     }
@@ -1117,7 +1100,7 @@ export function App() {
       setUpdatePromptHidden(false);
     }
     if (!hasTauriRuntime()) {
-      setUpdateState("Tauri runtime required");
+      setUpdateState("Desktop app required");
       setUpdatePipeline(createPreviewUpdatePipeline(jawsReleaseIndex));
       setUpdateChecking(false);
       return;
@@ -1135,7 +1118,7 @@ export function App() {
         : [
             {
               id: "native-probe",
-              label: "Native release probe",
+              label: "Release check",
               status: "error" as const,
               detail: String(probeResult.reason)
             }
@@ -1210,8 +1193,8 @@ export function App() {
       setAgentRuntime({
         ...fallbackAgentRuntimeSnapshot(),
         checkedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        source: "native bridge error",
-        summary: `Agent Watch snapshot failed: ${String(error)}`
+        source: "Desktop app",
+        summary: `Agent Watch could not refresh: ${String(error)}`
       });
     } finally {
       setAgentRuntimeLoading(false);
@@ -1242,9 +1225,9 @@ export function App() {
       setProjectContext({
         ...fallbackProjectContextSnapshot(workspaceStatus),
         checkedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        source: "native bridge error",
+        source: "Desktop app",
         confidenceScore: 0,
-        summary: `Context pack scan failed: ${String(error)}`
+        summary: `Context scan could not finish: ${String(error)}`
       });
     } finally {
       setProjectContextLoading(false);
@@ -1274,7 +1257,7 @@ export function App() {
       setPreviewSnapshot({
         ...fallbackPreviewSnapshot,
         checkedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        receiptSummary: `Preview bridge failed: ${String(error)}`,
+        receiptSummary: `Preview check failed: ${String(error)}`,
         launchUrl: previewFrameUrl,
         devCommand: previewDevCommand
       });
@@ -1287,7 +1270,7 @@ export function App() {
       setPreviewConfigResult({
         ok: false,
         path: ".openjaws/launch.json",
-        message: "Native JAWS runtime is required to write the workspace launch config.",
+        message: "Open the desktop app to save this launch setup.",
         url: previewFrameUrl,
         devCommand: previewDevCommand,
         previewCommand: `/preview ${previewFrameUrl}`,
@@ -1316,8 +1299,8 @@ export function App() {
       setPreviewDemoResult({
         ok: false,
         outputDir: "",
-        message: "Native JAWS runtime is required to write the Playwright demo harness.",
-        name: "OpenJaws web app demo",
+        message: "Open the desktop app to create the website test files.",
+        name: "OpenJaws website test",
         slug: "",
         url: previewFrameUrl,
         devCommand: previewDevCommand,
@@ -1340,7 +1323,7 @@ export function App() {
       workspacePath,
       url: previewFrameUrl,
       devCommand: previewDevCommand,
-      name: workspaceStatus.name ? `${workspaceStatus.name} preview demo` : "OpenJaws web app demo"
+      name: workspaceStatus.name ? `${workspaceStatus.name} website test` : "OpenJaws website test"
     });
     setPreviewDemoResult(result);
   }
@@ -1355,8 +1338,8 @@ export function App() {
         ok: false,
         code: null,
         stdout: "",
-        stderr: "Run inside the native JAWS desktop shell to execute OpenJaws preview routes.",
-        summary: "Native runtime required.",
+        stderr: "Open the desktop app to run the browser preview command.",
+        summary: "Desktop app required.",
         permissionMode: fastRunMode ? "bypassPermissions" : "default",
         workspacePath: workspaceStatus.path || workspaceSelection.cleaned || ""
       });
@@ -1380,7 +1363,7 @@ export function App() {
         code: null,
         stdout: "",
         stderr: String(error),
-        summary: "OpenJaws preview command failed before sidecar output.",
+        summary: "OpenJaws preview command could not start.",
         permissionMode: fastRunMode ? "bypassPermissions" : "default",
         workspacePath: workspaceStatus.path || workspaceSelection.cleaned || ""
       });
@@ -1393,7 +1376,7 @@ export function App() {
     setChatInput(
       [
         `Open the workspace web app at ${previewFrameUrl}.`,
-        `Use Playwright to create or update a concise demo/check flow for the product surface.`,
+        `Create or update a short website test for the main user flow.`,
         `Respect the workspace launch command "${previewDevCommand}" and verify with ${previewSnapshot.playwrightTestCommand}.`
       ].join("\n")
     );
@@ -1407,7 +1390,7 @@ export function App() {
         `Start a browser task for ${previewFrameUrl}.`,
         `Control mode: ${browserControlMode}. Workspace: ${activeChatWindow.workspacePath || workspaceStatus.path || workspaceSelection.cleaned || "not attached"}.`,
         task,
-        "Use Playwright/browser receipts. Ask for explicit human approval before submitting personal data, applications, resumes, emails, purchases, or irreversible actions."
+        "Use browser test history. Ask for human approval before submitting personal data, applications, resumes, emails, purchases, or irreversible actions."
       ].join("\n")
     );
     setActive("chat");
@@ -1429,7 +1412,7 @@ export function App() {
       [
         `Start a Q_agents co-work run for ${workspaceStatus.path || workspaceSelection.cleaned || "the selected workspace"}.`,
         `Mode: ${coworkStackMode}. Room: ${coworkPlan.roomCode}. Lanes: ${lanes || "none selected"}.`,
-        `Use shared phase memory: ${coworkPlan.sharedPhaseMemory ? "yes" : "no"}. Shared credits: ${coworkSharedCredits ? "explicitly enabled" : "disabled"}.`,
+        `Use shared notes: ${coworkPlan.sharedPhaseMemory ? "yes" : "no"}. Shared credits: ${coworkSharedCredits ? "enabled" : "disabled"}.`,
         "Plan, implement, verify, and report every handoff with tests and browser/preview evidence."
       ].join("\n")
     );
@@ -1439,9 +1422,9 @@ export function App() {
   function stageContextAuditPrompt() {
     setChatInput(
       [
-        `Use the visible JAWS context pack for ${projectContext.workspacePath || workspaceStatus.path || workspaceSelection.cleaned || "the selected workspace"}.`,
+        `Use the visible JAWS Context view for ${projectContext.workspacePath || workspaceStatus.path || workspaceSelection.cleaned || "the selected workspace"}.`,
         `Coverage: ${projectContext.scannedFiles}/${projectContext.totalFiles} files, ${projectContext.confidenceScore}% confidence, ${formatTokenEstimate(projectContext.estimatedTokens)} estimated.`,
-        `Do not claim files are understood unless they are included in the context receipt. Inspect missing priority areas first, then plan the next change.`
+        `Do not claim files are understood unless they appear in the Context view. Inspect missing areas first, then plan the next change.`
       ].join("\n")
     );
     setActive("chat");
@@ -1549,8 +1532,8 @@ export function App() {
     setClosedChatWindows(result.closed);
     setActiveChatWindowId(result.activeId);
     triggerJawsNotification({
-      title: "Chat archived",
-      detail: `${activeChatWindow.title} moved out of the active workspace strip. Resume it from Chat Sessions when needed.`,
+      title: "Chat closed",
+      detail: `${activeChatWindow.title} is archived. Resume it from Chat Sessions when needed.`,
       tone: "complete"
     });
   }
@@ -1601,13 +1584,13 @@ export function App() {
       setUpdateState(
         runProbe
           ? next.state === "ready"
-            ? "Inference route probe passed"
-            : "Inference route probe needs review"
-          : "Inference route status refreshed"
+            ? "AI connection check passed"
+            : "AI connection needs review"
+          : "AI connection refreshed"
       );
     } catch (error) {
       setInferenceStatus(buildInferenceStatusFromError(error, inferenceProfile));
-      setUpdateState("Inference route status failed");
+      setUpdateState("AI connection check failed");
     } finally {
       setInferenceChecking(false);
     }
@@ -1643,7 +1626,7 @@ export function App() {
         id: qMessageId,
         speaker: "Q",
         role: "agent",
-        body: `Thinking through audited ${runMode}. Workspace: ${workspaceName || "not set"}.`,
+        body: `Working in ${runMode} mode. Workspace: ${workspaceName || "not set"}.`,
         time,
         state: "thinking",
         lane: "q"
@@ -1653,8 +1636,8 @@ export function App() {
         speaker: "Q_agents",
         role: "agent",
         body: compareMode
-          ? "Standing up compare-aware worker lanes. Proposed edits stay visible beside the transcript."
-          : "Standing up worker lanes. Compare mode is off, so edits can flow in the main workstream.",
+          ? "Compare is on. Proposed file changes will stay visible beside the chat."
+          : "Compare is off. Work updates will appear in the chat.",
         time,
         state: "queued",
         lane: "agents"
@@ -1662,9 +1645,9 @@ export function App() {
     ]);
     setChatWindowInput(runWindowId, "");
     setChatBusy(true);
-    awardCodeTokens(6, "agent route");
+    awardCodeTokens(6, "agent work");
     triggerJawsNotification({
-      title: "Agent route started",
+      title: "Agents started",
       detail: `Q and Q_agents started work in ${workspaceName || "the selected workspace"}.`,
       tone: "update"
     });
@@ -1689,8 +1672,8 @@ export function App() {
               return {
                 ...message,
                 body: result.ok
-                  ? "OpenJaws sidecar completed the Chat command. Review the Q lane output and continue from the same workspace."
-                  : "OpenJaws sidecar blocked or failed the Chat command. The Q lane has the exact diagnostic.",
+                  ? "OpenJaws finished this chat command. Review the result and continue from the same workspace."
+                  : "OpenJaws could not finish this command. Review the Q message before continuing.",
                 state: "done"
               };
             }
@@ -1701,8 +1684,8 @@ export function App() {
         triggerJawsNotification({
           title: result.ok ? "Agents finished" : "Human input needed",
           detail: result.ok
-            ? "The OpenJaws sidecar completed the chat command. Review the transcript and next steps."
-            : "The sidecar returned a non-zero result. Review the Q lane diagnostic before continuing.",
+            ? "OpenJaws finished the chat command. Review the transcript and next steps."
+            : "OpenJaws needs your review before continuing.",
           tone: result.ok ? "complete" : "input"
         });
       } catch (error) {
@@ -1711,24 +1694,24 @@ export function App() {
             if (message.id === qMessageId) {
               return {
                 ...message,
-                body: `OpenJaws Chat command failed before the sidecar returned output.\n\n${String(error)}`,
+                body: `OpenJaws could not start this chat command.\n\n${String(error)}`,
                 state: "done"
               };
             }
             if (message.id === agentMessageId) {
               return {
                 ...message,
-                body: "Desktop command bridge failed. Check the bundled sidecar and workspace settings.",
+                body: "JAWS could not reach OpenJaws. Check the app and workspace settings.",
                 state: "done"
               };
             }
             return message;
           })
         );
-        setUpdateState("OpenJaws Chat command failed");
+        setUpdateState("OpenJaws chat command failed");
         triggerJawsNotification({
           title: "Human input needed",
-          detail: "The desktop command bridge failed before sidecar output. Check workspace and sidecar settings.",
+        detail: "JAWS could not reach OpenJaws. Check workspace and app settings.",
           tone: "input"
         });
       } finally {
@@ -1743,7 +1726,7 @@ export function App() {
           if (message.id === qMessageId) {
             return {
               ...message,
-              body: `Routed through ${runMode}. Workspace: ${workspaceName || "not set"}. Next step is visible in the agent lane.`,
+              body: `Finished the preview run in ${runMode} mode. Workspace: ${workspaceName || "not set"}.`,
               state: "done"
             };
           }
@@ -1751,7 +1734,7 @@ export function App() {
             return {
               ...message,
               body: compareMode
-                ? "Compare-aware worker lanes are live. File changes will surface in the delta rail before release."
+                ? "Compare is on. File changes will appear here before release."
                 : "Worker lanes are live. JAWS will keep the transcript moving while agents report progress.",
               state: "thinking"
             };
@@ -1774,7 +1757,7 @@ export function App() {
       setChatBusy(false);
       triggerJawsNotification({
         title: "Goals complete",
-        detail: "Preview mode finished the simulated agent lane. Native runs will attach exact sidecar output.",
+        detail: "Preview mode finished. Desktop runs will show exact OpenJaws output.",
         tone: "complete"
       });
     }, 1500);
@@ -1996,22 +1979,21 @@ export function App() {
           <section className="page-grid">
             <div className="hero-panel">
               <div>
-                <p className="eyebrow">Native cockpit</p>
-                <h3>OpenJaws backend, desktop controls, live release path.</h3>
+                <p className="eyebrow">Workspace</p>
+                <h3>Open a project, ask for work, and review results.</h3>
                 <p>
-                  JAWS keeps the terminal engine behind a sidecar boundary while the desktop surface owns workspace
-                  visibility, enrollment, marketplace, co-work, and studio lanes.
+                  JAWS gives you chat, terminal, browser preview, updates, games, and co-work in one desktop app.
                 </p>
               </div>
               <div className="status-stack">
                 <JawsMark className="hero-logo" />
                 <button className="text-button primary" type="button" onClick={runSmoke}>
                   <RefreshCcw size={16} />
-                  Test Sidecar
+                  Test OpenJaws
                 </button>
                 <button className="text-button" type="button" onClick={() => checkForUpdates()}>
                   <RadioTower size={16} />
-                  Check Update
+                  Check for update
                 </button>
                 {pendingUpdate && (
                   <button className="text-button" type="button" onClick={installUpdate}>
@@ -2039,15 +2021,15 @@ export function App() {
             </div>
 
             <div className="wide-panel">
-              <PanelHeader icon={Activity} label="Desktop Runtime" />
+              <PanelHeader icon={Activity} label="App Status" />
               <div className="runtime-grid">
                 <StatusLine label="App version" value={status.appVersion} />
-                <StatusLine label="Sidecar" value={status.sidecarReady ? "Ready" : "Pending"} />
-                <StatusLine label="Sidecar detail" value={status.sidecarMessage} />
-                <StatusLine label="Update channel" value={`${status.updateChannel}: ${updateState}`} />
+                <StatusLine label="OpenJaws" value={status.sidecarReady ? "Ready" : "Pending"} />
+                <StatusLine label="Details" value={status.sidecarMessage} />
+                <StatusLine label="Updates" value={`${status.updateChannel}: ${updateState}`} />
               </div>
               {smoke && (
-                <pre className="console">{smoke.ok ? smoke.stdout || "OpenJaws responded." : smoke.stderr || "Sidecar check failed."}</pre>
+                <pre className="console">{smoke.ok ? smoke.stdout || "OpenJaws responded." : smoke.stderr || "OpenJaws check failed."}</pre>
               )}
             </div>
           </section>
@@ -2113,9 +2095,9 @@ export function App() {
                   <div className="chat-status slim">
                     <MessageActivity active={chatBusy} state={chatBusy ? "thinking" : "done"} frame={jawFrame} />
                     <div>
-                      <span>Live Workstream</span>
-                      <strong>{chatBusy ? "Q is thinking" : fastRunMode ? "Fast audited queue" : "Review first"}</strong>
-                      <small>{notificationsArmed ? "Updates and notifications armed" : "Notifications muted"}</small>
+                      <span>Work updates</span>
+                      <strong>{chatBusy ? "Q is thinking" : fastRunMode ? "Fast mode" : "Review first"}</strong>
+                      <small>{notificationsArmed ? "Alerts on" : "Alerts off"}</small>
                     </div>
                     <div className="chat-status-tools" aria-label="Chat state">
                       <span>{compareMode ? "Compare on" : "Compare off"}</span>
@@ -2162,7 +2144,7 @@ export function App() {
                       id="jaws-chat-command"
                       value={chatInput}
                       onChange={(event) => setChatInput(event.target.value)}
-                      placeholder="Ask JAWS to inspect, code, test, run agents, or route work through Q."
+                      placeholder="Ask JAWS what you want done in this project."
                       rows={3}
                     />
                     <button className="text-button primary" type="submit" disabled={chatBusy || chatInput.trim().length === 0}>
@@ -2191,7 +2173,7 @@ export function App() {
                     </button>
                     <button className="text-button primary" type="button" onClick={() => setActive("terminal")}>
                       <TerminalSquare size={16} />
-                      TUI View
+                      Terminal View
                     </button>
                     <button className="text-button" type="button" onClick={() => setCompareMode((value) => !value)}>
                       <GitCompare size={16} />
@@ -2275,18 +2257,28 @@ export function App() {
               <div className="wide-panel compare-panel">
                 <PanelHeader icon={GitCompare} label="Change Compare" />
                 <div className="compare-grid">
-                  {changePreview.map((change) => (
-                    <article className="compare-card" key={change.file}>
+                  {changePreview.length > 0 ? (
+                    changePreview.map((change) => (
+                      <article className="compare-card" key={change.file}>
+                        <header>
+                          <strong>{change.file}</strong>
+                          <span>{change.status}</span>
+                        </header>
+                        <div className="diff-columns">
+                          <pre>{change.before}</pre>
+                          <pre>{change.after}</pre>
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <article className="compare-card empty">
                       <header>
-                        <strong>{change.file}</strong>
-                        <span>{change.status}</span>
+                        <strong>No file changes yet</strong>
+                        <span>waiting</span>
                       </header>
-                      <div className="diff-columns">
-                        <pre>{change.before}</pre>
-                        <pre>{change.after}</pre>
-                      </div>
+                      <p>When agents propose edits, they will appear here for review.</p>
                     </article>
-                  ))}
+                  )}
                 </div>
               </div>
             )}
@@ -2296,7 +2288,7 @@ export function App() {
         {active === "terminal" && (
           <section className="terminal-page">
             <div className="wide-panel terminal-panel">
-              <PanelHeader icon={TerminalSquare} label="Workspace TUI" />
+              <PanelHeader icon={TerminalSquare} label="Workspace Terminal" />
               <div className="workspace-picker">
                 <label htmlFor="workspace-path">Project folder</label>
                 <div className="input-row">
@@ -2332,7 +2324,7 @@ export function App() {
 Workspace: ${workspaceStatus.path || workspaceSelection.cleaned || "not set"}
 Status: ${workspaceStatus.message}
 
-This native view keeps the selected project folder attached before OpenJaws, Q, Immaculate, and ledger routes run.`}
+JAWS will use this folder for chat, terminal, preview, and agent work.`}
                   </pre>
                 </section>
 
@@ -2345,7 +2337,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                     </div>
                   </div>
                   <StatusLine label="Folder" value={workspaceStatus.path || workspaceSelection.cleaned || "Not set"} />
-                  <StatusLine label="View" value="Embedded TUI" />
+                  <StatusLine label="View" value="Built-in terminal" />
                   <StatusLine label="Command" value={workspaceStatus.tuiCommand || workspaceSelection.command} />
                   <button className="text-button" type="button" onClick={runWorkspaceSmoke}>
                     <RefreshCcw size={16} />
@@ -2355,7 +2347,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                     <pre className="console">
                       {workspaceSmoke.ok
                         ? workspaceSmoke.stdout || `OpenJaws responded from ${workspaceStatus.path || workspaceSelection.cleaned}.`
-                        : workspaceSmoke.stderr || "Workspace sidecar check failed."}
+                        : workspaceSmoke.stderr || "OpenJaws could not check this folder."}
                     </pre>
                   )}
                 </aside>
@@ -2403,7 +2395,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                     <input value={previewUrl} onChange={(event) => setPreviewUrl(event.target.value)} spellCheck={false} />
                   </label>
                   <label>
-                    Dev command
+                    Start command
                     <input
                       value={previewDevCommand}
                       onChange={(event) => setPreviewDevCommand(event.target.value)}
@@ -2417,11 +2409,11 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                     </button>
                     <button className="text-button" type="button" onClick={writePlaywrightDemoHarness}>
                       <PackagePlus size={16} />
-                      Write Demo
+                      Create Website Test
                     </button>
                     <button className="text-button" type="button" onClick={stagePlaywrightDemoPrompt}>
                       <Bot size={16} />
-                      Playwright Task
+                      Ask Agent to Test
                     </button>
                   </div>
                   <div className="browser-control-card">
@@ -2462,13 +2454,13 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                     <div className={previewDemoResult.ok ? "workspace-state ready" : "workspace-state blocked"}>
                       {previewDemoResult.ok ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
                       <div>
-                        <strong>{previewDemoResult.ok ? "Demo harness written" : "Demo blocked"}</strong>
+                        <strong>{previewDemoResult.ok ? "Website test created" : "Website test blocked"}</strong>
                         <span>{previewDemoResult.ok ? previewDemoResult.outputDir : previewDemoResult.message}</span>
                       </div>
                     </div>
                   )}
                   <StatusLine label="Launch config" value={previewSnapshot.launchConfigExists ? previewSnapshot.launchConfigPath : "Not saved"} />
-                  <StatusLine label="Receipt" value={previewSnapshot.receiptExists ? previewSnapshot.receiptPath : "No receipt"} />
+                  <StatusLine label="History" value={previewSnapshot.receiptExists ? previewSnapshot.receiptPath : "No runs yet"} />
                   <StatusLine label="Sessions" value={String(previewSnapshot.sessionCount)} />
                 </aside>
               </div>
@@ -2476,7 +2468,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
 
             <div className="preview-bottom-grid">
               <section className="wide-panel playwright-panel">
-                <PanelHeader icon={TerminalSquare} label="Playwright Demo Lane" />
+                <PanelHeader icon={TerminalSquare} label="Website Test Tools" />
                 <div className="command-stack">
                   <code>{previewDemoResult?.previewCommand || previewConfigResult?.previewCommand || previewSnapshot.previewCommand || `/preview ${previewFrameUrl}`}</code>
                   <code>{previewDemoResult?.playwrightInstallCommand || "bunx playwright install chromium"}</code>
@@ -2486,10 +2478,10 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                 </div>
                 {previewDemoResult?.ok && (
                   <div className="demo-artifact-grid">
-                    <StatusLine label="Harness" value={previewDemoResult.outputDir} />
-                    <StatusLine label="Spec" value={previewDemoResult.specPath} />
-                    <StatusLine label="Receipt" value={previewDemoResult.receiptPath} />
-                    <StatusLine label="Hash" value={previewDemoResult.receiptHash} />
+                    <StatusLine label="Test folder" value={previewDemoResult.outputDir} />
+                    <StatusLine label="Test file" value={previewDemoResult.specPath} />
+                    <StatusLine label="History" value={previewDemoResult.receiptPath} />
+                    <StatusLine label="Receipt ID" value={previewDemoResult.receiptHash} />
                   </div>
                 )}
                 {previewRunResult && (
@@ -2500,7 +2492,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
               </section>
 
               <section className="wide-panel receipt-panel">
-                <PanelHeader icon={Activity} label="Preview Receipts" />
+                <PanelHeader icon={Activity} label="Preview History" />
                 <p className="panel-copy">{previewSnapshot.receiptSummary}</p>
                 <div className="receipt-list">
                   {previewSnapshot.sessions.length > 0 ? (
@@ -2539,7 +2531,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                   </button>
                   <button className="text-button primary" type="button" onClick={stageContextAuditPrompt}>
                     <MessageSquare size={16} />
-                    Route Audit
+                    Review Scan
                   </button>
                 </div>
               </div>
@@ -2569,7 +2561,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                   <strong>{contextLabel}</strong>
                   <span>{projectContext.source}</span>
                 </div>
-                {(projectContext.categories.length > 0 ? projectContext.categories : [{ id: "waiting", label: "Native scan", confidence: 0, includedCount: 0, fileCount: 0, estimatedTokens: 0, detail: "Open native JAWS to scan.", status: "blocked" }]).map((category, index) => (
+                {(projectContext.categories.length > 0 ? projectContext.categories : [{ id: "waiting", label: "Project scan", confidence: 0, includedCount: 0, fileCount: 0, estimatedTokens: 0, detail: "Open the JAWS desktop app to scan.", status: "blocked" }]).map((category, index) => (
                   <article
                     className={`context-orbit ${category.status}`}
                     key={category.id}
@@ -2605,8 +2597,8 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                     ))
                   ) : (
                     <article className="context-empty">
-                      <strong>No context pack yet</strong>
-                      <span>Open a folder and refresh to build the visible receipt.</span>
+                      <strong>No context scan yet</strong>
+                      <span>Open a folder and refresh to see what JAWS can read.</span>
                     </article>
                   )}
                 </div>
@@ -2658,7 +2650,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
               </section>
 
               <section className="wide-panel">
-                <PanelHeader icon={NetworkIcon} label="Brain Routes" />
+                <PanelHeader icon={NetworkIcon} label="Context Sharing" />
                 <div className="agent-timeline compact context-lanes">
                   {projectContext.brainLanes.map((lane) => (
                     <article className={`agent-event ${lane.status === "blocked" ? "blocked" : lane.status === "review" ? "waiting" : "active"}`} key={lane.label}>
@@ -2692,8 +2684,8 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
               <div className="runtime-source-card">
                 <StatusLine label="Source" value={agentRuntime.source} />
                 <StatusLine label="Checked" value={agentRuntime.checkedAt} />
-                <StatusLine label="Route queue" value={String(agentRuntime.queueCount)} />
-                <StatusLine label="Workers" value={`${agentRuntime.workerCount} registered / ${agentRuntime.runtimeCount} runtime`} />
+                <StatusLine label="Waiting tasks" value={String(agentRuntime.queueCount)} />
+                <StatusLine label="Workers" value={`${agentRuntime.workerCount} ready / ${agentRuntime.runtimeCount} running`} />
               </div>
               <p className="panel-copy">{agentRuntime.summary}</p>
               <div className="agent-timeline">
@@ -2702,13 +2694,13 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                     <span>{event.time}</span>
                     <strong>{event.lane}</strong>
                     <p>{event.detail}</p>
-                    {index === 0 && agentRuntimeLoading && <small>Updating runtime snapshot</small>}
+                    {index === 0 && agentRuntimeLoading && <small>Refreshing</small>}
                   </article>
                 ))}
               </div>
             </div>
             <div className="wide-panel">
-              <PanelHeader icon={NetworkIcon} label="Orchestration" />
+              <PanelHeader icon={NetworkIcon} label="Agent Activity" />
               <div className="agent-orchestration-board">
                 {agentRuntime.events.map((event, index) => (
                   <article className={`agent-orchestration-node ${event.state}`} key={`${event.time}-${event.lane}-${index}`}>
@@ -2722,7 +2714,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                   <article className="agent-orchestration-node blocked">
                     <span>idle</span>
                     <strong>No workers visible</strong>
-                    <p>Refresh Agent Watch inside the native runtime to inspect live queue, worker, and Q_agents state.</p>
+                    <p>Open JAWS Desktop and refresh to see current agent work.</p>
                     <small>blocked</small>
                   </article>
                 )}
@@ -2896,7 +2888,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
           <section className="split-view">
             <div className="wide-panel">
               <PanelHeader icon={ReceiptIcon} label="Arobi Ledger" />
-              <p className="panel-copy">Enrollment and ledger status are kept outside local prompt history and attached by explicit user action.</p>
+              <p className="panel-copy">Your account and credit records stay separate from chat. JAWS adds them only when you approve it.</p>
               <div className="link-row">
                 {links.map((link) => (
                   <button className="text-button" type="button" key={link.url} onClick={() => openExternal(link.url)}>
@@ -2923,7 +2915,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                 <PanelHeader icon={UsersIcon} label="Q_agents Co-work" />
                 <button className="text-button primary" type="button" onClick={stageQAgentsCoworkPrompt}>
                   <Zap size={16} />
-                  Stage Run
+                  Start Co-work
                 </button>
               </div>
 
@@ -2947,8 +2939,8 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
               </div>
 
               <div className="cowork-grid">
-                <StatusLine label="Route policy" value={coworkPlan.routePolicy} />
-                <StatusLine label="Phase memory" value={coworkPlan.sharedPhaseMemory ? "Shared" : "Local"} />
+                <StatusLine label="Work rule" value={coworkPlan.routePolicy} />
+                <StatusLine label="Shared notes" value={coworkPlan.sharedPhaseMemory ? "Shared" : "Local"} />
                 <StatusLine label="Credits" value={coworkSharedCredits ? "Pooled by approval" : "Owner only"} />
                 <StatusLine label="Workspace" value={workspaceStatus.path || workspaceSelection.cleaned || "Not set"} />
               </div>
@@ -2988,22 +2980,22 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                 <article className="agent-event active">
                   <span>01</span>
                   <strong>Q</strong>
-                  <p>Decompose the request and write scoped lane contracts.</p>
+                  <p>Break the request into clear jobs.</p>
                 </article>
                 <article className="agent-event waiting">
                   <span>02</span>
                   <strong>Q_agents</strong>
-                  <p>Workers claim code, preview, security, and verifier lanes.</p>
+                  <p>Workers handle code, preview, safety, and test checks.</p>
                 </article>
                 <article className="agent-event active">
                   <span>03</span>
                   <strong>OpenCheek</strong>
-                  <p>Shared phase memory records decisions and handoffs.</p>
+                  <p>Shared notes keep everyone on the same page.</p>
                 </article>
                 <article className="agent-event active">
                   <span>04</span>
                   <strong>Immaculate</strong>
-                  <p>Release pacing and final coherence checks stay attached.</p>
+                  <p>Final checks stay attached before release.</p>
                 </article>
               </div>
             </div>
@@ -3049,7 +3041,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                   <span className="settings-kicker">JAWS Desktop</span>
                   <h2>Built by AROBI TECHNOLOGY ALLIANCE A OPAL MAR GROUP CORPORATION NJ USA</h2>
                   <p className="panel-copy">
-                    Legal, compliance, release, and developer operating notes are available in-app so installed users can inspect the boundary before using agents, marketplaces, games, updates, or paid routes.
+                    Clear rules, privacy notes, billing terms, and developer checks are available here before using agents, games, updates, or paid features.
                   </p>
                 </div>
               </div>
@@ -3121,11 +3113,11 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                 </section>
 
                 <section className="settings-group inference-settings">
-                  <span className="settings-kicker">Inference</span>
+                  <span className="settings-kicker">AI Connection</span>
                   <StatusLine label="Provider" value={inferenceStatus.provider} />
                   <StatusLine label="Model" value={inferenceStatus.model} />
-                  <StatusLine label="Auth" value={inferenceStatus.authLabel} />
-                  <StatusLine label="Endpoint" value={inferenceStatus.baseUrl} />
+                  <StatusLine label="Sign-in" value={inferenceStatus.authLabel} />
+                  <StatusLine label="Server" value={inferenceStatus.baseUrl} />
 
                   <div className="inference-form">
                     <label>
@@ -3149,14 +3141,14 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                       />
                     </label>
                     <label className="full">
-                      Base URL
+                      Server URL
                       <input
                         value={inferenceProfile.baseUrl}
                         onChange={(event) => updateInferenceProfile({ baseUrl: event.target.value })}
                       />
                     </label>
                     <label>
-                      Policy
+                      Mode
                       <select
                         value={inferenceProfile.routePolicy}
                         onChange={(event) =>
@@ -3180,7 +3172,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                       />
                     </label>
                     <label>
-                      Max tokens
+                      Max response length
                       <input
                         min="256"
                         max="65536"
@@ -3200,7 +3192,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                       onClick={() => refreshInferenceStatus(false)}
                     >
                       <Gauge size={16} />
-                      {inferenceChecking ? "Checking" : "Check Route"}
+                      {inferenceChecking ? "Checking" : "Check Connection"}
                     </button>
                     <button
                       className="text-button"
@@ -3209,7 +3201,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                       onClick={() => refreshInferenceStatus(true)}
                     >
                       <RadioTower size={16} />
-                      Probe Route
+                      Test Connection
                     </button>
                     <button
                       className="text-button"
@@ -3217,7 +3209,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                       onClick={() => stageInferenceCommand(buildProviderUseCommand(inferenceProfile))}
                     >
                       <Send size={16} />
-                      Stage Use
+                      Use Provider
                     </button>
                     <button
                       className="text-button"
@@ -3225,7 +3217,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                       onClick={() => stageInferenceCommand(buildProviderBaseUrlCommand(inferenceProfile))}
                     >
                       <ExternalLink size={16} />
-                      Stage Endpoint
+                      Save Server
                     </button>
                     <button
                       className="text-button"
@@ -3233,7 +3225,7 @@ This native view keeps the selected project folder attached before OpenJaws, Q, 
                       onClick={() => stageInferenceCommand(buildInferenceTuningPrompt(inferenceProfile, inferenceStatus))}
                     >
                       <Sparkles size={16} />
-                      Stage Tuning
+                      Prepare Setup
                     </button>
                   </div>
 
@@ -3745,7 +3737,7 @@ function HoldemRoundtable({
             <strong>{table.multiplayer.roomCode}</strong>
           </div>
           <div>
-            <span>{table.multiplayer.transport}</span>
+            <span>{describeHoldemTransport(table.multiplayer.transport)}</span>
             <strong>{table.phase}</strong>
           </div>
           <div>
@@ -3838,7 +3830,7 @@ function HoldemRoundtable({
         <div className="holdem-status">
           <strong>{table.lastEvent}</strong>
           <span>Presence: {table.multiplayer.presence.join(", ")}</span>
-          <span>Mode: {table.multiplayer.mode}</span>
+          <span>Mode: {describeHoldemMode(table.multiplayer.mode)}</span>
         </div>
 
         {table.winners.length > 0 && (
@@ -3871,7 +3863,7 @@ function HoldemRoundtable({
         </div>
 
         <div className="sandbox-scope-card">
-          <strong>Secure PvP Foundation</strong>
+          <strong>Online Play Setup</strong>
           {table.sandbox.pendingReview.map((item) => (
             <span key={item}>{item}</span>
           ))}
@@ -3908,12 +3900,12 @@ function SandboxWorldFoundation({ pet }: { pet: CyberPetState }) {
     { label: "You", detail: "profile + credits", x: 12, y: 58 },
     { label: pet.name, detail: "pet presence", x: 32, y: 36 },
     { label: "Q", detail: "planner", x: 52, y: 54 },
-    { label: "Agent Forge", detail: "capability review", x: 72, y: 28 },
-    { label: "PvP Table", detail: "room auth", x: 78, y: 68 }
+    { label: "Agent Builder", detail: "skill review", x: 72, y: 28 },
+    { label: "PvP Table", detail: "online room", x: 78, y: 68 }
   ];
   return (
     <div className="sandbox-world">
-      <section className="world-stage" aria-label="Agent and pet sandbox foundation">
+      <section className="world-stage" aria-label="Agent and pet world">
         <div className="world-floor" />
         {nodes.map((node) => (
           <div className="world-node" key={node.label} style={{ left: `${node.x}%`, top: `${node.y}%` }}>
@@ -3926,23 +3918,23 @@ function SandboxWorldFoundation({ pet }: { pet: CyberPetState }) {
         <div className="world-link c" />
       </section>
       <aside className="agent-builder-panel">
-        <strong>Sandbox Agent Builder</strong>
-        <span>Agents start as signed local profiles before entering shared rooms.</span>
+        <strong>Agent Builder</strong>
+        <span>Build a local agent profile before sharing it online.</span>
         <div className="builder-step ready">
           <CheckCircle2 size={15} />
-          Capability manifest
+          Allowed skills
         </div>
         <div className="builder-step ready">
           <CheckCircle2 size={15} />
-          Workspace scope
+          Project folder
         </div>
         <div className="builder-step">
           <CircleDot size={15} />
-          Multiplayer auth lane
+          Online sign-in
         </div>
         <div className="builder-step">
           <CircleDot size={15} />
-          Pet and agent inventory ledger
+          Pet and agent items
         </div>
       </aside>
     </div>
@@ -3967,8 +3959,8 @@ function StudioPreview({ mode }: { mode: "image" | "video" }) {
         <span />
       </div>
       <div>
-        <strong>{mode === "image" ? "Prompt canvas" : "Render queue"}</strong>
-        <p>{mode === "image" ? "Provider-gated image workbench" : "Storyboard and export lane"}</p>
+        <strong>{mode === "image" ? "Image canvas" : "Video queue"}</strong>
+        <p>{mode === "image" ? "Create images with your connected provider." : "Plan and export short videos."}</p>
       </div>
     </div>
   );

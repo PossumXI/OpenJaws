@@ -50,14 +50,14 @@ export function BenchmarkSnapshotSection(): React.ReactNode {
       <div className="section-heading">
         <span className="eyebrow">Benchmark snapshot</span>
         <h2>Measured, not invented.</h2>
-        <p>{BENCHMARK_SNAPSHOT.source}</p>
+        <p>Generated from checked benchmark reports.</p>
       </div>
 
       <div className="benchmark-snapshot-meta">
         <span>Generated {formatSnapshotDate(BENCHMARK_SNAPSHOT.generatedAt)}</span>
-        <span>Local + official receipts</span>
-        <span>Typed traces + canonical signed receipts</span>
-        <span>Shared preflight + deterministic seeds</span>
+        <span>Local and official results</span>
+        <span>Signed activity records</span>
+        <span>Repeatable release checks</span>
         <span>No synthetic benchmark claims</span>
       </div>
 

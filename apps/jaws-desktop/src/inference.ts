@@ -104,10 +104,10 @@ export function createPreviewInferenceStatus(profile: InferenceProfile = default
     provider: normalized.provider,
     model: normalized.model,
     baseUrl: normalized.baseUrl,
-    authLabel: "native runtime required",
+    authLabel: "desktop app required",
     state: "preview",
-    summary: "Open JAWS Desktop to inspect the live provider route.",
-    detail: "The web preview cannot read desktop sidecar provider status or local environment wiring.",
+    summary: "Open the JAWS desktop app to check your AI connection.",
+    detail: "The browser preview cannot read your local AI settings.",
     source: "preview"
   };
 }
@@ -131,7 +131,7 @@ export function buildInferenceStatusFromNative(
     baseUrl,
     authLabel,
     state,
-    summary: result.summary || (result.ok ? "Provider route responded." : "Provider route needs review."),
+    summary: result.summary || (result.ok ? "AI connection is ready." : "AI connection needs attention."),
     detail: output || "No provider output returned.",
     source: "native"
   };
@@ -143,9 +143,9 @@ export function buildInferenceStatusFromError(error: unknown, profile: Inference
     provider: normalized.provider,
     model: normalized.model,
     baseUrl: normalized.baseUrl,
-    authLabel: "native command failed",
+    authLabel: "check failed",
     state: "error",
-    summary: "JAWS could not read the provider route.",
+    summary: "JAWS could not check the AI connection.",
     detail: redactInferenceText(String(error)),
     source: "error"
   };
@@ -164,15 +164,15 @@ export function buildProviderBaseUrlCommand(profile: InferenceProfile): string {
 export function buildInferenceTuningPrompt(profile: InferenceProfile, status: InferenceStatus): string {
   const normalized = normalizeInferenceProfile(profile);
   return [
-    "Customize the OpenJaws inference route for this workspace.",
+    "Set up the AI connection for this workspace.",
     `Provider: ${normalized.provider}`,
     `Model: ${normalized.model}`,
-    `Base URL: ${normalized.baseUrl}`,
-    `Policy: ${normalized.routePolicy}`,
+    `Server URL: ${normalized.baseUrl}`,
+    `Mode: ${normalized.routePolicy}`,
     `Temperature target: ${normalized.temperature}`,
     `Max output tokens: ${normalized.maxOutputTokens}`,
-    `Current route status: ${status.summary}`,
+    `Current status: ${status.summary}`,
     "Keep secrets out of the transcript. Prefer environment-backed keys or the existing provider key command.",
-    "Verify provider reachability before running a high-cost agent or Q_agents workflow."
+    "Check the connection before running a long agent job."
   ].join("\n");
 }

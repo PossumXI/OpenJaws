@@ -23,8 +23,7 @@ export default async function SuccessPage({
         <span className="eyebrow">Checkout Complete</span>
         <h1>Q access is on deck.</h1>
         <p className="legal-lead">
-          Stripe returned cleanly. If the webhook is configured, the hosted Q
-          entitlement lane can now activate your plan and key issuance.
+          Your checkout was completed. Your Q access will be available shortly.
         </p>
 
         <section>

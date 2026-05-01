@@ -14,7 +14,7 @@ export const initialNotifications: JawsNotification[] = [
   {
     id: "update-coming",
     title: "Update incoming",
-    detail: "A JAWS update is being prepared for later. Keep notifications armed for the release prompt.",
+    detail: "A JAWS update is being prepared. Leave notifications on so JAWS can tell you when it is ready.",
     tone: "update",
     time: "now",
     createdAt: "seed"

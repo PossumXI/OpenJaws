@@ -87,7 +87,7 @@ export interface HoldemTableState {
   multiplayer: {
     mode: "local-foundation" | "realtime-ready";
     roomCode: string;
-    transport: "mock-room" | "secure-websocket";
+    transport: "local-room" | "secure-websocket";
     presence: string[];
   };
   sandbox: {
@@ -387,24 +387,32 @@ export function createHoldemTable(playerName = "Founder", seed = "jaws-holdem"):
     multiplayer: {
       mode: "local-foundation",
       roomCode: "JAW-HOLD",
-      transport: "mock-room",
+      transport: "local-room",
       presence: ["Founder", "Q Dealer", "OpenCheek"]
     },
     sandbox: {
       world: "agent-pet-table",
       allowedAgentScopes: ["chat", "deal", "table-action", "pet-presence", "audit-log"],
-      pendingReview: ["real-time websocket auth", "agent sandbox capability signing", "PvP credit boundary"]
+      pendingReview: ["online sign-in", "safe agent sharing", "credit sharing controls"]
     },
     chat: [
       {
         id: "chat-system-1",
         speaker: "JAWS Table",
-        body: "Roundtable room staged. Multiplayer transport is mocked until secure websocket auth is wired.",
+        body: "Local table ready. Online play unlocks after secure sign-in is connected.",
         channel: "system"
       }
     ],
     lastEvent: "Waiting for dealer."
   };
+}
+
+export function describeHoldemMode(mode: HoldemTableState["multiplayer"]["mode"]): string {
+  return mode === "realtime-ready" ? "Online play" : "Local play";
+}
+
+export function describeHoldemTransport(transport: HoldemTableState["multiplayer"]["transport"]): string {
+  return transport === "secure-websocket" ? "Secure online room" : "Local table";
 }
 
 function postBlind(seat: HoldemSeat, amount: number): HoldemSeat {

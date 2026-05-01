@@ -30,7 +30,7 @@ export const initialChatMessages: ChatMessage[] = [
     id: "system-ready",
     speaker: "JAWS",
     role: "system",
-    body: "Chat lane ready. Commands route through OpenJaws with Q, Q_agents, OpenCheek, and Immaculate visible in the work stream.",
+    body: "Ready. Pick a folder, then tell JAWS what you want done.",
     time: "now",
     state: "done",
     lane: "system"
@@ -39,7 +39,7 @@ export const initialChatMessages: ChatMessage[] = [
     id: "agent-watch",
     speaker: "Q_agents",
     role: "agent",
-    body: "Workspace watcher armed. Turn on compare mode to inspect file deltas while agents work.",
+    body: "Turn on Compare when you want to review file changes before applying them.",
     time: "now",
     state: "queued",
     lane: "agents"
@@ -74,8 +74,8 @@ export function createChatWindow(
         speaker: "JAWS",
         role: "system",
         body: workspacePath
-          ? `This chat window is pinned to ${workspacePath}. Commands launched here use that project folder.`
-          : "This chat window is not pinned yet. Open a folder or start a project window before running agents.",
+          ? `This chat uses ${workspacePath}.`
+          : "Open a folder before running agents.",
         time: createdAt,
         state: workspacePath ? "done" : "queued",
         lane: "workspace"
