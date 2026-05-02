@@ -116,6 +116,25 @@ describe('discordOperatorWork', () => {
     )
   })
 
+  it('escalates browser form and resume work into supervised approval mode', () => {
+    const parsed = parseDirectOperatorChatCommand(
+      'openjaws ask qline :: use the browser to fill out a job application and upload my resume',
+    )
+
+    expect(parsed).toMatchObject({
+      action: 'ask-openjaws',
+      cwd: 'qline',
+    })
+    expect(parsed?.text).toContain(
+      'Real-world engagement lane: supervised browser action (supervised_browser_action).',
+    )
+    expect(parsed?.text).toContain('Risk tier: 4')
+    expect(parsed?.text).toContain('stop before signing in, submitting forms')
+    expect(parsed?.text).toContain(
+      'Operator request: use the browser to fill out a job application and upload my resume',
+    )
+  })
+
   it('routes plain-English browser preview requests through the governed OpenJaws lane', () => {
     const parsed = parseDirectOperatorChatCommand(
       'use the browser in D:\\sites\\qline to build a product demo with screenshots',
@@ -131,6 +150,24 @@ describe('discordOperatorWork', () => {
     expect(parsed?.text).toContain('native Apex browser bridge')
     expect(parsed?.text).toContain(
       'Operator request: build a product demo with screenshots',
+    )
+  })
+
+  it('keeps checkout and billing browser work out of the low-risk preview lane', () => {
+    const parsed = parseDirectOperatorChatCommand(
+      'use browser in D:\\sites\\qline to test checkout and billing without making a purchase',
+    )
+
+    expect(parsed).toMatchObject({
+      action: 'ask-openjaws',
+      cwd: 'D:\\sites\\qline',
+    })
+    expect(parsed?.text).toContain(
+      'Real-world engagement lane: supervised browser action (supervised_browser_action).',
+    )
+    expect(parsed?.text).toContain('paying, purchasing, booking')
+    expect(parsed?.text).toContain(
+      'Operator request: test checkout and billing without making a purchase',
     )
   })
 
