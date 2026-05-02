@@ -1,5 +1,6 @@
+import { execFileSync } from 'child_process'
 import { existsSync } from 'fs'
-import { resolve } from 'path'
+import { dirname, resolve } from 'path'
 import { execa } from 'execa'
 import {
   buildQProviderProbeCheck,
@@ -54,21 +55,83 @@ function buildOpenJawsBinary(root: string): string {
     : resolve(root, 'dist', 'openjaws')
 }
 
-export function resolveDefaultHarborCommand(): string {
-  const configured = process.env.OPENJAWS_HARBOR_COMMAND
+type HarborResolverOptions = {
+  cwd?: string
+  env?: NodeJS.ProcessEnv
+  gitCommonDir?: string | null
+}
+
+function resolveGitCommonDir(cwd: string): string | null {
+  try {
+    return execFileSync(
+      'git',
+      ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+      {
+        cwd,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 2_000,
+        windowsHide: true,
+      },
+    ).trim()
+  } catch {
+    return null
+  }
+}
+
+function uniqueCandidateRoots(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>()
+  const roots: string[] = []
+  for (const value of values) {
+    const normalized = value?.trim()
+    if (!normalized) {
+      continue
+    }
+    const resolved = resolve(normalized)
+    const key = resolved.toLowerCase()
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    roots.push(resolved)
+  }
+  return roots
+}
+
+export function resolveDefaultHarborCommand(
+  options: HarborResolverOptions = {},
+): string {
+  const env = options.env ?? process.env
+  const cwd = options.cwd ? resolve(options.cwd) : process.cwd()
+  const configured = env.OPENJAWS_HARBOR_COMMAND
   if (configured) {
     return configured
   }
 
   const harborExecutable = process.platform === 'win32' ? 'harbor.exe' : 'harbor'
-  const localHarborCandidates = [
-    resolve(process.cwd(), '.tools', 'harbor-venv', 'Scripts', harborExecutable),
-    resolve(process.cwd(), '.venv-gemma4', 'Scripts', harborExecutable),
-    resolve(process.cwd(), '.venv', 'Scripts', harborExecutable),
-    resolve(process.cwd(), '.tools', 'harbor-venv', 'bin', harborExecutable),
-    resolve(process.cwd(), '.venv-gemma4', 'bin', harborExecutable),
-    resolve(process.cwd(), '.venv', 'bin', harborExecutable),
-  ]
+  const configuredToolsRoot =
+    env.OPENJAWS_TOOLS_ROOT || env.OPENJAWS_TOOLS_DIR || null
+  const gitCommonDir =
+    options.gitCommonDir === undefined
+      ? resolveGitCommonDir(cwd)
+      : options.gitCommonDir
+  const gitCommonRoot =
+    gitCommonDir && gitCommonDir.trim().endsWith('.git')
+      ? dirname(gitCommonDir)
+      : null
+  const candidateRoots = uniqueCandidateRoots([
+    cwd,
+    configuredToolsRoot,
+    gitCommonRoot,
+  ])
+  const localHarborCandidates = candidateRoots.flatMap(root => [
+    resolve(root, '.tools', 'harbor-venv', 'Scripts', harborExecutable),
+    resolve(root, '.venv-gemma4', 'Scripts', harborExecutable),
+    resolve(root, '.venv', 'Scripts', harborExecutable),
+    resolve(root, '.tools', 'harbor-venv', 'bin', harborExecutable),
+    resolve(root, '.venv-gemma4', 'bin', harborExecutable),
+    resolve(root, '.venv', 'bin', harborExecutable),
+  ])
   for (const candidate of localHarborCandidates) {
     if (existsSync(candidate)) {
       return candidate

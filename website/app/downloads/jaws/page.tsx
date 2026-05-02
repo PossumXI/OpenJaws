@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-const releaseVersion = '0.1.8'
+const releaseVersion = '0.1.9'
 const releaseTag = `jaws-v${releaseVersion}`
 const releaseBase = `https://github.com/PossumXI/OpenJaws/releases/download/${releaseTag}`
 const releaseUrl = `https://github.com/PossumXI/OpenJaws/releases/tag/${releaseTag}`

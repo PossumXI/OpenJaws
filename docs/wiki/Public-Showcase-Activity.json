@@ -1,38 +1,43 @@
 {
-  "updatedAt": "2026-05-02T05:11:13.625Z",
+  "updatedAt": "2026-05-02T05:26:05.195Z",
   "entries": [
     {
-      "id": "real-world-engagement-2026-05-02T05:11:13.625Z",
-      "timestamp": "2026-05-02T05:11:13.625Z",
+      "id": "real-world-engagement-2026-05-02T05:26:05.195Z",
+      "timestamp": "2026-05-02T05:26:05.195Z",
       "title": "Live JAWS activity",
-      "summary": "JAWS has fresh activity. Recent work touched 2 connected areas with 3 visible actions. 1 item is audit-covered for follow-up. 3 older activity items stay in history.",
+      "summary": "People are using JAWS now. Recent work touched 4 connected areas with 5 visible actions. 1 item is audit-covered for follow-up. 3 older activity items stay in history.",
       "kind": "engagement_behavior",
-      "status": "info",
+      "status": "ok",
       "source": "JAWS activity monitor",
       "operatorActions": [
         "real_world_engagement",
+        "roundtable_runtime",
+        "immaculate_handoff",
         "system_tuning",
         "user_runtime",
         "security_review"
       ],
       "subsystems": [
         "openjaws",
-        "apex"
+        "apex",
+        "immaculate",
+        "discord"
       ],
       "artifacts": [
         "showcase:engagement-profile",
+        "roundtable:session",
         "apex:tenant-governance"
       ],
       "tags": [
         "real_world",
         "engagement",
         "public",
-        "warming"
+        "active"
       ]
     },
     {
-      "id": "runtime-audit-2026-05-02T05:11:13.625Z",
-      "timestamp": "2026-05-02T05:11:13.625Z",
+      "id": "runtime-audit-2026-05-02T05:26:05.195Z",
+      "timestamp": "2026-05-02T05:26:05.195Z",
       "title": "Supervised runtime activity refreshed",
       "summary": "Connected areas are audit-covered for follow-up, and the public activity feed is safe to publish.",
       "kind": "runtime_audit",
@@ -46,6 +51,7 @@
         "openjaws",
         "apex",
         "nysus",
+        "roundtable",
         "immaculate",
         "discord"
       ],
@@ -55,6 +61,31 @@
       "tags": [
         "public",
         "audit",
+        "supervised"
+      ]
+    },
+    {
+      "id": "roundtable-idle-2026-05-02T03:40:16.833Z",
+      "timestamp": "2026-05-02T03:40:16.833Z",
+      "title": "Roundtable runtime",
+      "summary": "Roundtable is idle in the configured Discord channel. Roundtable runtime updated through the supervised OpenJaws execution workspace.",
+      "kind": "roundtable_runtime",
+      "status": "ok",
+      "source": "OpenJaws roundtable workspace",
+      "operatorActions": [
+        "roundtable_runtime",
+        "immaculate_handoff"
+      ],
+      "subsystems": [
+        "openjaws",
+        "immaculate",
+        "discord"
+      ],
+      "artifacts": [
+        "roundtable:session"
+      ],
+      "tags": [
+        "roundtable",
         "supervised"
       ]
     },

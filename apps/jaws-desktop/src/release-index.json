@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "product": "JAWS",
-  "version": "0.1.8",
-  "tag": "jaws-v0.1.8",
+  "version": "0.1.9",
+  "tag": "jaws-v0.1.9",
   "repo": "PossumXI/OpenJaws",
   "github": {
-    "releaseUrl": "https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.8",
-    "apiUrl": "https://api.github.com/repos/PossumXI/OpenJaws/releases/tags/jaws-v0.1.8",
-    "baseAssetUrl": "https://github.com/PossumXI/OpenJaws/releases/download/jaws-v0.1.8"
+    "releaseUrl": "https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.9",
+    "apiUrl": "https://api.github.com/repos/PossumXI/OpenJaws/releases/tags/jaws-v0.1.9",
+    "baseAssetUrl": "https://github.com/PossumXI/OpenJaws/releases/download/jaws-v0.1.9"
   },
   "mirrors": [
     {
@@ -27,19 +27,19 @@
     {
       "id": "windows",
       "route": "windows",
-      "file": "JAWS_0.1.8_x64-setup.exe",
+      "file": "JAWS_0.1.9_x64-setup.exe",
       "requiresSignature": true
     },
     {
       "id": "windows-msi",
       "route": "windows-msi",
-      "file": "JAWS_0.1.8_x64_en-US.msi",
+      "file": "JAWS_0.1.9_x64_en-US.msi",
       "requiresSignature": true
     },
     {
       "id": "macos",
       "route": "macos",
-      "file": "JAWS_0.1.8_x64.dmg",
+      "file": "JAWS_0.1.9_x64.dmg",
       "requiresSignature": false
     },
     {
@@ -51,13 +51,13 @@
     {
       "id": "linux-deb",
       "route": "linux-deb",
-      "file": "JAWS_0.1.8_amd64.deb",
+      "file": "JAWS_0.1.9_amd64.deb",
       "requiresSignature": true
     },
     {
       "id": "linux-rpm",
       "route": "linux-rpm",
-      "file": "JAWS-0.1.8-1.x86_64.rpm",
+      "file": "JAWS-0.1.9-1.x86_64.rpm",
       "requiresSignature": true
     },
     {

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+  applyInferenceProviderSelection,
   buildInferenceStatusFromNative,
+  buildProviderApplySummary,
   buildInferenceTuningPrompt,
   buildProviderBaseUrlCommand,
   buildProviderUseCommand,
@@ -28,6 +30,17 @@ describe("inference helpers", () => {
       maxOutputTokens: 256,
       routePolicy: "deep"
     });
+  });
+
+  test("switches provider defaults instead of carrying the old model lane", () => {
+    const profile = applyInferenceProviderSelection(defaultInferenceProfile, "openai");
+
+    expect(profile).toMatchObject({
+      provider: "openai",
+      model: "gpt-5.4",
+      baseUrl: "https://api.openai.com/v1"
+    });
+    expect(buildProviderApplySummary(profile)).toBe("Use openai:gpt-5.4 at https://api.openai.com/v1");
   });
 
   test("builds provider commands without embedding secrets", () => {
@@ -59,6 +72,58 @@ describe("inference helpers", () => {
       model: "Q",
       baseUrl: "https://oci.test/openai/v1",
       authLabel: "OCI IAM (DEFAULT)",
+      state: "ready"
+    });
+  });
+
+  test("trusts parsed OpenJaws provider auth over native fallback labels", () => {
+    const status = buildInferenceStatusFromNative(
+      {
+        ok: true,
+        code: 0,
+        provider: "openai",
+        model: "gpt-5.4",
+        baseUrl: "",
+        authLabel: "not configured",
+        summary: "AI settings loaded.",
+        stderr: "",
+        stdout:
+          "Current model: openai:gpt-5.4\n\nExternal providers:\n- openai: model openai:gpt-5.4 · key settings.llmProviders.openai.apiKey · base URL https://api.openai.com/v1"
+      },
+      applyInferenceProviderSelection(defaultInferenceProfile, "openai")
+    );
+
+    expect(status).toMatchObject({
+      provider: "openai",
+      model: "gpt-5.4",
+      baseUrl: "https://api.openai.com/v1",
+      authLabel: "settings.llmProviders.openai.apiKey",
+      state: "ready"
+    });
+  });
+
+  test("reads live provider probe receipts into a ready status", () => {
+    const status = buildInferenceStatusFromNative(
+      {
+        ok: true,
+        code: 0,
+        provider: "groq",
+        model: "llama-3.3-70b-versatile",
+        baseUrl: "",
+        authLabel: "not configured",
+        summary: "AI connection checked.",
+        stderr: "",
+        stdout:
+          "Provider test: Groq answered.\nModel: groq:llama-3.3-70b-versatile\nBase URL: https://api.groq.com/openai/v1\nEndpoint: /chat/completions\nAuth: GROQ_API_KEY"
+      },
+      applyInferenceProviderSelection(defaultInferenceProfile, "groq")
+    );
+
+    expect(status).toMatchObject({
+      provider: "groq",
+      model: "llama-3.3-70b-versatile",
+      baseUrl: "https://api.groq.com/openai/v1",
+      authLabel: "GROQ_API_KEY",
       state: "ready"
     });
   });

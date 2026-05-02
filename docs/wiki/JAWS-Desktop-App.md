@@ -126,13 +126,15 @@ Windows bundle smoke, run locally on 2026-04-29:
 
 0.1.2 adds the native Settings page, keeps update checks available from Settings, replaces the in-app image logo with a CSS/React JAWS mark so the shell cannot render a broken image, keeps regenerated native installer icons, upgrades Chat into a slimmer animated workstream with per-message activity markers and a bounded `openjaws --print` sidecar bridge, adds the animated Cyber Frog pet loop, adds user and agent profile areas, adds native Open Folder workspace selection, renames the arcade runner to Slow Guy, and keeps the desktop release version aligned across `package.json`, `tauri.conf.json`, `Cargo.toml`, and `Cargo.lock`.
 
-0.1.8 release-candidate mirrors for the next public update:
+0.1.9 release-candidate mirrors for the next public update:
 
 - `https://qline.site/downloads/jaws`
 - `https://iorch.net/downloads/jaws`
-- `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.8`
+- `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.9`
 
-Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries. Both `qline.site` and `iorch.net` also expose `/api/jaws/<target>/<arch>/<current_version>` so existing tester installs can discover the signed 0.1.8 update through the Tauri updater endpoint after the tag workflow publishes artifacts.
+Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries. Both `qline.site` and `iorch.net` also expose `/api/jaws/<target>/<arch>/<current_version>` so existing tester installs can discover the signed 0.1.9 update through the Tauri updater endpoint after the tag workflow publishes artifacts.
+
+The 0.1.8 tag lane remains the published browser-work lane. The 0.1.9 workflow keeps the signed app updater artifact path and creates the public DMG with a direct `hdiutil` package step to reduce release risk in the macOS packaging stage.
 
 Mirror health gate:
 
@@ -258,7 +260,15 @@ Notification durability pass, run on 2026-05-01:
 - Agent browser work remains approval-gated for personal data entry, applications, resumes, email sends, purchases, account changes, uploads, bookings, submissions, and other irreversible actions even when the user chooses the approved-run mode.
 - Root cause for the prior browser gap: the desktop surface treated public sites mostly as preview windows and exposed one generic browser-control prompt, so users could not tell JAWS was meant for actual governed web work like browsing, scraping public pages, summarizing videos, or drafting email.
 - `bun run service:routes` now reads Apex workspace, Chrono, and browser bridge status from the guarded Apex bridge health runner. An answering but untrusted localhost listener stays warning-grade until launched through OpenJaws or explicitly trusted for that session.
-- Release operators should merge the 0.1.8 branch, wait for main CI/System Check/Security to pass, push the `jaws-v0.1.8` tag from the exact green main commit, watch the JAWS Desktop workflow publish signed assets, and then run `bun run jaws:mirror:check` after the GitHub release and mirror routes resolve to 0.1.8.
+- Release operators should treat 0.1.8 as the published browser-work lane. The 0.1.9 lane is the follow-up provider-switching and release-pipeline hardening update.
+
+0.1.9 provider-switching and release-pipeline pass, prepared on 2026-05-02:
+
+- Desktop package, Tauri app config, Cargo metadata, Cargo lockfile package entry, and generated release index align on `0.1.9` so `0.1.8` tester installs can receive this provider-switching and release-pipeline repair through the updater.
+- Settings now saves and tests the selected provider, model, and base URL through the native sidecar bridge instead of only staging chat commands. Provider changes reset the model and server URL to that provider's known defaults before the user edits them.
+- Native provider checks parse OpenJaws provider output for auth, base URL, and model details, so a successful `provider test` no longer appears as "not configured" because of stale fallback metadata.
+- The macOS release workflow now builds the `.app` updater artifact and creates the public DMG with a direct `hdiutil` packaging script, reducing reliance on styled DMG helper behavior in CI.
+- Release operators should merge the 0.1.9 branch, wait for main CI/System Check/Security to pass, push the `jaws-v0.1.9` tag from the exact green main commit, watch the JAWS Desktop workflow publish signed assets, and then run `bun run jaws:mirror:check` after the GitHub release and mirror routes resolve to 0.1.9.
 
 Implementation references:
 

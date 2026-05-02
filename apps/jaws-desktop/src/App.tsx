@@ -98,9 +98,11 @@ import {
   type JawsNotification
 } from "./notifications";
 import {
+  applyInferenceProviderSelection,
   buildInferenceStatusFromError,
   buildInferenceStatusFromNative,
   buildInferenceTuningPrompt,
+  buildProviderApplySummary,
   buildProviderBaseUrlCommand,
   buildProviderUseCommand,
   createPreviewInferenceStatus,
@@ -879,6 +881,7 @@ export function App() {
     createPreviewInferenceStatus(inferenceProfile)
   );
   const [inferenceChecking, setInferenceChecking] = useState(false);
+  const [inferenceApplying, setInferenceApplying] = useState(false);
   const [account, setAccount] = useState<AccountSession | null>(() => loadStoredAccountSession());
   const [chatWindows, setChatWindows] = useState<ChatWindowState[]>(() => loadChatWindows());
   const [closedChatWindows, setClosedChatWindows] = useState<ChatWindowState[]>(() => loadClosedChatWindows());
@@ -1893,9 +1896,66 @@ export function App() {
     setInferenceProfile((current) => normalizeInferenceProfile({ ...current, ...patch }));
   }
 
+  function selectInferenceProvider(provider: string) {
+    setInferenceProfile((current) => {
+      const next = applyInferenceProviderSelection(current, provider);
+      setInferenceStatus(createPreviewInferenceStatus(next));
+      return next;
+    });
+  }
+
   function stageInferenceCommand(command: string) {
     setChatInput(command);
     setActive("chat");
+  }
+
+  async function applyInferenceProfile(runProbe: boolean) {
+    const profile = normalizeInferenceProfile(inferenceProfile);
+    setInferenceApplying(true);
+
+    if (!hasTauriRuntime()) {
+      stageInferenceCommand(
+        [
+          buildProviderBaseUrlCommand(profile),
+          buildProviderUseCommand(profile),
+          runProbe ? `/provider test ${profile.provider} ${profile.model}` : "/provider status"
+        ].join("\n")
+      );
+      setInferenceStatus(createPreviewInferenceStatus(profile));
+      setInferenceApplying(false);
+      return;
+    }
+
+    try {
+      const result = await invoke<NativeInferenceStatusResult>("openjaws_inference_apply", {
+        provider: profile.provider,
+        model: profile.model,
+        baseUrl: profile.baseUrl,
+        runProbe,
+        workspacePath: activeChatWindow.workspacePath || workspaceStatus.path || workspaceSelection.cleaned || null
+      });
+      const next = buildInferenceStatusFromNative(result, profile);
+      setInferenceStatus(next);
+      setUpdateState(next.state === "ready" ? "AI provider saved" : "AI provider needs review");
+      triggerJawsNotification({
+        title: next.state === "ready" ? "AI provider ready" : "Check AI provider",
+        detail:
+          next.state === "ready"
+            ? buildProviderApplySummary(profile)
+            : "JAWS saved the provider choice, but the connection needs review.",
+        tone: next.state === "ready" ? "complete" : "input"
+      });
+    } catch (error) {
+      setInferenceStatus(buildInferenceStatusFromError(error, profile));
+      setUpdateState("AI provider save failed");
+      triggerJawsNotification({
+        title: "AI provider needs review",
+        detail: "JAWS could not save or test the selected provider.",
+        tone: "input"
+      });
+    } finally {
+      setInferenceApplying(false);
+    }
   }
 
   async function refreshInferenceStatus(runProbe: boolean) {
@@ -3641,7 +3701,7 @@ JAWS will use this folder for chat, terminal, preview, and agent work.`}
                       Provider
                       <select
                         value={inferenceProfile.provider}
-                        onChange={(event) => updateInferenceProfile({ provider: event.target.value })}
+                        onChange={(event) => selectInferenceProvider(event.target.value)}
                       >
                         {inferenceProviders.map((provider) => (
                           <option key={provider.id} value={provider.id}>
@@ -3705,7 +3765,7 @@ JAWS will use this folder for chat, terminal, preview, and agent work.`}
                     <button
                       className="text-button primary"
                       type="button"
-                      disabled={inferenceChecking}
+                      disabled={inferenceChecking || inferenceApplying}
                       onClick={() => refreshInferenceStatus(false)}
                     >
                       <Gauge size={16} />
@@ -3714,19 +3774,20 @@ JAWS will use this folder for chat, terminal, preview, and agent work.`}
                     <button
                       className="text-button"
                       type="button"
-                      disabled={inferenceChecking}
-                      onClick={() => refreshInferenceStatus(true)}
+                      disabled={inferenceChecking || inferenceApplying}
+                      onClick={() => applyInferenceProfile(true)}
                     >
                       <RadioTower size={16} />
-                      Test Connection
+                      {inferenceApplying ? "Saving" : "Save + Test"}
                     </button>
                     <button
                       className="text-button"
                       type="button"
-                      onClick={() => stageInferenceCommand(buildProviderUseCommand(inferenceProfile))}
+                      disabled={inferenceChecking || inferenceApplying}
+                      onClick={() => applyInferenceProfile(false)}
                     >
                       <Send size={16} />
-                      Use Provider
+                      Save + Use
                     </button>
                     <button
                       className="text-button"
@@ -3734,7 +3795,7 @@ JAWS will use this folder for chat, terminal, preview, and agent work.`}
                       onClick={() => stageInferenceCommand(buildProviderBaseUrlCommand(inferenceProfile))}
                     >
                       <ExternalLink size={16} />
-                      Save Server
+                      Show Server Command
                     </button>
                     <button
                       className="text-button"
