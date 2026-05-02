@@ -20,6 +20,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - JAWS Desktop 0.1.8 is prepared for GitHub release and mirrored through `qline.site/downloads/jaws` and `iorch.net/downloads/jaws`; both route installer and updater-manifest downloads back to the signed `jaws-v0.1.8` GitHub release assets after the tag workflow publishes.
 - The live qline.site and iorch.net updater endpoints should return a signed `0.1.8` update payload for `0.1.7` tester installs and `204 No Content` for current `0.1.8` installs once the tag workflow publishes the assets.
 - JAWS Desktop 0.1.8 keeps native Playwright demo harness receipt integrity hashes and keeps the generated `release-index.json` aligned with the published `jaws-v0.1.8` asset set.
+- qline.site now includes a committed `/downloads/jaws` page and redirect map for the 0.1.8 assets, and the iorch static mirror uses the same release-index target URLs.
 - JAWS Desktop release probes now derive current/previous update-test versions from the generated release index, and the tag workflow publishes the signed release after artifact upload so tester installs can see the update prompt without a manual draft-publish step.
 - JAWS Desktop tagged releases now run a pre-publish artifact guard over the downloaded bundle set, signatures, generated `latest.json`, and updater platform URLs before the GitHub release is made public.
 - `bun run jaws:mirror:check` now verifies the qline mirror, iorch mirror, GitHub release asset list, and signed updater manifest before a release pass can be called complete.
