@@ -15,8 +15,15 @@ describe('runtime-coherence PersonaPlex mapping', () => {
 
     expect(state.root).toBe(process.cwd())
     expect(state.expectedBranch).toBe('main')
+    expect(state.expectedRef).toBe('origin/main')
     expect(state.branch).toBeTruthy()
     expect(state.head).toBeTruthy()
+    expect(
+      typeof state.behindExpected === 'number' || state.behindExpected === null,
+    ).toBe(true)
+    expect(
+      typeof state.aheadOfExpected === 'number' || state.aheadOfExpected === null,
+    ).toBe(true)
     expect(typeof state.dirty).toBe('boolean')
   })
 

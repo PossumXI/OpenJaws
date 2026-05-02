@@ -37,12 +37,16 @@ export type RoundtableRuntimeSnapshot = {
 export type RuntimeSourceState = {
   root: string
   expectedBranch?: string | null
+  expectedRef?: string | null
   branch?: string | null
   head?: string | null
+  expectedHead?: string | null
   upstream?: string | null
   upstreamHead?: string | null
   ahead?: number | null
   behind?: number | null
+  aheadOfExpected?: number | null
+  behindExpected?: number | null
   dirty?: boolean | null
   changedFileCount?: number | null
   error?: string | null
@@ -443,6 +447,12 @@ export function buildRuntimeCoherenceReport(args: {
         sourceState.branch !== sourceState.expectedBranch
           ? `branch=${sourceState.branch} expected=${sourceState.expectedBranch}`
           : null,
+        sourceState.behindExpected && sourceState.behindExpected > 0
+          ? `behind expected ref by ${sourceState.behindExpected}`
+          : null,
+        sourceState.aheadOfExpected && sourceState.aheadOfExpected > 0
+          ? `ahead of expected ref by ${sourceState.aheadOfExpected}`
+          : null,
         sourceState.behind && sourceState.behind > 0
           ? `behind upstream by ${sourceState.behind}`
           : null,
@@ -467,9 +477,21 @@ export function buildRuntimeCoherenceReport(args: {
             `root=${sourceState.root}`,
             sourceState.branch ? `branch=${sourceState.branch}` : null,
             sourceState.head ? `head=${sourceState.head}` : null,
+            sourceState.expectedRef ? `expectedRef=${sourceState.expectedRef}` : null,
+            sourceState.expectedHead
+              ? `expectedHead=${sourceState.expectedHead}`
+              : null,
             sourceState.upstream ? `upstream=${sourceState.upstream}` : null,
             sourceState.upstreamHead
               ? `upstreamHead=${sourceState.upstreamHead}`
+              : null,
+            sourceState.aheadOfExpected !== null &&
+            sourceState.aheadOfExpected !== undefined
+              ? `aheadOfExpected=${sourceState.aheadOfExpected}`
+              : null,
+            sourceState.behindExpected !== null &&
+            sourceState.behindExpected !== undefined
+              ? `behindExpected=${sourceState.behindExpected}`
               : null,
             sourceState.ahead !== null && sourceState.ahead !== undefined
               ? `ahead=${sourceState.ahead}`

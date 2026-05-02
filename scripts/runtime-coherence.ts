@@ -115,16 +115,24 @@ function parseNullableInt(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function resolveExpectedRuntimeRef(expectedBranch: string): string {
+  return expectedBranch.includes('/') || expectedBranch.startsWith('refs/')
+    ? expectedBranch
+    : `origin/${expectedBranch}`
+}
+
 export function readOpenJawsSourceState(
   root: string,
   expectedBranch =
     process.env.OPENJAWS_RUNTIME_EXPECTED_BRANCH?.trim() || 'main',
 ): RuntimeSourceState {
+  const expectedRef = resolveExpectedRuntimeRef(expectedBranch)
   const gitDir = runGit(root, ['rev-parse', '--git-dir'])
   if (!gitDir.ok) {
     return {
       root,
       expectedBranch,
+      expectedRef,
       error: gitDir.stderr || gitDir.stdout || 'not a git checkout',
     }
   }
@@ -143,21 +151,36 @@ export function readOpenJawsSourceState(
   const counts = upstream.ok
     ? runGit(root, ['rev-list', '--left-right', '--count', 'HEAD...@{u}'])
     : null
+  const upstreamMatchesExpected = upstream.ok && upstream.stdout === expectedRef
+  const expectedHead = upstreamMatchesExpected
+    ? upstreamHead
+    : runGit(root, ['rev-parse', '--short=12', expectedRef])
+  const expectedCounts = upstreamMatchesExpected
+    ? counts
+    : expectedHead?.ok
+      ? runGit(root, ['rev-list', '--left-right', '--count', `HEAD...${expectedRef}`])
+      : null
   const status = runGit(root, ['status', '--porcelain'])
   const changedFileCount = status.stdout
     ? status.stdout.split(/\r?\n/).filter(Boolean).length
     : 0
   const [aheadText, behindText] = counts?.stdout.split(/\s+/) ?? []
+  const [aheadExpectedText, behindExpectedText] =
+    expectedCounts?.stdout.split(/\s+/) ?? []
 
   return {
     root,
     expectedBranch,
+    expectedRef,
     branch: branch.ok ? branch.stdout : null,
     head: head.ok ? head.stdout : null,
+    expectedHead: expectedHead.ok ? expectedHead.stdout : null,
     upstream: upstream.ok ? upstream.stdout : null,
     upstreamHead: upstreamHead?.ok ? upstreamHead.stdout : null,
     ahead: parseNullableInt(aheadText),
     behind: parseNullableInt(behindText),
+    aheadOfExpected: parseNullableInt(aheadExpectedText),
+    behindExpected: parseNullableInt(behindExpectedText),
     dirty: status.ok ? changedFileCount > 0 : null,
     changedFileCount: status.ok ? changedFileCount : null,
     error: status.ok ? null : status.stderr || status.stdout || null,

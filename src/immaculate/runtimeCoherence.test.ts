@@ -232,12 +232,16 @@ describe('runtimeCoherence', () => {
       sourceState: {
         root: 'D:\\openjaws\\OpenJaws',
         expectedBranch: 'main',
+        expectedRef: 'origin/main',
         branch: 'agent/openjaws-terminalbench-provenance',
         head: '86c8e6a68757',
+        expectedHead: '4e3e8e294991',
         upstream: 'origin/agent/openjaws-terminalbench-provenance',
         upstreamHead: '07f0d72ce2dd',
         ahead: 1,
         behind: 2,
+        aheadOfExpected: 3,
+        behindExpected: 5,
         dirty: true,
         changedFileCount: 4,
       },
@@ -253,6 +257,9 @@ describe('runtimeCoherence', () => {
     expect(check?.detail).toContain(
       'branch=agent/openjaws-terminalbench-provenance expected=main',
     )
+    expect(check?.detail).toContain('expectedRef=origin/main')
+    expect(check?.detail).toContain('behind expected ref by 5')
+    expect(check?.detail).toContain('ahead of expected ref by 3')
     expect(check?.detail).toContain('ahead of upstream by 1')
     expect(check?.detail).toContain('behind upstream by 2')
     expect(check?.detail).toContain('4 changed files')
