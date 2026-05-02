@@ -66,6 +66,28 @@ describe('discordExecutionQueue', () => {
     expect(reconciled[0]?.rejectionReason).toContain('approval window expired')
   })
 
+  it('marks expired running leases as errors during reconciliation', () => {
+    const reconciled = reconcileDiscordExecutionJobs(
+      [
+        buildJob({
+          status: 'running',
+          approvalState: null,
+          leaseOwner: 'roundtable-runtime:1234',
+          leaseExpiresAt: '2026-04-20T08:10:00.000Z',
+        }),
+      ],
+      {
+        nowMs: Date.parse('2026-04-20T08:11:00.000Z'),
+      },
+    )
+
+    expect(reconciled[0]?.status).toBe('error')
+    expect(reconciled[0]?.approvalState).toBe('rejected')
+    expect(reconciled[0]?.leaseOwner).toBeNull()
+    expect(reconciled[0]?.leaseExpiresAt).toBeNull()
+    expect(reconciled[0]?.rejectionReason).toContain('execution lease expired')
+  })
+
   it('dedupes queued work by work key and active project lease', () => {
     const jobs = [
       buildJob({

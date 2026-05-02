@@ -2,6 +2,8 @@
 
 ## 2.1.88 - 2026-04-22
 
+- Runtime source-drift checks now count tracked file changes without scanning untracked dependency/build trees, keeping the coherence probe responsive on Windows worktrees with large ignored directories.
+- Roundtable execution reconciliation now expires stale running leases into visible error receipts and refreshes the status summary, so operators can see which autonomous job stalled instead of repeatedly seeing an old executing line.
 - Real-world Discord/OpenJaws engagement requests now choose the highest-risk matching lane, so browser tasks involving forms, resumes, checkout, billing, purchases, account changes, uploads, bookings, or message sending stay in supervised approval mode instead of being treated as ordinary preview work.
 - Prepared JAWS Desktop 0.1.6 as the next signed update lane so the merged real-world Discord workspace default and desktop release artifact guard can ship through the tag workflow instead of staying only on `main`.
 - Added a JAWS desktop artifact guard to the tagged update pipeline so signed installers, required signatures, `latest.json`, and updater platform URLs are verified against `release-index.json` before a GitHub release is promoted publicly.

@@ -160,7 +160,7 @@ export function readOpenJawsSourceState(
     : expectedHead?.ok
       ? runGit(root, ['rev-list', '--left-right', '--count', `HEAD...${expectedRef}`])
       : null
-  const status = runGit(root, ['status', '--porcelain'])
+  const status = runGit(root, ['status', '--porcelain', '--untracked-files=no'])
   const changedFileCount = status.stdout
     ? status.stdout.split(/\r?\n/).filter(Boolean).length
     : 0

@@ -1661,6 +1661,120 @@ describe('discordRoundtableRuntime', () => {
     expect(result.transitionReceipts[0]?.status).toBe('rejected')
   })
 
+  it('updates the runtime summary when a running lease expires', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-lease-summary-'))
+    tempDirs.push(root)
+    const repoRoot = join(root, 'repo')
+    const targetPath = join(repoRoot, 'src', 'utils')
+    mkdirSync(join(repoRoot, '.git'), { recursive: true })
+    mkdirSync(targetPath, { recursive: true })
+    const runningJob: DiscordRoundtableTrackedJob = {
+      kind: 'roundtable',
+      id: 'lease-running-job',
+      branchName: 'discord-q-lease-running',
+      worktreePath: repoRoot,
+      workspacePath: targetPath,
+      changedFiles: [],
+      summary: 'OpenJaws · Q · stale running job',
+      verificationSummary: null,
+      commitSha: null,
+      status: 'running',
+      approvalState: null,
+      workKey: 'openjaws::src/utils',
+      projectKey: 'openjaws',
+      sourcePath: join(root, 'handoff.json'),
+      sourceSessionId: 'session-lease',
+      sourceScheduleId: null,
+      handoffKey: 'handoff-lease',
+      repoId: 'openjaws',
+      repoLabel: 'OpenJaws',
+      role: 'Q',
+      objective: 'Recover a stalled running lease',
+      rationale: 'Expired running leases should be operator-visible.',
+      commandHint: null,
+      targetPath,
+      targetRootLabel: 'OpenJaws',
+      receiptPath: null,
+      outputDir: null,
+      commitStatement: null,
+      decisionTraceId: null,
+      routeSuggestion: null,
+      executionReady: true,
+      requiresManualCheckout: false,
+      workspaceMaterialized: true,
+      authorityBound: true,
+      action: {
+        id: 'lease-running-job',
+        title: 'Recover a stalled running lease',
+        reason: 'Expired running leases should be operator-visible.',
+        targetPath,
+        prompt: 'continue the guarded runtime work',
+        gitRoot: repoRoot,
+      },
+      completedAt: null,
+      approvedAt: null,
+      approvedBy: null,
+      rejectedAt: null,
+      rejectedBy: null,
+      rejectionReason: null,
+      leaseClaimedAt: '2026-04-30T04:00:00.000Z',
+      leaseExpiresAt: '2026-04-30T04:10:00.000Z',
+      leaseOwner: 'q',
+    }
+    mkdirSync(dirname(getDiscordRoundtableQueueStatePath(root)), {
+      recursive: true,
+    })
+    writeFileSync(
+      getDiscordRoundtableQueueStatePath(root),
+      JSON.stringify(
+        {
+          ...createDiscordRoundtableRuntimeState({
+            now: new Date('2026-04-30T04:05:00.000Z'),
+            roundtableChannelName: 'dev_support',
+          }),
+          status: 'running',
+          activeJobId: runningJob.id,
+          lastSummary: 'Executing OpenJaws roundtable action lease-running-job.',
+          jobs: [runningJob],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+
+    const result = await processDiscordRoundtableRuntime({
+      root,
+      allowedRoots: [repoRoot],
+      ingestInbox: false,
+      maxActionsPerRun: 0,
+      model: 'oci:Q',
+      runnerScriptPath:
+        'D:\\openjaws\\OpenJaws\\local-command-station\\run-openjaws-visible.ps1',
+      worktreeRoot: join(root, 'worktrees'),
+      outputRoot: join(root, 'outputs'),
+      now: () => new Date('2026-04-30T04:20:00.000Z'),
+    })
+
+    expect(result.state.activeJobId).toBeNull()
+    expect(result.state.jobs[0]?.status).toBe('error')
+    expect(result.state.jobs[0]?.rejectionReason).toBe(
+      'execution lease expired before completion',
+    )
+    expect(result.state.lastSummary).toContain(
+      'Stopped expired running roundtable action OpenJaws roundtable action lease-running-job',
+    )
+    expect(result.transitionReceipts[0]).toMatchObject({
+      jobId: 'lease-running-job',
+      status: 'error',
+      rejectionReason: 'execution lease expired before completion',
+    })
+    const status = formatDiscordRoundtableRuntimeStatus(result.state)
+    expect(status).toContain('errors 1')
+    expect(status).toContain('Latest action: OpenJaws · Q · error')
+    expect(status).toContain('execution lease expired before completion')
+  })
+
   it('marks no-diff roundtable executions as skipped instead of completed', async () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-no-diff-'))
     tempDirs.push(root)
