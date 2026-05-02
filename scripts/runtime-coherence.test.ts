@@ -5,10 +5,21 @@ import { join } from 'path'
 import {
   buildApexBridgeCoherenceProbe,
   buildPersonaPlexCoherenceProbe,
+  readOpenJawsSourceState,
   readRoundtableState,
 } from './runtime-coherence.ts'
 
 describe('runtime-coherence PersonaPlex mapping', () => {
+  test('reads the current runtime source checkout state', () => {
+    const state = readOpenJawsSourceState(process.cwd())
+
+    expect(state.root).toBe(process.cwd())
+    expect(state.expectedBranch).toBe('main')
+    expect(state.branch).toBeTruthy()
+    expect(state.head).toBeTruthy()
+    expect(typeof state.dirty).toBe('boolean')
+  })
+
   test('maps Apex bridge health into the shared coherence probe contract', () => {
     expect(
       buildApexBridgeCoherenceProbe('Apex browser bridge', 'http://127.0.0.1:8799', {

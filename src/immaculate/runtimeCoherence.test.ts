@@ -219,6 +219,45 @@ describe('runtimeCoherence', () => {
     ).toBe('warning')
   })
 
+  test('warns when the runtime source checkout has unreconciled drift', () => {
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: readyQReceipt(),
+      immaculateTrace: null,
+      qTrace: null,
+      sourceState: {
+        root: 'D:\\openjaws\\OpenJaws',
+        expectedBranch: 'main',
+        branch: 'agent/openjaws-terminalbench-provenance',
+        head: '86c8e6a68757',
+        upstream: 'origin/agent/openjaws-terminalbench-provenance',
+        upstreamHead: '07f0d72ce2dd',
+        ahead: 1,
+        behind: 2,
+        dirty: true,
+        changedFileCount: 4,
+      },
+    })
+
+    const check = report.checks.find(
+      item => item.id === 'openjaws-source-state',
+    )
+
+    expect(report.status).toBe('warning')
+    expect(check?.status).toBe('warning')
+    expect(check?.summary).toBe('OpenJaws source checkout has runtime drift.')
+    expect(check?.detail).toContain(
+      'branch=agent/openjaws-terminalbench-provenance expected=main',
+    )
+    expect(check?.detail).toContain('ahead of upstream by 1')
+    expect(check?.detail).toContain('behind upstream by 2')
+    expect(check?.detail).toContain('4 changed files')
+  })
+
   test('fails when a live harness disagreement or active trace drift is detected', () => {
     const report = buildRuntimeCoherenceReport({
       harnessStatus: {
