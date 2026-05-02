@@ -2481,6 +2481,37 @@ p {
   font-size: 0.82rem;
 }
 
+.browser-preset-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.browser-preset {
+  align-items: flex-start;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  min-height: 74px;
+  padding: 10px;
+  text-align: left;
+}
+
+.browser-preset:hover,
+.browser-preset.active {
+  border-color: var(--accent);
+}
+
+.browser-preset small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
 .preview-bottom-grid {
   display: grid;
   gap: 18px;
@@ -3717,6 +3748,7 @@ p {
   .holdem-topline,
   .holdem-seat-grid,
   .slow-controls,
+  .browser-preset-grid,
   .theme-grid {
     grid-template-columns: 1fr;
   }

@@ -124,6 +124,14 @@ import {
   type UpdatePipelineEntry
 } from "./updateWorkflow";
 import { buildWorkspaceSelection, type TerminalPlatform } from "./workspace";
+import {
+  browserWorkPresets,
+  buildBrowserWorkPrompt,
+  defaultBrowserWorkTask,
+  getBrowserWorkPreset,
+  type BrowserControlMode,
+  type BrowserWorkPresetId
+} from "./browserWork";
 
 declare global {
   interface Window {
@@ -491,6 +499,28 @@ const fallbackLedgerSnapshot: LedgerSnapshot = {
   events: [],
   warnings: ["Desktop runtime required for local ledger scan."]
 };
+
+const browserControlModes: Array<{
+  id: BrowserControlMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "user",
+    label: "I drive",
+    description: "JAWS watches and helps."
+  },
+  {
+    id: "agent-review",
+    label: "Agent drafts",
+    description: "JAWS browses, then asks before acting."
+  },
+  {
+    id: "agent-approved",
+    label: "Approved run",
+    description: "JAWS handles low-risk steps after approval."
+  }
+];
 
 const fallbackCoworkPlan: QAgentsCoworkPlan = {
   mode: "stacked-agents",
@@ -897,7 +927,8 @@ export function App() {
   const [previewRunResult, setPreviewRunResult] = useState<OpenJawsChatResult | null>(null);
   const [previewWindowResult, setPreviewWindowResult] = useState<PreviewWindowResult | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
-  const [browserControlMode, setBrowserControlMode] = useState<"user" | "agent-review" | "agent-approved">("user");
+  const [browserControlMode, setBrowserControlMode] = useState<BrowserControlMode>("user");
+  const [browserPresetId, setBrowserPresetId] = useState<BrowserWorkPresetId>("search");
   const [browserTaskInput, setBrowserTaskInput] = useState("");
   const [ledgerSnapshot, setLedgerSnapshot] = useState<LedgerSnapshot>(fallbackLedgerSnapshot);
   const [ledgerLoading, setLedgerLoading] = useState(false);
@@ -1088,6 +1119,7 @@ export function App() {
     );
   }, [previewSnapshot.launchUrl, previewUrl]);
   const previewCanRenderInline = useMemo(() => canRenderPreviewInline(previewFrameUrl), [previewFrameUrl]);
+  const browserWorkPreset = useMemo(() => getBrowserWorkPreset(browserPresetId), [browserPresetId]);
   const contextLabel = contextConfidenceLabel(projectContext);
   const contextCoverage = contextScanRatio(projectContext);
   const contextBudgetPercent = projectContext.contextBudgetTokens
@@ -1628,15 +1660,13 @@ export function App() {
   }
 
   function stageBrowserControlPrompt() {
-    const task = browserTaskInput.trim() || "Browse this site, collect the needed information, and stop for human approval before forms, email sends, payments, or account changes.";
-    setChatInput(
-      [
-        `Start a browser task for ${previewFrameUrl}.`,
-        `Control mode: ${browserControlMode}. Workspace: ${activeChatWindow.workspacePath || workspaceStatus.path || workspaceSelection.cleaned || "not attached"}.`,
-        task,
-        "Use browser test history. Ask for human approval before submitting personal data, applications, resumes, emails, purchases, or irreversible actions."
-      ].join("\n")
-    );
+    setChatInput(buildBrowserWorkPrompt({
+      url: previewFrameUrl,
+      workspacePath: activeChatWindow.workspacePath || workspaceStatus.path || workspaceSelection.cleaned || "",
+      mode: browserControlMode,
+      preset: browserWorkPreset,
+      task: browserTaskInput
+    }));
     setActive("chat");
   }
 
@@ -2744,28 +2774,50 @@ JAWS will use this folder for chat, terminal, preview, and agent work.`}
                     </button>
                   </div>
                   <div className="browser-control-card">
-                    <strong>Browser Control</strong>
-                    <div className="stack-mode-row" role="group" aria-label="Browser control mode">
-                      {(["user", "agent-review", "agent-approved"] as const).map((mode) => (
+                    <strong>Web Work</strong>
+                    <span>
+                      Search, read pages, collect public data, summarize videos, draft emails, or help with forms. JAWS stops before sends, purchases, uploads, account changes, or submissions.
+                    </span>
+                    <div className="browser-preset-grid" role="group" aria-label="Browser work type">
+                      {browserWorkPresets.map((preset) => (
                         <button
-                          className={browserControlMode === mode ? "theme-chip active" : "theme-chip"}
-                          key={mode}
+                          className={browserPresetId === preset.id ? "browser-preset active" : "browser-preset"}
+                          key={preset.id}
                           type="button"
-                          onClick={() => setBrowserControlMode(mode)}
+                          onClick={() => {
+                            setBrowserPresetId(preset.id);
+                            if (!browserTaskInput.trim()) {
+                              setBrowserTaskInput(defaultBrowserWorkTask(preset));
+                            }
+                          }}
                         >
-                          {mode}
+                          <strong>{preset.shortLabel}</strong>
+                          <small>{preset.description}</small>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="stack-mode-row" role="group" aria-label="Browser control mode">
+                      {browserControlModes.map((mode) => (
+                        <button
+                          className={browserControlMode === mode.id ? "theme-chip active" : "theme-chip"}
+                          key={mode.id}
+                          type="button"
+                          title={mode.description}
+                          onClick={() => setBrowserControlMode(mode.id)}
+                        >
+                          {mode.label}
                         </button>
                       ))}
                     </div>
                     <textarea
                       value={browserTaskInput}
                       onChange={(event) => setBrowserTaskInput(event.target.value)}
-                      placeholder="Describe a browsing task. JAWS stops for approval before forms, emails, purchases, or account changes."
+                      placeholder={browserWorkPreset.task}
                       rows={4}
                     />
                     <button className="text-button primary" type="button" onClick={stageBrowserControlPrompt}>
                       <Bot size={16} />
-                      Send To Chat
+                      Start Web Work
                     </button>
                   </div>
                   {previewConfigResult && (

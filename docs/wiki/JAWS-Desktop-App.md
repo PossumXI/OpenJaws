@@ -12,7 +12,7 @@ Brand line:
 - Control dashboard for OpenJaws, Q, Q_agents, OpenCheek, Immaculate, Arobi, and security lanes.
 - Chat window for command entry, live agent/work transcript, per-message shark-jaw activity markers, Q thinking animation, command starter tools, project-scoped chat windows, minimize/expand/collapse controls, a real desktop-to-OpenJaws command bridge, review-first or fast mode, notification state, and optional change comparison.
 - Terminal workspace tab that can open a native folder picker, validates the selected project folder, stores the workspace locally, shows the exact OpenJaws TUI launch command, and can run the bundled OpenJaws sidecar from that folder.
-- Browser Preview tab for embedded local/web preview, `.openjaws/launch.json` authoring, preview history, native Playwright website-test generation, and browser-control task staging that stops for explicit approval before forms, email, purchases, account changes, or other irreversible actions.
+- Browser tab for embedded local app preview, public web browsing, search, summaries, public data collection, video/caption summaries, email drafts, form help, `.openjaws/launch.json` authoring, preview history, native Playwright website-test generation, and browser-work task staging that stops for explicit approval before sends, submissions, purchases, uploads, account changes, or other irreversible actions.
 - Context tab for a visible, aggregate-only project scan. It shows workspace coverage, priority files, skipped sensitive/generated paths, estimated context weight, and which Q/Q_agent/OpenCheek/Immaculate lanes receive the scan without exposing raw file contents. Non-desktop preview mode no longer displays fake file counts; it reports that a desktop scan is required.
 - Agent Watch timeline and activity board for live queue/worker events, so users can see what agent lanes are doing instead of trusting static copy.
 - Image Studio and Video Studio panels for provider-gated creative work.
@@ -126,13 +126,13 @@ Windows bundle smoke, run locally on 2026-04-29:
 
 0.1.2 adds the native Settings page, keeps update checks available from Settings, replaces the in-app image logo with a CSS/React JAWS mark so the shell cannot render a broken image, keeps regenerated native installer icons, upgrades Chat into a slimmer animated workstream with per-message activity markers and a bounded `openjaws --print` sidecar bridge, adds the animated Cyber Frog pet loop, adds user and agent profile areas, adds native Open Folder workspace selection, renames the arcade runner to Slow Guy, and keeps the desktop release version aligned across `package.json`, `tauri.conf.json`, `Cargo.toml`, and `Cargo.lock`.
 
-0.1.7 release-candidate mirrors for the next public update:
+0.1.8 release-candidate mirrors for the next public update:
 
 - `https://qline.site/downloads/jaws`
 - `https://iorch.net/downloads/jaws`
-- `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.7`
+- `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.8`
 
-Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries. Both `qline.site` and `iorch.net` also expose `/api/jaws/<target>/<arch>/<current_version>` so existing tester installs can discover the signed 0.1.7 update through the Tauri updater endpoint after the tag workflow publishes artifacts.
+Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries. Both `qline.site` and `iorch.net` also expose `/api/jaws/<target>/<arch>/<current_version>` so existing tester installs can discover the signed 0.1.8 update through the Tauri updater endpoint after the tag workflow publishes artifacts.
 
 Mirror health gate:
 
@@ -250,6 +250,15 @@ Notification durability pass, run on 2026-05-01:
 - The Ledger page now reads local Q route queue receipts, browser-preview receipts, generated website-test receipts, and workspace account/credit ledger files. It reports a local-only warning until an AROBI LAAS route/token is configured.
 - Verification for this pass: `bun test apps/jaws-desktop/src/previewUrl.test.ts`, `bun run --cwd apps/jaws-desktop test`, `bun run --cwd apps/jaws-desktop build`, `cargo test --manifest-path apps/jaws-desktop/src-tauri/Cargo.toml`, and `cargo check --manifest-path apps/jaws-desktop/src-tauri/Cargo.toml`.
 - Release operators should merge the 0.1.7 repair branch, wait for main CI/System Check/Security to pass, push the `jaws-v0.1.7` tag from the exact green main commit, watch the JAWS Desktop workflow publish the signed assets, and then run `bun run jaws:mirror:check` after the GitHub release and mirror routes resolve to 0.1.7.
+
+0.1.8 browser-work and route-health pass, prepared on 2026-05-02:
+
+- Desktop package, Tauri app config, Cargo metadata, Cargo lockfile package entry, and generated release index align on `0.1.8` so `0.1.7` installs can receive this browser-work repair through the updater.
+- The Browser tab now has web-work presets for search, page summaries, public data collection, video/caption summaries, email drafts, and form help. Each preset stages a clear Chat prompt with source-link and browser-history requirements.
+- Agent browser work remains approval-gated for personal data entry, applications, resumes, email sends, purchases, account changes, uploads, bookings, submissions, and other irreversible actions even when the user chooses the approved-run mode.
+- Root cause for the prior browser gap: the desktop surface treated public sites mostly as preview windows and exposed one generic browser-control prompt, so users could not tell JAWS was meant for actual governed web work like browsing, scraping public pages, summarizing videos, or drafting email.
+- `bun run service:routes` now reads Apex workspace, Chrono, and browser bridge status from the guarded Apex bridge health runner. An answering but untrusted localhost listener stays warning-grade until launched through OpenJaws or explicitly trusted for that session.
+- Release operators should merge the 0.1.8 branch, wait for main CI/System Check/Security to pass, push the `jaws-v0.1.8` tag from the exact green main commit, watch the JAWS Desktop workflow publish signed assets, and then run `bun run jaws:mirror:check` after the GitHub release and mirror routes resolve to 0.1.8.
 
 Implementation references:
 

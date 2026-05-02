@@ -12,6 +12,7 @@ The check is intentionally honest:
 - package presence never marks production database, Cloudflare Worker/D1, hosted-Q, mail, or LAAS as provisioned
 - Qline Netlify env metadata can satisfy Stripe and Resend/mail configuration checks when Netlify auth is available; the receipt records only env key names and booleans, never secret values
 - AROBI LAAS can be marked configured only from a concrete URL+token pair or from the local `~/.arobi/edge-secrets.json` edge binding plus the live public health route; raw token values are never printed
+- Apex workspace, Chrono, and browser bridge routes use the same trust check as `bun run apex:bridges`; a localhost listener that answers but was not launched or explicitly trusted stays a warning, not a passed route
 - secrets are never printed; the receipt names missing config keys/classes and
   `nextActions` for each warning so operators can repair the route without
   guessing
@@ -93,3 +94,6 @@ bun run apex:bridges:start
 
 `apex:bridges:start` uses the existing guarded Apex launchers. It still fails
 closed if the Apex source root, Cargo toolchain, or trust boundary is missing.
+If another process is already listening on an Apex port, route health reports it
+as untrusted until the operator stops it, launches it through OpenJaws, or sets
+`OPENJAWS_APEX_TRUST_LOCALHOST=1` intentionally for that session.
