@@ -354,8 +354,9 @@ export function buildHostedQProvisioningPreflight(
     completedWindowMs: RELEASE_Q_TRACE_FRESH_WINDOW_MS,
   })
   const qTraceEvidence = readQTraceReleaseEvidence(qTrace)
+  const qTraceCompletedForRelease = qTrace?.runState === 'completed'
   const qTraceFreshForRelease =
-    Boolean(qTrace) && qTrace?.runState !== 'stale' && qTraceEvidence.ready
+    Boolean(qTrace) && qTraceCompletedForRelease && qTraceEvidence.ready
   const missingDurablePublicEnv = [
     ...missingPublicSiteEnv,
     ...(localFilesystemMode ? ['Q_HOSTED_SERVICE_LOCAL_MODE=filesystem'] : []),
@@ -497,6 +498,8 @@ export function buildHostedQProvisioningPreflight(
       passed: qTraceFreshForRelease,
       summary: qTraceFreshForRelease
         ? 'Latest Q trace is fresh and contains successful release-audit probe evidence.'
+        : qTrace && qTrace.runState === 'active'
+          ? 'Fresh Q trace is still active; release-audit signoff requires a completed successful trace.'
         : qTrace && qTrace.runState !== 'stale'
           ? 'Fresh Q trace is present but does not contain successful release-audit probe evidence.'
           : 'Fresh Q trace is missing or stale for release-audit signoff.',
@@ -504,14 +507,14 @@ export function buildHostedQProvisioningPreflight(
         ? []
         : [
             qTrace
-              ? `fresh successful Q trace within ${RELEASE_Q_TRACE_FRESH_WINDOW_MS / (60 * 60 * 1000)}h`
+              ? `completed successful Q trace within ${RELEASE_Q_TRACE_FRESH_WINDOW_MS / (60 * 60 * 1000)}h`
               : 'artifacts/q-*/**/*.trace.jsonl',
           ],
       details: summarizeQTrace(qTrace, qTraceEvidence),
       nextActions: qTraceFreshForRelease
         ? []
         : [
-            'Generate a fresh successful Q trace with a bounded Q soak or Terminal-Bench dry run, then rerun runtime:coherence before release-audit signoff.',
+            'Generate a completed successful Q trace with a bounded Q soak or Terminal-Bench dry run, then rerun runtime:coherence before release-audit signoff.',
           ],
     }),
   ]
