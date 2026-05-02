@@ -294,6 +294,70 @@ describe('immaculate harness config', () => {
     )
   })
 
+  test('falls back to the redacted intelligence snapshot when public status is unavailable', async () => {
+    await withImmaculateTestServer(
+      (request, response) => {
+        if (request.url === '/api/health') {
+          writeJson(response, 200, {
+            status: 'ok',
+            service: 'immaculate-harness',
+          })
+          return
+        }
+        if (request.url === '/api/intelligence/status') {
+          writeJson(response, 404, { message: 'not found' })
+          return
+        }
+        if (request.url === '/api/intelligence') {
+          writeJson(response, 200, {
+            layers: [
+              {
+                id: 'ollama-mid-gemma4-e4b',
+                status: 'ready',
+              },
+              {
+                id: 'ollama-guard',
+                status: 'offline',
+              },
+            ],
+            executions: [
+              { id: 'execution-1', status: 'completed' },
+              { id: 'execution-2', status: 'failed' },
+            ],
+            recommendedLayerId: 'ollama-mid-gemma4-e4b',
+            visibility: 'redacted',
+          })
+          return
+        }
+        writeJson(response, 404, { message: 'not found' })
+      },
+      async url => {
+        process.env.IMMACULATE_HARNESS_URL = url
+
+        const intelligence = await getImmaculateHarnessIntelligenceStatus()
+
+        expect(intelligence).toMatchObject({
+          status: 'ready',
+          visibility: 'public-redacted',
+          recommendedLayerId: 'ollama-mid-gemma4-e4b',
+          layerPlane: {
+            layerCount: 2,
+            readyLayerCount: 1,
+            offlineLayerCount: 1,
+          },
+          workerPlane: {
+            readiness: 'ready',
+          },
+          executionPlane: {
+            executionCount: 2,
+            completedExecutionCount: 1,
+            failedExecutionCount: 1,
+          },
+        })
+      },
+    )
+  })
+
   test('normalizes actuation objectives and receipts', () => {
     expect(
       normalizeImmaculateObjective(
