@@ -2,6 +2,9 @@
 
 ## 2.1.88 - 2026-04-22
 
+- Prepared JAWS Desktop 0.1.8 as the next signed update lane for the browser-work and route-health repair pass, so 0.1.7 installs can receive the governed web browsing controls through the updater.
+- JAWS Desktop Browser now stages real web-work jobs for search, page summaries, public data collection, video/caption summaries, email drafting, and form assistance while preserving approval gates for sends, purchases, uploads, account changes, submissions, and other irreversible actions.
+- Service route health now uses the guarded Apex bridge health contract for the workspace, Chrono, and browser bridges, so an answering but untrusted localhost listener reports as a warning instead of a false passed route.
 - Runtime source-drift checks now count tracked file changes without scanning untracked dependency/build trees, keeping the coherence probe responsive on Windows worktrees with large ignored directories.
 - JAWS Desktop now runs provider checks from the selected workspace or a writable JAWS runtime directory instead of inheriting `C:\WINDOWS\system32`, preventing `EPERM` failures when OpenJaws writes session traces and artifacts.
 - JAWS Desktop broad workspace-analysis prompts now use a bounded native context and ledger scan, so "analyze the workspace" returns file coverage, priority files, skips, and audit state instead of waiting on a long model turn until the 120-second chat timeout.

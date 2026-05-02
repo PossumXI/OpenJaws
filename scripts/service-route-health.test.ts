@@ -8,6 +8,7 @@ import {
   JAWS_RELEASE_TAG,
   JAWS_RELEASE_VERSION,
 } from './jaws-release-index.ts'
+import type { ApexBridgeHealthReport } from './apex-bridge-health.ts'
 import { runServiceRouteHealth } from './service-route-health.js'
 
 function response(status: number, body = ''): Response {
@@ -77,12 +78,68 @@ const EMPTY_ENV = {
   OCI_CONFIG_FILE: 'C:\\missing\\oci\\config',
 } as NodeJS.ProcessEnv
 
+function apexHealth(service: string) {
+  return {
+    status: 'ok',
+    service,
+    version: '5.0.0',
+    timestamp: '2026-05-02T00:00:00.000Z',
+  }
+}
+
+function apexReport(
+  overrides: Partial<ApexBridgeHealthReport['checks'][number]>[] = [],
+): ApexBridgeHealthReport {
+  const base: ApexBridgeHealthReport['checks'] = [
+    {
+      id: 'workspace',
+      service: 'Apex workspace bridge',
+      url: 'http://127.0.0.1:8797',
+      status: 'passed',
+      summary: 'Apex workspace bridge is reachable.',
+      health: apexHealth('apex-workspace-api'),
+    },
+    {
+      id: 'chrono',
+      service: 'Apex Chrono bridge',
+      url: 'http://127.0.0.1:8798',
+      status: 'passed',
+      summary: 'Apex Chrono bridge is reachable.',
+      health: apexHealth('chrono-bridge'),
+    },
+    {
+      id: 'browser',
+      service: 'Apex browser bridge',
+      url: 'http://127.0.0.1:8799',
+      status: 'passed',
+      summary: 'Apex browser bridge is reachable.',
+      health: apexHealth('browser-bridge'),
+    },
+  ]
+  const checks = base.map(check => ({
+    ...check,
+    ...overrides.find(override => override.id === check.id),
+  }))
+  return {
+    status: checks.some(check => check.status === 'failed')
+      ? 'failed'
+      : checks.some(check => check.status === 'warning')
+        ? 'warning'
+        : 'passed',
+    checkedAt: '2026-05-02T00:00:00.000Z',
+    checks,
+  }
+}
+
+const readyApexRunner = async () => apexReport()
+
 describe('service-route-health', () => {
   test('keeps public routes required while separating repo packages from provisioning', async () => {
     const report = await runServiceRouteHealth({
       fetchImpl: makeFetch(),
       env: EMPTY_ENV,
       timeoutMs: 1,
+      apexBridgeHealthRunner: readyApexRunner,
     })
 
     expect(report.status).toBe('warning')
@@ -141,6 +198,7 @@ describe('service-route-health', () => {
         NETLIFY_AUTH_TOKEN: 'netlify-token',
       },
       timeoutMs: 1,
+      apexBridgeHealthRunner: readyApexRunner,
     })
 
     expect(
@@ -179,6 +237,7 @@ describe('service-route-health', () => {
       }),
       env: EMPTY_ENV,
       timeoutMs: 1,
+      apexBridgeHealthRunner: readyApexRunner,
     })
 
     expect(report.failures).toHaveLength(0)
@@ -220,6 +279,7 @@ describe('service-route-health', () => {
         AROBI_LAAS_API_TOKEN: 'laas-token',
       },
       timeoutMs: 1,
+      apexBridgeHealthRunner: readyApexRunner,
     })
 
     expect(report.status).toBe('warning')
@@ -269,6 +329,7 @@ describe('service-route-health', () => {
         Q_HOSTED_SERVICE_BASE_URL: 'https://api.qline.site',
       },
       timeoutMs: 1,
+      apexBridgeHealthRunner: readyApexRunner,
     })
 
     expect(
@@ -298,6 +359,7 @@ describe('service-route-health', () => {
           USERPROFILE: home,
         },
         timeoutMs: 1,
+        apexBridgeHealthRunner: readyApexRunner,
       })
 
       const laasConfig = report.checks.find(check => check.id === 'arobi-laas-config')
@@ -321,6 +383,42 @@ describe('service-route-health', () => {
     }
   })
 
+  test('does not pass untrusted Apex local listeners as healthy routes', async () => {
+    const report = await runServiceRouteHealth({
+      fetchImpl: makeFetch(),
+      env: EMPTY_ENV,
+      timeoutMs: 1,
+      apexBridgeHealthRunner: async () =>
+        apexReport([
+          {
+            id: 'browser',
+            status: 'warning',
+            summary:
+              'Apex browser bridge has a local listener, but it is not trusted by this OpenJaws session.',
+            health: null,
+            listenerHealth: apexHealth('browser-bridge'),
+          },
+        ]),
+    })
+
+    expect(report.status).toBe('warning')
+    expect(
+      report.checks.find(check => check.id === 'apex-browser-local'),
+    ).toMatchObject({
+      status: 'warning',
+      httpStatus: 200,
+      summary:
+        'Apex browser bridge has a local listener, but it is not trusted by this OpenJaws session.',
+      details: {
+        source: 'apex-bridge-health',
+        health: null,
+        listenerHealth: {
+          service: 'browser-bridge',
+        },
+      },
+    })
+  })
+
   test('fails closed when a required public route is unhealthy', async () => {
     const report = await runServiceRouteHealth({
       fetchImpl: makeFetch({
@@ -328,6 +426,7 @@ describe('service-route-health', () => {
       }),
       env: EMPTY_ENV,
       timeoutMs: 1,
+      apexBridgeHealthRunner: readyApexRunner,
     })
 
     expect(report.status).toBe('failed')

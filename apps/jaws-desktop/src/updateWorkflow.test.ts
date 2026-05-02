@@ -12,13 +12,13 @@ import {
 } from "./updateWorkflow";
 
 const releaseIndex: JawsReleaseIndex = {
-  version: "0.1.7",
-  tag: "jaws-v0.1.7",
+  version: "0.1.8",
+  tag: "jaws-v0.1.8",
   repo: "PossumXI/OpenJaws",
   github: {
-    releaseUrl: "https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.7",
-    apiUrl: "https://api.github.com/repos/PossumXI/OpenJaws/releases/tags/jaws-v0.1.7",
-    baseAssetUrl: "https://github.com/PossumXI/OpenJaws/releases/download/jaws-v0.1.7"
+    releaseUrl: "https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.8",
+    apiUrl: "https://api.github.com/repos/PossumXI/OpenJaws/releases/tags/jaws-v0.1.8",
+    baseAssetUrl: "https://github.com/PossumXI/OpenJaws/releases/download/jaws-v0.1.8"
   },
   mirrors: [
     {
@@ -51,26 +51,26 @@ describe("JAWS update workflow", () => {
       expect.objectContaining({ id: "runtime", status: "ready" }),
       expect.objectContaining({ id: "qline", detail: "https://qline.site/downloads/jaws/latest.json" }),
       expect.objectContaining({ id: "iorch", detail: "https://iorch.net/downloads/jaws/latest.json" }),
-      expect.objectContaining({ id: "github", detail: "jaws-v0.1.7 downloads" })
+      expect.objectContaining({ id: "github", detail: "jaws-v0.1.8 downloads" })
     ]);
 
     expect(createPreviewUpdatePipeline(releaseIndex)).toContainEqual(
       expect.objectContaining({
         id: "manifest",
         status: "info",
-        detail: "https://github.com/PossumXI/OpenJaws/releases/download/jaws-v0.1.7/latest.json"
+        detail: "https://github.com/PossumXI/OpenJaws/releases/download/jaws-v0.1.8/latest.json"
       })
     );
   });
 
   test("shows install now/later prompt when startup finds a signed update", () => {
-    const workflow = resolveUpdateSuccess("0.1.7", probeEntries);
+    const workflow = resolveUpdateSuccess("0.1.8", probeEntries);
 
-    expect(workflow.updateState).toBe("Update 0.1.7 ready");
+    expect(workflow.updateState).toBe("Update 0.1.8 ready");
     expect(workflow.promptHidden).toBe(false);
     expect(workflow.openNotificationTray).toBe(true);
     expect(workflow.notice).toEqual({
-      title: "JAWS 0.1.7 ready",
+      title: "JAWS 0.1.8 ready",
       detail: "A signed update is available. Choose Install Now or Later from the top bar or Settings.",
       tone: "update"
     });
@@ -78,7 +78,7 @@ describe("JAWS update workflow", () => {
       id: "runtime",
       label: "Update check",
       status: "ok",
-      detail: "JAWS 0.1.7 is ready to install."
+      detail: "JAWS 0.1.8 is ready to install."
     });
   });
 
@@ -94,7 +94,7 @@ describe("JAWS update workflow", () => {
   test("keeps manual check, failure, and later-deferral semantics explicit", () => {
     expect(shouldResetDeferredPrompt("startup")).toBe(false);
     expect(shouldResetDeferredPrompt("manual")).toBe(true);
-    expect(formatDeferredUpdateState("0.1.7")).toBe("Update 0.1.7 deferred for this session");
+    expect(formatDeferredUpdateState("0.1.8")).toBe("Update 0.1.8 deferred for this session");
 
     expect(markUpdatePipelineChecking(probeEntries)[0]).toMatchObject({
       status: "checking",

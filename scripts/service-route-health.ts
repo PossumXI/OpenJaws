@@ -3,6 +3,10 @@ import { dirname, join, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { resolveOciQRuntime } from '../src/utils/ociQRuntime.js'
 import {
+  runApexBridgeHealth,
+  type ApexBridgeHealthReport,
+} from './apex-bridge-health.ts'
+import {
   JAWS_RELEASE_API_URL,
   JAWS_RELEASE_PREVIOUS_PATCH_VERSION,
   JAWS_RELEASE_TAG,
@@ -65,6 +69,9 @@ type ServiceRouteHealthOptions = {
   env?: NodeJS.ProcessEnv
   timeoutMs?: number
   strictPrivate?: boolean
+  apexBridgeHealthRunner?: (options: {
+    strict: boolean
+  }) => Promise<ApexBridgeHealthReport>
 }
 
 type NetlifyEnvMetadata = {
@@ -249,28 +256,13 @@ const LOCAL_HTTP_ROUTES: HttpRouteDefinition[] = [
     url: 'http://127.0.0.1:8790/health',
     expectedStatuses: [200],
   },
-  {
-    id: 'apex-workspace-local',
-    service: 'Apex workspace bridge',
-    audience: ['admin', 'local'],
-    url: 'http://127.0.0.1:8797/health',
-    expectedStatuses: [200],
-  },
-  {
-    id: 'apex-chrono-local',
-    service: 'Apex Chrono bridge',
-    audience: ['admin', 'local'],
-    url: 'http://127.0.0.1:8798/health',
-    expectedStatuses: [200],
-  },
-  {
-    id: 'apex-browser-local',
-    service: 'Apex browser bridge',
-    audience: ['admin', 'local'],
-    url: 'http://127.0.0.1:8799/health',
-    expectedStatuses: [200],
-  },
 ]
+
+const APEX_BRIDGE_ROUTE_IDS = {
+  workspace: 'apex-workspace-local',
+  chrono: 'apex-chrono-local',
+  browser: 'apex-browser-local',
+} as const
 
 function isConcreteConfigValue(value: string | undefined): value is string {
   const trimmed = value?.trim()
@@ -569,6 +561,26 @@ async function checkHttpRoute(
       },
     }
   }
+}
+
+function buildApexBridgeRouteChecks(
+  report: ApexBridgeHealthReport,
+): ServiceRouteCheck[] {
+  return report.checks.map(check => ({
+    id: APEX_BRIDGE_ROUTE_IDS[check.id],
+    service: check.service,
+    audience: ['admin', 'local'],
+    status: check.status,
+    url: joinHealthUrl(check.url),
+    httpStatus: check.health || check.listenerHealth ? 200 : null,
+    summary: check.summary,
+    details: {
+      health: check.health,
+      listenerHealth: check.listenerHealth ?? null,
+      start: check.start ?? null,
+      source: 'apex-bridge-health',
+    },
+  }))
 }
 
 async function checkJawsReleasePublished(
@@ -1176,9 +1188,13 @@ export async function runServiceRouteHealth(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const strictPrivate = options.strictPrivate ?? false
   const env = options.env ?? process.env
+  const apexBridgeHealthRunner =
+    options.apexBridgeHealthRunner ?? ((runnerOptions: { strict: boolean }) =>
+      runApexBridgeHealth({ strict: runnerOptions.strict }))
   const checks: ServiceRouteCheck[] = []
   const jawsReleasePublished = await checkJawsReleasePublished(fetchImpl, timeoutMs)
   const external = await buildExternalServiceConfig(fetchImpl, env, timeoutMs)
+  const apexBridgeHealth = await apexBridgeHealthRunner({ strict: strictPrivate })
 
   for (const route of PUBLIC_HTTP_ROUTES) {
     checks.push(await checkHttpRoute(route, { fetchImpl, timeoutMs, strictPrivate, jawsReleasePublished }))
@@ -1189,6 +1205,7 @@ export async function runServiceRouteHealth(
   for (const route of LOCAL_HTTP_ROUTES) {
     checks.push(await checkHttpRoute(route, { fetchImpl, timeoutMs, strictPrivate, jawsReleasePublished }))
   }
+  checks.push(...buildApexBridgeRouteChecks(apexBridgeHealth))
   checks.push(...buildConfigurationChecks(env, external))
 
   const counts = countStatuses(checks)
