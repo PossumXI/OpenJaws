@@ -2397,6 +2397,33 @@ p {
   width: 100%;
 }
 
+.preview-external-card {
+  align-content: center;
+  background:
+    linear-gradient(135deg, rgba(120, 214, 163, 0.12), transparent 36%),
+    rgba(255, 255, 255, 0.03);
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+  min-height: 420px;
+  padding: 28px;
+}
+
+.preview-external-card svg {
+  color: var(--accent);
+}
+
+.preview-external-card strong {
+  color: var(--text);
+  font-size: 1.2rem;
+}
+
+.preview-external-card p {
+  color: var(--muted);
+  line-height: 1.55;
+  max-width: 560px;
+}
+
 .preview-side,
 .playwright-panel,
 .receipt-panel {
@@ -2505,6 +2532,81 @@ p {
 .receipt-card small,
 .receipt-card.empty span {
   color: var(--muted);
+}
+
+.ledger-page {
+  display: grid;
+  gap: 18px;
+}
+
+.ledger-hero,
+.ledger-events-panel {
+  min-width: 0;
+}
+
+.ledger-metrics,
+.ledger-boundary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ledger-warning-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ledger-warning-list span {
+  background: rgba(255, 209, 102, 0.08);
+  border: 1px solid rgba(255, 209, 102, 0.22);
+  border-radius: 8px;
+  color: var(--muted);
+  padding: 10px 12px;
+}
+
+.ledger-event-list {
+  display: grid;
+  gap: 12px;
+}
+
+.ledger-event-card {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.ledger-event-card header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.ledger-event-card header strong,
+.ledger-event-card p,
+.ledger-event-card small {
+  overflow-wrap: anywhere;
+}
+
+.ledger-event-card header span {
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.ledger-event-card p,
+.ledger-event-card small {
+  color: var(--muted);
+}
+
+.ledger-event-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .arcade-panel {

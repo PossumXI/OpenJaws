@@ -126,13 +126,13 @@ Windows bundle smoke, run locally on 2026-04-29:
 
 0.1.2 adds the native Settings page, keeps update checks available from Settings, replaces the in-app image logo with a CSS/React JAWS mark so the shell cannot render a broken image, keeps regenerated native installer icons, upgrades Chat into a slimmer animated workstream with per-message activity markers and a bounded `openjaws --print` sidecar bridge, adds the animated Cyber Frog pet loop, adds user and agent profile areas, adds native Open Folder workspace selection, renames the arcade runner to Slow Guy, and keeps the desktop release version aligned across `package.json`, `tauri.conf.json`, `Cargo.toml`, and `Cargo.lock`.
 
-0.1.6 release-candidate mirrors for the next public update:
+0.1.7 release-candidate mirrors for the next public update:
 
 - `https://qline.site/downloads/jaws`
 - `https://iorch.net/downloads/jaws`
-- `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.6`
+- `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.7`
 
-Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries. Both `qline.site` and `iorch.net` also expose `/api/jaws/<target>/<arch>/<current_version>` so existing tester installs can discover the signed 0.1.6 update through the Tauri updater endpoint after the tag workflow publishes artifacts.
+Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries. Both `qline.site` and `iorch.net` also expose `/api/jaws/<target>/<arch>/<current_version>` so existing tester installs can discover the signed 0.1.7 update through the Tauri updater endpoint after the tag workflow publishes artifacts.
 
 Mirror health gate:
 
@@ -240,6 +240,16 @@ Notification durability pass, run on 2026-05-01:
 - This release carries the merged real-world Discord engagement default workspace fix so plain-English Discord jobs without a named project route through the approved `OpenJaws` workspace alias instead of entering the operator lane with an empty workspace.
 - This release carries the merged pre-publish JAWS artifact guard, so the tag workflow verifies required installers, required signatures, `latest.json`, release-index tag/version alignment, and updater platform URLs before the GitHub release becomes public.
 - Release operators should merge the 0.1.6 prep branch, wait for main CI/System Check/Security to pass, push the `jaws-v0.1.6` tag from the exact green main commit, and then run `bun run jaws:mirror:check` after the GitHub release publishes.
+
+0.1.7 runtime blocker repair pass, prepared on 2026-05-02:
+
+- Desktop package, Tauri app config, Cargo metadata, Cargo lockfile package entry, and generated release index align on `0.1.7` so already-current `0.1.6` installs can receive this repair pass through the updater.
+- Provider checks now run from the selected project folder, or from `OPENJAWS_CONFIG_DIR/jaws-desktop-runtime` when no folder is selected, so OpenJaws trace/artifact writes never fall back to `C:\WINDOWS\system32\artifacts`.
+- Broad "analyze/inspect the workspace" chat requests now use the native Context Brain plus Ledger reader and return a bounded summary immediately. Code, edit, preview, and agent work still route through the OpenJaws/Q sidecar path.
+- Browser Preview embeds local app URLs only. Public sites that block framing open in a dedicated native JAWS preview window and write browser-preview history receipts instead of showing a blank/broken iframe.
+- The Ledger page now reads local Q route queue receipts, browser-preview receipts, generated website-test receipts, and workspace account/credit ledger files. It reports a local-only warning until an AROBI LAAS route/token is configured.
+- Verification for this pass: `bun test apps/jaws-desktop/src/previewUrl.test.ts`, `bun run --cwd apps/jaws-desktop test`, `bun run --cwd apps/jaws-desktop build`, `cargo test --manifest-path apps/jaws-desktop/src-tauri/Cargo.toml`, and `cargo check --manifest-path apps/jaws-desktop/src-tauri/Cargo.toml`.
+- Release operators should merge the 0.1.7 repair branch, wait for main CI/System Check/Security to pass, push the `jaws-v0.1.7` tag from the exact green main commit, watch the JAWS Desktop workflow publish the signed assets, and then run `bun run jaws:mirror:check` after the GitHub release and mirror routes resolve to 0.1.7.
 
 Implementation references:
 

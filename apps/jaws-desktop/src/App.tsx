@@ -111,7 +111,7 @@ import {
   type NativeInferenceStatusResult
 } from "./inference";
 import releaseIndex from "./release-index.json";
-import { normalizePreviewFrameUrl } from "./previewUrl";
+import { canRenderPreviewInline, normalizePreviewFrameUrl } from "./previewUrl";
 import {
   createInitialUpdatePipeline,
   createPreviewUpdatePipeline,
@@ -297,6 +297,13 @@ interface BrowserPreviewSnapshot {
   sessions: BrowserPreviewSessionSummary[];
 }
 
+interface PreviewWindowResult {
+  ok: boolean;
+  url: string;
+  label: string;
+  message: string;
+}
+
 interface PreviewLaunchConfigResult {
   ok: boolean;
   path: string;
@@ -327,6 +334,32 @@ interface PreviewDemoHarnessResult {
   specPath: string;
   receiptPath: string;
   receiptHash: string;
+}
+
+interface LedgerEventSummary {
+  id: string;
+  time: string;
+  actor: string;
+  action: string;
+  surface: string;
+  status: string;
+  proof: string;
+  detail: string;
+  riskTier: number;
+}
+
+interface LedgerSnapshot {
+  checkedAt: string;
+  source: string;
+  configured: boolean;
+  summary: string;
+  eventCount: number;
+  agentEventCount: number;
+  browserEventCount: number;
+  creditEventCount: number;
+  externalRouteConfigured: boolean;
+  events: LedgerEventSummary[];
+  warnings: string[];
 }
 
 interface QAgentsCoworkControl {
@@ -443,6 +476,20 @@ const fallbackPreviewSnapshot: BrowserPreviewSnapshot = {
   playwrightCodegenCommand: "bunx playwright codegen http://127.0.0.1:5173/",
   playwrightTestCommand: "bunx playwright test",
   sessions: []
+};
+
+const fallbackLedgerSnapshot: LedgerSnapshot = {
+  checkedAt: "preview",
+  source: "Open the desktop app to read local receipts.",
+  configured: false,
+  summary: "Ledger waits for agent, browser, billing, or credit receipts from the selected workspace.",
+  eventCount: 0,
+  agentEventCount: 0,
+  browserEventCount: 0,
+  creditEventCount: 0,
+  externalRouteConfigured: false,
+  events: [],
+  warnings: ["Desktop runtime required for local ledger scan."]
 };
 
 const fallbackCoworkPlan: QAgentsCoworkPlan = {
@@ -848,9 +895,12 @@ export function App() {
   const [previewConfigResult, setPreviewConfigResult] = useState<PreviewLaunchConfigResult | null>(null);
   const [previewDemoResult, setPreviewDemoResult] = useState<PreviewDemoHarnessResult | null>(null);
   const [previewRunResult, setPreviewRunResult] = useState<OpenJawsChatResult | null>(null);
+  const [previewWindowResult, setPreviewWindowResult] = useState<PreviewWindowResult | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [browserControlMode, setBrowserControlMode] = useState<"user" | "agent-review" | "agent-approved">("user");
   const [browserTaskInput, setBrowserTaskInput] = useState("");
+  const [ledgerSnapshot, setLedgerSnapshot] = useState<LedgerSnapshot>(fallbackLedgerSnapshot);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
   const [coworkPlan, setCoworkPlan] = useState<QAgentsCoworkPlan>(fallbackCoworkPlan);
   const [coworkStackMode, setCoworkStackMode] = useState<"solo" | "pair" | "stacked">("stacked");
   const [coworkSharedCredits, setCoworkSharedCredits] = useState(fallbackCoworkPlan.pooledCredits);
@@ -1037,6 +1087,7 @@ export function App() {
       fallbackPreviewSnapshot.launchUrl
     );
   }, [previewSnapshot.launchUrl, previewUrl]);
+  const previewCanRenderInline = useMemo(() => canRenderPreviewInline(previewFrameUrl), [previewFrameUrl]);
   const contextLabel = contextConfidenceLabel(projectContext);
   const contextCoverage = contextScanRatio(projectContext);
   const contextBudgetPercent = projectContext.contextBudgetTokens
@@ -1061,6 +1112,11 @@ export function App() {
   useEffect(() => {
     if (active !== "preview") return;
     void refreshBrowserPreview();
+  }, [active]);
+
+  useEffect(() => {
+    if (active !== "ledger") return;
+    void refreshLedger();
   }, [active]);
 
   useEffect(() => {
@@ -1376,6 +1432,36 @@ export function App() {
     }
   }
 
+  async function openNativeBrowserPreview() {
+    setPreviewWindowResult(null);
+
+    if (!hasTauriRuntime()) {
+      await openExternal(previewFrameUrl);
+      setPreviewWindowResult({
+        ok: true,
+        url: previewFrameUrl,
+        label: "system-browser",
+        message: "Opened in the system browser."
+      });
+      return;
+    }
+
+    try {
+      const result = await invoke<PreviewWindowResult>("open_browser_preview_window", {
+        url: previewFrameUrl
+      });
+      setPreviewWindowResult(result);
+      await refreshBrowserPreview();
+    } catch (error) {
+      setPreviewWindowResult({
+        ok: false,
+        url: previewFrameUrl,
+        label: "",
+        message: String(error)
+      });
+    }
+  }
+
   async function saveBrowserPreviewLaunchConfig() {
     const workspacePath = workspaceStatus.path || workspaceSelection.cleaned;
     if (!hasTauriRuntime()) {
@@ -1444,6 +1530,26 @@ export function App() {
     const prompt = previewSnapshot.previewCommand || `/preview ${previewFrameUrl}`;
     setPreviewBusy(true);
     setPreviewRunResult(null);
+    setPreviewWindowResult(null);
+
+    if (!previewCanRenderInline) {
+      try {
+        await openNativeBrowserPreview();
+        setPreviewRunResult({
+          ok: true,
+          code: 0,
+          stdout:
+            "External sites often block embedded frames. JAWS opened this target in a dedicated native preview window instead.",
+          stderr: "",
+          summary: "Browser preview opened outside the embedded frame.",
+          permissionMode: "browser-preview",
+          workspacePath: workspaceStatus.path || workspaceSelection.cleaned || ""
+        });
+      } finally {
+        setPreviewBusy(false);
+      }
+      return;
+    }
 
     if (!hasTauriRuntime()) {
       setPreviewRunResult({
@@ -1481,6 +1587,32 @@ export function App() {
       });
     } finally {
       setPreviewBusy(false);
+    }
+  }
+
+  async function refreshLedger() {
+    setLedgerLoading(true);
+
+    if (!hasTauriRuntime()) {
+      setLedgerSnapshot(fallbackLedgerSnapshot);
+      setLedgerLoading(false);
+      return;
+    }
+
+    try {
+      const snapshot = await invoke<LedgerSnapshot>("arobi_ledger_snapshot", {
+        workspacePath: workspaceStatus.path || workspaceSelection.cleaned || null
+      });
+      setLedgerSnapshot(snapshot);
+    } catch (error) {
+      setLedgerSnapshot({
+        ...fallbackLedgerSnapshot,
+        checkedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        summary: `Ledger scan failed: ${String(error)}`,
+        warnings: ["The local ledger reader could not finish."]
+      });
+    } finally {
+      setLedgerLoading(false);
     }
   }
 
@@ -1749,7 +1881,8 @@ export function App() {
       const result = await invoke<NativeInferenceStatusResult>("openjaws_inference_status", {
         provider: inferenceProfile.provider,
         model: inferenceProfile.model,
-        runProbe
+        runProbe,
+        workspacePath: activeChatWindow.workspacePath || workspaceStatus.path || workspaceSelection.cleaned || null
       });
       const next = buildInferenceStatusFromNative(result, inferenceProfile);
       setInferenceStatus(next);
@@ -2554,12 +2687,33 @@ JAWS will use this folder for chat, terminal, preview, and agent work.`}
                     <span />
                     <strong>{previewFrameUrl}</strong>
                   </div>
-                  <iframe
-                    title="JAWS browser preview"
-                    src={previewFrameUrl}
-                    sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-scripts"
-                    referrerPolicy="no-referrer"
-                  />
+                  {previewCanRenderInline ? (
+                    <iframe
+                      title="JAWS browser preview"
+                      src={previewFrameUrl}
+                      sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-same-origin allow-scripts"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="preview-external-card">
+                      <MonitorPlay size={32} />
+                      <strong>Open in native preview</strong>
+                      <p>
+                        External sites often block embedded frames. Local apps render here; public sites open in a
+                        dedicated JAWS preview window and still write a browser history receipt.
+                      </p>
+                      <div className="button-row">
+                        <button className="text-button primary" type="button" onClick={openNativeBrowserPreview}>
+                          <ExternalLink size={16} />
+                          Open Native
+                        </button>
+                        <button className="text-button" type="button" onClick={() => openExternal(previewFrameUrl)}>
+                          <ExternalLink size={16} />
+                          System Browser
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </section>
 
                 <aside className="preview-side">
@@ -2635,6 +2789,16 @@ JAWS will use this folder for chat, terminal, preview, and agent work.`}
                   <StatusLine label="Launch config" value={previewSnapshot.launchConfigExists ? previewSnapshot.launchConfigPath : "Not saved"} />
                   <StatusLine label="History" value={previewSnapshot.receiptExists ? previewSnapshot.receiptPath : "No runs yet"} />
                   <StatusLine label="Sessions" value={String(previewSnapshot.sessionCount)} />
+                  <StatusLine label="Render mode" value={previewCanRenderInline ? "Embedded local app" : "Native external window"} />
+                  {previewWindowResult && (
+                    <div className={previewWindowResult.ok ? "workspace-state ready" : "workspace-state blocked"}>
+                      {previewWindowResult.ok ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
+                      <div>
+                        <strong>{previewWindowResult.ok ? "Preview opened" : "Preview blocked"}</strong>
+                        <span>{previewWindowResult.message}</span>
+                      </div>
+                    </div>
+                  )}
                 </aside>
               </div>
             </div>
@@ -3127,10 +3291,32 @@ JAWS will use this folder for chat, terminal, preview, and agent work.`}
         )}
 
         {active === "ledger" && (
-          <section className="split-view">
-            <div className="wide-panel">
-              <PanelHeader icon={ReceiptIcon} label="Arobi Ledger" />
-              <p className="panel-copy">Your account and credit records stay separate from chat. JAWS adds them only when you approve it.</p>
+          <section className="ledger-page">
+            <div className="wide-panel ledger-hero">
+              <div className="panel-header-row">
+                <PanelHeader icon={ReceiptIcon} label="Arobi Ledger" />
+                <button className="text-button" type="button" onClick={refreshLedger} disabled={ledgerLoading}>
+                  <RefreshCcw size={16} />
+                  {ledgerLoading ? "Reading" : "Refresh"}
+                </button>
+              </div>
+              <p className="panel-copy">{ledgerSnapshot.summary}</p>
+              <div className="runtime-source-card ledger-metrics">
+                <StatusLine label="Events" value={String(ledgerSnapshot.eventCount)} />
+                <StatusLine label="Agents" value={String(ledgerSnapshot.agentEventCount)} />
+                <StatusLine label="Browser/tests" value={String(ledgerSnapshot.browserEventCount)} />
+                <StatusLine label="Credits/account" value={String(ledgerSnapshot.creditEventCount)} />
+                <StatusLine label="LAAS route" value={ledgerSnapshot.externalRouteConfigured ? "Configured" : "Local only"} />
+                <StatusLine label="Checked" value={ledgerSnapshot.checkedAt} />
+              </div>
+              <StatusLine label="Source" value={ledgerSnapshot.source} />
+              {ledgerSnapshot.warnings.length > 0 && (
+                <div className="ledger-warning-list">
+                  {ledgerSnapshot.warnings.map((warning) => (
+                    <span key={warning}>{warning}</span>
+                  ))}
+                </div>
+              )}
               <div className="link-row">
                 {links.map((link) => (
                   <button className="text-button" type="button" key={link.url} onClick={() => openExternal(link.url)}>
@@ -3140,12 +3326,48 @@ JAWS will use this folder for chat, terminal, preview, and agent work.`}
                 ))}
               </div>
             </div>
+
+            <div className="wide-panel ledger-events-panel">
+              <PanelHeader icon={CircleDot} label="Audit Events" />
+              <div className="ledger-event-list">
+                {ledgerSnapshot.events.length > 0 ? (
+                  ledgerSnapshot.events.map((event) => (
+                    <article className="ledger-event-card" key={`${event.surface}-${event.id}`}>
+                      <header>
+                        <strong>{event.action}</strong>
+                        <span>{event.status}</span>
+                      </header>
+                      <div className="ledger-event-grid">
+                        <StatusLine label="Actor" value={event.actor} />
+                        <StatusLine label="Surface" value={event.surface} />
+                        <StatusLine label="Risk" value={`Tier ${event.riskTier}`} />
+                        <StatusLine label="Proof" value={event.proof} />
+                      </div>
+                      <p>{event.detail}</p>
+                      <small>{event.time || event.id}</small>
+                    </article>
+                  ))
+                ) : (
+                  <article className="ledger-event-card empty">
+                    <strong>No receipts found</strong>
+                    <p>Run an agent task, browser preview, website test, checkout, or credit event to populate this audit view.</p>
+                  </article>
+                )}
+              </div>
+            </div>
+
             <div className="wide-panel">
-              <PanelHeader icon={CircleDot} label="Trial State" />
-              <StatusLine label="Plan" value="JAWS IDE" />
-              <StatusLine label="Trial" value="14 days" />
-              <StatusLine label="Subscription" value="$12.99/mo" />
-              <StatusLine label="Q credits" value="Separate balance" />
+              <PanelHeader icon={ShieldCheck} label="Account Boundary" />
+              <div className="ledger-boundary-grid">
+                <StatusLine label="Plan" value="JAWS IDE" />
+                <StatusLine label="Trial" value="14 days" />
+                <StatusLine label="Subscription" value="$12.99/mo" />
+                <StatusLine label="Q credits" value="Separate balance" />
+              </div>
+              <p className="panel-copy">
+                Chat, agent work, billing, and credit events stay as separate receipts. JAWS shows the proof here only
+                after a local receipt exists or an Arobi LAAS route is configured.
+              </p>
             </div>
           </section>
         )}

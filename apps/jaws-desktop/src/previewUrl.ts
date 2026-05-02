@@ -23,3 +23,16 @@ export function normalizePreviewFrameUrl(input: string, fallback = DEFAULT_PREVI
     return fallbackValue;
   }
 }
+
+export function canRenderPreviewInline(input: string): boolean {
+  try {
+    const url = new URL(normalizePreviewFrameUrl(input));
+    const host = url.hostname.toLowerCase();
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      (host === "localhost" || host === "127.0.0.1" || host === "::1")
+    );
+  } catch {
+    return false;
+  }
+}

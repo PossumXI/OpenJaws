@@ -3,6 +3,11 @@
 ## 2.1.88 - 2026-04-22
 
 - Runtime source-drift checks now count tracked file changes without scanning untracked dependency/build trees, keeping the coherence probe responsive on Windows worktrees with large ignored directories.
+- JAWS Desktop now runs provider checks from the selected workspace or a writable JAWS runtime directory instead of inheriting `C:\WINDOWS\system32`, preventing `EPERM` failures when OpenJaws writes session traces and artifacts.
+- JAWS Desktop broad workspace-analysis prompts now use a bounded native context and ledger scan, so "analyze the workspace" returns file coverage, priority files, skips, and audit state instead of waiting on a long model turn until the 120-second chat timeout.
+- JAWS Desktop Browser Preview now treats local apps as embedded targets and opens external frame-blocked sites in a dedicated native preview window with a browser receipt, so public sites like Google do not look like a broken renderer.
+- JAWS Desktop Ledger now reads real local Q route, browser-preview, website-test, account, and credit receipts from the selected workspace and OpenJaws config home, with an explicit local-only warning when no AROBI LAAS route/token is configured.
+- Prepared JAWS Desktop 0.1.7 as the next signed update lane for the runtime blocker repair pass, because the already-published 0.1.6 updater lane correctly returns current/no-update to 0.1.6 installs.
 - Roundtable execution reconciliation now expires stale running leases into visible error receipts and refreshes the status summary, so operators can see which autonomous job stalled instead of repeatedly seeing an old executing line.
 - Runtime coherence Discord agent probes now honor the JSON health status instead of treating any HTTP 200 as healthy, so reconnecting or degraded gateway states show up as actionable warnings.
 - Real-world Discord/OpenJaws engagement requests now choose the highest-risk matching lane, so browser tasks involving forms, resumes, checkout, billing, purchases, account changes, uploads, bookings, or message sending stay in supervised approval mode instead of being treated as ordinary preview work.

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { normalizePreviewFrameUrl } from "./previewUrl";
+import { canRenderPreviewInline, normalizePreviewFrameUrl } from "./previewUrl";
 
 describe("preview URL normalization", () => {
   test("keeps explicit HTTP and HTTPS preview URLs", () => {
@@ -20,5 +20,13 @@ describe("preview URL normalization", () => {
 
   test("strips credentials before mounting the frame", () => {
     expect(normalizePreviewFrameUrl("https://user:pass@example.com/demo")).toBe("https://example.com/demo");
+  });
+
+  test("only local HTTP apps render inside the embedded preview frame", () => {
+    expect(canRenderPreviewInline("http://127.0.0.1:5173")).toBe(true);
+    expect(canRenderPreviewInline("localhost:3000")).toBe(true);
+    expect(canRenderPreviewInline("https://localhost:8443")).toBe(true);
+    expect(canRenderPreviewInline("https://google.com")).toBe(false);
+    expect(canRenderPreviewInline("https://example.com")).toBe(false);
   });
 });
