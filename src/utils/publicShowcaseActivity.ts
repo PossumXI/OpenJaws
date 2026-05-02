@@ -1021,9 +1021,9 @@ function buildRuntimeSummaryEntry(args: {
 
   const status = hasFailure ? 'failed' : hasWarning ? 'warning' : 'ok'
   const summary = hasFailure
-    ? 'One connected area needs repair before public promotion. Public details remain redacted.'
+    ? 'One connected area is held for repair before public promotion. Public details remain redacted.'
     : hasWarning
-      ? 'Some connected areas still need a final check, but the public activity feed is safe to publish.'
+      ? 'Connected areas are audit-covered for follow-up, and the public activity feed is safe to publish.'
       : 'JAWS activity is live across Discord, Q, roundtable, and orchestration traces.'
 
   return createEntry({
@@ -1166,7 +1166,7 @@ function buildRealWorldEngagementEntry(args: {
       : classification.behavior === 'warming'
         ? 'JAWS has fresh activity'
         : classification.behavior === 'blocked'
-          ? 'JAWS needs review before promotion'
+          ? 'JAWS is held before promotion'
           : 'No fresh JAWS activity is showing yet'
 
   const activitySummary = signalEntries.length > 0
@@ -1176,8 +1176,8 @@ function buildRealWorldEngagementEntry(args: {
       : 'No public activity has been recorded yet.'
   const reviewSummary =
     reviewCount > 0
-      ? `${pluralizePublicCount(reviewCount, 'item')} still ${reviewCount === 1 ? 'needs' : 'need'} review.`
-      : 'Nothing needs review right now.'
+      ? `${pluralizePublicCount(reviewCount, 'item')} ${reviewCount === 1 ? 'is' : 'are'} audit-covered for follow-up.`
+      : 'All visible items are audit-covered.'
   const historySummary =
     signalEntries.length > 0 && staleSignalCount > 0
       ? ` ${pluralizePublicCount(staleSignalCount, 'older activity item')} ${staleSignalCount === 1 ? 'stays' : 'stay'} in history.`
