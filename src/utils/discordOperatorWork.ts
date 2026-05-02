@@ -16,6 +16,7 @@ export type DiscordOperatorParsedCommand = {
 }
 
 export type DiscordOperatorRealWorldEngagementLane =
+  | 'supervised_browser_action'
   | 'browser_preview'
   | 'web_research'
   | 'external_communication_draft'
@@ -154,6 +155,20 @@ const REAL_WORLD_ENGAGEMENT_LANES: Array<
   DiscordOperatorRealWorldEngagement & { patterns: RegExp[] }
 > = [
   {
+    lane: 'supervised_browser_action',
+    label: 'supervised browser action',
+    riskTier: 4,
+    requiresApproval: true,
+    toolHints: ['apex-browser', 'operator-approval', 'playwright', 'receipt'],
+    patterns: [
+      /\b(?:fill(?:ing)? out|complete|submit(?:ting)?)\s+(?:an?\s+|the\s+)?(?:form|forms|application|applications|resume|job application|checkout|payment|order|booking|reservation)\b/i,
+      /\b(?:make|making|complete|place)\s+(?:an?\s+|the\s+)?(?:purchase|payment|order|booking|reservation)\b/i,
+      /\b(?:buy|purchase|checkout|pay|payment|billing|subscribe|subscription|refund|cancel\s+(?:subscription|account|order)|book\s+(?:appointment|reservation)|create\s+account|sign\s?up|log\s?in|sign\s?in|account\s+change|change\s+password|upload\s+(?:resume|document|file))\b/i,
+      /\b(?:browser|web\s?browser|agent).+\b(?:fill(?:ing)? out|submit(?:ting)?|application|applications|resume|checkout|purchase|payment|booking|account|sign\s?in|log\s?in|email)\b/i,
+      /\b(?:send|post|publish|message|dm|direct message|contact)\s+(?:an?\s+|the\s+)?(?:email|message|dm|post|customer|lead|client|recruiter|company|person)\b/i,
+    ],
+  },
+  {
     lane: 'external_communication_draft',
     label: 'external communication draft',
     riskTier: 3,
@@ -228,11 +243,21 @@ function classifyRealWorldEngagementText(
   if (!REAL_WORLD_ENGAGEMENT_INTENT.test(content)) {
     return null
   }
-  return (
-    REAL_WORLD_ENGAGEMENT_LANES.find(lane =>
-      lane.patterns.some(pattern => pattern.test(content)),
-    ) ?? null
+  const matchingLanes = REAL_WORLD_ENGAGEMENT_LANES.filter(lane =>
+    lane.patterns.some(pattern => pattern.test(content)),
   )
+  if (matchingLanes.length === 0) {
+    return null
+  }
+  return matchingLanes.reduce((strongest, lane) => {
+    if (lane.riskTier > strongest.riskTier) {
+      return lane
+    }
+    if (lane.riskTier === strongest.riskTier && lane.requiresApproval && !strongest.requiresApproval) {
+      return lane
+    }
+    return strongest
+  })
 }
 
 function extractRealWorldEngagementWorkspaceAndTask(content: string): {
@@ -289,6 +314,11 @@ export function buildRealWorldEngagementPrompt(args: {
   if (args.engagement.lane === 'browser_preview') {
     guardrails.push(
       'For browser preview or demo work, prefer the native Apex browser bridge, /preview receipts, and Playwright demo harnesses before falling back to written instructions.',
+    )
+  }
+  if (args.engagement.lane === 'supervised_browser_action') {
+    guardrails.push(
+      'For supervised browser actions, stop before signing in, submitting forms, sending messages, paying, purchasing, booking, uploading files, or changing accounts. Prepare the steps, evidence, receipt, and exact approval needed first.',
     )
   }
   if (args.engagement.lane === 'web_research') {
