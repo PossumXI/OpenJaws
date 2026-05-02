@@ -67,8 +67,9 @@ bun run services:backend:preflight
 
 That preflight is stricter than package presence. It blocks on missing
 Cloudflare auth, placeholder D1 ids, commented/missing worker routes, missing
-worker secrets, or missing public-site proxy env keys while keeping all secret
-values out of the receipt. It exits nonzero until ready; use
+worker secrets, missing public-site proxy env keys, or any Q release-audit trace
+that is active, stale, failed, timed out, cancelled, or missing successful probe
+evidence while keeping all secret values out of the receipt. It exits nonzero until ready; use
 `--allow-blocked` only for report-only automation.
 
 When a route or config class reports `not_configured`, use the check-level
