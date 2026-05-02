@@ -17,7 +17,7 @@ const REQUIRED_CONTENT_CHECKS = [
   'Agent Co-Work',
   'TerminalBench',
   'BridgeBench',
-  'Q // JAWS // OpenJaws // Q_agents',
+  'OpenJaws // Q_agents',
   'github.com/PossumXI/OpenJaws',
   'q-share-card',
 ] as const

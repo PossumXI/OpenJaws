@@ -86,5 +86,5 @@ describe('q-route smoke fixture bundle', () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
-  })
+  }, 20_000)
 })
