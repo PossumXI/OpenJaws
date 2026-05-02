@@ -134,7 +134,7 @@ Windows bundle smoke, run locally on 2026-04-29:
 
 Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries. Both `qline.site` and `iorch.net` also expose `/api/jaws/<target>/<arch>/<current_version>` so existing tester installs can discover the signed 0.1.9 update through the Tauri updater endpoint.
 
-Live deploy receipt: qline.site published deploy `69f5975f836dbc8c6ba76c1a`; iorch.net published deploy `69f597993ff67a92f9f37697`; `bun run jaws:mirror:check` passed 30 checks for `jaws-v0.1.9` on 2026-05-02.
+Live deploy receipt: qline.site published deploy `69f59939b5bb2d7265cbf0ac`; iorch.net published deploy `69f597993ff67a92f9f37697`; `bun run jaws:mirror:check` passed 30 checks for `jaws-v0.1.9` on 2026-05-02.
 
 The 0.1.8 tag lane remains the published browser-work lane. The 0.1.9 workflow keeps the signed app updater artifact path and creates the public DMG with a direct `hdiutil` package step to reduce release risk in the macOS packaging stage.
 
