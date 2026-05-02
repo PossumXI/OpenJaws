@@ -64,13 +64,28 @@ bun run service:routes
 
 `services:backend:preflight` is the deployment gate before the remote commands.
 It verifies the worker package, D1 migration files, concrete `database_id`,
-uncommented Cloudflare route patterns, Cloudflare account auth, worker secret
-key presence, and qline/iorch proxy env key presence. It prints key names and
-missing classes only, never token values. The JSON receipt includes
+uncommented Cloudflare route patterns, Cloudflare account auth, privileged
+worker secret key presence, Resend mail env presence, qline/iorch durable
+backend proxy env key presence, and a fresh local Q trace for release-audit
+signoff. It prints key names and missing classes only, never token values. The
+JSON receipt includes
 `missingByCheck` and `blockedActions` so the next operator can see the exact
 reason a deploy is blocked and the next safe action to take. The command exits
 nonzero while blocked. For a report-only receipt, run
 `bun scripts/hosted-q-provisioning-preflight.ts --json --allow-blocked`.
+
+The current production database adapter in this repo is Cloudflare D1 through
+the `Q_HOSTED_DB` binding. A raw SQL or OCI database credential is not enough by
+itself; if the backend is moved to another database, add and test that adapter
+before marking the durable database check ready.
+
+For release-audit signoff, generate a fresh trace first:
+
+```powershell
+bun run q:soak -- --duration-minutes 1 --max-probes 1
+bun run runtime:coherence
+bun run services:backend:preflight
+```
 
 `bun run service:routes` reports the worker package as present from the repo,
 then keeps hosted-Q, Cloudflare/D1, production database, and mail in

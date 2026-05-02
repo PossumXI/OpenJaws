@@ -9,7 +9,11 @@ function createHostedQRoot(wranglerToml: string): string {
   const serviceRoot = join(root, 'services', 'cloudflare-hosted-q')
   mkdirSync(join(serviceRoot, 'src'), { recursive: true })
   mkdirSync(join(serviceRoot, 'migrations'), { recursive: true })
-  writeFileSync(join(serviceRoot, 'src', 'worker.ts'), 'export default {}\n', 'utf8')
+  writeFileSync(
+    join(serviceRoot, 'src', 'worker.ts'),
+    'export default {}\n',
+    'utf8',
+  )
   writeFileSync(
     join(serviceRoot, 'migrations', '0001_hosted_q.sql'),
     'create table users (id text primary key);\n',
@@ -17,6 +21,54 @@ function createHostedQRoot(wranglerToml: string): string {
   )
   writeFileSync(join(serviceRoot, 'wrangler.toml'), wranglerToml, 'utf8')
   return root
+}
+
+function writeFreshQTrace(root: string, timestamp: string): void {
+  const outputDir = join(root, 'artifacts', 'q-release-audit')
+  mkdirSync(outputDir, { recursive: true })
+  const tracePath = join(outputDir, 'release.trace.jsonl')
+  const sessionId = 'q-release-audit'
+  const baseEvent = {
+    schemaVersion: 'immaculate.event.v1',
+    timestamp,
+    sessionId,
+  }
+  const lines = [
+    {
+      ...baseEvent,
+      type: 'session.started',
+      tracePath,
+      runId: sessionId,
+      sessionScope: 'release-audit',
+    },
+    {
+      ...baseEvent,
+      type: 'route.dispatched',
+      routeId: 'release-route',
+      runId: sessionId,
+      provider: 'oci',
+      model: 'oci:Q',
+      projectRoot: root,
+    },
+    {
+      ...baseEvent,
+      type: 'turn.complete',
+      turnId: 'release-turn',
+      routeId: 'release-route',
+      status: 'completed',
+      latencyMs: 42,
+    },
+    {
+      ...baseEvent,
+      type: 'session.ended',
+      durationMs: 42,
+    },
+  ]
+  writeFileSync(
+    tracePath,
+    `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`,
+    'utf8',
+  )
 }
 
 const PLACEHOLDER_WRANGLER = `
@@ -81,27 +133,39 @@ describe('hosted-q provisioning preflight', () => {
 
     expect(report.status).toBe('blocked')
     expect(report.counts.blocked).toBeGreaterThan(0)
-    expect(report.checks.find(check => check.id === 'worker-package')).toMatchObject({
+    expect(
+      report.checks.find((check) => check.id === 'worker-package'),
+    ).toMatchObject({
       status: 'passed',
     })
-    expect(report.checks.find(check => check.id === 'd1-binding')).toMatchObject({
+    expect(
+      report.checks.find((check) => check.id === 'd1-binding'),
+    ).toMatchObject({
       status: 'blocked',
-      missing: ['services/cloudflare-hosted-q/wrangler.toml database_id'],
+      missing: [
+        'services/cloudflare-hosted-q/wrangler.toml database_id or a tested replacement database adapter',
+      ],
     })
-    expect(report.checks.find(check => check.id === 'worker-routes')).toMatchObject({
+    expect(
+      report.checks.find((check) => check.id === 'worker-routes'),
+    ).toMatchObject({
       status: 'blocked',
       missing: ['wrangler routes'],
     })
     expect(report.missingByCheck).toMatchObject({
-      'd1-binding': ['services/cloudflare-hosted-q/wrangler.toml database_id'],
+      'd1-binding': [
+        'services/cloudflare-hosted-q/wrangler.toml database_id or a tested replacement database adapter',
+      ],
       'worker-routes': ['wrangler routes'],
+      'fresh-q-trace': ['artifacts/q-*/**/*.trace.jsonl'],
     })
     expect(report.blockedActions).toEqual(
       expect.arrayContaining([
         'Create the Cloudflare D1 database, then replace REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID in wrangler.toml.',
         'Uncomment or add Cloudflare routes for the public hosted-Q worker origin before deploy.',
         'Populate the missing keys locally, then run the generated wrangler secret put commands.',
-        'Set Q_HOSTED_SERVICE_BASE_URL to the deployed worker origin and Q_HOSTED_SERVICE_TOKEN to the worker service token on qline.site and iorch.net.',
+        'Set Q_HOSTED_SERVICE_BASE_URL to the deployed worker origin and Q_HOSTED_SERVICE_TOKEN to the worker service token on qline.site and iorch.net; do not use filesystem local mode for production.',
+        'Generate a fresh Q trace with a bounded Q soak or Terminal-Bench dry run, then rerun runtime:coherence before release-audit signoff.',
       ]),
     )
     expect(JSON.stringify(report)).not.toContain('service-token-secret')
@@ -109,6 +173,7 @@ describe('hosted-q provisioning preflight', () => {
 
   test('passes when concrete Cloudflare, D1, secrets, routes, and public site env are present', () => {
     const root = createHostedQRoot(CONFIGURED_WRANGLER)
+    writeFreshQTrace(root, '2026-05-01T00:00:00.000Z')
     const report = buildHostedQProvisioningPreflight({
       root,
       env: READY_ENV,
@@ -117,7 +182,7 @@ describe('hosted-q provisioning preflight', () => {
 
     expect(report.status).toBe('ready')
     expect(report.counts.blocked).toBe(0)
-    expect(report.checks.every(check => check.status === 'passed')).toBe(true)
+    expect(report.checks.every((check) => check.status === 'passed')).toBe(true)
     expect(report.missingByCheck).toEqual({})
     expect(report.blockedActions).toEqual([])
     expect(report.commands).toContain(
@@ -142,19 +207,49 @@ describe('hosted-q provisioning preflight', () => {
       now: new Date('2026-05-01T00:00:00.000Z'),
     })
 
-    expect(report.checks.find(check => check.id === 'worker-secrets')).toMatchObject({
+    expect(
+      report.checks.find((check) => check.id === 'worker-secrets'),
+    ).toMatchObject({
       status: 'blocked',
       missing: [
         'SERVICE_TOKEN',
-        'RESEND_FROM_EMAIL',
         'STRIPE_PRICE_OPERATOR',
         'STRIPE_SUCCESS_URL',
         'STRIPE_CANCEL_URL',
       ],
     })
-    expect(report.checks.find(check => check.id === 'public-site-env')).toMatchObject({
+    expect(
+      report.checks.find((check) => check.id === 'mail-engine'),
+    ).toMatchObject({
+      status: 'blocked',
+      missing: ['RESEND_FROM_EMAIL'],
+    })
+    expect(
+      report.checks.find((check) => check.id === 'public-site-env'),
+    ).toMatchObject({
       status: 'blocked',
       missing: ['Q_HOSTED_SERVICE_TOKEN'],
+    })
+  })
+
+  test('blocks production release when the public proxy is pinned to filesystem mode', () => {
+    const root = createHostedQRoot(CONFIGURED_WRANGLER)
+    writeFreshQTrace(root, '2026-05-01T00:00:00.000Z')
+    const report = buildHostedQProvisioningPreflight({
+      root,
+      env: {
+        ...READY_ENV,
+        Q_HOSTED_SERVICE_LOCAL_MODE: 'filesystem',
+      },
+      now: new Date('2026-05-01T00:00:00.000Z'),
+    })
+
+    expect(report.status).toBe('blocked')
+    expect(
+      report.checks.find((check) => check.id === 'public-site-env'),
+    ).toMatchObject({
+      status: 'blocked',
+      missing: ['Q_HOSTED_SERVICE_LOCAL_MODE=filesystem'],
     })
   })
 })
