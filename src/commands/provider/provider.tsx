@@ -61,6 +61,10 @@ function formatProviderStatus(
   const modelHint = preferredModel
     ? buildExternalProviderModelRef(provider, preferredModel)
     : `unset (env: ${defaults.modelEnvVars.join(', ') || 'none'})`
+  const modelSource =
+    provider === 'oci' && ociRuntime
+      ? ` · upstream ${ociRuntime.modelSource ?? 'not configured'}`
+      : ''
   const baseURL =
     provider === 'oci'
       ? resolveEffectiveOciBaseUrl({
@@ -68,7 +72,7 @@ function formatProviderStatus(
           baseURLSource: resolved?.baseURLSource ?? null,
         })
       : resolved?.baseURL ?? defaults.baseURL
-  return `- ${provider}: model ${modelHint} · key ${keySource} · base URL ${baseURL}`
+  return `- ${provider}: model ${modelHint}${modelSource} · key ${keySource} · base URL ${baseURL}`
 }
 
 function buildStatusMessage(context: LocalJSXCommandContext): string {
@@ -184,8 +188,9 @@ function buildProbeMessage(probe: ExternalProviderProbeResult): string {
       : probe.provider === 'oci'
         ? [
             `/provider key ${probe.provider} <api-key>`,
+            `/provider model ${probe.provider} <upstream-model-or-deployment-id>`,
             `/provider base-url ${probe.provider} <url>`,
-            'or configure OCI_CONFIG_FILE / OCI_PROFILE / OCI_COMPARTMENT_ID / OCI_GENAI_PROJECT_ID',
+            'or configure OCI_CONFIG_FILE / OCI_PROFILE / OCI_COMPARTMENT_ID / OCI_GENAI_PROJECT_ID plus Q_MODEL or OCI_MODEL',
           ]
       : [
           `/provider key ${probe.provider} <api-key>`,

@@ -35,6 +35,11 @@ In plain terms: OpenJaws does not just save your settings and hope for the best.
    - the latest provider reachability receipt matches the active model
    - Immaculate is reachable if you expect routed execution
 
+If `/provider test oci Q` reports that OCI rejected the configured upstream
+model, fix the model binding first. That is not a browser, network, or generic
+timeout problem; it means `Q_MODEL` or `OCI_MODEL` must name a model/deployment
+id accepted by the configured OCI `/responses` endpoint.
+
 ## IAM Option For Internal Operator Surfaces
 
 If you are running an internal surface such as a private Discord bot or an internal command station, you can use OCI IAM instead of a bearer key:

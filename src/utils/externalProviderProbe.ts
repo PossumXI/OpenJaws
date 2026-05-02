@@ -263,6 +263,20 @@ function buildOciProbeRuntimeOverride(
 function classifyOciProbeFailure(message: string): ExternalProviderProbeCode {
   const normalized = message.toLowerCase()
   if (
+    normalized.includes('invalid value for required field') &&
+    normalized.includes('model')
+  ) {
+    return 'invalid_model'
+  }
+  if (
+    normalized.includes('invalid_model') ||
+    normalized.includes('invalid model') ||
+    normalized.includes('unsupported model') ||
+    normalized.includes('model_not_found')
+  ) {
+    return 'invalid_model'
+  }
+  if (
     normalized.includes('401') ||
     normalized.includes('403') ||
     normalized.includes('unauthor') ||
@@ -277,6 +291,21 @@ function classifyOciProbeFailure(message: string): ExternalProviderProbeCode {
     return 'endpoint_unavailable'
   }
   return 'network_error'
+}
+
+function formatOciProbeFailureDetail(
+  code: ExternalProviderProbeCode,
+  detail: string,
+): string {
+  if (code !== 'invalid_model') {
+    return detail
+  }
+
+  return [
+    'OCI rejected the configured upstream model for the Q alias.',
+    'Set Q_MODEL or OCI_MODEL to a model/deployment id allowed by this OCI endpoint, then rerun /provider test oci Q.',
+    `Provider detail: ${detail}`,
+  ].join(' ')
 }
 
 export function resolveProviderProbeModelRef(
@@ -397,15 +426,17 @@ export async function probeResolvedExternalProvider(
         null,
       )
     } catch (error) {
-      const detail =
+      const rawDetail =
         error instanceof Error ? error.message : 'Unknown OCI probe error.'
+      const code = classifyOciProbeFailure(rawDetail)
+      const detail = formatOciProbeFailureDetail(code, rawDetail)
       return buildStaticProbeResult(
         {
           ...effectiveConfig,
           apiKeySource: authSource,
         },
         target,
-        classifyOciProbeFailure(detail),
+        code,
         detail,
       )
     }
