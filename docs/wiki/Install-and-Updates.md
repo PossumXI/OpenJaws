@@ -70,7 +70,7 @@ OpenJaws does not treat arbitrary `main` pushes, mirrors, or copied installer sn
 
 ## JAWS Desktop Mirrors
 
-JAWS Desktop 0.1.9 is the next mirrored public desktop release for users who want a native installer instead of a source checkout:
+JAWS Desktop 0.1.9 is the mirrored public desktop release for users who want a native installer instead of a source checkout:
 
 - qline.site: `https://qline.site/downloads/jaws`
 - iorch.net: `https://iorch.net/downloads/jaws`
@@ -87,6 +87,12 @@ The mirror download routes are Netlify redirects to the GitHub release assets:
 
 Both mirrors keep those redirects in repo-owned files checked by `scripts/jaws-release-public-surface.test.ts`, so a release version bump must update the public download routes before the mirror health check can pass.
 
+Production mirror receipt for 0.1.9:
+
+- qline.site published deploy: `69f5975f836dbc8c6ba76c1a`
+- iorch.net published deploy: `69f597993ff67a92f9f37697`
+- mirror health: `bun run jaws:mirror:check` passed 30 checks for `jaws-v0.1.9`
+
 Use the mirror pages for the branded public install flow. Use the GitHub release page when you want to inspect every artifact and signature directly.
 
 The live updater endpoints are:
@@ -94,7 +100,7 @@ The live updater endpoints are:
 - `https://qline.site/api/jaws/{{target}}/{{arch}}/{{current_version}}`
 - `https://iorch.net/api/jaws/{{target}}/{{arch}}/{{current_version}}`
 
-For a Windows x64 tester on `0.1.8`, both endpoints return a signed `0.1.9` update payload after the tag workflow publishes the assets. For an already-current `0.1.9` install, both endpoints return `204 No Content`.
+For a Windows x64 tester on `0.1.8`, both endpoints return a signed `0.1.9` update payload. For an already-current `0.1.9` install, both endpoints return `204 No Content`.
 
 The 0.1.8 tag lane remains the published browser-work lane. The 0.1.9 workflow keeps the signed app updater artifact path and creates the public DMG with a direct `hdiutil` package step to reduce release risk in the macOS packaging stage.
 

@@ -126,13 +126,15 @@ Windows bundle smoke, run locally on 2026-04-29:
 
 0.1.2 adds the native Settings page, keeps update checks available from Settings, replaces the in-app image logo with a CSS/React JAWS mark so the shell cannot render a broken image, keeps regenerated native installer icons, upgrades Chat into a slimmer animated workstream with per-message activity markers and a bounded `openjaws --print` sidecar bridge, adds the animated Cyber Frog pet loop, adds user and agent profile areas, adds native Open Folder workspace selection, renames the arcade runner to Slow Guy, and keeps the desktop release version aligned across `package.json`, `tauri.conf.json`, `Cargo.toml`, and `Cargo.lock`.
 
-0.1.9 release-candidate mirrors for the next public update:
+0.1.9 mirrors for the public desktop update:
 
 - `https://qline.site/downloads/jaws`
 - `https://iorch.net/downloads/jaws`
 - `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.9`
 
-Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries. Both `qline.site` and `iorch.net` also expose `/api/jaws/<target>/<arch>/<current_version>` so existing tester installs can discover the signed 0.1.9 update through the Tauri updater endpoint after the tag workflow publishes artifacts.
+Both public web mirrors expose branded installer pages plus redirect routes for Windows setup, Windows MSI, macOS DMG, Linux DEB, Linux RPM, and `latest.json`. The mirrors route downloads back to the signed GitHub release assets instead of rehosting untracked binaries. Both `qline.site` and `iorch.net` also expose `/api/jaws/<target>/<arch>/<current_version>` so existing tester installs can discover the signed 0.1.9 update through the Tauri updater endpoint.
+
+Live deploy receipt: qline.site published deploy `69f5975f836dbc8c6ba76c1a`; iorch.net published deploy `69f597993ff67a92f9f37697`; `bun run jaws:mirror:check` passed 30 checks for `jaws-v0.1.9` on 2026-05-02.
 
 The 0.1.8 tag lane remains the published browser-work lane. The 0.1.9 workflow keeps the signed app updater artifact path and creates the public DMG with a direct `hdiutil` package step to reduce release risk in the macOS packaging stage.
 
