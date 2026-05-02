@@ -47,10 +47,11 @@ bun run services:backend:preflight
 ```
 
 The preflight is intentionally no-secret. It reports which Cloudflare auth,
-D1, worker secret, route, and public-site proxy bindings are present or missing,
-but it never prints secret values. It exits nonzero until every required binding
-is ready; use `bun scripts/hosted-q-provisioning-preflight.ts --json --allow-blocked`
-only when you need a receipt without failing the shell step.
+durable D1 database binding, worker route, privileged worker secret, Resend mail,
+public-site proxy, and fresh Q trace gates are present or missing, but it never
+prints secret values. It exits nonzero until every required binding is ready; use
+`bun scripts/hosted-q-provisioning-preflight.ts --json --allow-blocked` only when
+you need a receipt without failing the shell step.
 
 1. Create a Cloudflare D1 database.
 2. Replace `database_id` in `wrangler.toml` and configure production routes.
@@ -75,9 +76,16 @@ bunx wrangler deploy --config services/cloudflare-hosted-q/wrangler.toml
 ```
 
 5. Point `Q_HOSTED_SERVICE_BASE_URL` on qline.site and iorch.net to the
-deployed worker origin, and set `Q_HOSTED_SERVICE_TOKEN` to the same service
-token used by the worker.
-6. Rerun:
+   deployed worker origin, and set `Q_HOSTED_SERVICE_TOKEN` to the same service
+   token used by the worker.
+6. Generate a fresh Q trace before release-audit signoff:
+
+```powershell
+bun run q:soak -- --duration-minutes 1 --max-probes 1
+bun run runtime:coherence
+```
+
+7. Rerun:
 
 ```powershell
 bun run services:backend:preflight

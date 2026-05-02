@@ -1,5 +1,9 @@
 import { existsSync, readFileSync, readdirSync } from 'fs'
 import { resolve } from 'path'
+import {
+  readLatestQTraceSummary,
+  type QTraceSummary,
+} from '../src/q/traceSummary.js'
 
 export type HostedQProvisioningStatus = 'ready' | 'blocked'
 export type HostedQProvisioningCheckStatus = 'passed' | 'blocked'
@@ -51,23 +55,28 @@ const WRANGLER_CONFIG = `${WORKER_ROOT}/wrangler.toml`
 const WORKER_ENTRYPOINT = `${WORKER_ROOT}/src/worker.ts`
 const MIGRATIONS_DIR = `${WORKER_ROOT}/migrations`
 const PLACEHOLDER_PATTERN = /^(?:REPLACE_|YOUR_|CHANGE_ME|TODO|TBD)/i
-const REQUIRED_CLOUDFLARE_ENV = ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN'] as const
+const REQUIRED_CLOUDFLARE_ENV = [
+  'CLOUDFLARE_ACCOUNT_ID',
+  'CLOUDFLARE_API_TOKEN',
+] as const
 const REQUIRED_WORKER_SECRETS = [
   'SERVICE_TOKEN',
-  'RESEND_API_KEY',
-  'RESEND_FROM_EMAIL',
   'STRIPE_SECRET_KEY',
   'STRIPE_PRICE_BUILDER',
   'STRIPE_PRICE_OPERATOR',
   'STRIPE_SUCCESS_URL',
   'STRIPE_CANCEL_URL',
 ] as const
+const REQUIRED_MAIL_ENV = ['RESEND_API_KEY', 'RESEND_FROM_EMAIL'] as const
 const REQUIRED_PUBLIC_SITE_ENV = [
   'Q_HOSTED_SERVICE_BASE_URL',
   'Q_HOSTED_SERVICE_TOKEN',
 ] as const
+const RELEASE_Q_TRACE_FRESH_WINDOW_MS = 24 * 60 * 60 * 1000
 
-function isConcreteConfigValue(value: string | null | undefined): value is string {
+function isConcreteConfigValue(
+  value: string | null | undefined,
+): value is string {
   const trimmed = value?.trim()
   return Boolean(trimmed && !PLACEHOLDER_PATTERN.test(trimmed))
 }
@@ -76,12 +85,15 @@ function configuredEnvKeys(
   env: NodeJS.ProcessEnv,
   keys: readonly string[],
 ): string[] {
-  return keys.filter(key => isConcreteConfigValue(env[key]))
+  return keys.filter((key) => isConcreteConfigValue(env[key]))
 }
 
-function missingEnvKeys(env: NodeJS.ProcessEnv, keys: readonly string[]): string[] {
+function missingEnvKeys(
+  env: NodeJS.ProcessEnv,
+  keys: readonly string[],
+): string[] {
   const configured = new Set(configuredEnvKeys(env, keys))
-  return keys.filter(key => !configured.has(key))
+  return keys.filter((key) => !configured.has(key))
 }
 
 function readTextIfPresent(path: string): string | null {
@@ -94,8 +106,8 @@ function readTextIfPresent(path: string): string | null {
 function uncommentedTomlLines(config: string): string[] {
   return config
     .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(line => line && !line.startsWith('#'))
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'))
 }
 
 function readTomlStringValue(config: string, key: string): string | null {
@@ -104,7 +116,9 @@ function readTomlStringValue(config: string, key: string): string | null {
 }
 
 function readTomlBooleanValue(config: string, key: string): boolean | null {
-  const match = config.match(new RegExp(`^\\s*${key}\\s*=\\s*(true|false)`, 'm'))
+  const match = config.match(
+    new RegExp(`^\\s*${key}\\s*=\\s*(true|false)`, 'm'),
+  )
   return match ? match[1] === 'true' : null
 }
 
@@ -123,7 +137,8 @@ function parseWranglerConfig(root: string): ParsedWranglerConfig {
   }
 
   const lines = uncommentedTomlLines(config)
-  const databaseName = readTomlStringValue(config, 'database_name') ?? 'openjaws-hosted-q'
+  const databaseName =
+    readTomlStringValue(config, 'database_name') ?? 'openjaws-hosted-q'
   const databaseId = readTomlStringValue(config, 'database_id')
   return {
     present: true,
@@ -131,8 +146,8 @@ function parseWranglerConfig(root: string): ParsedWranglerConfig {
     databaseId: isConcreteConfigValue(databaseId) ? databaseId : null,
     databaseIdConfigured: isConcreteConfigValue(databaseId),
     routePatternsConfigured:
-      lines.some(line => /^routes\s*=/.test(line)) ||
-      lines.some(line => /\bpattern\s*=/.test(line)),
+      lines.some((line) => /^routes\s*=/.test(line)) ||
+      lines.some((line) => /\bpattern\s*=/.test(line)),
     workersDev: readTomlBooleanValue(config, 'workers_dev'),
   }
 }
@@ -142,7 +157,35 @@ function countMigrations(root: string): number {
   if (!existsSync(migrationsPath)) {
     return 0
   }
-  return readdirSync(migrationsPath).filter(file => file.endsWith('.sql')).length
+  return readdirSync(migrationsPath).filter((file) => file.endsWith('.sql'))
+    .length
+}
+
+function getQTraceTimestamp(summary: QTraceSummary | null): string | null {
+  return (
+    summary?.lastTimestamp ?? summary?.endedAt ?? summary?.startedAt ?? null
+  )
+}
+
+function summarizeQTrace(
+  summary: QTraceSummary | null,
+): Record<string, unknown> {
+  if (!summary) {
+    return {
+      present: false,
+      freshWindowHours: RELEASE_Q_TRACE_FRESH_WINDOW_MS / (60 * 60 * 1000),
+    }
+  }
+
+  return {
+    present: true,
+    path: summary.path,
+    sessionId: summary.sessionId,
+    eventCount: summary.eventCount,
+    runState: summary.runState,
+    timestamp: getQTraceTimestamp(summary),
+    freshWindowHours: RELEASE_Q_TRACE_FRESH_WINDOW_MS / (60 * 60 * 1000),
+  }
 }
 
 function check(
@@ -157,20 +200,23 @@ function check(
 
 function buildCommands(databaseName: string): string[] {
   const configArg = '--config services/cloudflare-hosted-q/wrangler.toml'
+  const workerSecrets = [...REQUIRED_WORKER_SECRETS, ...REQUIRED_MAIL_ENV]
   return [
     'bun run services:backend:test',
     `bunx wrangler d1 migrations apply ${databaseName} --remote ${configArg}`,
-    ...REQUIRED_WORKER_SECRETS.map(
-      secret => `bunx wrangler secret put ${secret} ${configArg}`,
+    ...workerSecrets.map(
+      (secret) => `bunx wrangler secret put ${secret} ${configArg}`,
     ),
     'bun run services:backend:deploy',
     'Set Q_HOSTED_SERVICE_BASE_URL and Q_HOSTED_SERVICE_TOKEN on qline.site and iorch.net',
+    'bun run q:soak -- --duration-minutes 1 --max-probes 1',
+    'bun run runtime:coherence',
     'bun run service:routes',
   ]
 }
 
 function uniqueValues(values: string[]): string[] {
-  return [...new Set(values.filter(value => value.trim().length > 0))]
+  return [...new Set(values.filter((value) => value.trim().length > 0))]
 }
 
 export function buildHostedQProvisioningPreflight(
@@ -183,7 +229,19 @@ export function buildHostedQProvisioningPreflight(
   const workerEntrypointPresent = existsSync(resolve(root, WORKER_ENTRYPOINT))
   const missingCloudflareEnv = missingEnvKeys(env, REQUIRED_CLOUDFLARE_ENV)
   const missingWorkerSecrets = missingEnvKeys(env, REQUIRED_WORKER_SECRETS)
+  const missingMailEnv = missingEnvKeys(env, REQUIRED_MAIL_ENV)
   const missingPublicSiteEnv = missingEnvKeys(env, REQUIRED_PUBLIC_SITE_ENV)
+  const localFilesystemMode =
+    env.Q_HOSTED_SERVICE_LOCAL_MODE?.trim().toLowerCase() === 'filesystem'
+  const qTrace = readLatestQTraceSummary(root, {
+    referenceTimeMs: (options.now ?? new Date()).getTime(),
+    completedWindowMs: RELEASE_Q_TRACE_FRESH_WINDOW_MS,
+  })
+  const qTraceFreshForRelease = Boolean(qTrace) && qTrace?.runState !== 'stale'
+  const missingDurablePublicEnv = [
+    ...missingPublicSiteEnv,
+    ...(localFilesystemMode ? ['Q_HOSTED_SERVICE_LOCAL_MODE=filesystem'] : []),
+  ]
   const checks: HostedQProvisioningCheck[] = [
     check({
       id: 'worker-package',
@@ -214,18 +272,23 @@ export function buildHostedQProvisioningPreflight(
       nextActions:
         missingCloudflareEnv.length === 0
           ? []
-          : ['Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN before remote D1/deploy commands.'],
+          : [
+              'Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN before remote D1/deploy commands.',
+            ],
     }),
     check({
       id: 'd1-binding',
       passed: wrangler.databaseIdConfigured,
       summary: wrangler.databaseIdConfigured
-        ? 'wrangler.toml contains a concrete D1 database id.'
-        : 'wrangler.toml still has no concrete D1 database id.',
+        ? 'Production durable database binding is configured through Cloudflare D1.'
+        : 'Production durable database binding is not configured; this worker currently requires Cloudflare D1.',
       missing: wrangler.databaseIdConfigured
         ? []
-        : ['services/cloudflare-hosted-q/wrangler.toml database_id'],
+        : [
+            'services/cloudflare-hosted-q/wrangler.toml database_id or a tested replacement database adapter',
+          ],
       details: {
+        supportedBackend: 'cloudflare-d1',
         databaseName: wrangler.databaseName,
         databaseIdConfigured: wrangler.databaseIdConfigured,
       },
@@ -257,8 +320,8 @@ export function buildHostedQProvisioningPreflight(
       passed: missingWorkerSecrets.length === 0,
       summary:
         missingWorkerSecrets.length === 0
-          ? 'Required worker secrets are present in this operator shell for wrangler secret put.'
-          : 'Required worker secrets are missing from this operator shell.',
+          ? 'Required privileged worker secrets are present in this operator shell for wrangler secret put.'
+          : 'Required privileged worker secrets are missing from this operator shell.',
       missing: missingWorkerSecrets,
       details: {
         requiredKeys: [...REQUIRED_WORKER_SECRETS],
@@ -267,26 +330,69 @@ export function buildHostedQProvisioningPreflight(
       nextActions:
         missingWorkerSecrets.length === 0
           ? []
-          : ['Populate the missing keys locally, then run the generated wrangler secret put commands.'],
+          : [
+              'Populate the missing keys locally, then run the generated wrangler secret put commands.',
+            ],
+    }),
+    check({
+      id: 'mail-engine',
+      passed: missingMailEnv.length === 0,
+      summary:
+        missingMailEnv.length === 0
+          ? 'Resend mail engine env is present for production notifications.'
+          : 'Resend mail engine env is missing for production notifications.',
+      missing: missingMailEnv,
+      details: {
+        requiredKeys: [...REQUIRED_MAIL_ENV],
+        configuredKeys: configuredEnvKeys(env, REQUIRED_MAIL_ENV),
+        supportedProvider: 'resend-http',
+      },
+      nextActions:
+        missingMailEnv.length === 0
+          ? []
+          : [
+              'Set RESEND_API_KEY and RESEND_FROM_EMAIL, then run the generated wrangler secret put commands.',
+            ],
     }),
     check({
       id: 'public-site-env',
-      passed: missingPublicSiteEnv.length === 0,
+      passed: missingDurablePublicEnv.length === 0,
       summary:
-        missingPublicSiteEnv.length === 0
-          ? 'Public site proxy env is present for qline/iorch hosted-Q calls.'
-          : 'Public site proxy env is missing for qline/iorch hosted-Q calls.',
-      missing: missingPublicSiteEnv,
+        missingDurablePublicEnv.length === 0
+          ? 'Hosted-Q durable backend env is present for qline/iorch proxy calls.'
+          : 'Hosted-Q durable backend env is missing or pinned to local filesystem mode.',
+      missing: missingDurablePublicEnv,
       details: {
         requiredKeys: [...REQUIRED_PUBLIC_SITE_ENV],
         configuredKeys: configuredEnvKeys(env, REQUIRED_PUBLIC_SITE_ENV),
+        localFilesystemMode,
       },
       nextActions:
-        missingPublicSiteEnv.length === 0
+        missingDurablePublicEnv.length === 0
           ? []
           : [
-              'Set Q_HOSTED_SERVICE_BASE_URL to the deployed worker origin and Q_HOSTED_SERVICE_TOKEN to the worker service token on qline.site and iorch.net.',
+              'Set Q_HOSTED_SERVICE_BASE_URL to the deployed worker origin and Q_HOSTED_SERVICE_TOKEN to the worker service token on qline.site and iorch.net; do not use filesystem local mode for production.',
             ],
+    }),
+    check({
+      id: 'fresh-q-trace',
+      passed: qTraceFreshForRelease,
+      summary: qTraceFreshForRelease
+        ? 'Latest Q trace is fresh enough for release-audit signoff.'
+        : 'Fresh Q trace is missing or stale for release-audit signoff.',
+      missing: qTraceFreshForRelease
+        ? []
+        : [
+            qTrace
+              ? `fresh Q trace within ${RELEASE_Q_TRACE_FRESH_WINDOW_MS / (60 * 60 * 1000)}h`
+              : 'artifacts/q-*/**/*.trace.jsonl',
+          ],
+      details: summarizeQTrace(qTrace),
+      nextActions: qTraceFreshForRelease
+        ? []
+        : [
+            'Generate a fresh Q trace with a bounded Q soak or Terminal-Bench dry run, then rerun runtime:coherence before release-audit signoff.',
+          ],
     }),
   ]
   const counts = checks.reduce(
@@ -296,14 +402,14 @@ export function buildHostedQProvisioningPreflight(
     },
     { passed: 0, blocked: 0 } as Record<HostedQProvisioningCheckStatus, number>,
   )
-  const blockedChecks = checks.filter(item => item.status === 'blocked')
+  const blockedChecks = checks.filter((item) => item.status === 'blocked')
   const missingByCheck = Object.fromEntries(
     blockedChecks
-      .filter(item => item.missing?.length)
-      .map(item => [item.id, uniqueValues(item.missing ?? [])]),
+      .filter((item) => item.missing?.length)
+      .map((item) => [item.id, uniqueValues(item.missing ?? [])]),
   )
   const blockedActions = uniqueValues(
-    blockedChecks.flatMap(item => item.nextActions ?? []),
+    blockedChecks.flatMap((item) => item.nextActions ?? []),
   )
 
   return {
@@ -354,21 +460,25 @@ function formatHumanReport(report: HostedQProvisioningPreflightReport): string {
     `Root: ${report.root}`,
     `Wrangler config: ${report.wranglerConfigPath}`,
     '',
-    ...report.checks.flatMap(item => [
+    ...report.checks.flatMap((item) => [
       `${item.status === 'passed' ? 'PASS' : 'BLOCK'} ${item.id}: ${item.summary}`,
-      ...(item.missing?.length ? [`  Missing: ${item.missing.join(', ')}`] : []),
-      ...(item.nextActions?.length ? item.nextActions.map(action => `  Next: ${action}`) : []),
+      ...(item.missing?.length
+        ? [`  Missing: ${item.missing.join(', ')}`]
+        : []),
+      ...(item.nextActions?.length
+        ? item.nextActions.map((action) => `  Next: ${action}`)
+        : []),
     ]),
     ...(report.blockedActions.length
       ? [
           '',
           'Blocked action contract:',
-          ...report.blockedActions.map(action => `  ${action}`),
+          ...report.blockedActions.map((action) => `  ${action}`),
         ]
       : []),
     '',
     'Safe command sequence:',
-    ...report.commands.map(command => `  ${command}`),
+    ...report.commands.map((command) => `  ${command}`),
   ]
   return lines.join('\n')
 }
