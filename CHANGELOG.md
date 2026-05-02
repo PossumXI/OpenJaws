@@ -4,7 +4,11 @@
 
 - GitHub Actions Bun installs now run through `scripts/ci-bun-install.mjs`, which retries transient dependency download failures such as `ffmpeg-static` GitHub 502 responses before failing the CI, System Check, release, JAWS Desktop, and Q benchmark lanes.
 - Roundtable runtime execution now invokes the tracked dynamic planner before executable passes and reports the planner decision in JSON output, so a live Discord roundtable no longer depends on a separate sidecar to recover from idle/PASS drift into a governed code-bearing handoff.
-- Prepared JAWS Desktop 0.1.8 as the next signed update lane for the browser-work and route-health repair pass, so 0.1.7 installs can receive the governed web browsing controls through the updater.
+- Prepared JAWS Desktop 0.1.9 as the next signed update lane for the provider-switching and macOS release-pipeline hardening pass after the published 0.1.8 browser-work lane.
+- JAWS Desktop Settings now applies provider/model/base-URL changes through the native sidecar bridge, resets provider-specific defaults when the provider changes, and reports live provider auth from OpenJaws probe output instead of a stale fallback label.
+- The JAWS Desktop macOS release workflow now builds the signed `.app` updater artifact first and creates the public DMG with a direct `hdiutil` packaging step, reducing release risk if the styled DMG helper path flakes on CI.
+- qline.site and iorch.net JAWS download surfaces now advance to the generated 0.1.9 release index, keeping public installer pages and redirect maps aligned with the next signed tag.
+- Prepared JAWS Desktop 0.1.8 as the signed browser-work and route-health repair lane; the public updater lane is moving to 0.1.9 for provider switching and release workflow hardening.
 - JAWS Desktop Browser now stages real web-work jobs for search, page summaries, public data collection, video/caption summaries, email drafting, and form assistance while preserving approval gates for sends, purchases, uploads, account changes, submissions, and other irreversible actions.
 - Service route health now uses the guarded Apex bridge health contract for the workspace, Chrono, and browser bridges, so an answering but untrusted localhost listener reports as a warning instead of a false passed route.
 - Runtime source-drift checks now count tracked file changes without scanning untracked dependency/build trees, keeping the coherence probe responsive on Windows worktrees with large ignored directories.

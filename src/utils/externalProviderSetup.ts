@@ -18,9 +18,11 @@ export const BUILTIN_PROVIDER_DEFAULT_MODELS: Partial<
 > = {
   oci: 'Q',
   openai: 'gpt-5.4',
+  groq: 'llama-3.3-70b-versatile',
   gemini: 'gemini-3-flash-preview',
   codex: 'gpt-5.4',
   minimax: 'MiniMax-M2.7',
+  kimi: 'kimi-k2-0711-preview',
   ollama: 'q',
 }
 

@@ -96,7 +96,7 @@ function buildStatusMessage(context: LocalJSXCommandContext): string {
     '- /provider use openai gpt-5.4',
     '- /provider connect openai',
     '- /login',
-    '- /provider model gemini gemini-3.1-pro-preview',
+    '- /provider model gemini gemini-3-flash-preview',
     '- /provider base-url oci <url>',
     '- /provider clear-key oci',
   ].join('\n')

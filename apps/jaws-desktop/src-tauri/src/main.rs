@@ -3644,6 +3644,57 @@ fn clean_model_arg(value: Option<String>) -> String {
     }
 }
 
+fn default_base_url_for_provider(provider: &str) -> String {
+    match provider {
+        "oci" => default_oci_base_url(),
+        "openai" | "codex" => "https://api.openai.com/v1".to_string(),
+        "groq" => "https://api.groq.com/openai/v1".to_string(),
+        "minimax" => "https://api.minimax.io/v1".to_string(),
+        "gemini" => "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
+        "kimi" => "https://api.moonshot.cn/v1".to_string(),
+        "ollama" => "http://127.0.0.1:11434".to_string(),
+        _ => String::new(),
+    }
+}
+
+fn provider_api_key_env_names(provider: &str) -> &'static [&'static str] {
+    match provider {
+        "oci" => &["Q_API_KEY", "OCI_API_KEY", "OCI_GENAI_API_KEY"],
+        "openai" => &["OPENAI_API_KEY"],
+        "groq" => &["GROQ_API_KEY"],
+        "minimax" => &["MINI_MAX_API_KEY", "MINIMAX_API_KEY"],
+        "gemini" => &["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        "codex" => &["CODEX_API_KEY", "OPENAI_API_KEY"],
+        "kimi" => &["KIMI_API_KEY", "MOONSHOT_API_KEY"],
+        "ollama" => &["OLLAMA_API_KEY"],
+        _ => &[],
+    }
+}
+
+fn clean_base_url_arg(value: Option<String>, provider: &str) -> String {
+    let fallback = default_base_url_for_provider(provider);
+    let candidate = value
+        .unwrap_or_else(|| fallback.clone())
+        .trim()
+        .trim_end_matches('/')
+        .to_string();
+    let lower = candidate.to_ascii_lowercase();
+    let safe_chars = candidate
+        .chars()
+        .all(|character| !character.is_control() && !character.is_whitespace());
+    let allowed_scheme = lower.starts_with("https://")
+        || (provider == "ollama"
+            && (lower.starts_with("http://127.0.0.1")
+                || lower.starts_with("http://localhost")
+                || lower.starts_with("http://[::1]")));
+
+    if safe_chars && allowed_scheme && candidate.len() <= 300 {
+        candidate
+    } else {
+        fallback
+    }
+}
+
 fn env_value(names: &[&str]) -> Option<(String, String)> {
     for name in names {
         if let Ok(value) = env::var(name) {
@@ -3672,11 +3723,15 @@ fn default_oci_base_url() -> String {
 }
 
 fn inference_auth_label(provider: &str) -> String {
-    if provider == "oci" {
-        if let Some((name, _)) = env_value(&["Q_API_KEY", "OCI_API_KEY", "OCI_GENAI_API_KEY"]) {
-            return format!("environment key ({name})");
-        }
+    if provider == "ollama" {
+        return "local runtime".to_string();
+    }
 
+    if let Some((name, _)) = env_value(provider_api_key_env_names(provider)) {
+        return format!("environment key ({name})");
+    }
+
+    if provider == "oci" {
         let has_config = env_value(&["OCI_CONFIG_FILE"]).is_some()
             || env::var("USERPROFILE")
                 .ok()
@@ -3744,11 +3799,7 @@ fn fallback_inference_result(
     summary: String,
     stderr: String,
 ) -> InferenceCommandResult {
-    let base_url = if provider == "oci" {
-        default_oci_base_url()
-    } else {
-        String::new()
-    };
+    let base_url = default_base_url_for_provider(&provider);
     let auth_label = inference_auth_label(&provider);
     InferenceCommandResult {
         ok: !auth_label.contains("not configured") && !auth_label.contains("incomplete"),
@@ -3765,6 +3816,33 @@ fn fallback_inference_result(
     }
 }
 
+async fn run_provider_sidecar(
+    app: &tauri::AppHandle,
+    command_dir: PathBuf,
+    args: Vec<String>,
+) -> Result<(bool, Option<i32>, String, String), String> {
+    let mut command = app
+        .shell()
+        .sidecar("openjaws")
+        .map_err(|error| format!("OpenJaws is unavailable: {error}"))?
+        .arg("provider")
+        .current_dir(command_dir);
+    for arg in args {
+        command = command.arg(arg);
+    }
+
+    match tokio::time::timeout(Duration::from_secs(45), command.output()).await {
+        Ok(Ok(output)) => Ok((
+            output.status.success(),
+            output.status.code(),
+            redact_inference_output(&String::from_utf8_lossy(&output.stdout)),
+            redact_inference_output(&String::from_utf8_lossy(&output.stderr)),
+        )),
+        Ok(Err(error)) => Err(format!("OpenJaws provider command failed: {error}")),
+        Err(_) => Err("OpenJaws provider command timed out after 45 seconds.".to_string()),
+    }
+}
+
 #[tauri::command]
 async fn openjaws_inference_status(
     app: tauri::AppHandle,
@@ -3775,11 +3853,7 @@ async fn openjaws_inference_status(
 ) -> InferenceCommandResult {
     let provider = clean_provider_arg(provider);
     let model = clean_model_arg(model);
-    let base_url = if provider == "oci" {
-        default_oci_base_url()
-    } else {
-        String::new()
-    };
+    let base_url = default_base_url_for_provider(&provider);
     let auth_label = inference_auth_label(&provider);
     let (command_dir, command_dir_label, workspace_attached) =
         openjaws_command_work_dir(workspace_path);
@@ -3854,6 +3928,94 @@ async fn openjaws_inference_status(
             "AI check timed out before output.".to_string(),
             "OpenJaws provider command timed out after 45 seconds.".to_string(),
         ),
+    }
+}
+
+#[tauri::command]
+async fn openjaws_inference_apply(
+    app: tauri::AppHandle,
+    provider: Option<String>,
+    model: Option<String>,
+    base_url: Option<String>,
+    run_probe: bool,
+    workspace_path: Option<String>,
+) -> InferenceCommandResult {
+    let provider = clean_provider_arg(provider);
+    let model = clean_model_arg(model);
+    let base_url = clean_base_url_arg(base_url, &provider);
+    let auth_label = inference_auth_label(&provider);
+    let (command_dir, command_dir_label, workspace_attached) =
+        openjaws_command_work_dir(workspace_path);
+    let mut stdout_sections = Vec::new();
+    let mut stderr_sections = Vec::new();
+    let mut final_code = Some(0);
+    let mut all_ok = true;
+
+    let commands = [
+        vec!["base-url".to_string(), provider.clone(), base_url.clone()],
+        vec!["use".to_string(), provider.clone(), model.clone()],
+        if run_probe {
+            vec!["test".to_string(), provider.clone(), model.clone()]
+        } else {
+            vec!["status".to_string()]
+        },
+    ];
+
+    for args in commands {
+        match run_provider_sidecar(&app, command_dir.clone(), args.clone()).await {
+            Ok((ok, code, stdout, stderr)) => {
+                final_code = code;
+                if !ok {
+                    all_ok = false;
+                }
+                let command_label = format!("openjaws provider {}", args.join(" "));
+                if !stdout.trim().is_empty() {
+                    stdout_sections.push(format!("{command_label}\n{stdout}"));
+                }
+                if !stderr.trim().is_empty() {
+                    stderr_sections.push(format!("{command_label}\n{stderr}"));
+                }
+                if !ok {
+                    break;
+                }
+            }
+            Err(error) => {
+                all_ok = false;
+                final_code = None;
+                stderr_sections.push(error);
+                break;
+            }
+        }
+    }
+
+    stdout_sections.push(format!(
+        "Runtime directory: {}{}",
+        command_dir_label,
+        if workspace_attached {
+            " (workspace)"
+        } else {
+            " (JAWS writable runtime)"
+        }
+    ));
+
+    InferenceCommandResult {
+        ok: all_ok,
+        code: final_code,
+        stdout: truncate_text(&stdout_sections.join("\n\n"), 4_000),
+        stderr: truncate_text(&stderr_sections.join("\n\n"), 2_000),
+        summary: if all_ok {
+            if run_probe {
+                "AI provider saved and tested.".to_string()
+            } else {
+                "AI provider saved.".to_string()
+            }
+        } else {
+            "AI provider save needs review.".to_string()
+        },
+        provider,
+        model,
+        base_url,
+        auth_label,
     }
 }
 
@@ -4257,6 +4419,27 @@ mod tests {
     }
 
     #[test]
+    fn inference_provider_inputs_are_bounded_and_provider_aware() {
+        assert_eq!(
+            clean_base_url_arg(Some("https://api.openai.com/v1/".to_string()), "openai"),
+            "https://api.openai.com/v1"
+        );
+        assert_eq!(
+            clean_base_url_arg(Some("http://127.0.0.1:11434/".to_string()), "ollama"),
+            "http://127.0.0.1:11434"
+        );
+        assert_eq!(
+            clean_base_url_arg(Some("http://evil.example".to_string()), "openai"),
+            "https://api.openai.com/v1"
+        );
+        assert_eq!(clean_provider_arg(Some("MiniMax".to_string())), "minimax");
+        assert_eq!(
+            default_base_url_for_provider("groq"),
+            "https://api.groq.com/openai/v1"
+        );
+    }
+
+    #[test]
     fn ledger_snapshot_reads_local_q_route_receipts() {
         let root = temp_test_dir("ledger");
         let q_runs = root.join("artifacts").join("q-runs");
@@ -4320,6 +4503,7 @@ fn main() {
             browser_preview_snapshot,
             enrollment_links,
             open_browser_preview_window,
+            openjaws_inference_apply,
             openjaws_inference_status,
             openjaws_smoke,
             openjaws_workspace_smoke,

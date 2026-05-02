@@ -87,6 +87,19 @@ describe('externalProviderSetup', () => {
     expect(getSavedOrConfiguredModelForProvider('oci', null)).toBe('Q')
   })
 
+  test('offers defaults for every public JAWS provider selector lane', () => {
+    expect(getSavedOrConfiguredModelForProvider('openai', null)).toBe('gpt-5.4')
+    expect(getSavedOrConfiguredModelForProvider('groq', null)).toBe(
+      'llama-3.3-70b-versatile',
+    )
+    expect(getSavedOrConfiguredModelForProvider('minimax', null)).toBe(
+      'MiniMax-M2.7',
+    )
+    expect(getSavedOrConfiguredModelForProvider('kimi', null)).toBe(
+      'kimi-k2-0711-preview',
+    )
+  })
+
   test('ignores provider-prefixed env defaults when resolving a provider-local model', () => {
     process.env.Q_MODEL = 'oci:Q'
 

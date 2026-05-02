@@ -1,8 +1,12 @@
 import { describe, expect, test } from 'bun:test'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import {
   buildBenchmarkSeedEnv,
   DEFAULT_Q_BENCHMARK_SEED,
   resolveDeterministicSeed,
+  resolveDefaultHarborCommand,
   resolveQPreflightRequirementsForBench,
 } from './preflight.js'
 
@@ -36,5 +40,31 @@ describe('q preflight helpers', () => {
       'openjaws-provider-preflight',
       'clock-skew',
     ])
+  })
+
+  test('finds repo-local Harbor from a linked worktree through git common dir', () => {
+    const root = mkdtempSync(join(tmpdir(), 'openjaws-harbor-main-'))
+    const worktree = mkdtempSync(join(tmpdir(), 'openjaws-harbor-worktree-'))
+    const harborExecutable = process.platform === 'win32' ? 'harbor.exe' : 'harbor'
+    const harborPath = join(
+      root,
+      '.tools',
+      'harbor-venv',
+      'Scripts',
+      harborExecutable,
+    )
+    mkdirSync(join(root, '.tools', 'harbor-venv', 'Scripts'), {
+      recursive: true,
+    })
+    mkdirSync(join(root, '.git'), { recursive: true })
+    writeFileSync(harborPath, '')
+
+    expect(
+      resolveDefaultHarborCommand({
+        cwd: worktree,
+        env: {},
+        gitCommonDir: join(root, '.git'),
+      }),
+    ).toBe(harborPath)
   })
 })

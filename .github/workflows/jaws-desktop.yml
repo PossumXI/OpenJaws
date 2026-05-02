@@ -111,8 +111,22 @@ jobs:
           bun run prepare:sidecar
           bun run tauri build --bundles deb rpm
 
-      - name: Build desktop bundle
-        if: runner.os != 'Linux'
+      - name: Build macOS desktop bundle
+        if: runner.os == 'macOS'
+        working-directory: apps/jaws-desktop
+        env:
+          CI: true
+          JAWS_TAURI_UPDATER_PUBLIC_KEY: ${{ vars.JAWS_TAURI_UPDATER_PUBLIC_KEY || secrets.JAWS_TAURI_UPDATER_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.JAWS_TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.JAWS_TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          node scripts/verify-release-config.mjs --require-signing-key
+          bun run prepare:sidecar
+          bun run tauri build --bundles app
+          node scripts/create-macos-dmg.mjs
+
+      - name: Build Windows desktop bundle
+        if: runner.os == 'Windows'
         working-directory: apps/jaws-desktop
         env:
           CI: true
