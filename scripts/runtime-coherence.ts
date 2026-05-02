@@ -1,6 +1,10 @@
 import { existsSync, readFileSync } from 'fs'
 import { resolve } from 'path'
-import { buildRuntimeCoherenceReport } from '../src/immaculate/runtimeCoherence.js'
+import { spawnSync } from 'child_process'
+import {
+  buildRuntimeCoherenceReport,
+  type RuntimeSourceState,
+} from '../src/immaculate/runtimeCoherence.js'
 import { readLatestImmaculateTraceSummary } from '../src/immaculate/traceSummary.js'
 import { readLatestQTraceSummary } from '../src/q/traceSummary.js'
 import { readDiscordQAgentReceipt } from '../src/utils/discordQAgentRuntime.js'
@@ -51,6 +55,12 @@ type RoundtableLaunchState = {
   startedAt?: string | null
 }
 
+type GitCommandResult = {
+  ok: boolean
+  stdout: string
+  stderr: string
+}
+
 const APEX_BRIDGE_PROBES: ApexBridgeProbeDefinition[] = [
   {
     label: 'Apex workspace bridge',
@@ -81,6 +91,76 @@ const PERSONAPLEX_COHERENCE_TIMEOUT_MS = Math.max(
 export function parseArgs(argv: string[]): RuntimeCoherenceCliOptions {
   return {
     json: argv.includes('--json'),
+  }
+}
+
+function runGit(root: string, args: string[]): GitCommandResult {
+  const result = spawnSync('git', args, {
+    cwd: root,
+    encoding: 'utf8',
+    windowsHide: true,
+  })
+  return {
+    ok: result.status === 0,
+    stdout: typeof result.stdout === 'string' ? result.stdout.trim() : '',
+    stderr: typeof result.stderr === 'string' ? result.stderr.trim() : '',
+  }
+}
+
+function parseNullableInt(value: string | undefined): number | null {
+  if (!value) {
+    return null
+  }
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+export function readOpenJawsSourceState(
+  root: string,
+  expectedBranch =
+    process.env.OPENJAWS_RUNTIME_EXPECTED_BRANCH?.trim() || 'main',
+): RuntimeSourceState {
+  const gitDir = runGit(root, ['rev-parse', '--git-dir'])
+  if (!gitDir.ok) {
+    return {
+      root,
+      expectedBranch,
+      error: gitDir.stderr || gitDir.stdout || 'not a git checkout',
+    }
+  }
+
+  const branch = runGit(root, ['rev-parse', '--abbrev-ref', 'HEAD'])
+  const head = runGit(root, ['rev-parse', '--short=12', 'HEAD'])
+  const upstream = runGit(root, [
+    'rev-parse',
+    '--abbrev-ref',
+    '--symbolic-full-name',
+    '@{u}',
+  ])
+  const upstreamHead = upstream.ok
+    ? runGit(root, ['rev-parse', '--short=12', '@{u}'])
+    : null
+  const counts = upstream.ok
+    ? runGit(root, ['rev-list', '--left-right', '--count', 'HEAD...@{u}'])
+    : null
+  const status = runGit(root, ['status', '--porcelain'])
+  const changedFileCount = status.stdout
+    ? status.stdout.split(/\r?\n/).filter(Boolean).length
+    : 0
+  const [aheadText, behindText] = counts?.stdout.split(/\s+/) ?? []
+
+  return {
+    root,
+    expectedBranch,
+    branch: branch.ok ? branch.stdout : null,
+    head: head.ok ? head.stdout : null,
+    upstream: upstream.ok ? upstream.stdout : null,
+    upstreamHead: upstreamHead?.ok ? upstreamHead.stdout : null,
+    ahead: parseNullableInt(aheadText),
+    behind: parseNullableInt(behindText),
+    dirty: status.ok ? changedFileCount > 0 : null,
+    changedFileCount: status.ok ? changedFileCount : null,
+    error: status.ok ? null : status.stderr || status.stdout || null,
   }
 }
 
@@ -330,6 +410,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     qTrace: readLatestQTraceSummary(root),
     routeQueueDepth: readQTrainingRouteQueue(root).length,
     roundtable: readRoundtableState(root),
+    sourceState: readOpenJawsSourceState(root),
     probes: [...agentProbes, personaPlexProbe, ...apexBridgeProbes],
   })
 

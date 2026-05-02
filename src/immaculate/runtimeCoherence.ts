@@ -34,6 +34,20 @@ export type RoundtableRuntimeSnapshot = {
   launchDetail?: string | null
 }
 
+export type RuntimeSourceState = {
+  root: string
+  expectedBranch?: string | null
+  branch?: string | null
+  head?: string | null
+  upstream?: string | null
+  upstreamHead?: string | null
+  ahead?: number | null
+  behind?: number | null
+  dirty?: boolean | null
+  changedFileCount?: number | null
+  error?: string | null
+}
+
 export type RuntimeCoherenceReport = {
   status: RuntimeCoherenceStatus
   summary: string
@@ -184,6 +198,7 @@ export function buildRuntimeCoherenceReport(args: {
   qTrace: QTraceSummary | null
   routeQueueDepth?: number | null
   roundtable?: RoundtableRuntimeSnapshot | null
+  sourceState?: RuntimeSourceState | null
   probes?: RuntimeCoherenceProbe[]
 }): RuntimeCoherenceReport {
   const checks: RuntimeCoherenceCheck[] = []
@@ -402,6 +417,71 @@ export function buildRuntimeCoherenceReport(args: {
         ? 'Live harness and trace activity are compatible.'
         : 'No active trace is claiming a live harness while the harness is down.',
     })
+  }
+
+  if (Object.prototype.hasOwnProperty.call(args, 'sourceState')) {
+    const sourceState = args.sourceState ?? null
+    if (!sourceState) {
+      checks.push({
+        id: 'openjaws-source-state',
+        status: 'warning',
+        summary: 'OpenJaws source checkout state was not available.',
+        detail:
+          'Runtime coherence cannot prove which source tree launched the local operator services.',
+      })
+    } else if (sourceState.error) {
+      checks.push({
+        id: 'openjaws-source-state',
+        status: 'warning',
+        summary: 'OpenJaws source checkout state could not be reconciled.',
+        detail: `${sourceState.root} · ${sourceState.error}`,
+      })
+    } else {
+      const driftReasons = [
+        sourceState.expectedBranch &&
+        sourceState.branch &&
+        sourceState.branch !== sourceState.expectedBranch
+          ? `branch=${sourceState.branch} expected=${sourceState.expectedBranch}`
+          : null,
+        sourceState.behind && sourceState.behind > 0
+          ? `behind upstream by ${sourceState.behind}`
+          : null,
+        sourceState.ahead && sourceState.ahead > 0
+          ? `ahead of upstream by ${sourceState.ahead}`
+          : null,
+        sourceState.dirty
+          ? `${sourceState.changedFileCount ?? 'unknown'} changed file${
+              sourceState.changedFileCount === 1 ? '' : 's'
+            }`
+          : null,
+      ].filter((item): item is string => Boolean(item))
+      const sourceAligned = driftReasons.length === 0
+      checks.push({
+        id: 'openjaws-source-state',
+        status: sourceAligned ? 'ok' : 'warning',
+        summary: sourceAligned
+          ? 'OpenJaws source checkout is aligned for runtime use.'
+          : 'OpenJaws source checkout has runtime drift.',
+        detail:
+          [
+            `root=${sourceState.root}`,
+            sourceState.branch ? `branch=${sourceState.branch}` : null,
+            sourceState.head ? `head=${sourceState.head}` : null,
+            sourceState.upstream ? `upstream=${sourceState.upstream}` : null,
+            sourceState.upstreamHead
+              ? `upstreamHead=${sourceState.upstreamHead}`
+              : null,
+            sourceState.ahead !== null && sourceState.ahead !== undefined
+              ? `ahead=${sourceState.ahead}`
+              : null,
+            sourceState.behind !== null && sourceState.behind !== undefined
+              ? `behind=${sourceState.behind}`
+              : null,
+            ...driftReasons,
+          ].filter((item): item is string => Boolean(item)).join(' · ') ||
+          null,
+      })
+    }
   }
 
   if (args.roundtable) {
