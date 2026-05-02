@@ -329,26 +329,75 @@ describe('publicShowcaseActivity', () => {
           kind: 'apex_operator_activity',
           status: 'failed',
           source: '#ops-coordinator',
-          operatorActions: ['ask_openjaws', 'human_review_required'],
-          subsystems: ['openjaws', '#discord-dev'],
+          operatorActions: [
+            'ask_openjaws',
+            'human_review_required',
+            'operator_runtime',
+            'bounded_lane_handoff',
+          ],
+          subsystems: ['openjaws', '#discord-dev', 'operator_lane'],
           artifacts: [
             'apex:chat-session:11e5112d-4aad-48b4-a72a-9ab4b3d104ff',
+            'discord:q-agent-receipt',
           ],
-          tags: ['critical_priority', 'public'],
+          tags: ['critical_priority', 'public', 'bounded', 'governed', 'operator'],
         },
       ],
     })
 
     const serialized = JSON.stringify(publicFeed)
+    const publishedValues = publicFeed.entries
+      .flatMap(entry => [
+        entry.id,
+        entry.title,
+        entry.summary,
+        entry.kind,
+        entry.source,
+        entry.status,
+        ...entry.operatorActions,
+        ...entry.subsystems,
+        ...entry.artifacts,
+        ...entry.tags,
+      ])
+      .filter(Boolean)
+      .join('\n')
+
     expect(serialized).not.toContain('#')
     expect(serialized).not.toContain('11e5112d-4aad-48b4-a72a-9ab4b3d104ff')
+    expect(publishedValues).not.toMatch(
+      /\b(?:operator|bounded|governed|receipt|lane|human_review_required|critical_priority)\b/i,
+    )
     expect(publicFeed.entries[0]?.status).toBe('info')
     expect(publicFeed.entries[0]?.source).toBe('the Discord channel')
+    expect(publicFeed.entries[0]?.kind).toBe('apex_user_activity')
     expect(publicFeed.entries[0]?.operatorActions).toEqual(
-      expect.arrayContaining(['ask_openjaws', 'governance_review']),
+      expect.arrayContaining([
+        'ask_openjaws',
+        'governance_review',
+        'user_runtime',
+        'supervised_workspace_handoff',
+      ]),
+    )
+    expect(publicFeed.entries[0]?.subsystems).toEqual(
+      expect.arrayContaining([
+        'openjaws',
+        'the Discord channel',
+        'user_workspace',
+      ]),
+    )
+    expect(publicFeed.entries[0]?.artifacts).toEqual(
+      expect.arrayContaining([
+        'apex:chat-session:public_activity_id',
+        'discord:q-agent-activity_record',
+      ]),
     )
     expect(publicFeed.entries[0]?.tags).toEqual(
-      expect.arrayContaining(['governance_priority', 'public']),
+      expect.arrayContaining([
+        'governance_priority',
+        'public',
+        'supervised',
+        'user',
+      ]),
     )
   })
 
@@ -473,15 +522,15 @@ describe('publicShowcaseActivity', () => {
         expect.arrayContaining([
           expect.objectContaining({
             title: 'Supervised Viola patrol update',
-            artifacts: ['discord:viola-agent-receipt'],
+            artifacts: ['discord:viola-agent-activity_record'],
             subsystems: expect.arrayContaining(['viola', 'discord']),
           }),
           expect.objectContaining({
             title: 'Supervised Blackbeak user activity',
-            artifacts: ['discord:blackbeak-agent-receipt'],
+            artifacts: ['discord:blackbeak-agent-activity_record'],
             operatorActions: expect.arrayContaining([
               'ask_openjaws',
-              'blackbeak_operator_runtime',
+              'blackbeak_user_runtime',
             ]),
           }),
         ]),
