@@ -71,6 +71,55 @@ function writeFreshQTrace(root: string, timestamp: string): void {
   )
 }
 
+function writeFailedQTrace(root: string, timestamp: string): void {
+  const outputDir = join(root, 'artifacts', 'q-release-audit-failed')
+  mkdirSync(outputDir, { recursive: true })
+  const tracePath = join(outputDir, 'release.trace.jsonl')
+  const sessionId = 'q-release-audit-failed'
+  const baseEvent = {
+    schemaVersion: 'immaculate.event.v1',
+    timestamp,
+    sessionId,
+  }
+  const lines = [
+    {
+      ...baseEvent,
+      type: 'session.started',
+      tracePath,
+      runId: sessionId,
+      sessionScope: 'release-audit',
+    },
+    {
+      ...baseEvent,
+      type: 'route.dispatched',
+      routeId: 'release-route',
+      runId: sessionId,
+      provider: 'oci',
+      model: 'oci:Q',
+      projectRoot: root,
+    },
+    {
+      ...baseEvent,
+      type: 'cognitive.sampled',
+      sampleId: 'release-route',
+      workerId: 'oci-q',
+      latencyMs: 50,
+      tokenCount: null,
+      status: 'failed',
+    },
+    {
+      ...baseEvent,
+      type: 'session.ended',
+      durationMs: 50,
+    },
+  ]
+  writeFileSync(
+    tracePath,
+    `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`,
+    'utf8',
+  )
+}
+
 const PLACEHOLDER_WRANGLER = `
 name = "openjaws-hosted-q"
 main = "src/worker.ts"
@@ -165,7 +214,7 @@ describe('hosted-q provisioning preflight', () => {
         'Uncomment or add Cloudflare routes for the public hosted-Q worker origin before deploy.',
         'Populate the missing keys locally, then run the generated wrangler secret put commands.',
         'Set Q_HOSTED_SERVICE_BASE_URL to the deployed worker origin and Q_HOSTED_SERVICE_TOKEN to the worker service token on qline.site and iorch.net; do not use filesystem local mode for production.',
-        'Generate a fresh Q trace with a bounded Q soak or Terminal-Bench dry run, then rerun runtime:coherence before release-audit signoff.',
+        'Generate a fresh successful Q trace with a bounded Q soak or Terminal-Bench dry run, then rerun runtime:coherence before release-audit signoff.',
       ]),
     )
     expect(JSON.stringify(report)).not.toContain('service-token-secret')
@@ -190,6 +239,37 @@ describe('hosted-q provisioning preflight', () => {
     )
     expect(JSON.stringify(report)).not.toContain('cloudflare-token')
     expect(JSON.stringify(report)).not.toContain('stripe-secret')
+  })
+
+  test('blocks release audit when the latest fresh Q trace only contains failed probe evidence', () => {
+    const root = createHostedQRoot(CONFIGURED_WRANGLER)
+    writeFailedQTrace(root, '2026-05-01T00:00:00.000Z')
+    const report = buildHostedQProvisioningPreflight({
+      root,
+      env: READY_ENV,
+      now: new Date('2026-05-01T00:00:00.000Z'),
+    })
+
+    expect(report.status).toBe('blocked')
+    expect(
+      report.checks.find((check) => check.id === 'fresh-q-trace'),
+    ).toMatchObject({
+      status: 'blocked',
+      summary:
+        'Fresh Q trace is present but does not contain successful release-audit probe evidence.',
+      missing: ['fresh successful Q trace within 24h'],
+      details: {
+        releaseEvidence: {
+          present: true,
+          successEvents: 0,
+          failureEvents: 1,
+          sampledEvents: 1,
+          completedTurns: 0,
+          ready: false,
+          readError: null,
+        },
+      },
+    })
   })
 
   test('reports exactly which worker and public-site env keys are missing', () => {

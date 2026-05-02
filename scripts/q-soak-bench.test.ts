@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { buildQProviderProbeCheck, resolveQProviderProbeModel } from '../src/q/runtime.js'
+import { buildQSoakProbeEnv } from './q-soak-bench.ts'
 
 describe('q-soak-bench OCI probe selection', () => {
   test('probes direct OCI Q when the direct lane is enabled', () => {
@@ -31,6 +32,25 @@ describe('q-soak-bench OCI probe selection', () => {
 })
 
 describe('q-soak-bench OCI probe checks', () => {
+  test('preserves OCI runtime env while adding deterministic benchmark seeds', () => {
+    const env = buildQSoakProbeEnv(123, {
+      OCI_CONFIG_FILE: 'C:\\Users\\Knight\\.oci\\config',
+      OCI_PROFILE: 'DEFAULT',
+      OCI_COMPARTMENT_ID: 'ocid1.compartment.oc1..example',
+      OCI_GENAI_PROJECT_ID: 'ocid1.generativeaiproject.oc1.iad.example',
+    })
+
+    expect(env).toMatchObject({
+      OCI_CONFIG_FILE: 'C:\\Users\\Knight\\.oci\\config',
+      OCI_PROFILE: 'DEFAULT',
+      OCI_COMPARTMENT_ID: 'ocid1.compartment.oc1..example',
+      OCI_GENAI_PROJECT_ID: 'ocid1.generativeaiproject.oc1.iad.example',
+      OPENJAWS_BENCHMARK_SEED: '123',
+      SEED: '123',
+      PYTHONHASHSEED: '123',
+    })
+  })
+
   test('maps missing-key OCI probes to failed preflight checks', () => {
     const check = buildQProviderProbeCheck({
       name: 'oci-q-runtime',
