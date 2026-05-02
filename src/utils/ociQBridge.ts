@@ -44,9 +44,12 @@ type OciQBridgeProcessResult = {
 }
 
 export function resolveOciBridgeModel(model: string): string {
-  return model.trim().toLowerCase() === 'q'
+  const trimmed = model.trim()
+  const providerPrefixed = /^oci:(.+)$/i.exec(trimmed)?.[1]?.trim()
+  const providerLocalModel = providerPrefixed || trimmed
+  return providerLocalModel.toLowerCase() === 'q'
     ? resolveOciQRuntime().model
-    : model.trim()
+    : providerLocalModel
 }
 
 function parseBridgeJson(stdout: string): OciQBridgeResponse | null {

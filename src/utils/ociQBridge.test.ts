@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-import { parseOciBridgeProcessResult } from './ociQBridge.js'
+import {
+  parseOciBridgeProcessResult,
+  resolveOciBridgeModel,
+} from './ociQBridge.js'
 
 describe('ociQBridge process parsing', () => {
   test('accepts a successful bridge JSON payload even when the Python process exits nonzero', () => {
@@ -37,5 +40,32 @@ describe('ociQBridge process parsing', () => {
         'fallback failure',
       ),
     ).toThrow('401 Unauthorized')
+  })
+
+  test('resolves provider-prefixed Q aliases to the configured OCI upstream model', () => {
+    const previousQModel = process.env.Q_MODEL
+    const previousOciModel = process.env.OCI_MODEL
+    try {
+      delete process.env.Q_MODEL
+      process.env.OCI_MODEL = 'openai.gpt-oss-120b'
+
+      expect(resolveOciBridgeModel('Q')).toBe('openai.gpt-oss-120b')
+      expect(resolveOciBridgeModel('oci:Q')).toBe('openai.gpt-oss-120b')
+      expect(resolveOciBridgeModel(' OCI:q ')).toBe('openai.gpt-oss-120b')
+      expect(resolveOciBridgeModel('oci:openai.gpt-oss-120b')).toBe(
+        'openai.gpt-oss-120b',
+      )
+    } finally {
+      if (previousQModel === undefined) {
+        delete process.env.Q_MODEL
+      } else {
+        process.env.Q_MODEL = previousQModel
+      }
+      if (previousOciModel === undefined) {
+        delete process.env.OCI_MODEL
+      } else {
+        process.env.OCI_MODEL = previousOciModel
+      }
+    }
   })
 })
