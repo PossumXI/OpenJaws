@@ -2,6 +2,7 @@
 
 ## 2.1.88 - 2026-04-22
 
+- GitHub Actions Bun installs now run through `scripts/ci-bun-install.mjs`, which retries transient dependency download failures such as `ffmpeg-static` GitHub 502 responses before failing the CI, System Check, release, JAWS Desktop, and Q benchmark lanes.
 - Roundtable runtime execution now invokes the tracked dynamic planner before executable passes and reports the planner decision in JSON output, so a live Discord roundtable no longer depends on a separate sidecar to recover from idle/PASS drift into a governed code-bearing handoff.
 - Prepared JAWS Desktop 0.1.8 as the next signed update lane for the browser-work and route-health repair pass, so 0.1.7 installs can receive the governed web browsing controls through the updater.
 - JAWS Desktop Browser now stages real web-work jobs for search, page summaries, public data collection, video/caption summaries, email drafting, and form assistance while preserving approval gates for sends, purchases, uploads, account changes, submissions, and other irreversible actions.

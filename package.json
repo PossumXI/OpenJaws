@@ -31,7 +31,7 @@
     "jaws:local:admin:seed": "bun run --cwd apps/jaws-desktop local:admin:seed",
     "website:dev": "bun run --cwd website dev",
     "website:build": "bun scripts/build-website.ts",
-    "website:api:test": "bun install --cwd website --frozen-lockfile && bun test website/lib/*.test.ts",
+    "website:api:test": "node scripts/ci-bun-install.mjs --cwd website && bun test website/lib/*.test.ts",
     "website:snapshot:generate": "bun scripts/generate-website-benchmark-snapshot.ts",
     "website:snapshot:check": "bun scripts/generate-website-benchmark-snapshot.ts --check",
     "website:verify": "bun run website:snapshot:check && bun run website:api:test && bun run website:build",
