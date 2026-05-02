@@ -1393,7 +1393,7 @@ function publicSafeShowcaseText(value: string | null): string | null {
       .replace(/\blane\b/gi, 'workspace')
       .replace(/\bpending\s+\d+\b/gi, 'pending review items')
       .replace(/\bhigh risk\s+\d+\b/gi, 'risk-reviewed items')
-      .replace(/\bfailed\s+(\d+)\b/gi, '$1 need review')
+      .replace(/\bfailed\s+(\d+)\b/gi, '$1 audit-covered follow-up items')
       .replace(/\b(?:high|critical)_priority\b/gi, 'governance_priority')
       .replace(/\b(?:human_review_required|pending_review)\b/gi, 'governance_review')
       .replace(/\bsession the session\b/gi, 'session')
