@@ -5,6 +5,7 @@ import { readLatestImmaculateTraceSummary } from '../src/immaculate/traceSummary
 import { readLatestQTraceSummary } from '../src/q/traceSummary.js'
 import { readDiscordQAgentReceipt } from '../src/utils/discordQAgentRuntime.js'
 import { readDiscordRoundtableSessionSnapshot } from '../src/utils/discordRoundtableRuntime.js'
+import { stripBOM } from '../src/utils/jsonRead.js'
 import {
   getImmaculateHarnessIntelligenceStatus,
   getImmaculateHarnessStatus,
@@ -287,7 +288,7 @@ function readRoundtableLaunchState(root: string): RoundtableLaunchState | null {
     return null
   }
   try {
-    return JSON.parse(readFileSync(launchPath, 'utf8')) as RoundtableLaunchState
+    return JSON.parse(stripBOM(readFileSync(launchPath, 'utf8'))) as RoundtableLaunchState
   } catch {
     return null
   }

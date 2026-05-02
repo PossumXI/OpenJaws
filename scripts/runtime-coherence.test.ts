@@ -187,6 +187,57 @@ describe('runtime-coherence PersonaPlex mapping', () => {
     }
   })
 
+  test('reads BOM-prefixed roundtable launch state written by PowerShell', () => {
+    const root = mkdtempSync(join(tmpdir(), 'openjaws-roundtable-coherence-'))
+    try {
+      const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+      mkdirSync(runtimeDir, { recursive: true })
+      const now = new Date().toISOString()
+      const endsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+      writeFileSync(
+        join(runtimeDir, 'discord-roundtable.session.json'),
+        `${JSON.stringify({
+          version: 1,
+          status: 'running',
+          updatedAt: now,
+          startedAt: now,
+          endsAt,
+          guildId: null,
+          roundtableChannelId: null,
+          roundtableChannelName: 'dev_support',
+          generalChannelId: null,
+          generalChannelName: null,
+          violaVoiceChannelId: null,
+          violaVoiceChannelName: null,
+          turnCount: 0,
+          nextPersona: null,
+          lastSpeaker: null,
+          lastSummary: 'Roundtable bootstrapped.',
+          lastError: null,
+          processedCommandMessageIds: [],
+        })}\n`,
+        'utf8',
+      )
+      writeFileSync(
+        join(runtimeDir, 'discord-roundtable-launch.json'),
+        `\uFEFF${JSON.stringify({
+          startedAt: '2026-05-02T00:00:01.000Z',
+          pid: process.pid,
+        })}\n`,
+        'utf8',
+      )
+
+      expect(readRoundtableState(root)).toMatchObject({
+        status: 'running',
+        channelName: 'dev_support',
+        launchChildAlive: true,
+        launchDetail: null,
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test('marks active roundtable sessions unhealthy when launch state is missing', () => {
     const root = mkdtempSync(join(tmpdir(), 'openjaws-roundtable-coherence-'))
     try {
