@@ -511,6 +511,59 @@ describe('runtimeCoherence', () => {
     )
   })
 
+  test('warns when an active roundtable action is not producing code-bearing progress', () => {
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: readyQReceipt(),
+      immaculateTrace: null,
+      qTrace: null,
+      routeQueueDepth: 0,
+      roundtable: {
+        status: 'running',
+        channelName: 'dev_support',
+        lastSummary:
+          'OpenJaws roundtable action blackbeak-follow-through-openjaws-2026-05-02t01-18-01.890z was held back: no code changes detected.',
+        lastError: null,
+      },
+    })
+
+    const check = report.checks.find(item => item.id === 'roundtable-runtime')
+    expect(report.status).toBe('warning')
+    expect(check?.status).toBe('warning')
+    expect(check?.detail).toContain(
+      'latest governed action did not produce a code-bearing result',
+    )
+    expect(check?.detail).toContain('no code changes detected')
+  })
+
+  test('keeps an active roundtable ok when Q is ready and the latest action is a normal progress update', () => {
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: readyQReceipt(),
+      immaculateTrace: null,
+      qTrace: null,
+      routeQueueDepth: 0,
+      roundtable: {
+        status: 'running',
+        channelName: 'dev_support',
+        lastSummary: 'Q posted turn 4.',
+        lastError: null,
+      },
+    })
+
+    const check = report.checks.find(item => item.id === 'roundtable-runtime')
+    expect(check?.status).toBe('ok')
+    expect(check?.detail).toBe('Q posted turn 4.')
+  })
+
   test('warns when the voice runtime is enabled but not actually connected', () => {
     const report = buildRuntimeCoherenceReport({
       harnessStatus: {

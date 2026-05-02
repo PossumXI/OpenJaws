@@ -149,6 +149,21 @@ function normalizeProbeCheckId(label: string): string {
   )
 }
 
+function isWeakRoundtableProgressSignal(
+  roundtable: RoundtableRuntimeSnapshot,
+): boolean {
+  const combined = [roundtable.lastSummary, roundtable.lastError]
+    .filter(Boolean)
+    .join('\n')
+  return (
+    /\bheld back\b/i.test(combined) ||
+    /\bno (?:file|code) changes? (?:were )?detected\b/i.test(combined) ||
+    /\bartifact-only output\b/i.test(combined) ||
+    /\bmixed code and artifact output\b/i.test(combined) ||
+    /\bunknown roundtable action\b/i.test(combined)
+  )
+}
+
 function readTraceSessionStartedPath(path: string): string | null {
   try {
     const firstLine = readFileSync(path, 'utf8')
@@ -480,23 +495,32 @@ export function buildRuntimeCoherenceReport(args: {
     const roundtableHasRuntimeFault =
       Boolean(args.roundtable.lastError) ||
       (roundtableActive && args.roundtable.launchChildAlive === false)
+    const roundtableHasWeakProgress =
+      !roundtableHasRuntimeFault && isWeakRoundtableProgressSignal(args.roundtable)
     const roundtableHealthy =
       !roundtableHasRuntimeFault &&
+      !roundtableHasWeakProgress &&
       ((!roundtableSessionExpired && args.roundtable.status !== 'running') ||
         (qReceipt?.status === 'ready' && qReceipt.gateway.connected === true))
     checks.push({
       id: 'roundtable-runtime',
-      status: roundtableSessionExpired || roundtableHasRuntimeFault
-        ? 'warning'
-        : roundtableHealthy
-          ? 'ok'
-          : 'failed',
+      status:
+        (roundtableSessionExpired ||
+          roundtableHasRuntimeFault ||
+          roundtableHasWeakProgress)
+          ? 'warning'
+          : roundtableHealthy
+            ? 'ok'
+            : 'failed',
       summary: `Roundtable is ${args.roundtable.status ?? 'unknown'}${
         args.roundtable.channelName ? ` in #${args.roundtable.channelName}` : ''
       }.`,
       detail:
         args.roundtable.launchDetail ??
         args.roundtable.lastError ??
+        (roundtableHasWeakProgress && args.roundtable.lastSummary
+          ? `Roundtable is active, but the latest governed action did not produce a code-bearing result: ${args.roundtable.lastSummary}`
+          : null) ??
         args.roundtable.lastSummary ??
         args.roundtable.updatedAt ??
         null,
