@@ -521,6 +521,88 @@ describe('discordRoundtableRuntime', () => {
     })
   })
 
+  it('keeps active job errors until the governed job leaves the active lane', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-active-error-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    mkdirSync(runtimeDir, { recursive: true })
+    const activeError = 'OpenJaws scripted operator job timed out.'
+    const activeJob = {
+      kind: 'roundtable',
+      id: 'job-active',
+      branchName: 'discord-q-job-active',
+      worktreePath: 'D:\\worktree',
+      workspacePath: 'D:\\repo',
+      changedFiles: [],
+      summary: 'OpenJaws · Q · Active repair',
+      status: 'running',
+      approvalState: null,
+      workKey: 'openjaws::src/utils',
+      projectKey: 'openjaws',
+      sourcePath: 'D:\\handoff.json',
+      sourceSessionId: 'session-1',
+      sourceScheduleId: 'schedule-1',
+      handoffKey: 'handoff-1',
+      repoId: 'openjaws',
+      repoLabel: 'OpenJaws',
+      role: 'Q',
+      objective: 'Active repair',
+      rationale: 'Keep active failures visible until they are reconciled.',
+      commandHint: null,
+      targetPath: 'D:\\repo\\src\\utils',
+      targetRootLabel: 'OpenJaws',
+      receiptPath: null,
+      outputDir: 'D:\\output',
+      commitStatement: null,
+      decisionTraceId: null,
+      routeSuggestion: null,
+      executionReady: true,
+      requiresManualCheckout: false,
+      workspaceMaterialized: true,
+      authorityBound: true,
+      completedAt: null,
+      rejectedAt: null,
+      rejectionReason: null,
+      leaseClaimedAt: '2026-05-02T02:12:00.000Z',
+      leaseExpiresAt: '2026-05-02T02:42:00.000Z',
+      leaseOwner: 'roundtable-runtime',
+    } satisfies DiscordRoundtableTrackedJob
+    writeFileSync(
+      getDiscordRoundtableQueueStatePath(root),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-05-02T02:12:00.000Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'Q launching action "Active repair" in D:\\repo',
+          lastError: activeError,
+          activeJobId: activeJob.id,
+          ingestedHandoffs: [],
+          jobs: [activeJob],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(runtimeDir, 'discord-roundtable.log'),
+      [
+        '[2026-05-02T02:12:00.000Z] Q launching action "Active repair" in D:\\repo',
+        '[2026-05-02T02:13:22.314Z] Blackbeak posted turn 9',
+      ].join('\n'),
+      'utf8',
+    )
+
+    expect(loadDiscordRoundtableRuntimeState(root)).toMatchObject({
+      status: 'running',
+      activeJobId: activeJob.id,
+      lastSummary: 'Blackbeak posted turn 9',
+      lastError: activeError,
+    })
+  })
+
   it('treats early live log activity as a running roundtable instead of falling back to idle', () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-live-log-'))
     tempDirs.push(root)

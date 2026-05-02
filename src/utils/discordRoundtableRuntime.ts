@@ -485,6 +485,8 @@ function overlayRoundtableLogSnapshot(args: {
     lastSummary: nextLastSummary,
     lastError:
       logIsNewer &&
+      state.activeJobId === null &&
+      state.jobs.length === 0 &&
       isRecoveredRoundtableProgress({
         status: nextStatus,
         summary: nextLastSummary,
@@ -1314,6 +1316,8 @@ export function syncDiscordRoundtableRuntimeState(
   const nextLastError =
     sessionState.lastError ??
     (sessionIsAtLeastAsFresh &&
+    nextStateBase.activeJobId === null &&
+    nextStateBase.jobs.length === 0 &&
     isRecoveredRoundtableProgress({
       status: sessionState.status,
       summary: sessionState.lastSummary ?? nextStateBase.lastSummary,
