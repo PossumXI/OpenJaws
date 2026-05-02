@@ -70,11 +70,11 @@ OpenJaws does not treat arbitrary `main` pushes, mirrors, or copied installer sn
 
 ## JAWS Desktop Mirrors
 
-JAWS Desktop 0.1.6 is the next mirrored public desktop release for users who want a native installer instead of a source checkout:
+JAWS Desktop 0.1.7 is the next mirrored public desktop release for users who want a native installer instead of a source checkout:
 
 - qline.site: `https://qline.site/downloads/jaws`
 - iorch.net: `https://iorch.net/downloads/jaws`
-- GitHub release: `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.6`
+- GitHub release: `https://github.com/PossumXI/OpenJaws/releases/tag/jaws-v0.1.7`
 
 The mirror download routes are Netlify redirects to the GitHub release assets:
 
@@ -92,7 +92,7 @@ The live updater endpoints are:
 - `https://qline.site/api/jaws/{{target}}/{{arch}}/{{current_version}}`
 - `https://iorch.net/api/jaws/{{target}}/{{arch}}/{{current_version}}`
 
-For a Windows x64 tester on `0.1.5`, both endpoints return a signed `0.1.6` update payload after the tag workflow publishes the assets. For an already-current `0.1.6` install, both endpoints return `204 No Content`.
+For a Windows x64 tester on `0.1.6`, both endpoints return a signed `0.1.7` update payload after the tag workflow publishes the assets. For an already-current `0.1.7` install, both endpoints return `204 No Content`.
 
 Installer publisher:
 

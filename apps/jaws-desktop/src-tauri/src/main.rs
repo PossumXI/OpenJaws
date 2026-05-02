@@ -230,6 +230,15 @@ struct BrowserPreviewSnapshot {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct PreviewWindowResult {
+    ok: bool,
+    url: String,
+    label: String,
+    message: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PreviewLaunchConfigResult {
     ok: bool,
     path: String,
@@ -262,6 +271,36 @@ struct PreviewDemoHarnessResult {
     spec_path: String,
     receipt_path: String,
     receipt_hash: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LedgerEventSummary {
+    id: String,
+    time: String,
+    actor: String,
+    action: String,
+    surface: String,
+    status: String,
+    proof: String,
+    detail: String,
+    risk_tier: u8,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LedgerSnapshot {
+    checked_at: String,
+    source: String,
+    configured: bool,
+    summary: String,
+    event_count: usize,
+    agent_event_count: usize,
+    browser_event_count: usize,
+    credit_event_count: usize,
+    external_route_configured: bool,
+    events: Vec<LedgerEventSummary>,
+    warnings: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -1610,6 +1649,32 @@ fn openjaws_config_home_dir() -> PathBuf {
     PathBuf::from(".openjaws")
 }
 
+fn jaws_runtime_work_dir() -> PathBuf {
+    let preferred = openjaws_config_home_dir().join("jaws-desktop-runtime");
+    if fs::create_dir_all(&preferred).is_ok() {
+        return preferred;
+    }
+
+    let fallback = env::temp_dir().join("jaws-desktop-runtime");
+    let _ = fs::create_dir_all(&fallback);
+    fallback
+}
+
+fn openjaws_command_work_dir(workspace_path: Option<String>) -> (PathBuf, String, bool) {
+    if let Some(workspace) = workspace_path
+        .as_deref()
+        .map(|path| validate_workspace(path.to_string()))
+        .filter(|workspace| workspace.valid)
+    {
+        let path = PathBuf::from(&workspace.path);
+        return (path, workspace.path, true);
+    }
+
+    let runtime = jaws_runtime_work_dir();
+    let label = runtime.display().to_string();
+    (runtime, label, false)
+}
+
 fn browser_preview_receipt_path() -> PathBuf {
     openjaws_config_home_dir()
         .join("browser-preview")
@@ -1658,6 +1723,64 @@ fn browser_preview_sessions(path: &Path) -> Vec<BrowserPreviewSessionSummary> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn record_browser_preview_session(url: &str, action: &str, note: &str, opened: bool) {
+    let path = browser_preview_receipt_path();
+    if let Some(parent) = path.parent() {
+        if fs::create_dir_all(parent).is_err() {
+            return;
+        }
+    }
+
+    let mut receipt = fs::read_to_string(&path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+
+    let mut sessions = receipt
+        .remove("sessions")
+        .and_then(|value| value.as_array().cloned())
+        .unwrap_or_default();
+
+    sessions.push(serde_json::json!({
+        "id": format!("jaws-preview-{}", now_unix_label().replace(':', "-")),
+        "action": action,
+        "intent": "browser-preview",
+        "requestedBy": "jaws-desktop",
+        "startedAt": now_unix_label(),
+        "opened": opened,
+        "note": note,
+        "url": url
+    }));
+
+    if sessions.len() > 50 {
+        let keep_from = sessions.len().saturating_sub(50);
+        sessions = sessions.into_iter().skip(keep_from).collect();
+    }
+
+    receipt.insert("version".to_string(), serde_json::Value::Number(1.into()));
+    receipt.insert(
+        "updatedAt".to_string(),
+        serde_json::Value::String(now_unix_label()),
+    );
+    receipt.insert("sessions".to_string(), serde_json::Value::Array(sessions));
+
+    let _ = fs::write(
+        path,
+        serde_json::to_string_pretty(&serde_json::Value::Object(receipt)).unwrap_or_default()
+            + "\n",
+    );
+}
+
+fn preview_window_label(url: &str) -> String {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in url.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("jaws-preview-{hash:016x}")
 }
 
 fn clean_preview_url(url: &str) -> Result<String, String> {
@@ -1981,6 +2104,64 @@ fn browser_preview_snapshot(workspace_path: Option<String>) -> BrowserPreviewSna
         launch_url,
         dev_command,
         sessions,
+    }
+}
+
+#[tauri::command]
+fn open_browser_preview_window(app: tauri::AppHandle, url: String) -> PreviewWindowResult {
+    let cleaned_url = match clean_preview_url(&url) {
+        Ok(value) => value,
+        Err(message) => {
+            return PreviewWindowResult {
+                ok: false,
+                url,
+                label: String::new(),
+                message,
+            };
+        }
+    };
+
+    let parsed = match cleaned_url.parse() {
+        Ok(value) => value,
+        Err(error) => {
+            return PreviewWindowResult {
+                ok: false,
+                url: cleaned_url,
+                label: String::new(),
+                message: format!("Preview URL could not be opened: {error}"),
+            };
+        }
+    };
+
+    let label = preview_window_label(&cleaned_url);
+    let build_result =
+        tauri::WebviewWindowBuilder::new(&app, label.clone(), tauri::WebviewUrl::External(parsed))
+            .title(format!("JAWS Preview - {cleaned_url}"))
+            .inner_size(1180.0, 820.0)
+            .resizable(true)
+            .build();
+
+    match build_result {
+        Ok(_) => {
+            record_browser_preview_session(
+                &cleaned_url,
+                "native-window",
+                "Opened in a dedicated JAWS preview window.",
+                true,
+            );
+            PreviewWindowResult {
+                ok: true,
+                url: cleaned_url,
+                label,
+                message: "Opened in a dedicated JAWS preview window.".to_string(),
+            }
+        }
+        Err(error) => PreviewWindowResult {
+            ok: false,
+            url: cleaned_url,
+            label,
+            message: format!("Native preview window could not be opened: {error}"),
+        },
     }
 }
 
@@ -2775,6 +2956,343 @@ fn project_context_snapshot(workspace_path: Option<String>) -> ProjectContextSna
     }
 }
 
+fn has_config_value(names: &[&str]) -> bool {
+    names.iter().any(|name| {
+        env::var(name)
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
+    })
+}
+
+fn arobi_external_route_configured() -> bool {
+    let has_url = has_config_value(&[
+        "LAAS_API_URL",
+        "AROBI_LAAS_BASE_URL",
+        "AROBI_LAAS_API_URL",
+        "AROBI_LEDGER_BASE_URL",
+        "AROBI_LEDGER_API_URL",
+    ]);
+    let has_token = has_config_value(&[
+        "LAAS_API_TOKEN",
+        "AROBI_LAAS_TOKEN",
+        "AROBI_LAAS_API_TOKEN",
+        "AROBI_LEDGER_TOKEN",
+    ]);
+    let edge_secret = openjaws_config_home_dir()
+        .parent()
+        .map(|home| home.join(".arobi").join("edge-secrets.json"))
+        .filter(|path| path.exists())
+        .is_some();
+
+    (has_url && has_token) || edge_secret
+}
+
+fn push_ledger_event(events: &mut Vec<LedgerEventSummary>, event: LedgerEventSummary) {
+    if event.id.trim().is_empty()
+        || events
+            .iter()
+            .any(|existing| existing.id == event.id && existing.surface == event.surface)
+    {
+        return;
+    }
+    events.push(event);
+}
+
+fn route_ledger_event(entry: &serde_json::Value) -> LedgerEventSummary {
+    let admission = queue_cognitive_admission(entry);
+    let run_id = first_non_empty(vec![
+        json_field_string(entry, "runId"),
+        json_field_string(entry, "id"),
+        "q-route".to_string(),
+    ]);
+    let status = first_non_empty(vec![
+        json_field_string(entry, "status"),
+        admission
+            .map(cognitive_status_label)
+            .unwrap_or_else(|| "recorded".to_string()),
+    ]);
+    let proof = admission
+        .map(|value| json_field_string(value, "ledgerRecordId"))
+        .unwrap_or_default();
+    let risk_tier = admission.map(cognitive_risk_tier).unwrap_or(0);
+    let detail = admission
+        .map(cognitive_trace_detail)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| {
+            first_non_empty(vec![
+                json_field_string(entry, "summary"),
+                json_field_string(entry, "prompt"),
+                json_field_string(entry, "objective"),
+                "Q route activity recorded.".to_string(),
+            ])
+        });
+
+    LedgerEventSummary {
+        id: shorten(&run_id, 80),
+        time: best_event_time(entry, &["updatedAt", "createdAt", "claimedAt", "startedAt"]),
+        actor: first_non_empty(vec![
+            json_nested_string(entry, "claim", "workerId"),
+            json_field_string(entry, "workerId"),
+            "Q".to_string(),
+        ]),
+        action: "agent route".to_string(),
+        surface: "OpenJaws".to_string(),
+        status,
+        proof: if proof.is_empty() {
+            "local route receipt".to_string()
+        } else {
+            shorten(&proof, 80)
+        },
+        detail: shorten(&detail, 180),
+        risk_tier,
+    }
+}
+
+fn browser_ledger_event(session: &BrowserPreviewSessionSummary) -> LedgerEventSummary {
+    LedgerEventSummary {
+        id: first_non_empty(vec![
+            session.id.clone(),
+            format!("browser-{}", session.started_at),
+        ]),
+        time: session.started_at.clone(),
+        actor: first_non_empty(vec![
+            session.requested_by.clone(),
+            "JAWS Desktop".to_string(),
+        ]),
+        action: first_non_empty(vec![session.action.clone(), "browser preview".to_string()]),
+        surface: "Browser Preview".to_string(),
+        status: if session.opened {
+            "opened".to_string()
+        } else {
+            "recorded".to_string()
+        },
+        proof: "browser-preview receipt".to_string(),
+        detail: shorten(
+            &first_non_empty(vec![session.note.clone(), session.url.clone()]),
+            180,
+        ),
+        risk_tier: 1,
+    }
+}
+
+fn generic_json_ledger_events(path: &Path, surface: &str, limit: usize) -> Vec<LedgerEventSummary> {
+    let value = fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
+    let Some(value) = value else {
+        return Vec::new();
+    };
+
+    let rows = if let Some(rows) = value.as_array() {
+        rows.clone()
+    } else if let Some(rows) = value.get("events").and_then(|events| events.as_array()) {
+        rows.clone()
+    } else if let Some(rows) = value.get("ledger").and_then(|events| events.as_array()) {
+        rows.clone()
+    } else if value.is_object() {
+        vec![value]
+    } else {
+        Vec::new()
+    };
+
+    rows.into_iter()
+        .take(limit)
+        .enumerate()
+        .map(|(index, row)| {
+            let id = first_non_empty(vec![
+                json_field_string(&row, "id"),
+                json_field_string(&row, "eventId"),
+                json_field_string(&row, "referenceId"),
+                format!("{}#{index}", path.display()),
+            ]);
+            let action = first_non_empty(vec![
+                json_field_string(&row, "type"),
+                json_field_string(&row, "eventType"),
+                json_field_string(&row, "action"),
+                json_field_string(&row, "kind"),
+                "ledger event".to_string(),
+            ]);
+            let status = first_non_empty(vec![
+                json_field_string(&row, "status"),
+                json_field_string(&row, "state"),
+                "recorded".to_string(),
+            ]);
+            LedgerEventSummary {
+                id: shorten(&id, 80),
+                time: best_event_time(
+                    &row,
+                    &[
+                        "createdAt",
+                        "created_at",
+                        "updatedAt",
+                        "timestamp",
+                        "savedAt",
+                    ],
+                ),
+                actor: first_non_empty(vec![
+                    json_field_string(&row, "actor"),
+                    json_field_string(&row, "email"),
+                    json_field_string(&row, "source"),
+                    "Arobi".to_string(),
+                ]),
+                action: shorten(&action, 80),
+                surface: surface.to_string(),
+                status,
+                proof: relative_display_path(
+                    &path.parent().unwrap_or_else(|| Path::new(".")),
+                    path,
+                ),
+                detail: shorten(
+                    &first_non_empty(vec![
+                        json_field_string(&row, "description"),
+                        json_field_string(&row, "summary"),
+                        json_field_string(&row, "reason"),
+                        json_field_string(&row, "plan"),
+                        "Local ledger JSON event.".to_string(),
+                    ]),
+                    180,
+                ),
+                risk_tier: json_number_field(&row, "riskTier")
+                    .or_else(|| json_number_field(&row, "risk_tier"))
+                    .unwrap_or(0.0)
+                    .round()
+                    .clamp(0.0, 5.0) as u8,
+            }
+        })
+        .collect()
+}
+
+fn push_preview_demo_receipts(root: &Path, events: &mut Vec<LedgerEventSummary>) {
+    let demo_root = root.join(".openjaws").join("browser-preview-demos");
+    let Ok(entries) = fs::read_dir(&demo_root) else {
+        return;
+    };
+
+    for entry in entries.flatten().take(12) {
+        let path = entry.path().join("openjaws-preview-demo.receipt.json");
+        for event in generic_json_ledger_events(&path, "Website Test", 1) {
+            push_ledger_event(events, event);
+        }
+    }
+}
+
+#[tauri::command]
+fn arobi_ledger_snapshot(workspace_path: Option<String>) -> LedgerSnapshot {
+    let (command_dir, command_label, workspace_attached) =
+        openjaws_command_work_dir(workspace_path.clone());
+    let mut events = Vec::new();
+    let mut sources = Vec::new();
+    let external_route_configured = arobi_external_route_configured();
+    let (q_runs_dir, q_runs_exists) = select_q_runs_dir(workspace_path.clone());
+
+    if q_runs_exists {
+        sources.push(q_runs_dir.display().to_string());
+        for entry in read_json_array(&q_runs_dir.join("route-queue.json"))
+            .into_iter()
+            .take(18)
+        {
+            push_ledger_event(&mut events, route_ledger_event(&entry));
+        }
+    }
+
+    let browser_receipt = browser_preview_receipt_path();
+    if browser_receipt.exists() {
+        sources.push(browser_receipt.display().to_string());
+        for session in browser_preview_sessions(&browser_receipt) {
+            push_ledger_event(&mut events, browser_ledger_event(&session));
+        }
+    }
+
+    if workspace_attached {
+        push_preview_demo_receipts(&command_dir, &mut events);
+        let local_ledgers = [
+            command_dir
+                .join("website")
+                .join(".data")
+                .join("usage-ledger.local.json"),
+            command_dir
+                .join("website")
+                .join(".data")
+                .join("jaws-admin.local.json"),
+            command_dir.join(".data").join("usage-ledger.local.json"),
+            command_dir.join(".openjaws").join("ledger.json"),
+            command_dir.join(".openjaws").join("ledger.local.json"),
+        ];
+        for path in local_ledgers {
+            if path.exists() {
+                sources.push(path.display().to_string());
+                for event in generic_json_ledger_events(&path, "Arobi Ledger", 8) {
+                    push_ledger_event(&mut events, event);
+                }
+            }
+        }
+    }
+
+    events.truncate(40);
+    let agent_event_count = events
+        .iter()
+        .filter(|event| event.surface == "OpenJaws" || event.actor.contains('Q'))
+        .count();
+    let browser_event_count = events
+        .iter()
+        .filter(|event| event.surface.contains("Browser") || event.surface.contains("Website"))
+        .count();
+    let credit_event_count = events
+        .iter()
+        .filter(|event| {
+            let text = format!(
+                "{} {} {}",
+                event.action.to_ascii_lowercase(),
+                event.surface.to_ascii_lowercase(),
+                event.detail.to_ascii_lowercase()
+            );
+            text.contains("credit")
+                || text.contains("token")
+                || text.contains("wallet")
+                || text.contains("billing")
+        })
+        .count();
+    let mut warnings = Vec::new();
+    if !external_route_configured {
+        warnings.push(
+            "No external AROBI LAAS route/token is configured in this desktop process; showing local receipts only."
+                .to_string(),
+        );
+    }
+    if events.is_empty() {
+        warnings.push(
+            "No local agent, browser, billing, or credit receipts were found for this workspace yet."
+                .to_string(),
+        );
+    }
+
+    let event_count = events.len();
+    let configured = external_route_configured || event_count > 0;
+    LedgerSnapshot {
+        checked_at: now_unix_label(),
+        source: if sources.is_empty() {
+            command_label
+        } else {
+            sources.join(" | ")
+        },
+        configured,
+        summary: if configured {
+            format!(
+                "{event_count} local audit events found. {agent_event_count} agent, {browser_event_count} browser/test, {credit_event_count} credit/account."
+            )
+        } else {
+            "Ledger is waiting for local receipts or a configured AROBI LAAS route.".to_string()
+        },
+        event_count,
+        agent_event_count,
+        browser_event_count,
+        credit_event_count,
+        external_route_configured,
+        events,
+        warnings,
+    }
+}
+
 fn workspace_name(path: &Path) -> String {
     path.file_name()
         .and_then(|name| name.to_str())
@@ -3253,6 +3771,7 @@ async fn openjaws_inference_status(
     provider: Option<String>,
     model: Option<String>,
     run_probe: bool,
+    workspace_path: Option<String>,
 ) -> InferenceCommandResult {
     let provider = clean_provider_arg(provider);
     let model = clean_model_arg(model);
@@ -3262,9 +3781,11 @@ async fn openjaws_inference_status(
         String::new()
     };
     let auth_label = inference_auth_label(&provider);
+    let (command_dir, command_dir_label, workspace_attached) =
+        openjaws_command_work_dir(workspace_path);
     let command = match app.shell().sidecar("openjaws") {
         Ok(command) => {
-            let command = command.arg("provider");
+            let command = command.arg("provider").current_dir(command_dir.clone());
             if run_probe {
                 command.arg("test").arg(provider.clone()).arg(model.clone())
             } else {
@@ -3284,7 +3805,16 @@ async fn openjaws_inference_status(
     match tokio::time::timeout(Duration::from_secs(45), command.output()).await {
         Ok(Ok(output)) => {
             let stdout = truncate_text(
-                &redact_inference_output(&String::from_utf8_lossy(&output.stdout)),
+                &format!(
+                    "{}\n\nRuntime directory: {}{}",
+                    redact_inference_output(&String::from_utf8_lossy(&output.stdout)),
+                    command_dir_label,
+                    if workspace_attached {
+                        " (workspace)"
+                    } else {
+                        " (JAWS writable runtime)"
+                    }
+                ),
                 4_000,
             );
             let stderr = truncate_text(
@@ -3324,6 +3854,128 @@ async fn openjaws_inference_status(
             "AI check timed out before output.".to_string(),
             "OpenJaws provider command timed out after 45 seconds.".to_string(),
         ),
+    }
+}
+
+fn is_workspace_analysis_prompt(prompt: &str) -> bool {
+    let lower = prompt.to_ascii_lowercase();
+    let asks_for_workspace = lower.contains("workspace")
+        || lower.contains("project")
+        || lower.contains("repo")
+        || lower.contains("codebase");
+    let asks_for_analysis = lower.contains("analy")
+        || lower.contains("inspect")
+        || lower.contains("audit")
+        || lower.contains("tell me what you see")
+        || lower.contains("what do you see")
+        || lower.contains("summarize");
+    let asks_for_write = lower.contains(" edit ")
+        || lower.contains(" change ")
+        || lower.contains(" fix ")
+        || lower.contains(" implement ")
+        || lower.contains(" create ")
+        || lower.contains(" delete ")
+        || lower.contains(" deploy ");
+
+    asks_for_workspace && asks_for_analysis && !asks_for_write
+}
+
+fn workspace_analysis_chat_result(
+    workspace: &WorkspaceStatus,
+    permission_mode: &str,
+) -> ChatCommandResult {
+    let context = project_context_snapshot(Some(workspace.path.clone()));
+    let ledger = arobi_ledger_snapshot(Some(workspace.path.clone()));
+    let categories = if context.categories.is_empty() {
+        "- No source categories were scanned.".to_string()
+    } else {
+        context
+            .categories
+            .iter()
+            .take(8)
+            .map(|category| {
+                format!(
+                    "- {}: {}/{} files, {}% confidence, {} tokens.",
+                    category.label,
+                    category.included_count,
+                    category.file_count,
+                    category.confidence,
+                    category.estimated_tokens
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let priority_files = if context.priority_files.is_empty() {
+        "- No priority files were selected by the bounded scanner.".to_string()
+    } else {
+        context
+            .priority_files
+            .iter()
+            .take(10)
+            .map(|file| format!("- {} ({}) - {}", file.path, file.kind, file.reason))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let skips = if context.skipped.is_empty() {
+        "- No privacy or size skips were recorded.".to_string()
+    } else {
+        context
+            .skipped
+            .iter()
+            .take(6)
+            .map(|group| format!("- {}: {}", group.reason, group.count))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let ledger_events = if ledger.events.is_empty() {
+        "- No local ledger events were found yet.".to_string()
+    } else {
+        ledger
+            .events
+            .iter()
+            .take(8)
+            .map(|event| {
+                format!(
+                    "- {} {} {} [{}]",
+                    event.actor, event.action, event.surface, event.status
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    ChatCommandResult {
+        ok: true,
+        code: Some(0),
+        stdout: format!(
+            "Workspace Analysis\n\
+             Workspace: {}\n\
+             Source: {}\n\
+             Confidence: {}%\n\
+             Files scanned: {}/{}\n\
+             Estimated context: {} tokens\n\n\
+             What I see:\n{}\n\n\
+             Priority files:\n{}\n\n\
+             Privacy and scan limits:\n{}\n\n\
+             Ledger state:\n{}\n{}",
+            context.workspace_path,
+            context.source,
+            context.confidence_score,
+            context.scanned_files,
+            context.total_files,
+            context.estimated_tokens,
+            categories,
+            priority_files,
+            skips,
+            ledger.summary,
+            ledger_events
+        ),
+        stderr: String::new(),
+        summary: "JAWS completed bounded workspace analysis without waiting on a long chat turn."
+            .to_string(),
+        permission_mode: permission_mode.to_string(),
+        workspace_path: workspace.path.clone(),
     }
 }
 
@@ -3381,6 +4033,10 @@ async fn run_openjaws_chat(
             workspace_path: String::new(),
         };
     };
+
+    if is_workspace_analysis_prompt(prompt) {
+        return workspace_analysis_chat_result(&workspace, permission_mode);
+    }
 
     let command = match app.shell().sidecar("openjaws") {
         Ok(command) => command
@@ -3567,6 +4223,78 @@ mod tests {
         assert_eq!(snapshot.trace[0].kind, "Waiting");
         assert!(snapshot.summary.contains("No agent route files"));
     }
+
+    fn temp_test_dir(name: &str) -> PathBuf {
+        let path = env::temp_dir().join(format!(
+            "jaws-desktop-{name}-{}",
+            now_unix_label().replace(':', "-")
+        ));
+        fs::create_dir_all(&path).expect("test temp dir should be created");
+        path
+    }
+
+    #[test]
+    fn command_work_dir_never_defaults_to_process_cwd_without_workspace() {
+        let (path, label, attached) = openjaws_command_work_dir(None);
+
+        assert!(!attached);
+        assert!(path.ends_with("jaws-desktop-runtime"));
+        assert!(path.is_dir());
+        assert!(label.contains("jaws-desktop-runtime"));
+    }
+
+    #[test]
+    fn workspace_analysis_prompt_uses_bounded_native_scan() {
+        assert!(is_workspace_analysis_prompt(
+            "analysis the workspace tell me what you see"
+        ));
+        assert!(is_workspace_analysis_prompt(
+            "Inspect this project and summarize the safest next step"
+        ));
+        assert!(!is_workspace_analysis_prompt(
+            "inspect this workspace and fix the failing test"
+        ));
+    }
+
+    #[test]
+    fn ledger_snapshot_reads_local_q_route_receipts() {
+        let root = temp_test_dir("ledger");
+        let q_runs = root.join("artifacts").join("q-runs");
+        fs::create_dir_all(&q_runs).expect("q-runs dir should be created");
+        fs::write(
+            q_runs.join("route-queue.json"),
+            serde_json::to_string_pretty(&json!([
+                {
+                    "runId": "route-ledger-test",
+                    "status": "claimed",
+                    "updatedAt": "2026-05-02T02:00:00Z",
+                    "claim": {
+                        "workerId": "worker-ledger",
+                        "cognitiveAdmission": {
+                            "status": "allow",
+                            "goalId": "q-route:route-ledger-test",
+                            "toolName": "q.route.dispatch",
+                            "riskTier": 2,
+                            "scorecardQuality": 0.91,
+                            "ledgerRecordId": "ledger-record-ledger-test"
+                        }
+                    }
+                }
+            ]))
+            .unwrap(),
+        )
+        .expect("route queue should be written");
+
+        let snapshot = arobi_ledger_snapshot(Some(root.display().to_string()));
+
+        assert!(snapshot.configured);
+        assert!(snapshot.event_count >= 1);
+        assert!(snapshot.agent_event_count >= 1);
+        assert!(snapshot.events.iter().any(|event| {
+            event.id.contains("route-ledger-test")
+                && event.proof.contains("ledger-record-ledger-test")
+        }));
+    }
 }
 
 fn main() {
@@ -3586,10 +4314,12 @@ fn main() {
         .plugin(updater_builder.build())
         .invoke_handler(tauri::generate_handler![
             agent_runtime_snapshot,
+            arobi_ledger_snapshot,
             backend_status,
             account_session,
             browser_preview_snapshot,
             enrollment_links,
+            open_browser_preview_window,
             openjaws_inference_status,
             openjaws_smoke,
             openjaws_workspace_smoke,
