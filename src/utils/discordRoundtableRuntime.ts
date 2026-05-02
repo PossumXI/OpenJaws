@@ -1777,6 +1777,28 @@ function buildRoundtableTransitionReceipts(args: {
   return receipts
 }
 
+function summarizeExpiredRunningLeases(args: {
+  previousJobs: DiscordRoundtableTrackedJob[]
+  nextJobs: DiscordRoundtableTrackedJob[]
+}): string | null {
+  const previousById = new Map(args.previousJobs.map(job => [job.id, job]))
+  const expired = args.nextJobs.filter(job => {
+    const previous = previousById.get(job.id)
+    return (
+      previous?.status === 'running' &&
+      job.status === 'error' &&
+      job.approvalState === 'rejected' &&
+      job.rejectionReason === 'execution lease expired before completion'
+    )
+  })
+  if (expired.length === 0) {
+    return null
+  }
+  return expired
+    .map(job => `${job.repoLabel} roundtable action ${job.id}`)
+    .join('; ')
+}
+
 function formatRoundtableQueueJobLine(
   label: string,
   job: DiscordRoundtableTrackedJob,
@@ -2200,6 +2222,23 @@ export async function processDiscordRoundtableRuntime(
       approvalTtlHours,
       nowMs: (options.now?.() ?? new Date()).getTime(),
     }) as DiscordRoundtableTrackedJob[],
+  }
+  const expiredRunningSummary = summarizeExpiredRunningLeases({
+    previousJobs,
+    nextJobs: state.jobs,
+  })
+  if (expiredRunningSummary) {
+    state = {
+      ...state,
+      activeJobId: state.jobs.some(
+        job => job.id === state.activeJobId && job.status === 'running',
+      )
+        ? state.activeJobId
+        : null,
+      lastError: null,
+      lastSummary: `Stopped expired running roundtable action ${expiredRunningSummary}: execution lease expired before completion.`,
+    }
+    state.status = normalizeRuntimeStatus(state.jobs, state.lastError, state.status)
   }
   pruneOperatorPendingPushes({
     path:

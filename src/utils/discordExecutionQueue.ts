@@ -110,6 +110,23 @@ export function reconcileDiscordExecutionJobs<
       }
     }
 
+    if (normalized.status === 'running') {
+      const leaseExpiresAtMs = toMillis(normalized.leaseExpiresAt ?? null)
+      if (leaseExpiresAtMs !== null && nowMs >= leaseExpiresAtMs) {
+        return {
+          ...normalized,
+          status: 'error',
+          approvalState: 'rejected',
+          rejectedAt: new Date(nowMs).toISOString(),
+          rejectionReason:
+            normalized.rejectionReason ??
+            'execution lease expired before completion',
+          leaseOwner: null,
+          leaseExpiresAt: null,
+        } as T
+      }
+    }
+
     return normalized
   })
 }
