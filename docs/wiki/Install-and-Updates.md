@@ -234,6 +234,13 @@ Use the fuller release pass when preparing a local ship candidate:
 bun run verify:release
 ```
 
+For the 0.1.9 lane, `verify:release` includes `bun run jaws:release:ready`.
+That gate is intentionally stricter than normal route health: it blocks updater
+promotion when the `jaws-v0.1.9` GitHub release is not published, when
+production hosted-Q/D1/Stripe price/service-token configuration is incomplete,
+when a fresh release-audit Q trace is missing, or when local Apex listeners are
+present without explicit `OPENJAWS_APEX_TRUST_LOCALHOST=1` operator trust.
+
 ## Security Notes
 
 - keep secrets in your local config or secure storage, not in the repository
