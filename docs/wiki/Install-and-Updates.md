@@ -85,6 +85,8 @@ The mirror download routes are Netlify redirects to the GitHub release assets:
 - `/downloads/jaws/linux-rpm`
 - `/downloads/jaws/latest.json`
 
+Both mirrors keep those redirects in repo-owned files checked by `scripts/jaws-release-public-surface.test.ts`, so a release version bump must update the public download routes before the mirror health check can pass.
+
 Use the mirror pages for the branded public install flow. Use the GitHub release page when you want to inspect every artifact and signature directly.
 
 The live updater endpoints are:

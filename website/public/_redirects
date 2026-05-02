@@ -1,4 +1,3 @@
-/api/jaws/* /.netlify/functions/jaws/:splat 200!
 /downloads/jaws/windows https://github.com/PossumXI/OpenJaws/releases/download/jaws-v0.1.8/JAWS_0.1.8_x64-setup.exe 302
 /downloads/jaws/windows-msi https://github.com/PossumXI/OpenJaws/releases/download/jaws-v0.1.8/JAWS_0.1.8_x64_en-US.msi 302
 /downloads/jaws/macos https://github.com/PossumXI/OpenJaws/releases/download/jaws-v0.1.8/JAWS_0.1.8_x64.dmg 302
