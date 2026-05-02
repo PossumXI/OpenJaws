@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { buildQProviderProbeCheck, resolveQProviderProbeModel } from '../src/q/runtime.js'
-import { buildQSoakProbeEnv } from './q-soak-bench.ts'
+import { buildQSoakProbeEnv, buildQSoakRunStatus } from './q-soak-bench.ts'
 
 describe('q-soak-bench OCI probe selection', () => {
   test('probes direct OCI Q when the direct lane is enabled', () => {
@@ -77,5 +77,52 @@ describe('q-soak-bench OCI probe checks', () => {
       status: 'failed',
       summary: 'OCI:Q blocked · key missing',
     })
+  })
+})
+
+describe('q-soak-bench run status', () => {
+  test('fails closed when preflight has a hard failure', () => {
+    const status = buildQSoakRunStatus({
+      dryRun: false,
+      checks: [
+        {
+          name: 'oci-q-runtime',
+          status: 'failed',
+          summary: 'invalid model',
+        },
+      ],
+      totalResults: 1,
+      successCount: 1,
+      errorCount: 0,
+    })
+
+    expect(status.status).toBe('failed')
+    expect(status.reasons).toContain('preflight failed: oci-q-runtime')
+  })
+
+  test('fails closed when a live run produces no successful probe evidence', () => {
+    const status = buildQSoakRunStatus({
+      dryRun: false,
+      checks: [],
+      totalResults: 1,
+      successCount: 0,
+      errorCount: 1,
+    })
+
+    expect(status.status).toBe('failed')
+    expect(status.reasons).toContain('1 live probe error')
+    expect(status.reasons).toContain('no successful live probes')
+  })
+
+  test('allows dry runs to validate the plan without live probe evidence', () => {
+    const status = buildQSoakRunStatus({
+      dryRun: true,
+      checks: [],
+      totalResults: 0,
+      successCount: 0,
+      errorCount: 0,
+    })
+
+    expect(status).toEqual({ status: 'ok', reasons: [] })
   })
 })

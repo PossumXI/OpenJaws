@@ -209,6 +209,23 @@ describe('externalProviderProbe', () => {
     expect(result.endpointLabel).toBe('/responses')
   })
 
+  test('treats OCI model rejection as a hard invalid-model configuration failure', async () => {
+    const result = await probeResolvedExternalProvider(makeConfig(), {
+      ociQueryFn: async () => {
+        throw new Error(
+          `Error code: 400 - {'error': {'code': 'invalid_value', 'message': "Invalid value for required field 'model'. Supported models: "}}`,
+        )
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.code).toBe('invalid_model')
+    expect(result.summary).toContain(
+      'OCI rejected the configured upstream model for the Q alias.',
+    )
+    expect(result.detail).toContain('Q_MODEL or OCI_MODEL')
+  })
+
   test('probes the default oci:Q model through the shared raw-model helper', async () => {
     process.env.Q_API_KEY = 'sk-env-test'
     const seen: Array<{ authMode: string; model: string }> = []

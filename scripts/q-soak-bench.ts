@@ -241,6 +241,41 @@ export function buildQSoakProbeEnv(
   }
 }
 
+export function buildQSoakRunStatus(args: {
+  dryRun: boolean
+  checks: readonly PreflightCheck[]
+  totalResults: number
+  successCount: number
+  errorCount: number
+}): { status: 'ok' | 'failed'; reasons: string[] } {
+  const reasons: string[] = []
+  const failedChecks = args.checks.filter(check => check.status === 'failed')
+  if (failedChecks.length > 0) {
+    reasons.push(
+      `preflight failed: ${failedChecks.map(check => check.name).join(', ')}`,
+    )
+  }
+
+  if (!args.dryRun) {
+    if (args.totalResults === 0) {
+      reasons.push('no live probes executed')
+    }
+    if (args.errorCount > 0) {
+      reasons.push(
+        `${args.errorCount} live probe error${args.errorCount === 1 ? '' : 's'}`,
+      )
+    }
+    if (args.totalResults > 0 && args.successCount === 0) {
+      reasons.push('no successful live probes')
+    }
+  }
+
+  return {
+    status: reasons.length > 0 ? 'failed' : 'ok',
+    reasons,
+  }
+}
+
 function buildOpenJawsCommand(args: {
   root: string
   model: string
@@ -586,6 +621,13 @@ async function main() {
   const successCount = results.filter(result => result.status === 'ok').length
   const errorCount = results.filter(result => result.status === 'failed').length
   const dryRunCount = results.filter(result => result.status === 'dry_run').length
+  const runStatus = buildQSoakRunStatus({
+    dryRun: options.dryRun,
+    checks,
+    totalResults: results.length,
+    successCount,
+    errorCount,
+  })
 
   report.summary = {
     ...buildQSoakSummary({
@@ -616,6 +658,8 @@ async function main() {
     seed: options.seed,
     traceReferences: report.traceReferences,
     summary: report.summary,
+    status: runStatus.status,
+    failureReasons: runStatus.reasons,
   }
   const signingKey = resolveBenchmarkSigningPrivateKey()
   if (signingKey) {
@@ -632,13 +676,15 @@ async function main() {
   console.log(
     JSON.stringify(
       {
-        status: 'ok',
+        status: runStatus.status,
         runId,
         reportPath,
         receiptPath,
         seed: options.seed,
         summary:
-          options.dryRun
+          runStatus.status === 'failed'
+            ? `Q soak failed: ${runStatus.reasons.join('; ')}.`
+            : options.dryRun
             ? `Q soak dry run prepared for ${options.durationMinutes} minute${options.durationMinutes === 1 ? '' : 's'} across ${options.modes.join(', ')}.`
             : `Q soak completed with ${successCount} success${successCount === 1 ? '' : 'es'} and ${errorCount} error${errorCount === 1 ? '' : 's'}.`,
         counts: {
@@ -652,6 +698,9 @@ async function main() {
       2,
     ),
   )
+  if (runStatus.status === 'failed') {
+    process.exitCode = 1
+  }
 }
 
 if (import.meta.main) {
