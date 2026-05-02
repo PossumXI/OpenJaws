@@ -215,12 +215,17 @@ async function probeJsonHealth(
         status = body
       }
     }
+    const healthyStatus = isHealthyJsonStatus(status)
     return {
       label,
       url,
-      reachable: response.ok,
+      reachable: response.ok && healthyStatus,
       status,
-      detail: response.ok ? detail : detail ?? `HTTP ${response.status}`,
+      detail: response.ok
+        ? healthyStatus
+          ? detail
+          : detail ?? `health status ${status ?? 'unknown'}`
+        : detail ?? `HTTP ${response.status}`,
     }
   } catch (error) {
     return {
@@ -231,6 +236,16 @@ async function probeJsonHealth(
       detail: error instanceof Error ? error.message : String(error),
     }
   }
+}
+
+export function isHealthyJsonStatus(status: string | null): boolean {
+  if (!status) {
+    return true
+  }
+
+  return ['ok', 'ready', 'healthy', 'available'].includes(
+    status.trim().toLowerCase(),
+  )
 }
 
 export function buildApexBridgeCoherenceProbe(

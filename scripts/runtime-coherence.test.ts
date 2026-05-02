@@ -5,11 +5,21 @@ import { join } from 'path'
 import {
   buildApexBridgeCoherenceProbe,
   buildPersonaPlexCoherenceProbe,
+  isHealthyJsonStatus,
   readOpenJawsSourceState,
   readRoundtableState,
 } from './runtime-coherence.ts'
 
 describe('runtime-coherence PersonaPlex mapping', () => {
+  test('treats degraded health payloads as unhealthy even with HTTP 200', () => {
+    expect(isHealthyJsonStatus('ok')).toBe(true)
+    expect(isHealthyJsonStatus('ready')).toBe(true)
+    expect(isHealthyJsonStatus(null)).toBe(true)
+    expect(isHealthyJsonStatus('gateway_reconnecting')).toBe(false)
+    expect(isHealthyJsonStatus('degraded')).toBe(false)
+    expect(isHealthyJsonStatus('error')).toBe(false)
+  })
+
   test('reads the current runtime source checkout state', () => {
     const state = readOpenJawsSourceState(process.cwd())
 
