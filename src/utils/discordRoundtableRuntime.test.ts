@@ -389,6 +389,138 @@ describe('discordRoundtableRuntime', () => {
     })
   })
 
+  it('clears stale stored errors after newer nested roundtable progress recovers', () => {
+    const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-recovered-error-'))
+    tempDirs.push(root)
+    const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+    const nestedRuntimeDir = join(runtimeDir, 'roundtable-runtime')
+    mkdirSync(nestedRuntimeDir, { recursive: true })
+    const staleError =
+      '{"ok": false, "error": "Internal Server Error", "error_type": "InternalServerError"}'
+    writeFileSync(
+      getDiscordRoundtableQueueStatePath(root),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'idle',
+          updatedAt: '2026-05-02T02:06:26.366Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'Q turn error: Internal Server Error',
+          lastError: staleError,
+          activeJobId: null,
+          ingestedHandoffs: [],
+          jobs: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      getDiscordRoundtableSessionStatePath(root),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-05-02T02:06:26.366Z',
+          startedAt: '2026-05-02T01:43:32.088Z',
+          endsAt: '2026-05-03T01:43:32.088Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          roundtableChannelName: 'dev_support',
+          generalChannelId: 'general-1',
+          generalChannelName: 'general-chat',
+          violaVoiceChannelId: 'voice-1',
+          violaVoiceChannelName: 'viola-lounge',
+          turnCount: 7,
+          nextPersona: 'viola',
+          lastSpeaker: 'q',
+          lastSummary: 'Q turn error: Internal Server Error',
+          lastError: staleError,
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(nestedRuntimeDir, 'discord-roundtable.state.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          status: 'running',
+          updatedAt: '2026-05-02T02:13:22.314Z',
+          roundtableChannelName: 'dev_support',
+          lastSummary: 'Blackbeak posted turn 9',
+          lastError: null,
+          startedAt: '2026-05-02T01:43:32.088Z',
+          endsAt: '2026-05-03T01:43:32.088Z',
+          guildId: 'guild-1',
+          roundtableChannelId: 'channel-1',
+          generalChannelId: 'general-1',
+          generalChannelName: 'general-chat',
+          violaVoiceChannelId: 'voice-1',
+          violaVoiceChannelName: 'viola-lounge',
+          turnCount: 9,
+          nextPersona: 'q',
+          lastSpeaker: 'blackbeak',
+          processedCommandMessageIds: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      join(nestedRuntimeDir, 'discord-roundtable.log'),
+      [
+        '[2026-05-02T02:06:26.366Z] Q turn error: Internal Server Error',
+        '[2026-05-02T02:10:03.464Z] Viola posted turn 8',
+        '[2026-05-02T02:13:22.314Z] Blackbeak posted turn 9',
+      ].join('\n'),
+      'utf8',
+    )
+
+    const queueState = loadDiscordRoundtableRuntimeState(root)
+    const sessionState = loadDiscordRoundtableSessionState(root)
+
+    expect(queueState).toMatchObject({
+      status: 'running',
+      updatedAt: '2026-05-02T02:13:22.314Z',
+      lastSummary: 'Blackbeak posted turn 9',
+      lastError: null,
+    })
+    expect(sessionState).toMatchObject({
+      status: 'running',
+      updatedAt: '2026-05-02T02:13:22.314Z',
+      turnCount: 9,
+      lastSummary: 'Blackbeak posted turn 9',
+      lastError: null,
+    })
+
+    const synced = syncDiscordRoundtableRuntimeState(
+      root,
+      new Date('2026-05-02T02:14:00.000Z'),
+    )
+
+    expect(synced.changed).toBe(true)
+    expect(
+      JSON.parse(readFileSync(getDiscordRoundtableQueueStatePath(root), 'utf8')),
+    ).toMatchObject({
+      status: 'running',
+      lastSummary: 'Blackbeak posted turn 9',
+      lastError: null,
+    })
+    expect(
+      JSON.parse(readFileSync(getDiscordRoundtableSessionStatePath(root), 'utf8')),
+    ).toMatchObject({
+      status: 'running',
+      lastSummary: 'Blackbeak posted turn 9',
+      lastError: null,
+    })
+  })
+
   it('treats early live log activity as a running roundtable instead of falling back to idle', () => {
     const root = mkdtempSync(join(tmpdir(), 'oj-roundtable-runtime-live-log-'))
     tempDirs.push(root)
