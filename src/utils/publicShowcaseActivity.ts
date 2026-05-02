@@ -787,7 +787,8 @@ function buildApexTenantGovernanceEntry(
     id: `apex-tenant-governance-${governance.latestActivityAt ?? 'latest'}`,
     timestamp: governance.latestActivityAt,
     title: 'Apex tenant governance',
-    summary: [governance.headline, ...governance.details].join('. '),
+    summary:
+      'Apex tenant governance published a public-safe rollup for supervised policy review, risk handling, and audit readiness. Detailed tenant counts stay in the private audit lane.',
     kind: 'tenant_governance',
     status: governance.status,
     source: 'Apex tenant governance',
@@ -1364,28 +1365,60 @@ function publicSafeShowcaseText(value: string | null): string | null {
   if (!value) {
     return value
   }
-  return value
-    .replace(/<#\d+>/g, 'the Discord channel')
-    .replace(/<@&\d+>/g, 'a Discord role')
-    .replace(/<@!?\d+>/g, 'a Discord user')
-    .replace(/@(?:everyone|here)\b/gi, 'the Discord audience')
-    .replace(/(^|[^\w/])#[A-Za-z][A-Za-z0-9_-]*/g, '$1the Discord channel')
-    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, 'the session')
-    .replace(/\breceipt surfaces?\b/gi, 'activity sources')
-    .replace(/\breceipts?\b/gi, 'activity records')
-    .replace(/\bbounded\b/gi, 'supervised')
-    .replace(/\bgoverned\b/gi, 'supervised')
-    .replace(/\boperator lane\b/gi, 'workspace')
-    .replace(/\boperator activity\b/gi, 'user activity')
-    .replace(/\boperator action\b/gi, 'user action')
-    .replace(/\boperator\b/gi, 'user')
-    .replace(/\bagent lanes\b/gi, 'agent workspaces')
-    .replace(/\blanes\b/gi, 'workspaces')
-    .replace(/\blane\b/gi, 'workspace')
-    .replace(/\bfailed\s+(\d+)\b/gi, '$1 need review')
-    .replace(/\bsession the session\b/gi, 'session')
-    .replace(/\breview pending review\b/gi, 'review pending')
-    .replace(/\/apex\b/gi, 'Apex')
+  return sanitizeInlineText(
+    value
+      .replace(/<#\d+>/g, 'the Discord channel')
+      .replace(/<@&\d+>/g, 'a Discord role')
+      .replace(/<@!?\d+>/g, 'a Discord user')
+      .replace(/@(?:everyone|here)\b/gi, 'the Discord audience')
+      .replace(/(^|[^\w/])#[A-Za-z][A-Za-z0-9_-]*/g, '$1the Discord channel')
+      .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, 'the session')
+      .replace(/\b[0-9a-f]{8}-[0-9a-f-]{4,}…/gi, 'public activity id')
+      .replace(/\b[0-9a-f]{24,}\b/gi, 'public activity id')
+      .replace(/\breceipt surfaces?\b/gi, 'activity sources')
+      .replace(/\breceipts?\b/gi, 'activity records')
+      .replace(/\bbounded\b/gi, 'supervised')
+      .replace(/\bgoverned\b/gi, 'supervised')
+      .replace(/\boperator lane\b/gi, 'workspace')
+      .replace(/\boperator activity\b/gi, 'user activity')
+      .replace(/\boperator action\b/gi, 'user action')
+      .replace(/\boperator\b/gi, 'user')
+      .replace(/\bagent lanes\b/gi, 'agent workspaces')
+      .replace(/\blanes\b/gi, 'workspaces')
+      .replace(/\blane\b/gi, 'workspace')
+      .replace(/\bpending\s+\d+\b/gi, 'pending review items')
+      .replace(/\bhigh risk\s+\d+\b/gi, 'risk-reviewed items')
+      .replace(/\bfailed\s+(\d+)\b/gi, '$1 need review')
+      .replace(/\b(?:high|critical)_priority\b/gi, 'governance_priority')
+      .replace(/\b(?:human_review_required|pending_review)\b/gi, 'governance_review')
+      .replace(/\bsession the session\b/gi, 'session')
+      .replace(/\breview pending review\b/gi, 'review pending')
+      .replace(/\breview governance review\b/gi, 'review pending')
+      .replace(/\/apex\b/gi, 'Apex'),
+    320,
+  )
+}
+
+function publicSafeShowcaseStrings(values: string[]): string[] {
+  const publicSafeShowcaseListText = (value: string): string | null =>
+    sanitizeInlineText(
+      value
+        .replace(/<#\d+>/g, 'the Discord channel')
+        .replace(/<@&\d+>/g, 'a Discord role')
+        .replace(/<@!?\d+>/g, 'a Discord user')
+        .replace(/@(?:everyone|here)\b/gi, 'the Discord audience')
+        .replace(/(^|[^\w/])#[A-Za-z][A-Za-z0-9_-]*/g, '$1the Discord channel')
+        .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, 'the session')
+        .replace(/\b[0-9a-f]{8}-[0-9a-f-]{4,}…/gi, 'public activity id')
+        .replace(/\b[0-9a-f]{24,}\b/gi, 'public activity id')
+        .replace(/\b(?:high|critical)_priority\b/gi, 'governance_priority')
+        .replace(/\b(?:human_review_required|pending_review)\b/gi, 'governance_review'),
+      96,
+    )
+
+  return uniqueStrings(
+    values.map(value => publicSafeShowcaseListText(value)),
+  )
 }
 
 export function preparePublicShowcaseActivityFeedForPublication(
@@ -1395,10 +1428,16 @@ export function preparePublicShowcaseActivityFeedForPublication(
     updatedAt: feed.updatedAt,
     entries: feed.entries.map(entry => ({
       ...entry,
+      id: publicSafeShowcaseText(entry.id) ?? entry.id,
       title: publicSafeShowcaseText(entry.title) ?? entry.title,
       summary: publicSafeShowcaseText(entry.summary),
+      kind: publicSafeShowcaseText(entry.kind),
       source: publicSafeShowcaseText(entry.source),
       status: publicSafeShowcaseStatus(entry.status),
+      operatorActions: publicSafeShowcaseStrings(entry.operatorActions),
+      subsystems: publicSafeShowcaseStrings(entry.subsystems),
+      artifacts: publicSafeShowcaseStrings(entry.artifacts),
+      tags: publicSafeShowcaseStrings(entry.tags),
     })),
   }
 }
