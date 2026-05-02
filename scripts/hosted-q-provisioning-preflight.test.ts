@@ -23,7 +23,11 @@ function createHostedQRoot(wranglerToml: string): string {
   return root
 }
 
-function writeFreshQTrace(root: string, timestamp: string): void {
+function writeFreshQTrace(
+  root: string,
+  timestamp: string,
+  options: { ended?: boolean } = {},
+): void {
   const outputDir = join(root, 'artifacts', 'q-release-audit')
   mkdirSync(outputDir, { recursive: true })
   const tracePath = join(outputDir, 'release.trace.jsonl')
@@ -58,11 +62,15 @@ function writeFreshQTrace(root: string, timestamp: string): void {
       status: 'completed',
       latencyMs: 42,
     },
-    {
-      ...baseEvent,
-      type: 'session.ended',
-      durationMs: 42,
-    },
+    ...(options.ended === false
+      ? []
+      : [
+          {
+            ...baseEvent,
+            type: 'session.ended',
+            durationMs: 42,
+          },
+        ]),
   ]
   writeFileSync(
     tracePath,
@@ -214,7 +222,7 @@ describe('hosted-q provisioning preflight', () => {
         'Uncomment or add Cloudflare routes for the public hosted-Q worker origin before deploy.',
         'Populate the missing keys locally, then run the generated wrangler secret put commands.',
         'Set Q_HOSTED_SERVICE_BASE_URL to the deployed worker origin and Q_HOSTED_SERVICE_TOKEN to the worker service token on qline.site and iorch.net; do not use filesystem local mode for production.',
-        'Generate a fresh successful Q trace with a bounded Q soak or Terminal-Bench dry run, then rerun runtime:coherence before release-audit signoff.',
+        'Generate a completed successful Q trace with a bounded Q soak or Terminal-Bench dry run, then rerun runtime:coherence before release-audit signoff.',
       ]),
     )
     expect(JSON.stringify(report)).not.toContain('service-token-secret')
@@ -257,7 +265,7 @@ describe('hosted-q provisioning preflight', () => {
       status: 'blocked',
       summary:
         'Fresh Q trace is present but does not contain successful release-audit probe evidence.',
-      missing: ['fresh successful Q trace within 24h'],
+      missing: ['completed successful Q trace within 24h'],
       details: {
         releaseEvidence: {
           present: true,
@@ -267,6 +275,36 @@ describe('hosted-q provisioning preflight', () => {
           completedTurns: 0,
           ready: false,
           readError: null,
+        },
+      },
+    })
+  })
+
+  test('blocks active Q traces even when they already contain successful probe evidence', () => {
+    const root = createHostedQRoot(CONFIGURED_WRANGLER)
+    writeFreshQTrace(root, '2026-05-01T00:00:00.000Z', { ended: false })
+    const report = buildHostedQProvisioningPreflight({
+      root,
+      env: READY_ENV,
+      now: new Date('2026-05-01T00:00:00.000Z'),
+    })
+
+    expect(report.status).toBe('blocked')
+    expect(
+      report.checks.find((check) => check.id === 'fresh-q-trace'),
+    ).toMatchObject({
+      status: 'blocked',
+      summary:
+        'Fresh Q trace is still active; release-audit signoff requires a completed successful trace.',
+      missing: ['completed successful Q trace within 24h'],
+      details: {
+        runState: 'active',
+        releaseEvidence: {
+          present: true,
+          successEvents: 1,
+          failureEvents: 0,
+          completedTurns: 1,
+          ready: true,
         },
       },
     })

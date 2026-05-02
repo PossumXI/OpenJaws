@@ -78,7 +78,9 @@ bunx wrangler deploy --config services/cloudflare-hosted-q/wrangler.toml
 5. Point `Q_HOSTED_SERVICE_BASE_URL` on qline.site and iorch.net to the
    deployed worker origin, and set `Q_HOSTED_SERVICE_TOKEN` to the same service
    token used by the worker.
-6. Generate a fresh Q trace before release-audit signoff:
+6. Generate a completed successful Q trace before release-audit signoff. The
+   preflight blocks active, stale, failed, timed-out, cancelled, or
+   evidence-free traces so AROBI/LAAS deploy claims are backed by a real Q probe:
 
 ```powershell
 bun run q:soak -- --duration-minutes 1 --max-probes 1
