@@ -389,6 +389,21 @@ function deriveRoundtableStatusFromSummary(
   return null
 }
 
+function isRecoveredRoundtableProgress(args: {
+  status: DiscordRoundtableRuntimeState['status'] | DiscordRoundtableSessionStatus
+  summary: string | null
+}): boolean {
+  if (args.status === 'error') {
+    return false
+  }
+  const derivedStatus = deriveRoundtableStatusFromSummary(args.summary)
+  return (
+    derivedStatus === 'running' ||
+    derivedStatus === 'queued' ||
+    derivedStatus === 'awaiting_approval'
+  )
+}
+
 export function readDiscordRoundtableLogSnapshot(
   root = process.cwd(),
 ): DiscordRoundtableLogSnapshot | null {
@@ -460,13 +475,22 @@ function overlayRoundtableLogSnapshot(args: {
   if (logIsNewer && state.activeJobId === null && state.jobs.length === 0) {
     nextStatus = deriveRoundtableStatusFromSummary(logSnapshot.lastSummary) ?? state.status
   }
+  const nextLastSummary =
+    logIsNewer && logSnapshot.lastSummary ? logSnapshot.lastSummary : state.lastSummary
 
   return {
     ...state,
     updatedAt: logIsNewer && logSnapshot.updatedAt ? logSnapshot.updatedAt : state.updatedAt,
     roundtableChannelName: nextChannelName,
-    lastSummary:
-      logIsNewer && logSnapshot.lastSummary ? logSnapshot.lastSummary : state.lastSummary,
+    lastSummary: nextLastSummary,
+    lastError:
+      logIsNewer &&
+      isRecoveredRoundtableProgress({
+        status: nextStatus,
+        summary: nextLastSummary,
+      })
+        ? null
+        : state.lastError,
     status: nextStatus,
   }
 }
@@ -909,6 +933,8 @@ function mergeDiscordRoundtableSessionStates(args: {
     (storedUpdatedAtMs === null || legacyUpdatedAtMs >= storedUpdatedAtMs)
   const primary = preferLegacy ? legacy : stored
   const secondary = preferLegacy ? stored : legacy
+  const primaryUpdatedAtMs = preferLegacy ? legacyUpdatedAtMs : storedUpdatedAtMs
+  const secondaryUpdatedAtMs = preferLegacy ? storedUpdatedAtMs : legacyUpdatedAtMs
   const storedChannelName = stored.roundtableChannelName?.trim() || null
   const legacyChannelName = legacy.roundtableChannelName?.trim() || null
   const liveChannelMismatch =
@@ -924,10 +950,26 @@ function mergeDiscordRoundtableSessionStates(args: {
     (Boolean(legacy.guildId) && !stored.guildId)
   const livePrimary = preferLegacyLiveFields ? legacy : primary
   const liveSecondary = preferLegacyLiveFields ? stored : secondary
+  const status = normalizeDiscordRoundtableSessionStatus(
+    primary.status ?? secondary.status,
+  )
+  const lastSummary = primary.lastSummary ?? secondary.lastSummary
+  const primaryIsAtLeastAsFresh =
+    primaryUpdatedAtMs !== null &&
+    (secondaryUpdatedAtMs === null || primaryUpdatedAtMs >= secondaryUpdatedAtMs)
+  const lastError =
+    primary.lastError ??
+    (primaryIsAtLeastAsFresh &&
+    isRecoveredRoundtableProgress({
+      status,
+      summary: lastSummary,
+    })
+      ? null
+      : secondary.lastError)
 
   return {
     version: 1,
-    status: normalizeDiscordRoundtableSessionStatus(primary.status ?? secondary.status),
+    status,
     updatedAt: primary.updatedAt || secondary.updatedAt,
     startedAt: livePrimary.startedAt ?? liveSecondary.startedAt,
     endsAt: livePrimary.endsAt ?? liveSecondary.endsAt,
@@ -946,8 +988,8 @@ function mergeDiscordRoundtableSessionStates(args: {
     turnCount: livePrimary.turnCount,
     nextPersona: livePrimary.nextPersona ?? liveSecondary.nextPersona,
     lastSpeaker: livePrimary.lastSpeaker ?? liveSecondary.lastSpeaker,
-    lastSummary: primary.lastSummary ?? secondary.lastSummary,
-    lastError: primary.lastError ?? secondary.lastError,
+    lastSummary,
+    lastError,
     processedCommandMessageIds:
       livePrimary.processedCommandMessageIds.length > 0
         ? livePrimary.processedCommandMessageIds
@@ -1020,6 +1062,40 @@ export function loadDiscordRoundtableRuntimeState(
     logSnapshot: readDiscordRoundtableLogSnapshot(root),
   })
   const session = readDiscordRoundtableSessionSnapshot(root)
+  if (session && isAuthoritativeDiscordRoundtableSession(session)) {
+    const sessionUpdatedAtMs = parseIsoTimestampMs(session.updatedAt)
+    const overlaidUpdatedAtMs = parseIsoTimestampMs(overlaidState.updatedAt)
+    const sessionIsAtLeastAsFresh =
+      sessionUpdatedAtMs !== null &&
+      (overlaidUpdatedAtMs === null || sessionUpdatedAtMs >= overlaidUpdatedAtMs)
+    if (
+      session.lastError === null &&
+      sessionIsAtLeastAsFresh &&
+      overlaidState.activeJobId === null &&
+      isRecoveredRoundtableProgress({
+        status: session.status,
+        summary: session.lastSummary ?? overlaidState.lastSummary,
+      })
+    ) {
+      const status =
+        overlaidState.jobs.length === 0
+          ? getSessionCompatibleRuntimeStatus(session.status, overlaidState.status)
+          : normalizeRuntimeStatus(
+              overlaidState.jobs,
+              null,
+              getSessionCompatibleRuntimeStatus(session.status, overlaidState.status),
+            )
+      return {
+        ...overlaidState,
+        updatedAt: session.updatedAt,
+        roundtableChannelName:
+          session.roundtableChannelName ?? overlaidState.roundtableChannelName,
+        lastSummary: session.lastSummary ?? overlaidState.lastSummary,
+        lastError: null,
+        status,
+      }
+    }
+  }
   if (session && !isAuthoritativeDiscordRoundtableSession(session)) {
     return {
       ...overlaidState,
@@ -1058,6 +1134,13 @@ export function loadDiscordRoundtableSessionState(
   const currentChannelLooksPreferredAlias =
     currentChannelName !== null &&
     ['q-roundtable', 'q-roundtable-live'].includes(currentChannelName.toLowerCase())
+  const status = logIsNewer
+    ? normalizeDiscordRoundtableSessionStatus(
+        deriveRoundtableStatusFromSummary(logSnapshot.lastSummary) ?? state.status,
+      )
+    : state.status
+  const lastSummary =
+    logIsNewer && logSnapshot.lastSummary ? logSnapshot.lastSummary : state.lastSummary
   return {
     ...state,
     updatedAt: logIsNewer && logSnapshot.updatedAt ? logSnapshot.updatedAt : state.updatedAt,
@@ -1066,14 +1149,16 @@ export function loadDiscordRoundtableSessionState(
       (!currentChannelName || currentChannelLooksPreferredAlias || logIsNewer)
         ? logSnapshot.channelName
         : currentChannelName,
-    lastSummary:
-      logIsNewer && logSnapshot.lastSummary ? logSnapshot.lastSummary : state.lastSummary,
-    status:
-      logIsNewer
-        ? normalizeDiscordRoundtableSessionStatus(
-            deriveRoundtableStatusFromSummary(logSnapshot.lastSummary) ?? state.status,
-          )
-        : state.status,
+    lastSummary,
+    lastError:
+      logIsNewer &&
+      isRecoveredRoundtableProgress({
+        status,
+        summary: lastSummary,
+      })
+        ? null
+        : state.lastError,
+    status,
   }
 }
 
@@ -1221,19 +1306,33 @@ export function syncDiscordRoundtableRuntimeState(
   }
 
   const nextStateBase = loadDiscordRoundtableRuntimeState(root)
+  const sessionUpdatedAtMs = parseIsoTimestampMs(sessionState.updatedAt)
+  const nextBaseUpdatedAtMs = parseIsoTimestampMs(nextStateBase.updatedAt)
+  const sessionIsAtLeastAsFresh =
+    sessionUpdatedAtMs !== null &&
+    (nextBaseUpdatedAtMs === null || sessionUpdatedAtMs >= nextBaseUpdatedAtMs)
+  const nextLastError =
+    sessionState.lastError ??
+    (sessionIsAtLeastAsFresh &&
+    isRecoveredRoundtableProgress({
+      status: sessionState.status,
+      summary: sessionState.lastSummary ?? nextStateBase.lastSummary,
+    })
+      ? null
+      : nextStateBase.lastError)
   const nextState: DiscordRoundtableRuntimeState = {
     ...nextStateBase,
     updatedAt: sessionState.updatedAt,
     roundtableChannelName:
       sessionState.roundtableChannelName ?? nextStateBase.roundtableChannelName,
     lastSummary: sessionState.lastSummary ?? nextStateBase.lastSummary,
-    lastError: sessionState.lastError ?? nextStateBase.lastError,
+    lastError: nextLastError,
     status:
       nextStateBase.jobs.length === 0 && nextStateBase.activeJobId === null
         ? getSessionCompatibleRuntimeStatus(sessionState.status, nextStateBase.status)
         : normalizeRuntimeStatus(
             nextStateBase.jobs,
-            sessionState.lastError ?? nextStateBase.lastError,
+            nextLastError,
             nextStateBase.status,
           ),
   }
