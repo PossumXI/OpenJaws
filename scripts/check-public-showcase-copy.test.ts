@@ -129,7 +129,7 @@ describe('public showcase copy check', () => {
         items: [
           {
             summary:
-              'TerminalBench completed with errors and no active bounded task.',
+              'TerminalBench completed with errors and no active bounded task. 1 item still needs review.',
           },
         ],
       })
@@ -137,13 +137,13 @@ describe('public showcase copy check', () => {
         items: [
           {
             summary:
-              'The #dev_support roundtable pinged <#1490000000000000000> and @everyone while waiting on 2/3 bot receipts.',
+              'The #dev_support roundtable pinged <#1490000000000000000> and @everyone while waiting on 2/3 bot receipts before final check.',
           },
         ],
       })
       writeFileSync(
         fixture.paths.snapshot,
-        'export const snapshot = {"copy":"No bounded governed spend actions in current window.."}',
+        'export const snapshot = {"copy":"No bounded governed spend actions in current window.. Roundtable is under review."}',
         'utf8',
       )
 
@@ -154,13 +154,13 @@ describe('public showcase copy check', () => {
       expect(result.missingRequired).toHaveLength(0)
       expect(snippets).toContain('"note": "Legacy lane is only for internal routing."')
       expect(snippets).toContain(
-        '"summary": "TerminalBench completed with errors and no active bounded task."',
+        '"summary": "TerminalBench completed with errors and no active bounded task. 1 item still needs review."',
       )
       expect(snippets).toContain(
-        '"summary": "The #dev_support roundtable pinged <#1490000000000000000> and @everyone while waiting on 2/3 bot receipts."',
+        '"summary": "The #dev_support roundtable pinged <#1490000000000000000> and @everyone while waiting on 2/3 bot receipts before final check."',
       )
       expect(snippets).toContain(
-        'export const snapshot = {"copy":"No bounded governed spend actions in current window.."}',
+        'export const snapshot = {"copy":"No bounded governed spend actions in current window.. Roundtable is under review."}',
       )
     } finally {
       rmSync(fixture.root, { recursive: true, force: true })
