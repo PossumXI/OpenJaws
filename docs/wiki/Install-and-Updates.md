@@ -89,7 +89,7 @@ Both mirrors keep those redirects in repo-owned files checked by `scripts/jaws-r
 
 Production mirror receipt for 0.1.9:
 
-- qline.site published deploy: `69f5975f836dbc8c6ba76c1a`
+- qline.site published deploy: `69f59939b5bb2d7265cbf0ac`
 - iorch.net published deploy: `69f597993ff67a92f9f37697`
 - mirror health: `bun run jaws:mirror:check` passed 30 checks for `jaws-v0.1.9`
 
