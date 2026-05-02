@@ -1174,6 +1174,78 @@ export async function getImmaculateHarnessStatus(
   }
 }
 
+function parseImmaculateHarnessIntelligenceSnapshotStatus(
+  value: unknown,
+): ImmaculateHarnessIntelligenceStatus | null {
+  const data = parseRecord(value)
+  if (!data || (data.visibility !== 'redacted' && data.visibility !== 'public-redacted')) {
+    return null
+  }
+
+  const layers = Array.isArray(data.layers)
+    ? data.layers.filter((layer): layer is Record<string, unknown> =>
+        Boolean(parseRecord(layer)),
+      )
+    : []
+  const executions = Array.isArray(data.executions) ? data.executions : []
+  const readyLayerCount = layers.filter(layer => layer.status === 'ready').length
+  const busyLayerCount = layers.filter(layer => layer.status === 'busy').length
+  const degradedLayerCount = layers.filter(layer => layer.status === 'degraded').length
+  const offlineLayerCount = layers.filter(layer => layer.status === 'offline').length
+  const failedExecutionCount = executions.filter(execution => {
+    const record = parseRecord(execution)
+    return record?.status === 'failed' || record?.status === 'error'
+  }).length
+  const completedExecutionCount = executions.filter(execution => {
+    const record = parseRecord(execution)
+    return record?.status === 'completed'
+  }).length
+  const status: ImmaculateHarnessIntelligenceStatus['status'] =
+    readyLayerCount > 0 ? 'ready' : layers.length > 0 ? 'degraded' : 'blocked'
+
+  return {
+    status,
+    service:
+      typeof data.service === 'string' ? data.service : 'immaculate-harness',
+    visibility: 'public-redacted',
+    summary:
+      status === 'ready'
+        ? `ready: ${readyLayerCount}/${layers.length} intelligence layers are ready`
+        : status === 'degraded'
+          ? 'degraded: intelligence layers are present but none are ready'
+          : 'blocked: no intelligence layers are visible',
+    reasons:
+      status === 'ready'
+        ? []
+        : [
+            status === 'degraded'
+              ? 'no visible ready intelligence layer'
+              : 'no visible intelligence layers',
+          ],
+    recommendedLayerId:
+      typeof data.recommendedLayerId === 'string'
+        ? data.recommendedLayerId
+        : undefined,
+    layerPlane: {
+      layerCount: layers.length,
+      readyLayerCount,
+      busyLayerCount,
+      degradedLayerCount,
+      offlineLayerCount,
+    },
+    workerPlane: {
+      readiness: readyLayerCount > 0 ? 'ready' : 'no_workers',
+    },
+    executionPlane: {
+      executionCount: executions.length,
+      completedExecutionCount,
+      failedExecutionCount,
+    },
+    governor: {},
+    persistence: {},
+  }
+}
+
 export async function getImmaculateHarnessDeckReceipt(
   settings: ImmaculateHarnessSettingsLike = getSettings_DEPRECATED(),
 ): Promise<ImmaculateHarnessDeckReceipt | null> {
@@ -1253,10 +1325,27 @@ export async function getImmaculateHarnessIntelligenceStatus(
       { action: 'intelligence_status' },
       { settings, timeoutMs: HEALTH_TIMEOUT_MS },
     )
+    if (result.status < 400) {
+      const parsedStatus = parseImmaculateHarnessIntelligenceStatus(
+        parseJsonRecord(result.json),
+      )
+      if (parsedStatus) {
+        return parsedStatus
+      }
+    }
+  } catch {
+    // Older live harness builds expose only the redacted intelligence snapshot.
+  }
+
+  try {
+    const result = await callImmaculateHarness(
+      { action: 'intelligence' },
+      { settings, timeoutMs: HEALTH_TIMEOUT_MS },
+    )
     if (result.status >= 400) {
       return null
     }
-    return parseImmaculateHarnessIntelligenceStatus(
+    return parseImmaculateHarnessIntelligenceSnapshotStatus(
       parseJsonRecord(result.json),
     )
   } catch {
