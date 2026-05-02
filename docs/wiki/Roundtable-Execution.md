@@ -2,6 +2,8 @@
 
 The Discord roundtable now has a tracked execution lane instead of stopping at planning text.
 
+For the May 2, 2026 runtime/planner handoff note, see [Roundtable Dynamic Runtime Handoff](Roundtable-Dynamic-Runtime-2026-05-02.md).
+
 ## What It Does
 
 - Immaculate or an operator can stage governed handoff JSON files into `local-command-station/roundtable-runtime/handoffs/`.
@@ -32,6 +34,8 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 
 - Start the runtime once: `bun run roundtable:runtime -- --allow-root "C:\Users\Knight\Desktop\Immaculate" --allow-root "C:\Users\Knight\Desktop\cheeks\Asgard"`
 - Run it continuously: `bun run roundtable:runtime -- --loop --allow-root "C:\Users\Knight\Desktop\Immaculate" --allow-root "C:\Users\Knight\Desktop\cheeks\Asgard"`
+- The runtime command now runs the tracked dynamic planner before each executable pass, so an idle live roundtable can stage one scoped follow-through handoff and immediately feed it to the governed executor. Use `--no-dynamic-planner` when you are draining only explicit handoffs or debugging planner state.
+- `--status-only` and `--max-actions 0` never stage dynamic planner handoffs; they are read/sync checks only.
 - Override the 4-hour window or approval TTL when you need a tighter operator pass: `bun run roundtable:runtime -- --duration-hours 2 --approval-ttl-hours 0.5`
 - Reset the live Discord session cleanly before a bundled/private restart: `bun scripts/roundtable-bootstrap.ts --channel dev_support --duration-hours 4`
 - Keep the tracked queue/session truth synchronized with the bundled private lane: `bun scripts/roundtable-sync.ts --follow --interval-seconds 15`
@@ -52,6 +56,7 @@ The Discord roundtable now has a tracked execution lane instead of stopping at p
 - `scripts/roundtable-sync.ts` is now the tracked steady-state sidecar for the bundled private lane; it mirrors the nested live bundle session back into `discord-roundtable-queue.state.json` and `discord-roundtable.session.json` every cycle so status, approvals, and coherence stop drifting after startup.
 - `src/utils/discordRoundtableSteadyState.ts` now owns that shared steady-state pass, so the tracked sync CLI and any future private launcher can reuse one queue/session/planner projection instead of growing a second script-local logic copy.
 - That tracked sync sidecar now also stages one scoped synthetic follow-through handoff when the live roundtable is still running but the tracked queue is idle and recent turns have collapsed into `PASS`, so the governed execution lane can recover into a bounded code-bearing action without reopening broad repo-root audits.
+- `scripts/roundtable-runtime.ts` now calls that same steady-state pass before executable iterations, which removes the operational gap where the executor loop was running but the planner sidecar was not. The JSON output includes `dynamicPlanner` with the reason, target path, work key, and staged handoff path when a follow-through job is created.
 - The tracked `src/utils/publicShowcaseActivity.ts` module now turns bounded Discord persona receipts, roundtable state, actionability summaries, and trace summaries into a public-safe showcase feed, so the public Arobi status lane can demonstrate supervised operator activity without exposing private control routes.
 - the CLI now prints both the tracked queue path and the live session path explicitly so operator reads do not silently point at the wrong file after the queue/session split.
 - The live Discord runtime now posts roundtable transition receipts back into the configured `q-roundtable` lane, with a fallback to `openjaws-updates` if the dedicated roundtable channel is not present yet.

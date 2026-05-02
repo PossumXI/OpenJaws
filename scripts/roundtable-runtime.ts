@@ -6,6 +6,10 @@ import {
   getDiscordRoundtableSessionStatePath,
   processDiscordRoundtableRuntime,
 } from '../src/utils/discordRoundtableRuntime.js'
+import {
+  runDiscordRoundtableSteadyStatePass,
+  type DiscordRoundtableSteadyStateResult,
+} from '../src/utils/discordRoundtableSteadyState.js'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const REQUIRED_ROUNDTABLE_MODEL = 'oci:Q'
@@ -20,6 +24,7 @@ type CliOptions = {
   durationHours: number | undefined
   approvalTtlHours: number | undefined
   channelName: string | null
+  dynamicPlanner: boolean
   json: boolean
 }
 
@@ -34,6 +39,7 @@ export function parseArgs(argv: string[]): CliOptions {
     durationHours: undefined,
     approvalTtlHours: undefined,
     channelName: process.env.DISCORD_ROUNDTABLE_CHANNEL_NAME?.trim() || 'q-roundtable',
+    dynamicPlanner: true,
     json: false,
   }
   for (let index = 0; index < argv.length; index += 1) {
@@ -59,6 +65,12 @@ export function parseArgs(argv: string[]): CliOptions {
         break
       case '--status-only':
         options.maxActionsPerRun = 0
+        break
+      case '--dynamic-planner':
+        options.dynamicPlanner = true
+        break
+      case '--no-dynamic-planner':
+        options.dynamicPlanner = false
         break
       case '--interval-ms':
         if (argv[index + 1]) {
@@ -117,6 +129,31 @@ export function parseArgs(argv: string[]): CliOptions {
   return options
 }
 
+export function shouldRunDynamicPlanner(options: {
+  dynamicPlanner: boolean
+  maxActionsPerRun: number
+  handoffPaths: string[]
+}): boolean {
+  return (
+    options.dynamicPlanner &&
+    options.maxActionsPerRun > 0 &&
+    options.handoffPaths.length === 0
+  )
+}
+
+function describeDynamicPlannerMode(options: CliOptions): string {
+  if (!options.dynamicPlanner) {
+    return 'disabled by --no-dynamic-planner'
+  }
+  if (options.maxActionsPerRun <= 0) {
+    return 'disabled for status-only/no-execution pass'
+  }
+  if (options.handoffPaths.length > 0) {
+    return 'disabled while explicit handoff paths are provided'
+  }
+  return 'enabled'
+}
+
 function resolveAllowedRoots(cliRoots: string[]): string[] {
   const envRoots = (process.env.DISCORD_OPERATOR_ALLOWED_ROOTS ?? '')
     .split(',')
@@ -138,6 +175,14 @@ function resolveRoundtableModel(): string {
 async function runIteration(options: CliOptions) {
   const root = REPO_ROOT
   const stationRoot = resolve(root, 'local-command-station')
+  const allowedRoots = resolveAllowedRoots(options.allowRoots)
+  const dynamicPlannerMode = describeDynamicPlannerMode(options)
+  const dynamicPlannerResult = shouldRunDynamicPlanner(options)
+    ? runDiscordRoundtableSteadyStatePass({
+        root,
+        allowedRoots,
+      })
+    : null
   const durationHours =
     options.durationHours ??
     (process.env.DISCORD_ROUNDTABLE_DURATION_HOURS
@@ -150,7 +195,7 @@ async function runIteration(options: CliOptions) {
       : undefined)
   const result = await processDiscordRoundtableRuntime({
     root,
-    allowedRoots: resolveAllowedRoots(options.allowRoots),
+    allowedRoots,
     handoffPaths: options.handoffPaths,
     maxActionsPerRun: options.maxActionsPerRun,
     durationHours,
@@ -174,6 +219,10 @@ async function runIteration(options: CliOptions) {
           durationHours: result.durationHours,
           approvalTtlHours: result.approvalTtlHours,
           timeoutMs: options.timeoutMs ?? null,
+          dynamicPlanner: formatDynamicPlannerJson({
+            mode: dynamicPlannerMode,
+            result: dynamicPlannerResult,
+          }),
           transitionReceipts: result.transitionReceipts,
           status: result.state.status,
           summary: result.state.lastSummary,
@@ -193,6 +242,10 @@ async function runIteration(options: CliOptions) {
         `Duration hours: ${result.durationHours}`,
         `Approval TTL hours: ${result.approvalTtlHours}`,
         `Timeout ms: ${options.timeoutMs ?? 'default'}`,
+        ...formatDynamicPlannerLines({
+          mode: dynamicPlannerMode,
+          result: dynamicPlannerResult,
+        }),
         `Summary: ${result.state.lastSummary ?? 'none'}`,
         ...(result.state.lastError ? [`Error: ${result.state.lastError}`] : []),
         ...(result.transitionReceipts.length > 0
@@ -205,6 +258,45 @@ async function runIteration(options: CliOptions) {
           : []),
       ].join('\n')
   console.log(output)
+}
+
+function formatDynamicPlannerJson(args: {
+  mode: string
+  result: DiscordRoundtableSteadyStateResult | null
+}) {
+  if (!args.result) {
+    return {
+      enabled: false,
+      mode: args.mode,
+    }
+  }
+  return {
+    enabled: true,
+    mode: args.mode,
+    staged: args.result.planner.staged,
+    reason: args.result.planner.reason,
+    handoffPath: args.result.planner.handoffPath,
+    targetPath: args.result.planner.targetPath,
+    workKey: args.result.planner.workKey,
+    repoLabel: args.result.planner.repoLabel,
+    personaName: args.result.planner.personaName,
+  }
+}
+
+function formatDynamicPlannerLines(args: {
+  mode: string
+  result: DiscordRoundtableSteadyStateResult | null
+}): string[] {
+  if (!args.result) {
+    return [`Dynamic planner: ${args.mode}`]
+  }
+  return [
+    `Dynamic planner: ${args.mode}`,
+    `Planner: ${args.result.planner.reason}`,
+    ...(args.result.planner.handoffPath
+      ? [`Planner handoff: ${args.result.planner.handoffPath}`]
+      : []),
+  ]
 }
 
 export async function main(argv = process.argv.slice(2)) {
