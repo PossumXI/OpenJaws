@@ -269,6 +269,7 @@ Notification durability pass, run on 2026-05-01:
 - Native provider checks parse OpenJaws provider output for auth, base URL, and model details, so a successful `provider test` no longer appears as "not configured" because of stale fallback metadata.
 - The macOS release workflow now builds the `.app` updater artifact and creates the public DMG with a direct `hdiutil` packaging script, reducing reliance on styled DMG helper behavior in CI.
 - Release operators should merge the 0.1.9 branch, wait for main CI/System Check/Security to pass, push the `jaws-v0.1.9` tag from the exact green main commit, watch the JAWS Desktop workflow publish signed assets, and then run `bun run jaws:mirror:check` after the GitHub release and mirror routes resolve to 0.1.9.
+- `bun run jaws:release:ready` is now the final production readiness gate for that sequence. It fails closed until the generated release index matches the desktop package, the `jaws-v0.1.9` GitHub release is published with every indexed asset, hosted-Q Cloudflare/D1/worker secrets/public proxy env and a fresh Q trace pass `services:backend:preflight`, `OPENJAWS_APEX_TRUST_LOCALHOST=1` is explicit for any pre-existing local Apex listeners, and `service:routes --strict-private` has no warning-grade routes.
 
 Implementation references:
 
