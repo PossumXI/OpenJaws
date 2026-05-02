@@ -42,6 +42,7 @@ This page summarizes the current public OpenJaws surface that is already working
 - The public showcase feed now includes a plain-English real-world engagement profile that only counts fresh activity as live use and publishes user-facing summaries without channel names, session IDs, receipt wording, or operator-lane phrasing.
 - The public showcase feed now cleans the action, artifact, tag, kind, and subsystem labels that Discord and website surfaces print directly, so users see simple activity language instead of internal operator, receipt, bounded, or lane terms.
 - The public showcase publisher and copy guard now scrub raw Discord channel, user, role, `@here`, and `@everyone` mentions before activity reaches the public Arobi/website surface.
+- Runtime coherence now warns when the Discord roundtable claims an active session but the launch child is not running, or when the roundtable records a live provider/runtime error.
 - OpenJaws now sends receipt target, operator summary, explicit confirmation, rollback plan, and zero-budget evidence on Immaculate operator-control calls, so Q route launches remain compatible with the harness real-world engagement gate.
 - Slow Guy now has recoverable lives, shield frames, level progression, and in-game token tracking on top of its existing lane, hazard, stamina, and best-score loop.
 - Texas Hold'em now has hold/check/pass/bet/raise controls, table-chip accounting, Q/OpenCheek responses, fold wins, showdown pot settlement, and profile code-token prizes.

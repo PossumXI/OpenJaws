@@ -4,6 +4,61 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { buildRuntimeCoherenceReport } from './runtimeCoherence.js'
 
+function readyQReceipt() {
+  return {
+    version: 1,
+    updatedAt: '2026-04-20T12:00:00.000Z',
+    startedAt: '2026-04-20T10:00:00.000Z',
+    status: 'ready' as const,
+    backend: 'Q backend',
+    guilds: [{ id: '1', name: 'Arobi' }],
+    gateway: {
+      connected: true,
+      userId: 'bot-1',
+      guildCount: 1,
+      lastSequence: 42,
+    },
+    schedule: {
+      enabled: true,
+      intervalMs: 900_000,
+      cycleCount: 2,
+    },
+    routing: {
+      lastDecision: null,
+      lastPostedChannelName: null,
+      lastPostedReason: null,
+      channels: [],
+    },
+    voice: {
+      enabled: false,
+      provider: 'system',
+      ready: false,
+      connected: false,
+    },
+    patrol: {
+      snapshot: {
+        harnessReachable: true,
+        harnessSummary: 'reachable',
+        deckSummary: null,
+        workerSummary: null,
+        trainingSummary: null,
+        hybridSummary: null,
+        routeQueueSummary: null,
+        queueLength: 0,
+        recommendedLayerId: null,
+      },
+    },
+    knowledge: {
+      enabled: false,
+      ready: false,
+      fileCount: 0,
+      chunkCount: 0,
+    },
+    operator: {},
+    events: [],
+  }
+}
+
 describe('runtimeCoherence', () => {
   test('scores public Immaculate intelligence readiness separately from topology reachability', () => {
     const report = buildRuntimeCoherenceReport({
@@ -363,6 +418,58 @@ describe('runtimeCoherence', () => {
         report.checks.find(check => check.id === 'roundtable-runtime')?.detail,
       ).toBe('Q action awaiting_approval: Q audit-and-tighten pass')
     }
+  })
+
+  test('warns when roundtable has a live runtime error even if the session is idle', () => {
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: readyQReceipt(),
+      immaculateTrace: null,
+      qTrace: null,
+      routeQueueDepth: 0,
+      roundtable: {
+        status: 'idle',
+        channelName: 'dev_support',
+        lastError: 'OCI provider rejected the roundtable model.',
+      },
+    })
+
+    const check = report.checks.find(item => item.id === 'roundtable-runtime')
+    expect(report.status).toBe('warning')
+    expect(check?.status).toBe('warning')
+    expect(check?.detail).toBe('OCI provider rejected the roundtable model.')
+  })
+
+  test('warns when an active roundtable session has no live launch child', () => {
+    const report = buildRuntimeCoherenceReport({
+      harnessStatus: {
+        enabled: true,
+        reachable: true,
+        harnessUrl: 'http://127.0.0.1:8787',
+      },
+      qAgentReceipt: readyQReceipt(),
+      immaculateTrace: null,
+      qTrace: null,
+      routeQueueDepth: 0,
+      roundtable: {
+        status: 'running',
+        channelName: 'dev_support',
+        launchChildAlive: false,
+        launchDetail:
+          'Roundtable session is running, but launch pid 1234 is not running.',
+      },
+    })
+
+    const check = report.checks.find(item => item.id === 'roundtable-runtime')
+    expect(report.status).toBe('warning')
+    expect(check?.status).toBe('warning')
+    expect(check?.detail).toBe(
+      'Roundtable session is running, but launch pid 1234 is not running.',
+    )
   })
 
   test('warns when the voice runtime is enabled but not actually connected', () => {

@@ -1,4 +1,4 @@
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 import { buildRuntimeCoherenceReport } from '../src/immaculate/runtimeCoherence.js'
 import { readLatestImmaculateTraceSummary } from '../src/immaculate/traceSummary.js'
@@ -43,6 +43,11 @@ type ApexBridgeProbeDefinition = {
   url: string
   getHealth: () => Promise<ApexWorkspaceHealth | null>
   getListenerHealth: () => Promise<ApexWorkspaceHealth | null>
+}
+
+type RoundtableLaunchState = {
+  pid?: number | null
+  startedAt?: string | null
 }
 
 const APEX_BRIDGE_PROBES: ApexBridgeProbeDefinition[] = [
@@ -230,7 +235,7 @@ async function probeApexBridgeCoherence(): Promise<ProbeResult[]> {
   )
 }
 
-function readRoundtableState(root: string) {
+export function readRoundtableState(root: string) {
   const runtimeDir = resolve(root, 'local-command-station', 'roundtable-runtime')
   if (!existsSync(runtimeDir)) {
     return null
@@ -239,12 +244,64 @@ function readRoundtableState(root: string) {
   if (!parsed) {
     return null
   }
+  const launchState = readRoundtableLaunchState(root)
+  const activeSession =
+    parsed.status === 'running' ||
+    parsed.status === 'queued' ||
+    parsed.status === 'awaiting_approval'
+  const launchChildAlive =
+    !launchState || launchState.pid === undefined || launchState.pid === null
+      ? activeSession
+        ? false
+        : null
+      : isProcessAliveByPid(launchState.pid)
+  const launchDetail =
+    activeSession && !launchState
+        ? `Roundtable session is ${parsed.status}, but launch state is missing.`
+        : activeSession && launchState?.pid === undefined
+          ? `Roundtable session is ${parsed.status}, but launch pid is missing.`
+          : activeSession && launchState?.pid === null
+            ? `Roundtable session is ${parsed.status}, but launch pid is missing.`
+            : activeSession && launchChildAlive === false
+              ? `Roundtable session is ${parsed.status}, but launch pid ${launchState.pid} is not running.`
+              : null
   return {
     status: parsed.status,
     updatedAt: parsed.updatedAt,
     channelName: parsed.roundtableChannelName,
     lastSummary: parsed.lastSummary,
     lastError: parsed.lastError,
+    launchChildAlive,
+    launchDetail,
+  }
+}
+
+function readRoundtableLaunchState(root: string): RoundtableLaunchState | null {
+  const launchPath = resolve(
+    root,
+    'local-command-station',
+    'roundtable-runtime',
+    'discord-roundtable-launch.json',
+  )
+  if (!existsSync(launchPath)) {
+    return null
+  }
+  try {
+    return JSON.parse(readFileSync(launchPath, 'utf8')) as RoundtableLaunchState
+  } catch {
+    return null
+  }
+}
+
+function isProcessAliveByPid(pid: number | null | undefined): boolean {
+  if (!pid || pid <= 0) {
+    return false
+  }
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
   }
 }
 

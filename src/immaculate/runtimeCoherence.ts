@@ -30,6 +30,8 @@ export type RoundtableRuntimeSnapshot = {
   channelName?: string | null
   lastSummary?: string | null
   lastError?: string | null
+  launchChildAlive?: boolean | null
+  launchDetail?: string | null
 }
 
 export type RuntimeCoherenceReport = {
@@ -390,12 +392,21 @@ export function buildRuntimeCoherenceReport(args: {
   if (args.roundtable) {
     const roundtableSessionExpired =
       args.roundtable.status === 'expired' || args.roundtable.status === 'stale'
+    const roundtableStatus = args.roundtable.status?.toLowerCase() ?? null
+    const roundtableActive =
+      roundtableStatus === 'running' ||
+      roundtableStatus === 'queued' ||
+      roundtableStatus === 'awaiting_approval'
+    const roundtableHasRuntimeFault =
+      Boolean(args.roundtable.lastError) ||
+      (roundtableActive && args.roundtable.launchChildAlive === false)
     const roundtableHealthy =
-      (!roundtableSessionExpired && args.roundtable.status !== 'running') ||
-      (qReceipt?.status === 'ready' && qReceipt.gateway.connected === true)
+      !roundtableHasRuntimeFault &&
+      ((!roundtableSessionExpired && args.roundtable.status !== 'running') ||
+        (qReceipt?.status === 'ready' && qReceipt.gateway.connected === true))
     checks.push({
       id: 'roundtable-runtime',
-      status: roundtableSessionExpired
+      status: roundtableSessionExpired || roundtableHasRuntimeFault
         ? 'warning'
         : roundtableHealthy
           ? 'ok'
@@ -404,6 +415,7 @@ export function buildRuntimeCoherenceReport(args: {
         args.roundtable.channelName ? ` in #${args.roundtable.channelName}` : ''
       }.`,
       detail:
+        args.roundtable.launchDetail ??
         args.roundtable.lastError ??
         args.roundtable.lastSummary ??
         args.roundtable.updatedAt ??
