@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import {
   buildApexBridgeCoherenceProbe,
   buildPersonaPlexCoherenceProbe,
+  readRoundtableState,
 } from './runtime-coherence.ts'
 
 describe('runtime-coherence PersonaPlex mapping', () => {
@@ -129,5 +133,99 @@ describe('runtime-coherence PersonaPlex mapping', () => {
     expect(probe.detail).toContain('start it with the local voice launcher')
     expect(probe.detail).toContain('inline secret assignment detected')
     expect(probe.detail).toContain('next action')
+  })
+
+  test('marks active roundtable sessions unhealthy when the launch pid is dead', () => {
+    const root = mkdtempSync(join(tmpdir(), 'openjaws-roundtable-coherence-'))
+    try {
+      const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+      mkdirSync(runtimeDir, { recursive: true })
+      const now = new Date().toISOString()
+      const endsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+      writeFileSync(
+        join(runtimeDir, 'discord-roundtable.session.json'),
+        `${JSON.stringify({
+          version: 1,
+          status: 'running',
+          updatedAt: now,
+          startedAt: now,
+          endsAt,
+          guildId: null,
+          roundtableChannelId: null,
+          roundtableChannelName: 'dev_support',
+          generalChannelId: null,
+          generalChannelName: null,
+          violaVoiceChannelId: null,
+          violaVoiceChannelName: null,
+          turnCount: 0,
+          nextPersona: null,
+          lastSpeaker: null,
+          lastSummary: 'Roundtable bootstrapped.',
+          lastError: null,
+          processedCommandMessageIds: [],
+        })}\n`,
+        'utf8',
+      )
+      writeFileSync(
+        join(runtimeDir, 'discord-roundtable-launch.json'),
+        `${JSON.stringify({
+          startedAt: '2026-05-02T00:00:01.000Z',
+          pid: 999999,
+        })}\n`,
+        'utf8',
+      )
+
+      expect(readRoundtableState(root)).toMatchObject({
+        status: 'running',
+        channelName: 'dev_support',
+        launchChildAlive: false,
+        launchDetail:
+          'Roundtable session is running, but launch pid 999999 is not running.',
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('marks active roundtable sessions unhealthy when launch state is missing', () => {
+    const root = mkdtempSync(join(tmpdir(), 'openjaws-roundtable-coherence-'))
+    try {
+      const runtimeDir = join(root, 'local-command-station', 'roundtable-runtime')
+      mkdirSync(runtimeDir, { recursive: true })
+      const now = new Date().toISOString()
+      const endsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+      writeFileSync(
+        join(runtimeDir, 'discord-roundtable.session.json'),
+        `${JSON.stringify({
+          version: 1,
+          status: 'queued',
+          updatedAt: now,
+          startedAt: now,
+          endsAt,
+          guildId: null,
+          roundtableChannelId: null,
+          roundtableChannelName: 'dev_support',
+          generalChannelId: null,
+          generalChannelName: null,
+          violaVoiceChannelId: null,
+          violaVoiceChannelName: null,
+          turnCount: 0,
+          nextPersona: null,
+          lastSpeaker: null,
+          lastSummary: 'Roundtable queued.',
+          lastError: null,
+          processedCommandMessageIds: [],
+        })}\n`,
+        'utf8',
+      )
+
+      expect(readRoundtableState(root)).toMatchObject({
+        status: 'queued',
+        launchChildAlive: false,
+        launchDetail: 'Roundtable session is queued, but launch state is missing.',
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })
