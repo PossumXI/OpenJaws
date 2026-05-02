@@ -56,14 +56,14 @@ jobs:
           bun-version: 1.3.11
 
       - name: Install root dependencies
-        run: bun install --frozen-lockfile
+        run: bun scripts/ci-bun-install.ts --frozen-lockfile
 
       - name: Install desktop dependencies
-        run: bun install --cwd apps/jaws-desktop --frozen-lockfile
+        run: bun scripts/ci-bun-install.ts --cwd apps/jaws-desktop --frozen-lockfile
 
       - name: Install website dependencies
         if: runner.os == 'Windows'
-        run: bun install --cwd website --frozen-lockfile
+        run: bun scripts/ci-bun-install.ts --cwd website --frozen-lockfile
 
       - name: Verify public OpenJaws build
         if: runner.os == 'Windows'
