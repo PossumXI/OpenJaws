@@ -17,6 +17,62 @@
           "sidecar": true,
           "args": ["--version"],
           "cwd": true
+        },
+        {
+          "name": "binaries/openjaws",
+          "sidecar": true,
+          "args": ["provider", "status"],
+          "cwd": true
+        },
+        {
+          "name": "binaries/openjaws",
+          "sidecar": true,
+          "args": [
+            "provider",
+            "test",
+            { "validator": "[A-Za-z0-9_-]{1,40}" },
+            { "validator": "[A-Za-z0-9._:/@-]{1,120}" }
+          ],
+          "cwd": true
+        },
+        {
+          "name": "binaries/openjaws",
+          "sidecar": true,
+          "args": [
+            "provider",
+            "use",
+            { "validator": "[A-Za-z0-9_-]{1,40}" },
+            { "validator": "[A-Za-z0-9._:/@-]{1,120}" }
+          ],
+          "cwd": true
+        },
+        {
+          "name": "binaries/openjaws",
+          "sidecar": true,
+          "args": [
+            "provider",
+            "base-url",
+            { "validator": "[A-Za-z0-9_-]{1,40}" },
+            { "validator": "https://[^\\s]{1,280}|http://(?:127\\.0\\.0\\.1|localhost|\\[::1\\])[^\\s]{0,260}" }
+          ],
+          "cwd": true
+        },
+        {
+          "name": "binaries/openjaws",
+          "sidecar": true,
+          "args": [
+            "--print",
+            "--output-format",
+            "text",
+            "--max-turns",
+            "1",
+            "--permission-mode",
+            { "validator": "default|acceptEdits" },
+            "--workload",
+            "jaws-desktop",
+            { "validator": "(?s).{1,4000}" }
+          ],
+          "cwd": true
         }
       ]
     }

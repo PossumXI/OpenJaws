@@ -15,6 +15,23 @@ interface SoakOptions {
   simulatedUsers: number;
 }
 
+type ShellScopeArg = string | { validator?: string };
+
+interface ShellScopeEntry {
+  name?: string;
+  sidecar?: boolean;
+  args?: ShellScopeArg[] | boolean;
+}
+
+interface CapabilityPermission {
+  identifier?: string;
+  allow?: ShellScopeEntry[];
+}
+
+interface CapabilityConfig {
+  permissions?: Array<string | CapabilityPermission>;
+}
+
 const appRoot = resolve(import.meta.dir, "..");
 const requiredPublisher = "AROBI TECHNOLOGY ALLIANCE A OPAL MAR GROUP CORPORATION NJ USA";
 const blockedBrandingPattern = /\b(?:claude|anthropic)\b/i;
@@ -44,6 +61,24 @@ function assert(condition: unknown, message: string) {
   }
 }
 
+function sidecarArgShape(args: ShellScopeEntry["args"]): string {
+  if (args === true) return "*";
+  if (args === false || !Array.isArray(args)) return "";
+  return args.map((arg) => (typeof arg === "string" ? arg : "<validator>")).join(" ");
+}
+
+function openJawsSidecarArgShapes(config: CapabilityConfig): Set<string> {
+  const permission = config.permissions?.find(
+    (entry): entry is CapabilityPermission =>
+      typeof entry === "object" && entry?.identifier === "shell:allow-execute"
+  );
+  const entries = permission?.allow?.filter(
+    (entry) => entry.name === "binaries/openjaws" && entry.sidecar === true
+  );
+
+  return new Set((entries ?? []).map((entry) => sidecarArgShape(entry.args)));
+}
+
 function runHoldemHand(table: HoldemTableState): HoldemTableState {
   let next = table;
   for (let step = 0; step < 5; step += 1) {
@@ -68,6 +103,8 @@ function verifyStaticSurface() {
   const styleSource = readFileSync(join(appRoot, "src", "styles.css"), "utf8");
   const nativeSource = readFileSync(join(appRoot, "src-tauri", "src", "main.rs"), "utf8");
   const capabilitySource = readFileSync(join(appRoot, "src-tauri", "capabilities", "default.json"), "utf8");
+  const capabilityConfig = JSON.parse(capabilitySource) as CapabilityConfig;
+  const sidecarArgShapes = openJawsSidecarArgShapes(capabilityConfig);
 
   assert(tauriConfig.productName === "JAWS", "Tauri productName drifted from JAWS.");
   assert(tauriConfig.bundle?.publisher === requiredPublisher, "Installer publisher attribution is missing.");
@@ -91,6 +128,26 @@ function verifyStaticSurface() {
   assert(nativeSource.includes("build_cognitive_runtime_snapshot"), "Native cognitive runtime bridge is missing.");
   assert(nativeSource.includes("openjaws_inference_status"), "Native inference provider bridge is missing.");
   assert(nativeSource.includes(".arg(\"provider\")"), "Native inference bridge must use the direct provider CLI route.");
+  assert(sidecarArgShapes.has("--version"), "OpenJaws sidecar version check is not permitted.");
+  assert(sidecarArgShapes.has("provider status"), "OpenJaws provider status route is not permitted.");
+  assert(
+    sidecarArgShapes.has("provider test <validator> <validator>"),
+    "OpenJaws provider test route is not permitted."
+  );
+  assert(
+    sidecarArgShapes.has("provider use <validator> <validator>"),
+    "OpenJaws provider use route is not permitted."
+  );
+  assert(
+    sidecarArgShapes.has("provider base-url <validator> <validator>"),
+    "OpenJaws provider base-url route is not permitted."
+  );
+  assert(
+    sidecarArgShapes.has(
+      "--print --output-format text --max-turns 1 --permission-mode <validator> --workload jaws-desktop <validator>"
+    ),
+    "OpenJaws desktop Chat sidecar route is not permitted."
+  );
   assert(
     nativeSource.includes("deterministic_receipt_hash") &&
       nativeSource.includes("write_browser_preview_demo_harness"),
