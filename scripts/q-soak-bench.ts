@@ -231,6 +231,16 @@ function buildOpenJawsBinary(root: string): string {
   )
 }
 
+export function buildQSoakProbeEnv(
+  seed: number,
+  baseEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return {
+    ...baseEnv,
+    ...buildBenchmarkSeedEnv(seed),
+  }
+}
+
 function buildOpenJawsCommand(args: {
   root: string
   model: string
@@ -285,7 +295,7 @@ async function probeOpenJaws(args: {
     reject: false,
     timeout: args.timeoutMs,
     windowsHide: true,
-    env: buildBenchmarkSeedEnv(args.seed),
+    env: buildQSoakProbeEnv(args.seed),
   })
   const latencyMs = Date.now() - started
   const stdout = result.stdout.trim()
@@ -336,7 +346,7 @@ async function probeOciQ(args: {
       systemPrompt: args.systemPrompt,
       maxOutputTokens: 64,
       timeoutMs: args.timeoutMs,
-      env: buildBenchmarkSeedEnv(args.seed),
+      env: buildQSoakProbeEnv(args.seed),
     })
     const latencyMs = Date.now() - started
     return {

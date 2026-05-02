@@ -44,6 +44,16 @@ type ParsedWranglerConfig = {
   workersDev: boolean | null
 }
 
+type QTraceReleaseEvidence = {
+  present: boolean
+  successEvents: number
+  failureEvents: number
+  sampledEvents: number
+  completedTurns: number
+  ready: boolean
+  readError: string | null
+}
+
 type CliOptions = {
   root?: string
   json: boolean
@@ -167,13 +177,118 @@ function getQTraceTimestamp(summary: QTraceSummary | null): string | null {
   )
 }
 
+function normalizeTraceStatus(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const normalized = value.trim().toLowerCase()
+  return normalized.length > 0 ? normalized : null
+}
+
+function isSuccessfulTraceStatus(status: string | null): boolean {
+  return Boolean(
+    status &&
+      ['completed', 'ok', 'passed', 'success', 'succeeded'].includes(status),
+  )
+}
+
+function isFailedTraceStatus(status: string | null): boolean {
+  return Boolean(
+    status &&
+      [
+        'failed',
+        'error',
+        'timeout',
+        'cancelled',
+        'canceled',
+        'blocked',
+      ].includes(status),
+  )
+}
+
+function readQTraceReleaseEvidence(
+  summary: QTraceSummary | null,
+): QTraceReleaseEvidence {
+  if (!summary) {
+    return {
+      present: false,
+      successEvents: 0,
+      failureEvents: 0,
+      sampledEvents: 0,
+      completedTurns: 0,
+      ready: false,
+      readError: null,
+    }
+  }
+
+  let successEvents = 0
+  let failureEvents = 0
+  let sampledEvents = 0
+  let completedTurns = 0
+
+  try {
+    const lines = readFileSync(summary.path, 'utf8')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+
+    for (const line of lines) {
+      const event = JSON.parse(line) as Record<string, unknown>
+      const type = typeof event.type === 'string' ? event.type : null
+      const status = normalizeTraceStatus(event.status)
+      if (type === 'turn.complete') {
+        if (isSuccessfulTraceStatus(status)) {
+          successEvents += 1
+          completedTurns += 1
+        } else if (isFailedTraceStatus(status)) {
+          failureEvents += 1
+        }
+        continue
+      }
+      if (type === 'cognitive.sampled' || type === 'reflex.sampled') {
+        sampledEvents += 1
+        if (isSuccessfulTraceStatus(status)) {
+          successEvents += 1
+        } else if (isFailedTraceStatus(status)) {
+          failureEvents += 1
+        }
+      }
+    }
+
+    return {
+      present: true,
+      successEvents,
+      failureEvents,
+      sampledEvents,
+      completedTurns,
+      ready: successEvents > 0 && failureEvents === 0,
+      readError: null,
+    }
+  } catch (error) {
+    return {
+      present: true,
+      successEvents,
+      failureEvents,
+      sampledEvents,
+      completedTurns,
+      ready: false,
+      readError:
+        error instanceof Error
+          ? error.message
+          : 'Unable to read Q trace release evidence.',
+    }
+  }
+}
+
 function summarizeQTrace(
   summary: QTraceSummary | null,
+  evidence: QTraceReleaseEvidence,
 ): Record<string, unknown> {
   if (!summary) {
     return {
       present: false,
       freshWindowHours: RELEASE_Q_TRACE_FRESH_WINDOW_MS / (60 * 60 * 1000),
+      releaseEvidence: evidence,
     }
   }
 
@@ -185,6 +300,7 @@ function summarizeQTrace(
     runState: summary.runState,
     timestamp: getQTraceTimestamp(summary),
     freshWindowHours: RELEASE_Q_TRACE_FRESH_WINDOW_MS / (60 * 60 * 1000),
+    releaseEvidence: evidence,
   }
 }
 
@@ -237,7 +353,9 @@ export function buildHostedQProvisioningPreflight(
     referenceTimeMs: (options.now ?? new Date()).getTime(),
     completedWindowMs: RELEASE_Q_TRACE_FRESH_WINDOW_MS,
   })
-  const qTraceFreshForRelease = Boolean(qTrace) && qTrace?.runState !== 'stale'
+  const qTraceEvidence = readQTraceReleaseEvidence(qTrace)
+  const qTraceFreshForRelease =
+    Boolean(qTrace) && qTrace?.runState !== 'stale' && qTraceEvidence.ready
   const missingDurablePublicEnv = [
     ...missingPublicSiteEnv,
     ...(localFilesystemMode ? ['Q_HOSTED_SERVICE_LOCAL_MODE=filesystem'] : []),
@@ -378,20 +496,22 @@ export function buildHostedQProvisioningPreflight(
       id: 'fresh-q-trace',
       passed: qTraceFreshForRelease,
       summary: qTraceFreshForRelease
-        ? 'Latest Q trace is fresh enough for release-audit signoff.'
-        : 'Fresh Q trace is missing or stale for release-audit signoff.',
+        ? 'Latest Q trace is fresh and contains successful release-audit probe evidence.'
+        : qTrace && qTrace.runState !== 'stale'
+          ? 'Fresh Q trace is present but does not contain successful release-audit probe evidence.'
+          : 'Fresh Q trace is missing or stale for release-audit signoff.',
       missing: qTraceFreshForRelease
         ? []
         : [
             qTrace
-              ? `fresh Q trace within ${RELEASE_Q_TRACE_FRESH_WINDOW_MS / (60 * 60 * 1000)}h`
+              ? `fresh successful Q trace within ${RELEASE_Q_TRACE_FRESH_WINDOW_MS / (60 * 60 * 1000)}h`
               : 'artifacts/q-*/**/*.trace.jsonl',
           ],
-      details: summarizeQTrace(qTrace),
+      details: summarizeQTrace(qTrace, qTraceEvidence),
       nextActions: qTraceFreshForRelease
         ? []
         : [
-            'Generate a fresh Q trace with a bounded Q soak or Terminal-Bench dry run, then rerun runtime:coherence before release-audit signoff.',
+            'Generate a fresh successful Q trace with a bounded Q soak or Terminal-Bench dry run, then rerun runtime:coherence before release-audit signoff.',
           ],
     }),
   ]
