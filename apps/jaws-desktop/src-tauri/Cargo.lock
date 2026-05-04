@@ -1878,7 +1878,7 @@ dependencies = [
 
 [[package]]
 name = "jaws-desktop"
-version = "0.1.3"
+version = "0.1.9"
 dependencies = [
  "reqwest",
  "serde",

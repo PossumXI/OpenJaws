@@ -2163,6 +2163,143 @@ async fn openjaws_inference_status(
 }
 
 #[tauri::command]
+async fn run_openjaws_provider_command(
+    app: tauri::AppHandle,
+    provider_args: Vec<String>,
+    workspace_path: Option<String>,
+) -> ChatCommandResult {
+    let workspace = workspace_path
+        .as_deref()
+        .map(|path| validate_workspace(path.to_string()))
+        .filter(|workspace| workspace.valid);
+
+    let command = match app.shell().sidecar("openjaws") {
+        Ok(command) => {
+            let command = command.arg("provider").args(provider_args);
+            if let Some(workspace) = &workspace {
+                command.current_dir(workspace.path.clone())
+            } else {
+                command
+            }
+        }
+        Err(error) => {
+            return ChatCommandResult {
+                ok: false,
+                code: None,
+                stdout: String::new(),
+                stderr: format!("OpenJaws sidecar unavailable: {error}"),
+                summary: "Sidecar unavailable.".to_string(),
+                permission_mode: "default".to_string(),
+                workspace_path: workspace_path.unwrap_or_default(),
+            };
+        }
+    };
+
+    match tokio::time::timeout(Duration::from_secs(45), command.output()).await {
+        Ok(Ok(output)) => {
+            let stdout = truncate_text(&String::from_utf8_lossy(&output.stdout), 4_000);
+            let stderr = truncate_text(&String::from_utf8_lossy(&output.stderr), 2_000);
+            let ok = output.status.success();
+            ChatCommandResult {
+                ok,
+                code: output.status.code(),
+                stdout,
+                stderr,
+                summary: if ok {
+                    "Provider command completed.".to_string()
+                } else {
+                    "Provider command returned a non-zero exit code.".to_string()
+                },
+                permission_mode: "default".to_string(),
+                workspace_path: workspace
+                    .map(|workspace| workspace.path)
+                    .unwrap_or_else(|| workspace_path.unwrap_or_default()),
+            }
+        }
+        Ok(Err(error)) => ChatCommandResult {
+            ok: false,
+            code: None,
+            stdout: String::new(),
+            stderr: format!("OpenJaws provider command failed: {error}"),
+            summary: "Provider command failed before output.".to_string(),
+            permission_mode: "default".to_string(),
+            workspace_path: workspace
+                .map(|workspace| workspace.path)
+                .unwrap_or_else(|| workspace_path.unwrap_or_default()),
+        },
+        Err(_) => ChatCommandResult {
+            ok: false,
+            code: None,
+            stdout: String::new(),
+            stderr: "OpenJaws provider command timed out after 45 seconds.".to_string(),
+            summary: "Provider command timed out.".to_string(),
+            permission_mode: "default".to_string(),
+            workspace_path: workspace
+                .map(|workspace| workspace.path)
+                .unwrap_or_else(|| workspace_path.unwrap_or_default()),
+        },
+    }
+}
+
+/// Matches desktop chat routing: `/provider` alone or `/provider …` (case-insensitive prefix).
+fn provider_command_rest(command: &str) -> Option<&str> {
+    const PREFIX: &str = "/provider";
+    let s = command.trim_start();
+    if s.len() < PREFIX.len() {
+        return None;
+    }
+    if !s[..PREFIX.len()].eq_ignore_ascii_case(PREFIX) {
+        return None;
+    }
+    if s.len() == PREFIX.len() {
+        return Some("");
+    }
+    if !s.as_bytes()[PREFIX.len()].is_ascii_whitespace() {
+        return None;
+    }
+    Some(s[PREFIX.len()..].trim_start())
+}
+
+/// Split arguments after `/provider`, respecting double-quoted tokens (same idea as the React chat shell).
+fn shell_split_provider_args(rest: &str) -> Vec<String> {
+    let rest = rest.trim();
+    if rest.is_empty() {
+        return Vec::new();
+    }
+    let chars: Vec<char> = rest.chars().collect();
+    let mut args = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+        if i >= chars.len() {
+            break;
+        }
+        let mut token = String::new();
+        if chars[i] == '"' {
+            i += 1;
+            while i < chars.len() && chars[i] != '"' {
+                token.push(chars[i]);
+                i += 1;
+            }
+            if i < chars.len() && chars[i] == '"' {
+                i += 1;
+            }
+        } else {
+            while i < chars.len() && !chars[i].is_whitespace() {
+                token.push(chars[i]);
+                i += 1;
+            }
+        }
+        if !token.is_empty() {
+            args.push(token);
+        }
+    }
+    args
+}
+
+#[tauri::command]
 async fn run_openjaws_chat(
     app: tauri::AppHandle,
     prompt: String,
@@ -2216,6 +2353,13 @@ async fn run_openjaws_chat(
             workspace_path: String::new(),
         };
     };
+
+    // Never route `/provider` through headless `openjaws --print` (full Q turn); it hits the
+    // 120s chat timeout while the model spins. The bundled `openjaws provider` CLI is immediate.
+    if let Some(rest) = provider_command_rest(prompt) {
+        let provider_args = shell_split_provider_args(rest);
+        return run_openjaws_provider_command(app, provider_args, Some(workspace.path.clone())).await;
+    }
 
     let command = match app.shell().sidecar("openjaws") {
         Ok(command) => command
@@ -2309,6 +2453,7 @@ fn main() {
             probe_release_update_pipeline,
             q_agents_cowork_plan,
             resolve_workspace,
+            run_openjaws_provider_command,
             run_openjaws_chat,
             validate_workspace,
             write_browser_preview_demo_harness,
